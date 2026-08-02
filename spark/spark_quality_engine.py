@@ -612,6 +612,13 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
         # Load raw data from HDFS as strings to avoid inference issues (Bug 6)
         print(f"Reading raw CSV data from {raw_path}")
         df = spark.read.option("header", "true").csv(raw_path)
+
+        # ─── GUARD: Empty file protection ─────────────────────────
+        if len(df.columns) == 0 or df.head(1) is None or len(df.head(1)) == 0:
+            print(f"SKIPPED: '{table_name}' has 0 records or no columns. Nothing to process.")
+            spark.stop()
+            sys.exit(0)
+
         for col_name in df.columns:
             cleaned_col = clean_column_name(col_name)
             if col_name != cleaned_col:
@@ -841,6 +848,44 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
     df_with_status = df.withColumn("is_invalid", F.col(primary_key).isNull()) \
                        .withColumn("reject_reason", F.when(F.col("is_invalid"), F.lit("missing_primary_key")).otherwise(F.lit("")))
 
+    # ─── Null Validation: Check all schema columns for null values ─────────────
+    non_pk_cols = [c for c in schema_spec.keys() if c != primary_key and c in df.columns]
+    for col_name in non_pk_cols:
+        null_reason = f"null_value_in_{col_name}"
+        df_with_status = df_with_status.withColumn(
+            "reject_reason",
+            F.when(
+                (~F.col("is_invalid")) & F.col(col_name).isNull(),
+                F.when(F.col("reject_reason") == F.lit(""), F.lit(null_reason))
+                 .otherwise(F.concat(F.col("reject_reason"), F.lit("; "), F.lit(null_reason)))
+            ).otherwise(F.col("reject_reason"))
+        ).withColumn(
+            "is_invalid",
+            F.col("is_invalid") | F.col(col_name).isNull()
+        )
+
+    # ─── Type Validation: Check numeric columns for invalid values ─────────────
+    numeric_type_cols = [c for c, t in schema_spec.items()
+                         if t in ("IntegerType", "DoubleType") and c in df.columns and c != primary_key]
+    for col_name in numeric_type_cols:
+        cast_type = "int" if schema_spec[col_name] == "IntegerType" else "double"
+        cast_col_name = f"__{col_name}_cast_check"
+        df_with_status = df_with_status.withColumn(
+            cast_col_name, F.col(col_name).cast(cast_type)
+        )
+        type_reason = f"invalid_type_{col_name}"
+        df_with_status = df_with_status.withColumn(
+            "reject_reason",
+            F.when(
+                (~F.col("is_invalid")) & F.col(col_name).isNotNull() & F.col(cast_col_name).isNull(),
+                F.when(F.col("reject_reason") == F.lit(""), F.lit(type_reason))
+                 .otherwise(F.concat(F.col("reject_reason"), F.lit("; "), F.lit(type_reason)))
+            ).otherwise(F.col("reject_reason"))
+        ).withColumn(
+            "is_invalid",
+            F.col("is_invalid") | (F.col(col_name).isNotNull() & F.col(cast_col_name).isNull())
+        ).drop(cast_col_name)
+
     if date_column and date_column in df.columns:
         df_with_status = df_with_status.withColumn(
             "is_invalid",
@@ -1005,7 +1050,16 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
     total_records = clean_count + quarantine_count
 
     print("Writing validated datasets to HDFS using Delta Lake...")
-    
+
+    # ─── Column Filtering: Only keep columns defined in schema_spec ─────────────
+    if schema_spec:
+        allowed_cols = list(schema_spec.keys())
+        extra_cols = [c for c in clean_df.columns if c not in allowed_cols]
+        if extra_cols:
+            print(f"[COLUMN FILTER] Stripping {len(extra_cols)} extra columns not in schema: {extra_cols}")
+            clean_df = clean_df.select([F.col(c) for c in clean_df.columns if c in allowed_cols])
+            remediation_logs.append(f"extra_columns_stripped_{len(extra_cols)}")
+
     # Delta Lake MERGE (True Upsert)
     clean_df_for_upsert = clean_df.withColumn("run_id", F.lit(run_id))
     
