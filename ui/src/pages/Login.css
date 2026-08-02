@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════
-   GRIDGEIST LOGIN — SDOQAP Technical Split-Grid Theme
+   GRIDGEIST LOGIN — SDOQAP Clerk White/Purple Theme
    ═══════════════════════════════════════════════════ */
 
 .gs-login-layout {
@@ -11,15 +11,15 @@
   top: 0;
   left: 0;
   z-index: 9999;
-  background-color: #080B10;
+  background-color: var(--bg-primary);
   overflow: hidden;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-sans);
 }
 
 /* ── LEFT PANEL: SYSTEM TELEMETRY ── */
 .gs-login-sidebar {
-  background: #0B0E14;
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-color);
   padding: 48px;
   display: flex;
   flex-direction: column;
@@ -32,7 +32,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+  background-image: radial-gradient(circle, rgba(0, 0, 0, 0.015) 1px, transparent 1px);
   background-size: 24px 24px;
   pointer-events: none;
 }
@@ -44,14 +44,14 @@
 }
 
 .gs-login-sys-badge {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 9.5px;
   font-weight: 700;
   letter-spacing: 1.5px;
-  color: #A78BFA;
-  background: rgba(167, 139, 250, 0.08);
+  color: var(--accent-purple);
+  background: var(--accent-purple-light);
   padding: 4px 8px;
-  border: 1px solid rgba(167, 139, 250, 0.2);
+  border: 1px solid rgba(108, 71, 255, 0.15);
   border-radius: 4px;
   display: inline-block;
   margin-bottom: 12px;
@@ -60,14 +60,14 @@
 .gs-login-sidebar-header h2 {
   font-size: 24px;
   font-weight: 800;
-  color: #E2E8F0;
+  color: var(--text-main);
   letter-spacing: -0.02em;
   margin: 0 0 6px 0;
 }
 
 .gs-login-sidebar-header p {
   font-size: 12.5px;
-  color: #64748B;
+  color: var(--text-muted);
   margin: 0;
 }
 
@@ -83,13 +83,14 @@
 }
 
 .gs-login-evidence-card {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 18px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  box-shadow: var(--shadow-sm);
 }
 
 .gs-login-evidence-card.wide {
@@ -101,9 +102,9 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.8px;
-  color: #94A3B8;
+  color: var(--text-muted);
   margin: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid var(--border-color);
   padding-bottom: 6px;
 }
 
@@ -115,33 +116,36 @@
 }
 
 .gs-login-evidence-table th {
-  color: #475569;
+  color: var(--text-muted);
   font-weight: 600;
   font-size: 9px;
   text-transform: uppercase;
   padding: 4px 6px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--border-color);
 }
 
 .gs-login-evidence-table td {
   padding: 6px;
-  color: #94A3B8;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color);
 }
 
 .gs-login-evidence-table code {
-  font-family: 'JetBrains Mono', monospace;
-  color: #E2E8F0;
+  font-family: var(--font-mono);
+  color: var(--text-main);
+  background: rgba(0, 0, 0, 0.04);
+  padding: 2px 4px;
+  border-radius: 3px;
 }
 
 .status-ok {
-  color: #34D399 !important;
+  color: var(--accent-green) !important;
   font-weight: 700;
   font-size: 9.5px;
 }
 
 .status-idle {
-  color: #60A5FA !important;
+  color: var(--accent-blue) !important;
   font-weight: 700;
   font-size: 9.5px;
 }
@@ -162,35 +166,35 @@
 }
 
 .bullet-pass {
-  color: #34D399;
+  color: var(--accent-green);
   font-weight: bold;
 }
 
 .bullet-warn {
-  color: #FBBF24;
+  color: var(--accent-yellow);
   font-weight: bold;
 }
 
 .gs-login-constraints-list strong {
   display: block;
   font-size: 11.5px;
-  color: #E2E8F0;
+  color: var(--text-main);
 }
 
 .gs-login-constraints-list small {
   display: block;
   font-size: 10px;
-  color: #64748B;
+  color: var(--text-muted);
 }
 
 .gs-login-code {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 10.5px;
   color: #A78BFA;
-  background: rgba(0, 0, 0, 0.2);
+  background: #0F1219;
   padding: 10px 14px;
   border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  border: 1px solid #1E293B;
   margin: 0;
   line-height: 1.4;
   overflow-x: auto;
@@ -198,18 +202,18 @@
 
 .gs-login-sidebar-footer {
   font-size: 11px;
-  color: #475569;
+  color: var(--text-muted);
 }
 
 .gs-login-sidebar-footer code {
-  font-family: 'JetBrains Mono', monospace;
-  color: #64748B;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
 }
 
 
 /* ── RIGHT PANEL: CREDENTIAL FORM ── */
 .gs-login-main {
-  background: #080B10;
+  background: var(--bg-primary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -229,40 +233,40 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #A78BFA;
+  color: var(--accent-purple);
 }
 
 .gs-login-brand-text {
   font-weight: 800;
   font-size: 15px;
   letter-spacing: -0.02em;
-  color: #E2E8F0;
+  color: var(--text-main);
 }
 
 .gs-login-form-header h2 {
   font-size: 26px;
   font-weight: 800;
-  color: #F1F5F9;
+  color: var(--text-main);
   letter-spacing: -0.03em;
   margin: 0 0 6px 0;
 }
 
 .gs-login-form-header p {
   font-size: 12.5px;
-  color: #64748B;
+  color: var(--text-muted);
   margin: 0;
   line-height: 1.5;
 }
 
 .gs-login-error-banner {
-  background: rgba(248, 113, 113, 0.08);
-  border: 1px solid rgba(248, 113, 113, 0.2);
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
   border-radius: 6px;
   padding: 10px 14px;
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #F87171;
+  color: var(--accent-red);
   font-size: 12px;
 }
 
@@ -283,28 +287,27 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.8px;
-  color: #94A3B8;
+  color: var(--text-secondary);
 }
 
 .gs-login-input-group input {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   padding: 12px 14px;
   font-size: 13px;
-  color: #F1F5F9;
+  color: var(--text-main);
   transition: all 0.2s ease;
 }
 
 .gs-login-input-group input:focus {
   outline: none;
-  border-color: rgba(167, 139, 250, 0.5);
-  background: rgba(0, 0, 0, 0.4);
-  box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.12);
+  border-color: var(--accent-purple);
+  box-shadow: 0 0 0 3px rgba(108, 71, 255, 0.12);
 }
 
 .gs-login-submit-btn {
-  background: #6D47FF;
+  background: var(--accent-purple);
   border: none;
   border-radius: 6px;
   padding: 14px;
@@ -317,10 +320,11 @@
   align-items: center;
   justify-content: center;
   margin-top: 10px;
+  box-shadow: var(--shadow-sm);
 }
 
 .gs-login-submit-btn:hover:not(:disabled) {
-  background: #7C3AED;
+  background: #5936E0;
 }
 
 .gs-login-submit-btn:disabled {
@@ -336,7 +340,7 @@
 
 .gs-login-bottom-info {
   font-size: 10px;
-  color: #475569;
+  color: var(--text-muted);
   letter-spacing: 0.5px;
   text-transform: uppercase;
 }
@@ -349,7 +353,7 @@
   }
   
   .gs-login-sidebar {
-    display: none; /* Hide complex telemetry on small screens, prioritize task flow */
+    display: none;
   }
   
   .gs-login-main {
