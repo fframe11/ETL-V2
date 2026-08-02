@@ -1557,6 +1557,13 @@ if __name__ == "__main__":
         try:
             # 1. Read raw strings to preserve exact values
             df_raw = temp_spark.read.option("header", "true").csv(raw_path)
+
+            # ─── GUARD: Empty file protection in schema inference ───
+            if len(df_raw.columns) == 0 or df_raw.head(1) is None or len(df_raw.head(1)) == 0:
+                print(f"SKIPPED: Raw data for '{target_table}' is empty. Nothing to infer.")
+                temp_spark.stop()
+                sys.exit(0)
+
             for col_name in df_raw.columns:
                 cleaned_col = clean_column_name(col_name)
                 if col_name != cleaned_col:
