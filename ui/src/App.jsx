@@ -74,7 +74,7 @@ function AppContent({ isSidebarOpen, toggleSidebar }) {
           )}
           <ErrorBoundary>
             <Routes>
-              <Route path="/" element={<Home />} />
+              <Route path="/" element={<RequireAuth><Home /></RequireAuth>} />
               <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
               <Route path="/analytics" element={<RequireAuth><Analytics /></RequireAuth>} />
               <Route path="/pipeline" element={<RequireAuth><Pipeline /></RequireAuth>} />
