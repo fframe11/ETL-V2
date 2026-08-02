@@ -163,6 +163,22 @@ def read_parquet_folder_to_df(hdfs_folder: str) -> pd.DataFrame:
         raise HTTPException(status_code=500, detail=f"Error reading Parquet dataset: {str(e)}")
 
 
+def prepare_df_for_export(df: pd.DataFrame) -> bytes:
+    """Clean DataFrame for end-user export: drop internal columns, fix types, encode for Excel.
+    
+    This ensures that ALL exported data is immediately ready-to-use:
+    1. Strips internal pipeline metadata columns (run_id, __index_level_0__)
+    2. Preserves integer types (prevents 1 → 1.0 float conversion)
+    3. Encodes with UTF-8 BOM for proper Thai/Unicode display in Excel on Windows
+    """
+    internal_cols = ["run_id", "__index_level_0__"]
+    for col in internal_cols:
+        if col in df.columns:
+            df = df.drop(columns=[col])
+    df = df.convert_dtypes()
+    return df.to_csv(index=False).encode("utf-8-sig")
+
+
 @router.get("/tables")
 def list_export_tables():
     """List all available tables across active, raw, and quarantine layers."""
@@ -281,10 +297,10 @@ def export_active_data(table_name: str, limit: int = None):
     if limit:
         df = df.head(limit)
         
-    csv_data = df.to_csv(index=False)
+    csv_bytes = prepare_df_for_export(df)
     return Response(
-        content=csv_data,
-        media_type="text/csv",
+        content=csv_bytes,
+        media_type="text/csv; charset=utf-8-sig",
         headers={"Content-Disposition": f"attachment; filename={table_name}_active.csv"}
     )
 
@@ -297,10 +313,10 @@ def export_quarantine_data(table_name: str, limit: int = None):
     if limit:
         df = df.head(limit)
         
-    csv_data = df.to_csv(index=False)
+    csv_bytes = prepare_df_for_export(df)
     return Response(
-        content=csv_data,
-        media_type="text/csv",
+        content=csv_bytes,
+        media_type="text/csv; charset=utf-8-sig",
         headers={"Content-Disposition": f"attachment; filename={table_name}_quarantine.csv"}
     )
 
@@ -317,10 +333,10 @@ def export_reddit_data(subreddit: str = "python", limit: int = None):
     if limit:
         df = df.head(limit)
         
-    csv_data = df.to_csv(index=False)
+    csv_bytes = prepare_df_for_export(df)
     return Response(
-        content=csv_data,
-        media_type="text/csv",
+        content=csv_bytes,
+        media_type="text/csv; charset=utf-8-sig",
         headers={"Content-Disposition": f"attachment; filename=reddit_{subreddit}.csv"}
     )
 

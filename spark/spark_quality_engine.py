@@ -1028,7 +1028,6 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
             clean_df_for_upsert.write \
                 .format("delta") \
                 .mode("overwrite") \
-                .option("txnVersion", run_id) \
                 .save(active_path)
             print("Delta Lake table created successfully.")
     except Exception as e:
