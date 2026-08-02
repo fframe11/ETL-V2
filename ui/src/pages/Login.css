@@ -390,12 +390,12 @@
 
 .gs-login-input-group input {
   width: 100%;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  padding: 12px 14px 12px 36px; /* Leave space for SVG icon */
-  font-size: 13.5px;
-  color: var(--text-main);
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 6px !important;
+  padding: 12px 14px 12px 36px !important; /* Force priority to leave space for SVG icon */
+  font-size: 13.5px !important;
+  color: var(--text-main) !important;
   transition: all 0.25s ease;
   box-sizing: border-box;
 }
