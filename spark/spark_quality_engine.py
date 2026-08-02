@@ -1027,20 +1027,14 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
             print(f"No existing Delta table. Creating new Delta table at: {active_path}")
             clean_df_for_upsert.write \
                 .format("delta") \
-                .option("delta.columnMapping.mode", "name") \
-                .option("delta.minReaderVersion", "2") \
-                .option("delta.minWriterVersion", "5") \
                 .mode("overwrite") \
                 .option("txnVersion", run_id) \
                 .save(active_path)
-            print("Delta Lake table created successfully with Column Mapping enabled.")
+            print("Delta Lake table created successfully.")
     except Exception as e:
         print(f"Error during Delta write: {e}. Attempting direct fallback write.")
         clean_df_for_upsert.write \
             .format("delta") \
-            .option("delta.columnMapping.mode", "name") \
-            .option("delta.minReaderVersion", "2") \
-            .option("delta.minWriterVersion", "5") \
             .mode("overwrite") \
             .save(active_path)
 

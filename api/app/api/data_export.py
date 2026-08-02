@@ -74,7 +74,65 @@ def stream_hdfs_file_raw(path: str):
 
 
 def read_parquet_folder_to_df(hdfs_folder: str) -> pd.DataFrame:
-    """List and read all Parquet files inside a folder and return a single concatenated DataFrame."""
+    """Read Delta Lake table correctly by parsing _delta_log to find active Parquet files only.
+    
+    Delta Lake stores transaction history in _delta_log/. Each commit JSON lists
+    which .parquet files were 'add'ed or 'remove'd. We parse the latest commit
+    to read ONLY the currently active files, preventing data duplication from
+    historical commits.
+    
+    Fallback: If no _delta_log exists (plain Parquet folder), reads all .parquet files.
+    """
+    import json
+
+    # Step 1: Check if _delta_log exists (i.e., this is a Delta table)
+    delta_log_url = f"http://namenode:9870/webhdfs/v1{hdfs_folder}/_delta_log?op=LISTSTATUS&user.name=spark"
+    is_delta = False
+    active_files = set()
+
+    try:
+        r_log = requests.get(delta_log_url, timeout=10)
+        if r_log.status_code == 200:
+            log_files = r_log.json().get("FileStatuses", {}).get("FileStatus", [])
+            # Get all .json commit files sorted (00000000000000000000.json, etc.)
+            commit_files = sorted(
+                [f["pathSuffix"] for f in log_files if f["pathSuffix"].endswith(".json")],
+                reverse=True
+            )
+            if commit_files:
+                is_delta = True
+                # Parse ALL commits from oldest to newest to reconstruct the active file set
+                for commit_file in sorted(commit_files):
+                    commit_path = f"{hdfs_folder}/_delta_log/{commit_file}"
+                    try:
+                        commit_content = read_hdfs_file(commit_path)
+                        for line in commit_content.decode("utf-8").strip().split("\n"):
+                            entry = json.loads(line)
+                            if "add" in entry:
+                                active_files.add(entry["add"]["path"])
+                            if "remove" in entry:
+                                active_files.discard(entry["remove"]["path"])
+                    except Exception:
+                        continue
+    except Exception:
+        pass  # Not a Delta table or _delta_log inaccessible, fall back to plain read
+
+    if is_delta and active_files:
+        # Read only the currently active Parquet files from the Delta table
+        dfs = []
+        for file_path in active_files:
+            full_path = f"{hdfs_folder}/{file_path}"
+            try:
+                content = read_hdfs_file(full_path)
+                df = pd.read_parquet(io.BytesIO(content))
+                dfs.append(df)
+            except Exception:
+                continue
+        if not dfs:
+            raise HTTPException(status_code=404, detail=f"No active Parquet data in Delta table {hdfs_folder}")
+        return pd.concat(dfs, ignore_index=True)
+
+    # Fallback: Plain Parquet folder (no _delta_log)
     list_url = f"http://namenode:9870/webhdfs/v1{hdfs_folder}?op=LISTSTATUS&user.name=spark"
     try:
         r = requests.get(list_url, timeout=10)
