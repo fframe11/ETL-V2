@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
 import NavBar from "./components/NavBar";
 import ErrorBoundary from "./components/ErrorBoundary";
 import Home from "./pages/Home";
@@ -10,11 +10,34 @@ import Schema from "./pages/Schema";
 import Ingestion from "./pages/Ingestion";
 import DataExport from "./pages/DataExport";
 import RulesConfig from "./pages/RulesConfig";
+import Login from "./pages/Login";
 import "./App.css";
+
+function RequireAuth({ children }) {
+  const token = localStorage.getItem("sdoqap_admin_token");
+  const location = useLocation();
+
+  if (!token) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  return children;
+}
 
 function AppContent({ isSidebarOpen, toggleSidebar }) {
   const location = useLocation();
   const isHome = location.pathname === "/";
+  const isLogin = location.pathname === "/login";
+
+  if (isLogin) {
+    return (
+      <ErrorBoundary>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+        </Routes>
+      </ErrorBoundary>
+    );
+  }
 
   return (
     <>
@@ -52,16 +75,16 @@ function AppContent({ isSidebarOpen, toggleSidebar }) {
           <ErrorBoundary>
             <Routes>
               <Route path="/" element={<Home />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/analytics" element={<Analytics />} />
-              <Route path="/pipeline" element={<Pipeline />} />
-              <Route path="/schema" element={<Schema />} />
-              <Route path="/rules" element={<RulesConfig />} />
-              <Route path="/rules-config" element={<RulesConfig />} />
-              <Route path="/rules_config" element={<RulesConfig />} />
-              <Route path="/rules config" element={<RulesConfig />} />
-              <Route path="/ingestion" element={<Ingestion />} />
-              <Route path="/export" element={<DataExport />} />
+              <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
+              <Route path="/analytics" element={<RequireAuth><Analytics /></RequireAuth>} />
+              <Route path="/pipeline" element={<RequireAuth><Pipeline /></RequireAuth>} />
+              <Route path="/schema" element={<RequireAuth><Schema /></RequireAuth>} />
+              <Route path="/rules" element={<RequireAuth><RulesConfig /></RequireAuth>} />
+              <Route path="/rules-config" element={<RequireAuth><RulesConfig /></RequireAuth>} />
+              <Route path="/rules_config" element={<RequireAuth><RulesConfig /></RequireAuth>} />
+              <Route path="/rules config" element={<RequireAuth><RulesConfig /></RequireAuth>} />
+              <Route path="/ingestion" element={<RequireAuth><Ingestion /></RequireAuth>} />
+              <Route path="/export" element={<RequireAuth><DataExport /></RequireAuth>} />
             </Routes>
           </ErrorBoundary>
         </main>

@@ -44,44 +44,53 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
   const location = useLocation();
   const navigate = useNavigate();
   
+  const isLoggedIn = !!localStorage.getItem("sdoqap_admin_token");
+
+  const handleLogout = () => {
+    localStorage.removeItem("sdoqap_admin_token");
+    navigate("/login");
+  };
+
   // Fetch services status for bottom panel
   const services = useApi('/services/status', { refreshInterval: 15000 });
   const isHealthy = !services.error && services.data && Object.values(services.data).every(s => s.status === 'online');
 
-  // Categories and their links
+  // Categories and their links (dynamic based on logged in status)
   const menuGroups = [
     {
       title: "General",
       key: "general",
       links: [
         { to: "/", label: "Home", icon: <HomeIcon /> },
-        { to: "/dashboard", label: "Dashboard", icon: <DashboardIcon /> }
+        ...(isLoggedIn ? [{ to: "/dashboard", label: "Dashboard", icon: <DashboardIcon /> }] : [])
       ]
     },
-    {
-      title: "Observability",
-      key: "observability",
-      links: [
-        { to: "/analytics", label: "Live Analytics", icon: <AnalyticsIcon /> },
-        { to: "/pipeline", label: "Pipeline Runs", icon: <PipelineIcon /> }
-      ]
-    },
-    {
-      title: "Governance",
-      key: "governance",
-      links: [
-        { to: "/schema", label: "Schema Drift", icon: <SchemaIcon /> },
-        { to: "/rules", label: "Rules Hub", icon: <RulesIcon /> }
-      ]
-    },
-    {
-      title: "Data Pipeline",
-      key: "pipeline_stages",
-      links: [
-        { to: "/ingestion", label: "Ingestion Stage", icon: <IngestionIcon /> },
-        { to: "/export", label: "Export Hub", icon: <ExportIcon /> }
-      ]
-    }
+    ...(isLoggedIn ? [
+      {
+        title: "Observability",
+        key: "observability",
+        links: [
+          { to: "/analytics", label: "Live Analytics", icon: <AnalyticsIcon /> },
+          { to: "/pipeline", label: "Pipeline Runs", icon: <PipelineIcon /> }
+        ]
+      },
+      {
+        title: "Governance",
+        key: "governance",
+        links: [
+          { to: "/schema", label: "Schema Drift", icon: <SchemaIcon /> },
+          { to: "/rules", label: "Rules Hub", icon: <RulesIcon /> }
+        ]
+      },
+      {
+        title: "Data Pipeline",
+        key: "pipeline_stages",
+        links: [
+          { to: "/ingestion", label: "Ingestion Stage", icon: <IngestionIcon /> },
+          { to: "/export", label: "Export Hub", icon: <ExportIcon /> }
+        ]
+      }
+    ] : [])
   ];
 
   // Command Palette states
@@ -211,6 +220,29 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
 
         {/* Bottom System Status */}
         <div className="gs-nav-bottom">
+          {isLoggedIn ? (
+            navOpen ? (
+              <button className="gs-nav-logout-btn" onClick={handleLogout}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                <span>Logout</span>
+              </button>
+            ) : (
+              <button className="gs-nav-logout-btn collapsed" onClick={handleLogout} title="Logout">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              </button>
+            )
+          ) : (
+            navOpen ? (
+              <button className="gs-nav-login-btn" onClick={() => navigate("/login")}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                <span>Admin Login</span>
+              </button>
+            ) : (
+              <button className="gs-nav-login-btn collapsed" onClick={() => navigate("/login")} title="Admin Login">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+              </button>
+            )
+          )}
           {navOpen && (
             <div className="gs-nav-status">
               <span className={`gs-nav-status-dot ${isHealthy ? "online" : "offline"}`} />
