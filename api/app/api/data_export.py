@@ -24,6 +24,25 @@ def get_es():
 
 
 from urllib.parse import urlparse, urlunparse
+import json
+
+def load_registered_schema_columns(table_name: str):
+    """Load column names from schema_registry.json for a given table."""
+    schema_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..", "..", "..", "spark", "schema_registry.json"
+    )
+    if os.path.exists(schema_path):
+        try:
+            with open(schema_path, "r", encoding="utf-8") as f:
+                registry = json.load(f)
+                table_conf = registry.get(table_name)
+                if table_conf and "schema_spec" in table_conf:
+                    return list(table_conf["schema_spec"].keys())
+        except Exception:
+            pass
+    return None
+
 
 def replace_hdfs_redirect_host(redirect_url: str) -> str:
     """Robustly parse redirect URL and replace container ID/localhost with 'datanode' service name."""
@@ -246,9 +265,16 @@ def get_dataset_preview(layer: str, table_name: str):
             
         elif layer in ("active", "quarantine"):
             folder_path = f"/data/{layer}/{table_name}"
-            df = read_parquet_folder_to_df(folder_path)
-            preview_df = df.head(10)
-            return {"columns": list(preview_df.columns), "rows": preview_df.to_dict(orient="records")}
+            try:
+                df = read_parquet_folder_to_df(folder_path)
+                preview_df = df.head(10)
+                return {"columns": list(preview_df.columns), "rows": preview_df.to_dict(orient="records")}
+            except HTTPException as he:
+                if he.status_code == 404:
+                    cols = load_registered_schema_columns(table_name)
+                    if cols:
+                        return {"columns": cols, "rows": []}
+                raise he
             
         elif layer == "reddit":
             folder_path = f"/data/reddit/parquet/subreddit={table_name}"
@@ -292,33 +318,55 @@ def export_raw_data(table_name: str):
 @router.get("/active/{table_name}")
 def export_active_data(table_name: str, limit: int = None):
     """Download clean Silver active dataset as CSV."""
-    df = read_parquet_folder_to_df(f"/data/active/{table_name}")
-    
-    if limit:
-        df = df.head(limit)
-        
-    csv_bytes = prepare_df_for_export(df)
-    return Response(
-        content=csv_bytes,
-        media_type="text/csv; charset=utf-8-sig",
-        headers={"Content-Disposition": f"attachment; filename={table_name}_active.csv"}
-    )
+    try:
+        df = read_parquet_folder_to_df(f"/data/active/{table_name}")
+        if limit:
+            df = df.head(limit)
+        csv_bytes = prepare_df_for_export(df)
+        return Response(
+            content=csv_bytes,
+            media_type="text/csv; charset=utf-8-sig",
+            headers={"Content-Disposition": f"attachment; filename={table_name}_active.csv"}
+        )
+    except HTTPException as he:
+        if he.status_code == 404:
+            cols = load_registered_schema_columns(table_name)
+            if cols:
+                csv_str = ",".join(cols) + "\n"
+                return Response(
+                    content=csv_str.encode("utf-8-sig"),
+                    media_type="text/csv; charset=utf-8-sig",
+                    headers={"Content-Disposition": f"attachment; filename={table_name}_active.csv"}
+                )
+        raise he
 
 
 @router.get("/quarantine/{table_name}")
 def export_quarantine_data(table_name: str, limit: int = None):
     """Download quarantined records dataset as CSV."""
-    df = read_parquet_folder_to_df(f"/data/quarantine/{table_name}")
-    
-    if limit:
-        df = df.head(limit)
-        
-    csv_bytes = prepare_df_for_export(df)
-    return Response(
-        content=csv_bytes,
-        media_type="text/csv; charset=utf-8-sig",
-        headers={"Content-Disposition": f"attachment; filename={table_name}_quarantine.csv"}
-    )
+    try:
+        df = read_parquet_folder_to_df(f"/data/quarantine/{table_name}")
+        if limit:
+            df = df.head(limit)
+        csv_bytes = prepare_df_for_export(df)
+        return Response(
+            content=csv_bytes,
+            media_type="text/csv; charset=utf-8-sig",
+            headers={"Content-Disposition": f"attachment; filename={table_name}_quarantine.csv"}
+        )
+    except HTTPException as he:
+        if he.status_code == 404:
+            cols = load_registered_schema_columns(table_name)
+            if cols:
+                # Add quarantine metadata columns to headers
+                meta_cols = cols + ["is_invalid", "reject_reason", "rejected_at"]
+                csv_str = ",".join(meta_cols) + "\n"
+                return Response(
+                    content=csv_str.encode("utf-8-sig"),
+                    media_type="text/csv; charset=utf-8-sig",
+                    headers={"Content-Disposition": f"attachment; filename={table_name}_quarantine.csv"}
+                )
+        raise he
 
 
 @router.get("/reddit")
