@@ -218,7 +218,7 @@ async def upload_to_webhdfs(table_name: str, content: bytes):
         redirect_url = redirect_url.replace("localhost:", "datanode:").replace("127.0.0.1:", "datanode:")
         
         # Step 2: PUT with data
-        r2 = requests.put(redirect_url, data=content, timeout=10)
+        r2 = requests.put(redirect_url, data=content, timeout=180)
         if r2.status_code not in (200, 201):
             raise HTTPException(status_code=500, detail=f"WebHDFS write failed: HTTP {r2.status_code} - {r2.text}")
     except HTTPException as he:
