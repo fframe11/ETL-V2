@@ -197,5 +197,79 @@
             "phone": "StringType",
             "website": "StringType"
         }
+    },
+    "worst_case": {
+        "primary_key": "id",
+        "date_column": null,
+        "schema_spec": {
+            "id": "StringType",
+            "age": "IntegerType",
+            "sex": "StringType",
+            "region": "StringType",
+            "income": "DoubleType",
+            "married": "StringType",
+            "children": "IntegerType",
+            "car": "StringType",
+            "save_act": "StringType",
+            "current_act": "StringType",
+            "mortgage": "StringType",
+            "pep": "StringType"
+        }
+    },
+    "schema_drift": {
+        "primary_key": "id",
+        "date_column": null,
+        "schema_spec": {
+            "id": "StringType",
+            "age": "IntegerType",
+            "sex": "StringType",
+            "region": "StringType",
+            "income": "DoubleType",
+            "married": "StringType",
+            "children": "IntegerType",
+            "car": "StringType",
+            "save_act": "StringType",
+            "current_act": "StringType",
+            "mortgage": "StringType",
+            "pep": "StringType",
+            "EXTRA_COL_1": "StringType",
+            "EXTRA_COL_2": "StringType"
+        }
+    },
+    "unsafe_drift": {
+        "primary_key": "id",
+        "date_column": null,
+        "schema_spec": {
+            "id": "StringType",
+            "age": "IntegerType",
+            "sex": "StringType",
+            "region": "StringType",
+            "income": "DoubleType",
+            "married": "StringType",
+            "children": "IntegerType",
+            "car": "StringType",
+            "save_act": "StringType",
+            "current_act": "StringType",
+            "mortgage": "StringType",
+            "pep": "StringType"
+        }
+    },
+    "test": {
+        "primary_key": "id",
+        "date_column": null,
+        "schema_spec": {
+            "id": "StringType",
+            "age": "IntegerType",
+            "sex": "StringType",
+            "region": "StringType",
+            "income": "DoubleType",
+            "married": "StringType",
+            "children": "IntegerType",
+            "car": "StringType",
+            "save_act": "StringType",
+            "current_act": "StringType",
+            "mortgage": "StringType",
+            "pep": "StringType"
+        }
     }
 }
