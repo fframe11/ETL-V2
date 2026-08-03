@@ -44,6 +44,9 @@ export default function Ingestion() {
     logs: []
   });
 
+  const [pollingTable, setPollingTable] = useState(null);
+  const [pollingType, setPollingType] = useState(null);
+
   const terminalEndRef = useRef(null);
 
   // Poll ingestion / streaming status continuously on mount
@@ -75,6 +78,54 @@ export default function Ingestion() {
       terminalEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [streamInfo.logs]);
+
+  // Track active ingestion job progress via Spark daemon status and logs
+  useEffect(() => {
+    if (!pollingTable || !pollingType) return;
+
+    const isRunning = streamInfo.status === "running";
+    const logsStr = streamInfo.logs.join("\n");
+    const startedMsg = `Starting Spark Quality Engine Rerun for table '${pollingTable}'`;
+    const finishedMsg = `finished for table '${pollingTable}'`;
+
+    const setStatus = (statusObj) => {
+      if (pollingType === "csv") setCsvStatus(statusObj);
+      else if (pollingType === "api") setApiStatus(statusObj);
+      else if (pollingType === "rdbms") setRdbmsStatus(statusObj);
+    };
+
+    if (isRunning) {
+      if (logsStr.includes(startedMsg)) {
+        setStatus({
+          loading: true,
+          message: `Spark quality engine is actively validating table '${pollingTable}'...`
+        });
+      } else {
+        setStatus({
+          loading: true,
+          message: `Waiting for Spark validation of '${pollingTable}' to boot...`
+        });
+      }
+    } else {
+      if (logsStr.includes(finishedMsg)) {
+        if (logsStr.includes(`${finishedMsg} (Exit code: 0)`)) {
+          setStatus({
+            success: true,
+            message: `Successfully processed and ingested table '${pollingTable}'!`
+          });
+          setPollingTable(null);
+          setPollingType(null);
+        } else {
+          setStatus({
+            success: false,
+            message: `Quality validation failed for table '${pollingTable}'. See details in Terminal logs below.`
+          });
+          setPollingTable(null);
+          setPollingType(null);
+        }
+      }
+    }
+  }, [streamInfo, pollingTable, pollingType]);
 
   // CSV Drag and Drop Handlers
   const handleDragOver = (e) => {
@@ -120,7 +171,7 @@ export default function Ingestion() {
       return;
     }
 
-    setCsvStatus({ loading: true, message: "Uploading HDFS raw store and running Spark quality engine..." });
+    setCsvStatus({ loading: true, message: "Uploading HDFS raw store and triggering quality check..." });
     try {
       const formData = new FormData();
       formData.append("table_name", csvTableName);
@@ -133,9 +184,9 @@ export default function Ingestion() {
       const res = await response.json();
 
       if (response.ok) {
-        setCsvStatus({ success: true, message: res.message });
-        setCsvFile(null);
-        setCsvTableName("");
+        setPollingTable(csvTableName);
+        setPollingType("csv");
+        setCsvStatus({ loading: true, message: "CSV uploaded. Triggering Spark validation..." });
       } else {
         setCsvStatus({ success: false, message: res.detail || "Upload failed." });
       }
@@ -159,7 +210,11 @@ export default function Ingestion() {
         url: apiUrl,
         api_key: apiKey || null
       });
-      setApiStatus({ success: true, message: res.message });
+      
+      setPollingTable(apiTableName);
+      setPollingType("api");
+      setApiStatus({ loading: true, message: "API handshake completed. Triggering Spark validation..." });
+      
       setApiTableName("");
       setApiUrl("");
       setApiKey("");
@@ -214,7 +269,11 @@ export default function Ingestion() {
         database: dbName,
         query: dbQuery
       });
-      setRdbmsStatus({ success: true, message: res.message });
+      
+      setPollingTable(rdbmsTableName);
+      setPollingType("rdbms");
+      setRdbmsStatus({ loading: true, message: "RDBMS query executed. Triggering Spark validation..." });
+      
       setRdbmsTableName("");
       setDbHost("");
       setDbUser("");
@@ -596,9 +655,8 @@ export default function Ingestion() {
           <div className="gs-terminal-dots">
             <i></i><i></i><i></i>
           </div>
-          <span>Real-time Stream Logs {isStreaming && `— Duration: ${streamInfo.elapsed}s / ${streamInfo.duration}s`}</span>
+          <span>Pipeline Execution Logs {isStreaming && `— Active Duration: ${streamInfo.elapsed}s / ${streamInfo.duration}s`}</span>
         </div>
-
         {isStreaming && (
           <div className="gs-tbar-progress">
             <div className="gs-tbar-fill" style={{ width: `${getPercentage()}%` }} />
@@ -622,7 +680,7 @@ export default function Ingestion() {
             })
           ) : (
             <div className="gs-empty" style={{ paddingTop: '80px' }}>
-              No stream active. Trigger ingestion to inspect logs.
+              No active pipeline executing. Trigger Ingestion to inspect live runtime logs.
             </div>
           )}
           <div ref={terminalEndRef} />
