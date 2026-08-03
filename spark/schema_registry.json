@@ -290,5 +290,13 @@
             "mortgage": "StringType",
             "pep": "StringType"
         }
+    },
+    "test_mbti_100": {
+        "primary_key": "posts",
+        "date_column": null,
+        "schema_spec": {
+            "posts": "StringType",
+            "type": "StringType"
+        }
     }
 }
