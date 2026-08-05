@@ -21,7 +21,7 @@ RUN echo "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" >> ${SPA
     echo "spark.ui.prometheus.enabled=true" >> ${SPARK_CONF_DIR}/spark-defaults.conf
 
 # Install the matching Python package (used by spark_quality_engine.py)
-RUN pip install --no-cache-dir delta-spark==${DELTA_VERSION} && pip install --no-cache-dir pyyaml requests kafka-python
+RUN pip install --no-cache-dir delta-spark==${DELTA_VERSION} && pip install --no-cache-dir pyyaml requests kafka-python pyarrow pandas
 
 # Download Kafka & ES connectors
 RUN curl -L -o /opt/bitnami/spark/jars/spark-sql-kafka-0-10_2.12-3.4.1.jar https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.12/3.4.1/spark-sql-kafka-0-10_2.12-3.4.1.jar && \
