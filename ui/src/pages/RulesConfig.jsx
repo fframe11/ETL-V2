@@ -702,7 +702,7 @@ export default function RulesConfig() {
                     <button
                       disabled={submitting}
                       className="gs-btn-save"
-                      onClick={() => handleProposalAction(selectedProposal.id || selectedProposal.run_id, "approve")}
+                      onClick={() => handleProposalAction(selectedProposal._id || selectedProposal.run_id, "approve")}
                     >
                       {submitting ? "Merging..." : "Approve & Merge"}
                     </button>
@@ -710,7 +710,7 @@ export default function RulesConfig() {
                       disabled={submitting}
                       className="gs-btn-outline"
                       style={{ color: 'var(--accent-red)', borderColor: 'var(--accent-red)' }}
-                      onClick={() => handleProposalAction(selectedProposal.id || selectedProposal.run_id, "reject")}
+                      onClick={() => handleProposalAction(selectedProposal._id || selectedProposal.run_id, "reject")}
                     >
                       Reject Proposal
                     </button>
