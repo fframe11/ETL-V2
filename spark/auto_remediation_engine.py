@@ -156,6 +156,68 @@ class AutoRemediationEngine:
                 time.sleep(backoff)
                 backoff *= 2
 
+    def get_synthesized_python_function(self, category, sample_batch):
+        if not sample_batch:
+            return None
+            
+        samples = [item["record"] for item in sample_batch[:5]]
+        
+        prompt = f'''You are an expert Python data engineer.
+Analyze the target schema and the representative sample of quarantined records (which failed validation for category "{category}").
+Synthesize a pure Python function `remediate(row)` that fixes the records of this category to match the target schema.
+
+## Target Schema
+{json.dumps(self.schema_spec, indent=2)}
+
+## Representative Samples of Quarantined Records
+{json.dumps(samples, indent=2, default=str)}
+
+## Requirements for the Python function:
+1. It must be named `remediate(row)` where `row` is a dictionary representing a single record.
+2. It must modify and return the `row` dictionary in-place.
+3. Clean up formatting, cast strings to correct types (int, float, string) if needed, handle NaNs/Nulls or empty strings safely.
+4. Ensure the function does not crash on None or unexpected values (use try-except or defensive checks).
+5. Only use standard Python library (do not import external libraries like pandas or numpy inside the function).
+6. If a row cannot be reasonably fixed (e.g. missing primary key that cannot be reconstructed), return `None`.
+7. Output ONLY a valid JSON object containing the python code under the key "python_code". Do NOT wrap the JSON in markdown code blocks. No preamble.
+
+## Expected JSON Output Format:
+{{"python_code": "def remediate(row):\\n    # fix logic here\\n    return row"}}
+'''
+        res = None
+        try:
+            res = call_ollama(prompt)
+        except Exception as e:
+            print(f"[REMEDIATION] Ollama failed: {e}. Trying Groq fallback.")
+            groq_key = self._get_groq_api_key()
+            if groq_key:
+                try:
+                    res = self.call_groq(prompt, groq_key)
+                except Exception as ge:
+                    print(f"[REMEDIATION] Groq failed: {ge}.")
+            else:
+                print("[REMEDIATION] No Groq API key available.")
+                
+        if not res or not isinstance(res, dict) or "python_code" not in res:
+            print(f"[REMEDIATION] Failed to synthesize python code for category '{category}'. Falling back to heuristics.")
+            return None
+            
+        code = res["python_code"]
+        print(f"[REMEDIATION] Synthesized code for category '{category}':\n{code}")
+        
+        try:
+            local_vars = {}
+            exec(code, {}, local_vars)
+            remediate_fn = local_vars.get("remediate")
+            if remediate_fn and callable(remediate_fn):
+                return remediate_fn
+            else:
+                print(f"[REMEDIATION] Code compiled but 'remediate' function was not found or not callable.")
+        except Exception as e:
+            print(f"[REMEDIATION] Failed to compile synthesized code: {e}")
+            
+        return None
+
     def read_quarantine_data(self):
         print(f"[REMEDIATION] Reading quarantine data for {self.table_name}")
         delta_path = f"/data/quarantine/{self.table_name}"
@@ -347,15 +409,40 @@ For each record:
             stats["categories"][cat] = {"attempted": len(items), "fixed": 0}
             stats["attempted"] += len(items)
             
-            # Batch by 15 to stay under Groq API TPM rate limits
-            for i in range(0, len(items), 15):
-                if i > 0:
-                    time.sleep(5.0)
-                batch = items[i:i+15]
-                try:
-                    res = self.get_ai_fix(cat, batch)
+            # Synthesize Python function using a sample of representative records
+            remediate_fn = self.get_synthesized_python_function(cat, items)
+            
+            if remediate_fn:
+                print(f"[REMEDIATION] Successfully synthesized python remediation rule for category '{cat}'. Executing at scale in memory...")
+                for item in items:
+                    rec = item["record"].copy()
+                    try:
+                        fixed_row = remediate_fn(rec)
+                        if fixed_row:
+                            fixed_data.append(fixed_row)
+                            stats["fixed"] += 1
+                            stats["categories"][cat]["fixed"] += 1
+                            total_conf += 0.90
+                        else:
+                            stats["unfixable"] += 1
+                    except Exception as row_err:
+                        print(f"[REMEDIATION] Synthesized code failed on row. Using heuristic fallback: {row_err}")
+                        h_res = self._heuristic_fix(cat, [item])
+                        fixed_list = h_res.get("fixed_records", [])
+                        if fixed_list and fixed_list[0].get("confidence", 0.0) >= self.min_confidence:
+                            fixed_data.append(fixed_list[0]["fixed_row"])
+                            stats["fixed"] += 1
+                            stats["categories"][cat]["fixed"] += 1
+                            total_conf += fixed_list[0]["confidence"]
+                        else:
+                            stats["unfixable"] += 1
+            else:
+                print(f"[REMEDIATION] Synthesized remediation rule not available for category '{cat}'. Using heuristic fallback...")
+                # Batch processing for heuristics (no API calls)
+                for i in range(0, len(items), 100):
+                    batch = items[i:i+100]
+                    res = self._heuristic_fix(cat, batch)
                     fixed_list = res.get("fixed_records", [])
-                    
                     for fix_item in fixed_list:
                         conf = float(fix_item.get("confidence", 0.0))
                         if conf >= self.min_confidence:
@@ -367,9 +454,6 @@ For each record:
                                 total_conf += conf
                         else:
                             stats["unfixable"] += 1
-                except Exception as e:
-                    print(f"[REMEDIATION] Error fixing batch in {cat}: {e}")
-                    stats["unfixable"] += len(batch)
 
         stats["confidence_avg"] = round(total_conf / stats["fixed"], 4) if stats["fixed"] > 0 else 0.0
         stats["duration_seconds"] = round(time.time() - start_time, 2)
