@@ -136,9 +136,25 @@ class AutoRemediationEngine:
             "temperature": 0.0,
             "response_format": {"type": "json_object"}
         }
-        r = requests.post(url, headers=headers, json=payload, timeout=60)
-        r.raise_for_status()
-        return json.loads(r.json()["choices"][0]["message"]["content"])
+        
+        max_retries = 5
+        backoff = 4
+        for attempt in range(max_retries):
+            try:
+                r = requests.post(url, headers=headers, json=payload, timeout=60)
+                if r.status_code == 429:
+                    print(f"[REMEDIATION] Groq API returned 429 (Rate Limit). Retrying in {backoff} seconds...")
+                    time.sleep(backoff)
+                    backoff *= 2
+                    continue
+                r.raise_for_status()
+                return json.loads(r.json()["choices"][0]["message"]["content"])
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    raise e
+                print(f"[REMEDIATION] Groq call attempt {attempt+1} failed: {e}. Retrying in {backoff} seconds...")
+                time.sleep(backoff)
+                backoff *= 2
 
     def read_quarantine_data(self):
         print(f"[REMEDIATION] Reading quarantine data for {self.table_name}")
@@ -170,7 +186,24 @@ class AutoRemediationEngine:
                 df = table.to_pandas()
                 if "run_id" in df.columns:
                     df = df[df["run_id"] == self.run_id]
-                records.extend(df.to_dict(orient="records"))
+                
+                raw_records = df.to_dict(orient="records")
+                allowed_cols = set()
+                if self.schema_spec and "schema_spec" in self.schema_spec:
+                    allowed_cols = set(self.schema_spec["schema_spec"].keys())
+                allowed_cols.add("reject_reason")
+                
+                for r in raw_records:
+                    # Filter out NaN values from float columns and keep only allowed columns
+                    filtered = {}
+                    for k, v in r.items():
+                        if k in allowed_cols:
+                            # Handle NaN values to make them JSON serializable as None
+                            if isinstance(v, float) and (v != v or str(v) == 'nan'):
+                                filtered[k] = None
+                            else:
+                                filtered[k] = v
+                    records.append(filtered)
             except Exception as e:
                 print(f"[REMEDIATION] Error reading parquet {file_path}: {e}")
                 
@@ -233,6 +266,7 @@ For each record:
 '''
         
         try:
+            print(f"[REMEDIATION] Prompt length: {len(prompt)} characters. Record keys: {list(batch[0]['record'].keys()) if batch else 'empty'}")
             return call_ollama(prompt)
         except Exception as e:
             print(f"[REMEDIATION] Ollama failed: {e}. Trying Groq fallback.")
@@ -313,9 +347,11 @@ For each record:
             stats["categories"][cat] = {"attempted": len(items), "fixed": 0}
             stats["attempted"] += len(items)
             
-            # Batch by 20
-            for i in range(0, len(items), 20):
-                batch = items[i:i+20]
+            # Batch by 40 to reduce API calls and prevent rate limits
+            for i in range(0, len(items), 40):
+                if i > 0:
+                    time.sleep(1.5)
+                batch = items[i:i+40]
                 try:
                     res = self.get_ai_fix(cat, batch)
                     fixed_list = res.get("fixed_records", [])
