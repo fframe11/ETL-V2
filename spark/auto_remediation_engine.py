@@ -350,7 +350,7 @@ For each record:
             # Batch by 40 to reduce API calls and prevent rate limits
             for i in range(0, len(items), 40):
                 if i > 0:
-                    time.sleep(1.5)
+                    time.sleep(5.0)
                 batch = items[i:i+40]
                 try:
                     res = self.get_ai_fix(cat, batch)
