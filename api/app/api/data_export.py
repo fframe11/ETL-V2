@@ -205,7 +205,7 @@ def prepare_df_for_export(df: pd.DataFrame, table_name: str = None) -> bytes:
     
     This ensures that ALL exported data is immediately ready-to-use:
     1. Strips internal pipeline metadata columns (run_id, __index_level_0__)
-    2. Sorts data cleanly by primary key if available
+    2. Sorts data logically by date (ascending), product name (ascending), then primary key (ascending)
     3. Preserves integer types (prevents 1 → 1.0 float conversion)
     4. Encodes with UTF-8 BOM for proper Thai/Unicode display in Excel on Windows
     """
@@ -214,14 +214,33 @@ def prepare_df_for_export(df: pd.DataFrame, table_name: str = None) -> bytes:
         if col in df.columns:
             df = df.drop(columns=[col])
             
+    # Generic sorting hierarchy for human readability
+    sort_by_cols = []
+    
+    # 1. Date column candidates
+    date_candidates = ["วันที่", "date", "Date", "order_date", "created_at"]
+    date_col = next((c for c in date_candidates if c in df.columns), None)
+    if date_col:
+        sort_by_cols.append(date_col)
+        
+    # 2. Product/Category column candidates
+    prod_candidates = ["รายการสินค้า", "product", "product_name", "category"]
+    prod_col = next((c for c in prod_candidates if c in df.columns), None)
+    if prod_col:
+        sort_by_cols.append(prod_col)
+        
+    # 3. Primary Key
     if table_name:
         pk = load_primary_key(table_name)
-        if pk and pk in df.columns:
-            try:
-                # Sort values naturally by primary key (placing NAs at the end)
-                df = df.sort_values(by=pk, na_position='last')
-            except Exception:
-                pass
+        if pk and pk in df.columns and pk not in sort_by_cols:
+            sort_by_cols.append(pk)
+            
+    if sort_by_cols:
+        try:
+            # Sort values naturally (placing NAs at the end)
+            df = df.sort_values(by=sort_by_cols, ascending=[True] * len(sort_by_cols), na_position='last')
+        except Exception:
+            pass
                 
     df = df.convert_dtypes()
     return df.to_csv(index=False).encode("utf-8-sig")

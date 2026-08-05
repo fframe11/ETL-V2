@@ -14,7 +14,7 @@ import Login from "./pages/Login";
 import "./App.css";
 
 function RequireAuth({ children }) {
-  const token = localStorage.getItem("sdoqap_admin_token");
+  const token = sessionStorage.getItem("sdoqap_admin_token");
   const location = useLocation();
 
   if (!token) {

@@ -181,13 +181,15 @@ export default function Ingestion() {
     setCsvDragging(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0];
-      if (file.name.endsWith(".csv")) {
+      const isExcel = file.name.endsWith(".xlsx") || file.name.endsWith(".xls");
+      if (file.name.endsWith(".csv") || isExcel) {
         setCsvFile(file);
         if (!csvTableName) {
-          setCsvTableName(file.name.replace(".csv", "").replace(/[^a-zA-Z0-9_]/g, "_"));
+          const ext = isExcel ? (file.name.endsWith(".xlsx") ? ".xlsx" : ".xls") : ".csv";
+          setCsvTableName(file.name.replace(ext, "").replace(/[^a-zA-Z0-9_]/g, "_"));
         }
       } else {
-        setCsvStatus({ success: false, message: "Only CSV files are supported." });
+        setCsvStatus({ success: false, message: "Only CSV and Excel files are supported." });
       }
     }
   };
@@ -197,7 +199,9 @@ export default function Ingestion() {
       const file = e.target.files[0];
       setCsvFile(file);
       if (!csvTableName) {
-        setCsvTableName(file.name.replace(".csv", "").replace(/[^a-zA-Z0-9_]/g, "_"));
+        const isExcel = file.name.endsWith(".xlsx") || file.name.endsWith(".xls");
+        const ext = isExcel ? (file.name.endsWith(".xlsx") ? ".xlsx" : ".xls") : ".csv";
+        setCsvTableName(file.name.replace(ext, "").replace(/[^a-zA-Z0-9_]/g, "_"));
       }
     }
   };
@@ -374,7 +378,7 @@ export default function Ingestion() {
               <input
                 type="file"
                 id="csvFileSelect"
-                accept=".csv"
+                accept=".csv,.xlsx,.xls"
                 onChange={handleFileChange}
                 style={{ display: "none" }}
               />
@@ -390,8 +394,8 @@ export default function Ingestion() {
                 </div>
               ) : (
                 <div>
-                  <span>Click or drag CSV here</span>
-                  <p>Supports .csv, .tsv (max 100MB)</p>
+                  <span>Click or drag CSV/Excel here</span>
+                  <p>Supports .csv, .xlsx, .xls (max 100MB)</p>
                 </div>
               )}
             </div>

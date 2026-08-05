@@ -44,10 +44,10 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
   const location = useLocation();
   const navigate = useNavigate();
   
-  const isLoggedIn = !!localStorage.getItem("sdoqap_admin_token");
+  const isLoggedIn = !!sessionStorage.getItem("sdoqap_admin_token");
 
   const handleLogout = () => {
-    localStorage.removeItem("sdoqap_admin_token");
+    sessionStorage.removeItem("sdoqap_admin_token");
     navigate("/login");
   };
 

@@ -250,18 +250,31 @@ def trigger_spark_job(table_name: str):
 @router.post("/ingest/csv")
 async def ingest_csv(table_name: str = Form(...), file: UploadFile = File(...)):
     """
-    Ingests an uploaded CSV file into HDFS raw store and triggers Spark quality check.
+    Ingests an uploaded CSV or Excel (.xlsx/.xls) file into HDFS raw store and triggers Spark quality check.
     """
+    filename = file.filename or ""
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+        
+    # Auto-convert Excel to CSV bytes
+    if filename.lower().endswith(".xlsx") or filename.lower().endswith(".xls"):
+        try:
+            import io
+            import pandas as pd
+            df = pd.read_excel(io.BytesIO(content))
+            csv_buffer = io.StringIO()
+            df.to_csv(csv_buffer, index=False)
+            content = csv_buffer.getvalue().encode("utf-8")
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to convert Excel to CSV: {str(e)}")
         
     await upload_to_webhdfs(table_name, content)
     triggered = trigger_spark_job(table_name)
     
     return {
         "status": "success",
-        "message": f"CSV dataset successfully uploaded and quality check triggered for '{table_name}'.",
+        "message": f"Dataset successfully uploaded and quality check triggered for '{table_name}'.",
         "spark_triggered": triggered
     }
 

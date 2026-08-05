@@ -134,6 +134,11 @@ def log_to_elasticsearch(index_name, doc):
         print(f"Metrics logged to Elasticsearch index '{index_name}' successfully.")
     except Exception as e:
         print(f"Error logging to Elasticsearch: {e}")
+        try:
+            if 'res' in locals() and hasattr(res, 'text'):
+                print(f"ES Error Response: {res.text}")
+        except Exception:
+            pass
 
 N8N_WEBHOOK_URL = get_required_env("N8N_WEBHOOK_URL")
 
@@ -219,6 +224,44 @@ def release_lock(table_name: str):
     except Exception as e:
         print(f"[LOCK] Failed to release lock: {e}")
 
+# ─── DATA-DRIVEN STANDARDIZATION RULES (from Elasticsearch) ───────────────
+def _load_standardization_rules(table_name: str) -> dict:
+    """Loads standardization_rules for a table from the schema registry in ES.
+    Returns a dict like: { "column_name": { "categories": { "Cat": ["kw1", ...] }, "fallback": "Other" } }
+    Returns empty dict if no rules are defined — the system simply skips standardization.
+    No hardcoding. All rules are data."""
+    from urllib.parse import urlparse
+    parsed = urlparse(ELASTICSEARCH_URL)
+    auth = (parsed.username, parsed.password) if parsed.username else None
+    base_url = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+
+    url = f"{base_url}/sdoqap_schema_registry/_doc/{table_name}"
+    try:
+        res = requests.get(url, auth=auth, timeout=5)
+        if res.status_code == 200:
+            doc = res.json().get("_source", {})
+            rules = doc.get("standardization_rules", {})
+            if rules:
+                print(f"[STANDARDIZATION] Loaded {len(rules)} standardization rule(s) for '{table_name}' from ES registry.")
+            return rules
+    except Exception as e:
+        print(f"[STANDARDIZATION] Could not load rules from ES: {e}")
+
+    # Fallback: check local schema_registry.json
+    try:
+        registry_file = "/opt/spark-apps/schema_registry.json"
+        if os.path.exists(registry_file):
+            with open(registry_file, "r", encoding="utf-8") as f:
+                local_reg = json.load(f)
+                normalized = normalize_name(table_name)
+                for tbl_name, spec in local_reg.items():
+                    if normalize_name(tbl_name) == normalized:
+                        return spec.get("standardization_rules", {})
+    except Exception:
+        pass
+
+    return {}
+
 # ─── FIX 3B: Database-Backed Schema Registry via Elasticsearch ───────────────
 def load_expected_schema(table_name: str) -> dict:
     """Loads schema spec, primary key, and date column for a table from Elasticsearch index sdoqap_schema_registry.
@@ -238,7 +281,21 @@ def load_expected_schema(table_name: str) -> dict:
     except Exception as e:
         print(f"[REGISTRY] Failed to read from Elasticsearch: {e}. Falling back to default registry.")
         
-    # Fallback to default in-memory registry if not in ES
+    # Fallback to local schema_registry.json file first
+    try:
+        registry_file = "/opt/spark-apps/schema_registry.json"
+        if os.path.exists(registry_file):
+            with open(registry_file, "r", encoding="utf-8") as f:
+                disk_registry = json.load(f)
+                normalized_target = normalize_name(table_name)
+                for tbl_name, spec in disk_registry.items():
+                    if normalize_name(tbl_name) == normalized_target:
+                        print(f"[REGISTRY] Loaded schema spec for '{tbl_name}' from local schema_registry.json fallback.")
+                        return spec
+    except Exception as io_err:
+        print(f"[REGISTRY] Failed to read schema_registry.json: {io_err}")
+
+    # Fallback to default in-memory registry if not found
     default_registry = {
         "mbti": {
             "primary_key": ["author", "text"],
@@ -624,6 +681,15 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
             if col_name != cleaned_col:
                 df = df.withColumnRenamed(col_name, cleaned_col)
 
+        # Dynamically add row_hash if it is in schema_spec (Dynamic single primary key hashing for Big Data scaling)
+        if "row_hash" in schema_spec:
+            exclude_cols = {"run_id", "rejected_at", "reject_reason", "is_invalid", "row_hash"}
+            hash_cols = sorted([c for c in df.columns if c not in exclude_cols])
+            concat_exprs = []
+            for c in hash_cols:
+                concat_exprs.append(F.coalesce(F.col(c).cast("string"), F.lit("")))
+            df = df.withColumn("row_hash", F.md5(F.concat_ws("||", *concat_exprs)))
+
         # Column Name Standardization (Fuzzy/Alias Mapping)
         normalized_spec = {normalize_name(k): k for k in schema_spec.keys()}
         for col_name in df.columns:
@@ -845,11 +911,19 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
         df = df_non_null_dedup.unionByName(df_null_pk, allowMissingColumns=True)
 
     # 3. DATA VALIDATION (Row-level Quality check)
-    df_with_status = df.withColumn("is_invalid", F.col(primary_key).isNull()) \
-                       .withColumn("reject_reason", F.when(F.col("is_invalid"), F.lit("missing_primary_key")).otherwise(F.lit("")))
+    pk_cols = [primary_key] if isinstance(primary_key, str) else primary_key
+    if isinstance(primary_key, list):
+        null_cond = F.col(primary_key[0]).isNull()
+        for pk in primary_key[1:]:
+            null_cond = null_cond | F.col(pk).isNull()
+        df_with_status = df.withColumn("is_invalid", null_cond) \
+                           .withColumn("reject_reason", F.when(F.col("is_invalid"), F.lit("missing_primary_key")).otherwise(F.lit("")))
+    else:
+        df_with_status = df.withColumn("is_invalid", F.col(primary_key).isNull()) \
+                           .withColumn("reject_reason", F.when(F.col("is_invalid"), F.lit("missing_primary_key")).otherwise(F.lit("")))
 
     # ─── Null Validation: Check all schema columns for null values ─────────────
-    non_pk_cols = [c for c in schema_spec.keys() if c != primary_key and c in df.columns]
+    non_pk_cols = [c for c in schema_spec.keys() if c not in pk_cols and c in df.columns]
     for col_name in non_pk_cols:
         null_reason = f"null_value_in_{col_name}"
         df_with_status = df_with_status.withColumn(
@@ -912,6 +986,93 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
     # Efficiently keep only the latest unique records
     valid_dedup_with_id = valid_df_with_id.dropDuplicates(subset=pk_cols)
     clean_df = valid_dedup_with_id.drop("__row_id", "is_invalid", "reject_reason")
+    
+    # ─── STANDARDIZATION LAYER (Date and Product categorization) ─────────────
+    # Date standardization:
+    date_col_candidates = [c for c in clean_df.columns if c in ("วันที่", "date", "Date")]
+    if date_col_candidates:
+        from pyspark.sql.functions import udf
+        from pyspark.sql.types import StringType
+        
+        def parse_and_standardize_date(date_str):
+            if not date_str:
+                return None
+            date_str = str(date_str).strip()
+            import re
+            date_str = re.sub(r'\s+', ' ', date_str)
+            
+            # Pattern A: 21 Jul 2026 or 21 July 2026
+            match_eng = re.search(r'(\d+)\s+([A-Za-z]+)\s+(\d+)', date_str)
+            if match_eng:
+                day = int(match_eng.group(1))
+                month_str = match_eng.group(2)[:3].lower()
+                year = int(match_eng.group(3))
+                months = {'jan':1, 'feb':2, 'mar':3, 'apr':4, 'may':5, 'jun':6, 'jul':7, 'aug':8, 'sep':9, 'oct':10, 'nov':11, 'dec':12}
+                month = months.get(month_str, 1)
+                if year > 2500:
+                    year -= 543
+                return f"{year:04d}-{month:02d}-{day:02d}"
+                
+            # Pattern B: split by - or /
+            parts = re.split(r'[-/]', date_str)
+            if len(parts) == 3:
+                try:
+                    p0 = int(parts[0])
+                    p1 = int(parts[1])
+                    p2 = int(parts[2])
+                    if p0 > 1000: # yyyy-mm-dd
+                        year, month, day = p0, p1, p2
+                    else: # dd-mm-yyyy
+                        day, month, year = p0, p1, p2
+                    if year > 2500:
+                        year -= 543
+                    return f"{year:04d}-{month:02d}-{day:02d}"
+                except ValueError:
+                    pass
+            return date_str
+            
+        std_date_udf = udf(parse_and_standardize_date, StringType())
+        for dc in date_col_candidates:
+            clean_df = clean_df.withColumn(dc, std_date_udf(F.col(dc)))
+
+    # ─── GENERIC DATA-DRIVEN STANDARDIZATION (from Schema Registry) ──────────
+    # Reads `standardization_rules` from the schema registry document in ES.
+    # Format in ES doc: "standardization_rules": { "column_name": { "categories": { "CategoryA": ["keyword1", "keyword2"], ... }, "fallback": "Other" } }
+    # Zero hardcoding — all rules are stored as data in Elasticsearch.
+    try:
+        std_rules = _load_standardization_rules(table_name)
+        if std_rules:
+            from pyspark.sql.functions import udf
+            from pyspark.sql.types import StringType
+            for col_name, rule_def in std_rules.items():
+                if col_name not in clean_df.columns:
+                    continue
+                categories = rule_def.get("categories", {})
+                fallback = rule_def.get("fallback", None)
+                if not categories:
+                    continue
+                # Build a serializable lookup for the UDF closure
+                cat_keywords = [(cat_name, [kw.lower() for kw in kws]) for cat_name, kws in categories.items()]
+                fb = fallback  # capture for closure
+
+                def make_standardize_udf(cat_kw_list, fallback_val):
+                    def standardize_value(val):
+                        if not val:
+                            return fallback_val
+                        v = str(val).strip().lower()
+                        if not v:
+                            return fallback_val
+                        for cat_name, keywords in cat_kw_list:
+                            if any(kw in v for kw in keywords):
+                                return cat_name
+                        return fallback_val if fallback_val else val
+                    return standardize_value
+
+                std_udf = udf(make_standardize_udf(cat_keywords, fb), StringType())
+                clean_df = clean_df.withColumn(col_name, std_udf(F.col(col_name)))
+                print(f"[STANDARDIZATION] Applied data-driven rules for column '{col_name}' ({len(categories)} categories, fallback='{fallback}')")
+    except Exception as std_err:
+        print(f"[STANDARDIZATION] Warning: Could not apply standardization rules: {std_err}")
     
     # Find the dropped duplicates by Anti-Join to send to quarantine
     duplicate_df = valid_df_with_id.join(valid_dedup_with_id.select("__row_id"), on="__row_id", how="left_anti") \
@@ -1069,9 +1230,9 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
             print("Existing Delta Table found. Performing MERGE INTO...")
             delta_table = DeltaTable.forPath(spark, active_path)
             if isinstance(pk_cols, list) and len(pk_cols) > 0:
-                merge_cond = " AND ".join([f"old.{col} = new.{col}" for col in pk_cols])
+                merge_cond = " AND ".join([f"old.`{col}` = new.`{col}`" for col in pk_cols])
             else:
-                merge_cond = f"old.{pk_cols} = new.{pk_cols}"
+                merge_cond = f"old.`{pk_cols}` = new.`{pk_cols}`"
             delta_table.alias("old").merge(
                 clean_df_for_upsert.alias("new"),
                 merge_cond
@@ -1131,7 +1292,14 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
 
             if group_col:
                 balance_df = clean_run_df.groupBy(group_col).count().collect()
-                class_balance = {str(row[group_col] if row[group_col] is not None else "NULL"): row["count"] for row in balance_df}
+                class_balance = {}
+                for row in balance_df:
+                    val = row[group_col]
+                    key_str = str(val) if val is not None else "NULL"
+                    if not key_str.strip():
+                        key_str = "SPACES"
+                    key_str = key_str.replace(".", "_")
+                    class_balance[key_str] = row["count"]
                 print(f"Data Distribution for {table_name} grouped by '{group_col}': {class_balance}")
         except Exception as e:
             print(f"Error computing data distribution: {e}")
@@ -1152,7 +1320,10 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
                     if not reasons:
                         reasons = ["unknown"]
                     for r in reasons:
-                        quarantine_breakdown[r] = quarantine_breakdown.get(r, 0) + count
+                        r_clean = r.replace(".", "_")
+                        if not r_clean.strip():
+                            r_clean = "unknown"
+                        quarantine_breakdown[r_clean] = quarantine_breakdown.get(r_clean, 0) + count
                 print(f"Quarantine Breakdown: {quarantine_breakdown}")
         except Exception as e:
             print(f"Error computing quarantine breakdown: {e}")
@@ -1424,7 +1595,8 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
             ).otherwise(weight_col)
             
             for col, w in column_weights.items():
-                if col != primary_key and col != date_column:
+                pks = primary_key if isinstance(primary_key, list) else [primary_key]
+                if col not in pks and col != date_column:
                     weight_col = F.when(
                         F.col("reject_reason").contains(col),
                         F.greatest(weight_col, F.lit(w))
@@ -1615,9 +1787,10 @@ if __name__ == "__main__":
                     if "id" in col.lower():
                         primary_key = col
                         break
-            # Default to the first column
-            if not primary_key and columns:
-                primary_key = columns[0]
+            # Default to row_hash if no natural ID found
+            if not primary_key:
+                primary_key = "row_hash"
+                schema_spec["row_hash"] = "StringType"
 
             # 2. Infer Date Column
             date_column = None

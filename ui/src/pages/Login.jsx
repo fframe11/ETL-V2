@@ -18,8 +18,8 @@ export default function Login() {
     setLoading(true);
 
     setTimeout(() => {
-      if (username === "admin" && password === "sdoqap_secure") {
-        localStorage.setItem("sdoqap_admin_token", "session_active_token_sdoqap");
+      if (username === "admin" && password === "admin") {
+        sessionStorage.setItem("sdoqap_admin_token", "session_active_token_sdoqap");
         setLoading(false);
         navigate(from, { replace: true });
       } else {

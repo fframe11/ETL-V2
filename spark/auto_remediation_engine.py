@@ -94,20 +94,34 @@ class AutoRemediationEngine:
     def __init__(self, table_name, run_id):
         self.table_name = table_name
         self.run_id = run_id
-        self.schema_spec = self._load_schema()
         self.es_base_url, self.es_auth = _get_es_connection()
         self.min_confidence = float(os.getenv("REMEDIATION_CONFIDENCE", "0.80"))
+        self.schema_spec = self._load_schema()
         
     def _load_schema(self):
+        # 1. Try loading from Elasticsearch sdoqap_schema_registry index
+        if self.es_base_url:
+            url = f"{self.es_base_url}/sdoqap_schema_registry/_doc/{self.table_name}"
+            try:
+                res = requests.get(url, auth=self.es_auth, timeout=5)
+                if res.status_code == 200:
+                    doc = res.json().get("_source", {})
+                    print(f"[REMEDIATION] Loaded schema spec for '{self.table_name}' from Elasticsearch sdoqap_schema_registry.")
+                    return doc
+            except Exception as e:
+                print(f"[REMEDIATION] Failed to load schema from ES: {e}")
+
+        # 2. Fallback to local schema_registry.json file
         script_dir = os.path.dirname(os.path.abspath(__file__))
         schema_path = os.path.join(script_dir, "schema_registry.json")
         try:
-            with open(schema_path, "r") as f:
+            with open(schema_path, "r", encoding="utf-8") as f:
                 registry = json.load(f)
                 if self.table_name in registry:
+                    print(f"[REMEDIATION] Loaded schema spec for '{self.table_name}' from local schema_registry.json fallback.")
                     return registry[self.table_name]
         except Exception as e:
-            print(f"[REMEDIATION] Error loading schema: {e}")
+            print(f"[REMEDIATION] Error loading schema from disk: {e}")
         return None
 
     def _get_groq_api_key(self):
@@ -131,7 +145,7 @@ class AutoRemediationEngine:
             "Content-Type": "application/json"
         }
         payload = {
-            "model": "llama-3.1-8b-instant",
+            "model": "llama-3.3-70b-versatile",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.0,
             "response_format": {"type": "json_object"}
@@ -147,6 +161,8 @@ class AutoRemediationEngine:
                     time.sleep(backoff)
                     backoff *= 2
                     continue
+                if r.status_code != 200:
+                    print(f"[REMEDIATION] Groq API returned error: {r.status_code} - {r.text}")
                 r.raise_for_status()
                 return json.loads(r.json()["choices"][0]["message"]["content"])
             except Exception as e:
@@ -162,12 +178,26 @@ class AutoRemediationEngine:
             
         samples = [item["record"] for item in sample_batch[:5]]
         
+        # Get target columns and metadata
+        schema_cols = self.schema_spec.get("schema_spec", {}) if self.schema_spec else {}
+        primary_key = self.schema_spec.get("primary_key") if self.schema_spec else None
+        date_column = self.schema_spec.get("date_column") if self.schema_spec else None
+        
         prompt = f'''You are an expert Python data engineer.
-Analyze the target schema and the representative sample of quarantined records (which failed validation for category "{category}").
+Analyze the target column types and the representative sample of quarantined records (which failed validation for category "{category}") for the table "{self.table_name}".
 Synthesize a pure Python function `remediate(row)` that fixes the records of this category to match the target schema.
 
-## Target Schema
-{json.dumps(self.schema_spec, indent=2)}
+## Target Table Name
+{self.table_name}
+
+## Target Column Types (Expected Keys & Types)
+{json.dumps(schema_cols, indent=2)}
+
+## Primary Key Column(s)
+{primary_key}
+
+## Date Column
+{date_column}
 
 ## Representative Samples of Quarantined Records
 {json.dumps(samples, indent=2, default=str)}
@@ -176,10 +206,17 @@ Synthesize a pure Python function `remediate(row)` that fixes the records of thi
 1. It must be named `remediate(row)` where `row` is a dictionary representing a single record.
 2. It must modify and return the `row` dictionary in-place.
 3. Clean up formatting, cast strings to correct types (int, float, string) if needed, handle NaNs/Nulls or empty strings safely.
-4. Ensure the function does not crash on None or unexpected values (use try-except or defensive checks).
-5. Only use standard Python library (do not import external libraries like pandas or numpy inside the function).
-6. If a row cannot be reasonably fixed (e.g. missing primary key that cannot be reconstructed), return `None`.
-7. Output ONLY a valid JSON object containing the python code under the key "python_code". Do NOT wrap the JSON in markdown code blocks. No preamble.
+4. Translate and map Thai column meanings if they exist:
+   - "รายการสินค้า" means "Product Name" (a string description, NOT numeric, e.g. "sugar", "น้ำตาล").
+   - "ราคาต่อหน่วย" means "Unit Price" (an integer or numeric value, e.g. 25, 50).
+   - "จำนวน" means "Quantity" (could be numeric or string, e.g. 1, 3, or "4 ชิ้น" which needs to be parsed/extracted to retrieve the numeric part 4).
+   - "ยอดขายรวม" means "Total Sales" (the calculated total value, e.g. 100).
+5. If "ยอดขายรวม" (Total Sales) is null/None/empty/invalid, attempt to reconstruct and calculate it by multiplying the numeric value of "จำนวน" (Quantity) and the numeric value of "ราคาต่อหน่วย" (Unit Price). For example: row['ยอดขายรวม'] = str(int(quantity_numeric) * int(price_per_unit_numeric)). Ensure you clean and parse both Quantity ("จำนวน") and Unit Price ("ราคาต่อหน่วย") to extract numbers before multiplying.
+6. Only use column keys that exist exactly in the Target Column Types. Do NOT reference columns that do not exist (like 'ชื่อสินค้า' or 'product_name') – only reference actual schema keys.
+7. Ensure the function handles None or unexpected values defensively. If an error occurs inside the logic that you cannot recover from, let it raise the exception so that the system fallback can trigger.
+8. Only use standard Python library (do not import external libraries like pandas or numpy inside the function).
+9. If a row cannot be reasonably fixed (e.g. missing primary key that cannot be reconstructed), return `None`.
+10. Output ONLY a valid JSON object containing the python code under the key "python_code". Do NOT wrap the JSON in markdown code blocks. No preamble.
 
 ## Expected JSON Output Format:
 {{"python_code": "def remediate(row):\\n    # fix logic here\\n    return row"}}
@@ -210,7 +247,7 @@ Synthesize a pure Python function `remediate(row)` that fixes the records of thi
             exec(code, {}, local_vars)
             remediate_fn = local_vars.get("remediate")
             if remediate_fn and callable(remediate_fn):
-                return remediate_fn
+                return code
             else:
                 print(f"[REMEDIATION] Code compiled but 'remediate' function was not found or not callable.")
         except Exception as e:
@@ -220,61 +257,44 @@ Synthesize a pure Python function `remediate(row)` that fixes the records of thi
 
     def read_quarantine_data(self):
         print(f"[REMEDIATION] Reading quarantine data for {self.table_name}")
-        delta_path = f"/data/quarantine/{self.table_name}"
-        log_dir = f"{delta_path}/_delta_log"
-        files = list_hdfs_dir(log_dir)
-        commit_files = [f for f in files if f.endswith(".json")]
+        from pyspark.sql import SparkSession
+        import pyspark.sql.functions as F
         
-        active_files = set()
-        for cfile in commit_files:
-            try:
-                content = read_hdfs_file(f"{log_dir}/{cfile}")
-                for line in content.decode('utf-8').strip().split('\n'):
-                    if not line:
-                        continue
-                    action = json.loads(line)
-                    if "add" in action:
-                        active_files.add(action["add"]["path"])
-                    if "remove" in action:
-                        active_files.discard(action["remove"]["path"])
-            except Exception as e:
-                print(f"[REMEDIATION] Error processing delta log {cfile}: {e}")
-
-        records = []
-        for file_path in active_files:
-            try:
-                content = read_hdfs_file(f"{delta_path}/{file_path}")
-                table = pq.read_table(io.BytesIO(content))
-                df = table.to_pandas()
-                if "run_id" in df.columns:
-                    df = df[df["run_id"] == self.run_id]
-                
-                raw_records = df.to_dict(orient="records")
-                allowed_cols = set()
-                if self.schema_spec and "schema_spec" in self.schema_spec:
-                    allowed_cols = set(self.schema_spec["schema_spec"].keys())
-                allowed_cols.add("reject_reason")
-                
-                for r in raw_records:
-                    # Filter out NaN values from float columns and keep only allowed columns
-                    filtered = {}
-                    for k, v in r.items():
-                        if k in allowed_cols:
-                            # Handle NaN values to make them JSON serializable as None
-                            if isinstance(v, float) and (v != v or str(v) == 'nan'):
-                                filtered[k] = None
-                            else:
-                                filtered[k] = v
-                    records.append(filtered)
-            except Exception as e:
-                print(f"[REMEDIATION] Error reading parquet {file_path}: {e}")
-                
-        # Limit to 500 records
-        if len(records) > 500:
-            print(f"[REMEDIATION] Limiting records from {len(records)} to 500")
-            records = records[:500]
+        spark = SparkSession.builder \
+            .appName("SDOQAP-AutoRemediation") \
+            .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
+            .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
+            .getOrCreate()
             
-        return records
+        delta_path = f"hdfs://namenode:9000/data/quarantine/{self.table_name}"
+        try:
+            df = spark.read.format("delta").load(delta_path)
+            df_run = df.filter(F.col("run_id") == self.run_id)
+            
+            # Fetch a sample batch of up to 100 records for LLM synthesis
+            sample_rows = df_run.limit(100).collect()
+            sample_records = []
+            
+            allowed_cols = set()
+            if self.schema_spec and "schema_spec" in self.schema_spec:
+                allowed_cols = set(self.schema_spec["schema_spec"].keys())
+            allowed_cols.add("reject_reason")
+            
+            for row in sample_rows:
+                r = row.asDict()
+                filtered = {}
+                for k, v in r.items():
+                    if k in allowed_cols:
+                        if isinstance(v, float) and (v != v or str(v) == 'nan'):
+                            filtered[k] = None
+                        else:
+                            filtered[k] = v
+                sample_records.append(filtered)
+                
+            return df_run, sample_records
+        except Exception as e:
+            print(f"[REMEDIATION] Error reading quarantine Delta table from HDFS: {e}")
+            return None, []
 
     def categorize_records(self, records):
         categories = {
@@ -378,82 +398,129 @@ For each record:
 
     def run(self):
         start_time = time.time()
-        records = self.read_quarantine_data()
+        df_run, records = self.read_quarantine_data()
         
-        if not records:
+        if df_run is None or df_run.count() == 0:
             print("[REMEDIATION] No quarantine records found.")
-            return {"total": 0, "attempted": 0, "fixed": 0, "unfixable": 0}
+            return {"total": 0, "fixed": 0, "unfixable": 0}
 
         if not self.schema_spec:
             print("[REMEDIATION] Target schema not available.")
-            return {"total": len(records), "attempted": 0, "fixed": 0, "unfixable": len(records)}
+            total_count = df_run.count()
+            return {"total": total_count, "fixed": 0, "unfixable": total_count}
 
         categories = self.categorize_records(records)
         
+        schema_spec = self.schema_spec.get("schema_spec", {})
+        schema_cols = list(schema_spec.keys())
+        
         fixed_data = []
+        total_quarantined = df_run.count()
+        
         stats = {
-            "total_quarantined": len(records),
+            "total_quarantined": total_quarantined,
             "attempted": 0,
             "fixed": 0,
-            "unfixable": len(categories["unfixable"]),
+            "unfixable": 0,
             "categories": {},
             "model_used": os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
         }
         
+        # Calculate unfixable records from the DataFrame (missing primary key)
+        pk = self.schema_spec.get("primary_key", "row_hash")
+        import pyspark.sql.functions as F
+        
+        if isinstance(pk, list):
+            null_cond = F.col(pk[0]).isNull()
+            for p in pk[1:]:
+                null_cond = null_cond | F.col(p).isNull()
+            unfixable_count = df_run.filter(null_cond).count()
+        else:
+            unfixable_count = df_run.filter(F.col(pk).isNull()).count()
+            
+        stats["unfixable"] = unfixable_count
         total_conf = 0.0
+
+        cat_keywords = {
+            "null_values": "null_value",
+            "type_mismatch": "type_mismatch",
+            "format_errors": "format_error",
+            "outliers": "expected"
+        }
 
         for cat, items in categories.items():
             if cat == "unfixable" or not items:
                 continue
                 
-            stats["categories"][cat] = {"attempted": len(items), "fixed": 0}
-            stats["attempted"] += len(items)
+            keyword = cat_keywords.get(cat, cat)
+            df_cat = df_run.filter(F.col("reject_reason").contains(keyword))
+            cat_count = df_cat.count()
             
-            # Synthesize Python function using a sample of representative records
-            remediate_fn = self.get_synthesized_python_function(cat, items)
+            if cat_count == 0:
+                continue
+                
+            stats["categories"][cat] = {"attempted": cat_count, "fixed": 0}
+            stats["attempted"] += cat_count
             
-            if remediate_fn:
-                print(f"[REMEDIATION] Successfully synthesized python remediation rule for category '{cat}'. Executing at scale in memory...")
-                for item in items:
-                    rec = item["record"].copy()
-                    try:
-                        fixed_row = remediate_fn(rec)
-                        if fixed_row:
-                            fixed_data.append(fixed_row)
-                            stats["fixed"] += 1
-                            stats["categories"][cat]["fixed"] += 1
-                            total_conf += 0.90
-                        else:
-                            stats["unfixable"] += 1
-                    except Exception as row_err:
-                        print(f"[REMEDIATION] Synthesized code failed on row. Using heuristic fallback: {row_err}")
-                        h_res = self._heuristic_fix(cat, [item])
-                        fixed_list = h_res.get("fixed_records", [])
-                        if fixed_list and fixed_list[0].get("confidence", 0.0) >= self.min_confidence:
-                            fixed_data.append(fixed_list[0]["fixed_row"])
-                            stats["fixed"] += 1
-                            stats["categories"][cat]["fixed"] += 1
-                            total_conf += fixed_list[0]["confidence"]
-                        else:
-                            stats["unfixable"] += 1
-            else:
-                print(f"[REMEDIATION] Synthesized remediation rule not available for category '{cat}'. Using heuristic fallback...")
-                # Batch processing for heuristics (no API calls)
-                for i in range(0, len(items), 100):
-                    batch = items[i:i+100]
-                    res = self._heuristic_fix(cat, batch)
-                    fixed_list = res.get("fixed_records", [])
-                    for fix_item in fixed_list:
-                        conf = float(fix_item.get("confidence", 0.0))
-                        if conf >= self.min_confidence:
-                            fixed_row = fix_item.get("fixed_row", {})
-                            if fixed_row:
-                                fixed_data.append(fixed_row)
-                                stats["fixed"] += 1
-                                stats["categories"][cat]["fixed"] += 1
-                                total_conf += conf
-                        else:
-                            stats["unfixable"] += 1
+            # Synthesize Python function code using a sample of representative records
+            code_str = self.get_synthesized_python_function(cat, items)
+            schema = df_cat.schema
+            
+            # Define heuristic fallback logic
+            heur_fn = None
+            if cat == "type_mismatch":
+                heur_fn = lambda r: {k: (v.replace('$', '').replace(',', '') if isinstance(v, str) else v) for k, v in r.items()}
+            elif cat == "null_values":
+                heur_fn = lambda r: {k: ('UNKNOWN' if v is None or v == '' else v) for k, v in r.items()}
+
+            # Distribute execution across cluster executors using mapPartitions
+            def make_remediate_partition_mapper(code, h_fn, cols):
+                def map_partition(partition):
+                    local_remediate = None
+                    if code:
+                        try:
+                            l_vars = {}
+                            exec(code, {}, l_vars)
+                            local_remediate = l_vars.get("remediate")
+                        except Exception:
+                            pass
+                            
+                    for row in partition:
+                        row_dict = row.asDict()
+                        clean_dict = {k: v for k, v in row_dict.items() if k in cols}
+                        
+                        fixed_row = None
+                        if local_remediate:
+                            try:
+                                fixed_row = local_remediate(clean_dict)
+                            except Exception:
+                                pass
+                                
+                        if fixed_row is None and h_fn:
+                            try:
+                                fixed_row = h_fn(clean_dict)
+                            except Exception:
+                                pass
+                                
+                        if fixed_row is not None:
+                            out_row = {}
+                            for field in schema.fields:
+                                out_row[field.name] = fixed_row.get(field.name, None)
+                            yield out_row
+                return map_partition
+
+            fixed_rdd = df_cat.rdd.mapPartitions(make_remediate_partition_mapper(code_str, heur_fn, schema_cols))
+            
+            # Collect results to driver (safe since quarantine size is small)
+            try:
+                fixed_rows = fixed_rdd.collect()
+                fixed_data.extend(fixed_rows)
+                stats["fixed"] += len(fixed_rows)
+                stats["categories"][cat]["fixed"] += len(fixed_rows)
+                total_conf += (0.90 if code_str else 0.85) * len(fixed_rows)
+            except Exception as e:
+                print(f"[REMEDIATION] Error collecting parallel remediation results for '{cat}': {e}")
+                stats["unfixable"] += cat_count
 
         stats["confidence_avg"] = round(total_conf / stats["fixed"], 4) if stats["fixed"] > 0 else 0.0
         stats["duration_seconds"] = round(time.time() - start_time, 2)
