@@ -182,18 +182,47 @@ def read_parquet_folder_to_df(hdfs_folder: str) -> pd.DataFrame:
         raise HTTPException(status_code=500, detail=f"Error reading Parquet dataset: {str(e)}")
 
 
-def prepare_df_for_export(df: pd.DataFrame) -> bytes:
-    """Clean DataFrame for end-user export: drop internal columns, fix types, encode for Excel.
+def load_primary_key(table_name: str) -> str:
+    """Load primary key from schema_registry.json for a given table."""
+    schema_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..", "..", "..", "spark", "schema_registry.json"
+    )
+    if os.path.exists(schema_path):
+        try:
+            with open(schema_path, "r", encoding="utf-8") as f:
+                registry = json.load(f)
+                table_conf = registry.get(table_name)
+                if table_conf and "primary_key" in table_conf:
+                    return table_conf["primary_key"]
+        except Exception:
+            pass
+    return None
+
+
+def prepare_df_for_export(df: pd.DataFrame, table_name: str = None) -> bytes:
+    """Clean DataFrame for end-user export: drop internal columns, fix types, sort, encode for Excel.
     
     This ensures that ALL exported data is immediately ready-to-use:
     1. Strips internal pipeline metadata columns (run_id, __index_level_0__)
-    2. Preserves integer types (prevents 1 → 1.0 float conversion)
-    3. Encodes with UTF-8 BOM for proper Thai/Unicode display in Excel on Windows
+    2. Sorts data cleanly by primary key if available
+    3. Preserves integer types (prevents 1 → 1.0 float conversion)
+    4. Encodes with UTF-8 BOM for proper Thai/Unicode display in Excel on Windows
     """
     internal_cols = ["run_id", "__index_level_0__"]
     for col in internal_cols:
         if col in df.columns:
             df = df.drop(columns=[col])
+            
+    if table_name:
+        pk = load_primary_key(table_name)
+        if pk and pk in df.columns:
+            try:
+                # Sort values naturally by primary key (placing NAs at the end)
+                df = df.sort_values(by=pk, na_position='last')
+            except Exception:
+                pass
+                
     df = df.convert_dtypes()
     return df.to_csv(index=False).encode("utf-8-sig")
 
@@ -322,7 +351,7 @@ def export_active_data(table_name: str, limit: int = None):
         df = read_parquet_folder_to_df(f"/data/active/{table_name}")
         if limit:
             df = df.head(limit)
-        csv_bytes = prepare_df_for_export(df)
+        csv_bytes = prepare_df_for_export(df, table_name)
         return Response(
             content=csv_bytes,
             media_type="text/csv; charset=utf-8-sig",
@@ -348,7 +377,7 @@ def export_quarantine_data(table_name: str, limit: int = None):
         df = read_parquet_folder_to_df(f"/data/quarantine/{table_name}")
         if limit:
             df = df.head(limit)
-        csv_bytes = prepare_df_for_export(df)
+        csv_bytes = prepare_df_for_export(df, table_name)
         return Response(
             content=csv_bytes,
             media_type="text/csv; charset=utf-8-sig",
