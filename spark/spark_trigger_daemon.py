@@ -18,6 +18,10 @@ stream_subreddits = ""
 stream_status = "idle"  # "idle" or "running"
 stream_lock = threading.Lock()
 
+# Auto-Remediation guard: tracks tables currently in a remediation cycle
+# to prevent infinite re-trigger loops (max 1 retry per table per ingestion)
+remediation_in_progress = set()
+
 def append_log(msg):
     stream_logs.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}")
     if len(stream_logs) > 500:
@@ -120,6 +124,118 @@ def run_stream_job(subreddits, duration):
         append_log("[SYSTEM] Streaming pipeline stopped.")
 
 class SparkTriggerHandler(BaseHTTPRequestHandler):
+    def _try_auto_remediate(self, table_name):
+        """Check if remediation is needed and spawn the auto-remediation engine.
+
+        Called automatically after Spark Quality Engine finishes.
+        Queries ES for the latest quality run to check quarantine_count.
+        If quarantine records exist, spawns auto_remediation_engine.py.
+        On success (exit 0), re-triggers quality check with loop guard.
+        """
+        import requests as _req
+        from urllib.parse import urlparse
+
+        # ── 1. Query ES for the latest quality run ────────────────────────
+        es_url = os.getenv("ELASTICSEARCH_URL", "")
+        parsed = urlparse(es_url)
+        auth = (parsed.username, parsed.password) if parsed.username else None
+        base_url = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}" if parsed.username else es_url
+
+        if not base_url:
+            append_log("[REMEDIATION] Skipping: ELASTICSEARCH_URL not configured")
+            return
+
+        try:
+            search_url = f"{base_url}/sdoqap_quality_runs/_search"
+            query = {
+                "size": 1,
+                "sort": [{"timestamp": {"order": "desc"}}],
+                "query": {"term": {"table_name.keyword": table_name}}
+            }
+            r = _req.post(search_url, json=query, auth=auth, timeout=5)
+            if r.status_code != 200:
+                append_log(f"[REMEDIATION] Skipping: ES query failed ({r.status_code})")
+                return
+
+            hits = r.json().get("hits", {}).get("hits", [])
+            if not hits:
+                append_log("[REMEDIATION] Skipping: No quality run found in ES")
+                return
+
+            latest = hits[0]["_source"]
+            quarantine_count = latest.get("quarantined_records", 0)
+            run_id = latest.get("run_id", "")
+
+            if quarantine_count == 0:
+                append_log(f"[REMEDIATION] No quarantined records for '{table_name}'. Skipping.")
+                return
+
+            append_log(f"[SYSTEM] 🔧 Auto-Remediation: {quarantine_count} quarantined records detected. Starting AI remediation...")
+
+        except Exception as e:
+            append_log(f"[REMEDIATION] Skipping: ES check failed: {e}")
+            return
+
+        # ── 2. Spawn auto_remediation_engine.py ──────────────────────────
+        remediation_cmd = [
+            "python", "-u", "/opt/spark-apps/auto_remediation_engine.py",
+            table_name, run_id
+        ]
+
+        try:
+            rem_proc = subprocess.Popen(
+                remediation_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1
+            )
+            for line in iter(rem_proc.stdout.readline, ""):
+                if line:
+                    append_log(f"[remediation] {line.strip()}")
+            rem_proc.wait()
+
+            if rem_proc.returncode == 0:
+                # Records were fixed — re-trigger quality check
+                append_log(f"[SYSTEM] ✅ Remediation successful. Re-validating table '{table_name}'...")
+                remediation_in_progress.add(table_name)
+
+                # Re-run Spark quality engine on the remediated data
+                rerun_cmd = [
+                    "spark-submit",
+                    "--master", "spark://spark-master:7077",
+                    "--conf", "spark.executorEnv.HADOOP_USER_NAME=spark",
+                    "--conf", "spark.executor.extraJavaOptions=-DHADOOP_USER_NAME=spark",
+                    "--conf", "spark.driver.extraJavaOptions=-DHADOOP_USER_NAME=spark",
+                    "--packages", "io.delta:delta-core_2.12:2.4.0",
+                    "/opt/spark-apps/spark_quality_engine.py",
+                    table_name
+                ]
+
+                with stream_lock:
+                    stream_status = "running"
+                    append_log(f"[SYSTEM] Re-running Spark Quality Engine on remediated data for '{table_name}'")
+
+                rerun_proc = subprocess.Popen(
+                    rerun_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1
+                )
+                for line in iter(rerun_proc.stdout.readline, ""):
+                    if line:
+                        append_log(f"[spark] {line.strip()}")
+                rerun_proc.wait()
+                append_log(f"[SYSTEM] Spark re-validation finished for table '{table_name}' (Exit code: {rerun_proc.returncode})")
+                remediation_in_progress.discard(table_name)
+            else:
+                append_log(f"[SYSTEM] ⚠️ Auto-Remediation: No records could be fixed for '{table_name}'. Quarantine data retained.")
+
+        except Exception as e:
+            append_log(f"[ERROR] Auto-Remediation engine failed: {e}")
+            remediation_in_progress.discard(table_name)
+
     def do_GET(self):
         if self.path == "/stream/status":
             with stream_lock:
@@ -192,6 +308,20 @@ class SparkTriggerHandler(BaseHTTPRequestHandler):
                                 append_log(f"[spark] {line.strip()}")
                         proc.wait()
                         append_log(f"[SYSTEM] Spark Quality Engine finished for table '{tbl}' (Exit code: {proc.returncode})")
+
+                        # ── Auto-Remediation Trigger ──────────────────────────
+                        # Only trigger if quality check succeeded (exit 0) and
+                        # this table is NOT already in a remediation cycle
+                        if proc.returncode == 0 and tbl not in remediation_in_progress:
+                            try:
+                                self._try_auto_remediate(tbl)
+                            except Exception as rem_err:
+                                append_log(f"[ERROR] Auto-Remediation trigger failed: {rem_err}")
+                        elif tbl in remediation_in_progress:
+                            # This was a re-validation after remediation — clear the guard
+                            remediation_in_progress.discard(tbl)
+                            append_log(f"[SYSTEM] Remediation re-validation completed for table '{tbl}'")
+
                     except Exception as e:
                         append_log(f"[ERROR] Spark Quality Engine run failed: {e}")
                     finally:

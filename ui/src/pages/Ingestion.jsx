@@ -87,6 +87,10 @@ export default function Ingestion() {
     const logsStr = streamInfo.logs.join("\n");
     const startedMsg = `Starting Spark Quality Engine Rerun for table '${pollingTable}'`;
     const finishedMsg = `finished for table '${pollingTable}'`;
+    const remediatingMsg = `Auto-Remediation:`;
+    const remediationSuccessMsg = `Remediation successful`;
+    const revalidationDoneMsg = `Remediation re-validation completed for table '${pollingTable}'`;
+    const revalidationFinishedMsg = `re-validation finished for table '${pollingTable}'`;
 
     const setStatus = (statusObj) => {
       if (pollingType === "csv") setCsvStatus(statusObj);
@@ -95,7 +99,18 @@ export default function Ingestion() {
     };
 
     if (isRunning) {
-      if (logsStr.includes(startedMsg)) {
+      // Check for remediation states (more specific → less specific)
+      if (logsStr.includes(remediationSuccessMsg) && logsStr.includes(`Re-running Spark Quality Engine`)) {
+        setStatus({
+          loading: true,
+          message: `✅ AI remediation successful! Re-validating fixed data for '${pollingTable}'...`
+        });
+      } else if (logsStr.includes(remediatingMsg) && logsStr.includes("Starting AI remediation")) {
+        setStatus({
+          loading: true,
+          message: `🔧 AI is remediating quarantined records for '${pollingTable}'...`
+        });
+      } else if (logsStr.includes(startedMsg)) {
         setStatus({
           loading: true,
           message: `Spark quality engine is actively validating table '${pollingTable}'...`
@@ -107,7 +122,31 @@ export default function Ingestion() {
         });
       }
     } else {
-      if (logsStr.includes(finishedMsg)) {
+      // Daemon is idle — check if we have a final result
+      if (logsStr.includes(revalidationDoneMsg) || logsStr.includes(revalidationFinishedMsg)) {
+        // Remediation + re-validation cycle completed
+        if (logsStr.includes(`(Exit code: 0)`)) {
+          setStatus({
+            success: true,
+            message: `✅ Successfully processed '${pollingTable}'! AI remediated quarantined records and re-validated.`
+          });
+        } else {
+          setStatus({
+            success: true,
+            message: `Processed '${pollingTable}'. Some records may remain in quarantine after AI remediation.`
+          });
+        }
+        setPollingTable(null);
+        setPollingType(null);
+      } else if (logsStr.includes("No records could be fixed")) {
+        // Remediation attempted but failed — still a completed state
+        setStatus({
+          success: true,
+          message: `Processed '${pollingTable}'. AI could not remediate quarantined records — check Quarantine zone for details.`
+        });
+        setPollingTable(null);
+        setPollingType(null);
+      } else if (logsStr.includes(finishedMsg)) {
         if (logsStr.includes(`${finishedMsg} (Exit code: 0)`)) {
           setStatus({
             success: true,
@@ -669,6 +708,7 @@ export default function Ingestion() {
               let color = "#cbd5e1";
               if (log.includes("[python]")) color = "#10b981";
               if (log.includes("[spark]")) color = "#a855f7";
+              if (log.includes("[remediation]")) color = "#f59e0b";
               if (log.includes("[ERROR]")) color = "#f43f5e";
               if (log.includes("[SYSTEM]")) color = "#6C47FF";
 

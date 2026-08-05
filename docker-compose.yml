@@ -255,7 +255,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 384M
+          memory: 2G
 
 
 
@@ -313,6 +313,26 @@ services:
       retries: 5
     networks:
       - sdoqap_network
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: sdoqap-ollama
+    restart: always
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - sdoqap_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 6G
+
   ui:
     build:
       context: ./ui
@@ -415,6 +435,7 @@ volumes:
   hadoop_datanode:
   n8n_data:
   postgres_data:
+  ollama_data:
 
 networks:
   sdoqap_network:
