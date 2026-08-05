@@ -311,7 +311,7 @@ export default function DataExport() {
               <div className="gs-empty" style={{ color: 'var(--accent-red)' }}>
                 <span>⚠️</span> {previewError}
               </div>
-            ) : previewData && previewData.columns && previewData.columns.length > 0 ? (
+            ) : previewData && previewData.rows && previewData.rows.length > 0 ? (
               <table className="gs-preview-table">
                 <thead>
                   <tr>
@@ -321,23 +321,15 @@ export default function DataExport() {
                   </tr>
                 </thead>
                 <tbody>
-                  {previewData.rows && previewData.rows.length > 0 ? (
-                    previewData.rows.map((row, idx) => (
-                      <tr key={idx}>
-                        {previewData.columns.map(col => (
-                          <td key={col} title={String(row[col])}>
-                            {row[col] !== null ? String(row[col]) : <em>null</em>}
-                          </td>
-                        ))}
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={previewData.columns.length} style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)", fontStyle: "italic" }}>
-                        No records found in this layer.
-                      </td>
+                  {previewData.rows.map((row, idx) => (
+                    <tr key={idx}>
+                      {previewData.columns.map(col => (
+                        <td key={col} title={String(row[col])}>
+                          {row[col] !== null ? String(row[col]) : <em>null</em>}
+                        </td>
+                      ))}
                     </tr>
-                  )}
+                  ))}
                 </tbody>
               </table>
             ) : (
