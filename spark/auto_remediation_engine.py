@@ -111,6 +111,9 @@ class AutoRemediationEngine:
         return None
 
     def _get_groq_api_key(self):
+        env_key = os.getenv("GROQ_API_KEY")
+        if env_key:
+            return env_key
         try:
             url = f"{self.es_base_url}/sdoqap_settings/_doc/global"
             r = requests.get(url, auth=self.es_auth, timeout=5)
