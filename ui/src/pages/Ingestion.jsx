@@ -223,6 +223,12 @@ export default function Ingestion() {
       const res = await response.json();
 
       if (response.ok) {
+        setStreamInfo({
+          status: "running",
+          logs: [],
+          remaining: 0,
+          elapsed: 0
+        });
         setPollingTable(csvTableName);
         setPollingType("csv");
         setCsvStatus({ loading: true, message: "CSV uploaded. Triggering Spark validation..." });
@@ -250,6 +256,12 @@ export default function Ingestion() {
         api_key: apiKey || null
       });
       
+      setStreamInfo({
+        status: "running",
+        logs: [],
+        remaining: 0,
+        elapsed: 0
+      });
       setPollingTable(apiTableName);
       setPollingType("api");
       setApiStatus({ loading: true, message: "API handshake completed. Triggering Spark validation..." });
@@ -309,6 +321,12 @@ export default function Ingestion() {
         query: dbQuery
       });
       
+      setStreamInfo({
+        status: "running",
+        logs: [],
+        remaining: 0,
+        elapsed: 0
+      });
       setPollingTable(rdbmsTableName);
       setPollingType("rdbms");
       setRdbmsStatus({ loading: true, message: "RDBMS query executed. Triggering Spark validation..." });
