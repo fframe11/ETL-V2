@@ -347,11 +347,11 @@ For each record:
             stats["categories"][cat] = {"attempted": len(items), "fixed": 0}
             stats["attempted"] += len(items)
             
-            # Batch by 40 to reduce API calls and prevent rate limits
-            for i in range(0, len(items), 40):
+            # Batch by 15 to stay under Groq API TPM rate limits
+            for i in range(0, len(items), 15):
                 if i > 0:
                     time.sleep(5.0)
-                batch = items[i:i+40]
+                batch = items[i:i+15]
                 try:
                     res = self.get_ai_fix(cat, batch)
                     fixed_list = res.get("fixed_records", [])
