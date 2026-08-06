@@ -235,6 +235,7 @@ services:
       - .env
     volumes:
       - ./scripts:/app/scripts:ro
+      - ./spark:/opt/spark-apps
 
     restart: always
     depends_on:

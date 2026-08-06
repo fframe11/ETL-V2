@@ -520,6 +520,12 @@
         "column": "\u0e22\u0e2d\u0e14\u0e02\u0e32\u0e22\u0e23\u0e27\u0e21",
         "type": "fillna",
         "value": null
+      },
+      {
+        "column": "\u0e23\u0e32\u0e04\u0e32\u0e15\u0e48\u0e2d\u0e2b\u0e19\u0e48\u0e27\u0e22",
+        "type": "calculate",
+        "expression": "\u0e23\u0e32\u0e04\u0e32\u0e15\u0e48\u0e2d\u0e2b\u0e19\u0e48\u0e27\u0e22 * \u0e22\u0e2d\u0e14\u0e02\u0e32\u0e22\u0e23\u0e27\u0e21",
+        "condition": "\u0e23\u0e32\u0e04\u0e32\u0e15\u0e48\u0e2d\u0e2b\u0e19\u0e48\u0e27\u0e22 IS NULL"
       }
     ]
   },
@@ -573,5 +579,35 @@
       "max_rows_to_analyze": 50,
       "confidence_threshold": 0.7
     }
+  },
+  "unknown": {
+    "remediation_rules": [
+      {
+        "column": "\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32",
+        "type": "semantic_standardize",
+        "categories": {
+          "pepsi max": "\u0e19\u0e49\u0e33\u0e2d\u0e31\u0e14\u0e25\u0e21",
+          "\u0e19\u0e49\u0e33\u0e40\u0e1b\u0e25\u0e48\u0e32\u0e2a\u0e34\u0e07\u0e2b\u0e4c": "\u0e19\u0e49\u0e33\u0e14\u0e37\u0e48\u0e21"
+        },
+        "fallback": "\u0e2d\u0e37\u0e48\u0e19\u0e46",
+        "threshold": 0.85
+      }
+    ]
+  },
+  "mbti_1M": {
+    "remediation_rules": [
+      {
+        "column": "label",
+        "type": "semantic_standardize",
+        "categories": {
+          "int": "Introverted Intuitive Thinking Judging",
+          "infpx2": "Introverted Intuitive Feeling Perceiving",
+          "1 intj": "Introverted Intuitive Thinking Judging",
+          "infj).": "Introverted Intuitive Feeling Judging"
+        },
+        "fallback": "\u0e2d\u0e37\u0e48\u0e19\u0e46",
+        "threshold": 0.85
+      }
+    ]
   }
 }

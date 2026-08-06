@@ -578,7 +578,15 @@
       "model": "llama-3.3-70b-versatile",
       "max_rows_to_analyze": 50,
       "confidence_threshold": 0.7
-    }
+    },
+    "remediation_rules": [
+      {
+        "column": "ราคาต่อหน่วย",
+        "type": "calculate",
+        "expression": "ราคาต่อหน่วย * ยอดขายรวม",
+        "condition": "ราคาต่อหน่วย IS NULL"
+      }
+    ]
   },
   "unknown": {
     "remediation_rules": [
