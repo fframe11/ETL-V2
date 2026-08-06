@@ -72,6 +72,49 @@ export default function Ingestion() {
     };
   }, []);
 
+  // Load state from localStorage on mount
+  useEffect(() => {
+    const savedTable = localStorage.getItem("ingest_polling_table");
+    const savedType = localStorage.getItem("ingest_polling_type");
+    if (savedTable && savedType) {
+      setPollingTable(savedTable);
+      setPollingType(savedType);
+    }
+    
+    const savedCsvInput = localStorage.getItem("csv_table_name_input");
+    if (savedCsvInput) setCsvTableName(savedCsvInput);
+    
+    const savedApiInput = localStorage.getItem("api_table_name_input");
+    if (savedApiInput) setApiTableName(savedApiInput);
+    
+    const savedApiUrl = localStorage.getItem("api_url_input");
+    if (savedApiUrl) setApiUrl(savedApiUrl);
+  }, []);
+
+  // Save polling state to localStorage when it changes
+  useEffect(() => {
+    if (pollingTable && pollingType) {
+      localStorage.setItem("ingest_polling_table", pollingTable);
+      localStorage.setItem("ingest_polling_type", pollingType);
+    } else {
+      localStorage.removeItem("ingest_polling_table");
+      localStorage.removeItem("ingest_polling_type");
+    }
+  }, [pollingTable, pollingType]);
+
+  // Save input fields to localStorage when they change
+  useEffect(() => {
+    if (csvTableName) localStorage.setItem("csv_table_name_input", csvTableName);
+  }, [csvTableName]);
+
+  useEffect(() => {
+    if (apiTableName) localStorage.setItem("api_table_name_input", apiTableName);
+  }, [apiTableName]);
+
+  useEffect(() => {
+    if (apiUrl) localStorage.setItem("api_url_input", apiUrl);
+  }, [apiUrl]);
+
   // Scroll to bottom of terminal
   useEffect(() => {
     if (terminalEndRef.current) {
