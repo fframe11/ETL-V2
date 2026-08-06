@@ -26,12 +26,24 @@ def get_es():
 from urllib.parse import urlparse, urlunparse
 import json
 
+def _resolve_schema_registry_path() -> str:
+    candidates = [
+        "/opt/spark-apps/schema_registry.json",
+        os.path.normpath(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         "..", "..", "..", "spark", "schema_registry.json")
+        ),
+        os.path.join(os.getcwd(), "spark", "schema_registry.json"),
+    ]
+    for c in candidates:
+        if os.path.isfile(c):
+            return c
+    return candidates[1]
+
+
 def load_registered_schema_columns(table_name: str):
     """Load column names from schema_registry.json for a given table."""
-    schema_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "..", "..", "..", "spark", "schema_registry.json"
-    )
+    schema_path = _resolve_schema_registry_path()
     if os.path.exists(schema_path):
         try:
             with open(schema_path, "r", encoding="utf-8") as f:
@@ -184,10 +196,7 @@ def read_parquet_folder_to_df(hdfs_folder: str) -> pd.DataFrame:
 
 def load_primary_key(table_name: str) -> str:
     """Load primary key from schema_registry.json for a given table."""
-    schema_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "..", "..", "..", "spark", "schema_registry.json"
-    )
+    schema_path = _resolve_schema_registry_path()
     if os.path.exists(schema_path):
         try:
             with open(schema_path, "r", encoding="utf-8") as f:

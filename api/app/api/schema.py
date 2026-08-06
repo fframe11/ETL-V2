@@ -14,10 +14,21 @@ router = APIRouter(prefix="/api/v1/schema", tags=["Schema Governance"])
 from .config import get_elasticsearch_url
 
 ELASTICSEARCH_URL = get_elasticsearch_url()
-SCHEMA_REGISTRY_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "..", "..", "..", "spark", "schema_registry.json"
-)
+def _resolve_schema_registry_path() -> str:
+    candidates = [
+        "/opt/spark-apps/schema_registry.json",
+        os.path.normpath(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         "..", "..", "..", "spark", "schema_registry.json")
+        ),
+        os.path.join(os.getcwd(), "spark", "schema_registry.json"),
+    ]
+    for c in candidates:
+        if os.path.isfile(c):
+            return c
+    return candidates[1]
+
+SCHEMA_REGISTRY_PATH = _resolve_schema_registry_path()
 
 _es_client = None
 
