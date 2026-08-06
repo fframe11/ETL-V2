@@ -146,6 +146,21 @@ def approve_proposal(proposal_id: str, primary_key: str = None, date_column: str
         reg_doc["schema_spec"] = proposed_schema
         es.index(index="sdoqap_schema_registry", id=table_name, document=reg_doc)
         print(f"[SCHEMA APPROVED] sdoqap_schema_registry updated in ES for '{table_name}'.")
+        
+        # 2. Update local schema_registry.json on disk if it exists
+        try:
+            if os.path.exists(SCHEMA_REGISTRY_PATH):
+                with open(SCHEMA_REGISTRY_PATH, "r", encoding="utf-8") as f:
+                    disk_registry = json.load(f)
+                
+                disk_registry[table_name] = reg_doc
+                
+                with open(SCHEMA_REGISTRY_PATH, "w", encoding="utf-8") as f:
+                    json.dump(disk_registry, f, indent=2, ensure_ascii=False)
+                    f.write("\n")
+                print(f"[SCHEMA APPROVED] schema_registry.json updated on disk for '{table_name}'.")
+        except Exception as disk_err:
+            print(f"[SCHEMA APPROVED] Failed to update schema_registry.json on disk: {disk_err}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update sdoqap_schema_registry in ES: {e}")
 
