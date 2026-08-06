@@ -25,14 +25,17 @@ function RequireAuth({ children }) {
 }
 
 function AppContent({ isSidebarOpen, toggleSidebar }) {
+  const location = useLocation();
   const [schemaCount, setSchemaCount] = useState(0);
   const [aiRulesCount, setAiRulesCount] = useState(0);
   const [isAlertDismissed, setIsAlertDismissed] = useState(false);
   const isLoggedIn = !!sessionStorage.getItem("sdoqap_admin_token");
 
   useEffect(() => {
-    if (!isLoggedIn) return;
     const fetchCounts = async () => {
+      const token = sessionStorage.getItem("sdoqap_admin_token");
+      if (!token) return;
+
       try {
         const schemaRes = await fetch("/api/v1/schema/proposals");
         if (schemaRes.ok) {
@@ -58,8 +61,7 @@ function AppContent({ isSidebarOpen, toggleSidebar }) {
     fetchCounts();
     const interval = setInterval(fetchCounts, 10000);
     return () => clearInterval(interval);
-  }, [isLoggedIn]);
-  const location = useLocation();
+  }, [location.pathname]);
   const isHome = location.pathname === "/";
   const isLogin = location.pathname === "/login";
 

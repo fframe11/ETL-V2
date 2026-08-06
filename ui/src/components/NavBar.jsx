@@ -51,8 +51,10 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
   const [aiRulesCount, setAiRulesCount] = useState(0);
 
   useEffect(() => {
-    if (!isLoggedIn) return;
     const fetchCounts = async () => {
+      const token = sessionStorage.getItem("sdoqap_admin_token");
+      if (!token) return;
+
       try {
         const schemaRes = await fetch("/api/v1/schema/proposals");
         if (schemaRes.ok) {
@@ -78,7 +80,7 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
     fetchCounts();
     const interval = setInterval(fetchCounts, 10000);
     return () => clearInterval(interval);
-  }, [isLoggedIn]);
+  }, [location.pathname]);
 
   const handleLogout = () => {
     sessionStorage.removeItem("sdoqap_admin_token");
