@@ -1832,12 +1832,13 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
                     schema_spec[col_name] = "DoubleType"
 
                 if type_str == "IntegerType":
-                    # Remove currency, spaces, and commas
-                    clean_col = F.regexp_replace(F.col(col_name), r"[\$,\s]", "")
+                    # Remove all non-numeric characters (except digits and negative sign)
+                    clean_col = F.regexp_replace(F.col(col_name), r"[^\d\-]", "")
                     # Cast to double first, then to integer, so float strings like "12.00" don't become null
                     df = df.withColumn(col_name, clean_col.cast("double").cast(IntegerType()))
                 elif type_str == "DoubleType":
-                    clean_col = F.regexp_replace(F.col(col_name), r"[\$,\s]", "")
+                    # Remove all non-numeric characters (except digits, decimal point, and negative sign)
+                    clean_col = F.regexp_replace(F.col(col_name), r"[^\d\.\-]", "")
                     df = df.withColumn(col_name, clean_col.cast(DoubleType()))
                 elif type_str == "TimestampType":
                     # Support multiple common date/timestamp formats

@@ -1,5 +1,5 @@
 {
-  "_comment": "Dynamic Rules Configuration v2.0 \u2014 Supports strict/adaptive/auto modes per rule",
+  "_comment": "Dynamic Rules Configuration v2.0 — Supports strict/adaptive/auto modes per rule",
   "_default": {
     "null_primary_key": {
       "enabled": true,
@@ -261,21 +261,7 @@
       "confidence_threshold": 0.7
     }
   },
-  "unknown": {
-    "remediation_rules": [
-      {
-        "column": "\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32",
-        "type": "semantic_standardize",
-        "categories": {
-          "pepsi max": "\u0e19\u0e49\u0e33\u0e2d\u0e31\u0e14\u0e25\u0e21",
-          "\u0e19\u0e49\u0e33\u0e40\u0e1b\u0e25\u0e48\u0e32\u0e2a\u0e34\u0e07\u0e2b\u0e4c": "\u0e19\u0e49\u0e33\u0e14\u0e37\u0e48\u0e21"
-        },
-        "fallback": "\u0e2d\u0e37\u0e48\u0e19\u0e46",
-        "threshold": 0.85
-      }
-    ]
-  },
-  "grocery_raw_sales_data": {
+  "olist_customers_dataset": {
     "null_primary_key": {
       "enabled": true,
       "severity": "critical",
@@ -301,11 +287,7 @@
       "mode": "auto",
       "method": "iqr",
       "iqr_multiplier": 1.5,
-      "column_overrides": {
-        "\u0e23\u0e32\u0e04\u0e32\u0e15\u0e48\u0e2d\u0e2b\u0e19\u0e48\u0e27\u0e22": {
-          "iqr_multiplier": 2.5
-        }
-      }
+      "column_overrides": {}
     },
     "freshness_threshold_hours": {
       "mode": "strict",
@@ -324,13 +306,28 @@
       "model": "llama-3.3-70b-versatile",
       "max_rows_to_analyze": 50,
       "confidence_threshold": 0.7
-    },
+    }
+  },
+  "test_100": {
+    "null_checks": {
+      "column_overrides": {
+        "id": {
+          "tolerance": 0.15
+        }
+      }
+    }
+  },
+  "unknown": {
     "remediation_rules": [
       {
-        "column": "\u0e23\u0e32\u0e04\u0e32\u0e15\u0e48\u0e2d\u0e2b\u0e19\u0e48\u0e27\u0e22",
-        "type": "calculate",
-        "expression": "\u0e23\u0e32\u0e04\u0e32\u0e15\u0e48\u0e2d\u0e2b\u0e19\u0e48\u0e27\u0e22 * \u0e22\u0e2d\u0e14\u0e02\u0e32\u0e22\u0e23\u0e27\u0e21",
-        "condition": "\u0e23\u0e32\u0e04\u0e32\u0e15\u0e48\u0e2d\u0e2b\u0e19\u0e48\u0e27\u0e22 IS NULL"
+        "column": "รายการสินค้า",
+        "type": "semantic_standardize",
+        "categories": {
+          "pepsi max": "น้ำอัดลม",
+          "น้ำเปล่าสิงห์": "น้ำดื่ม"
+        },
+        "fallback": "อื่นๆ",
+        "threshold": 0.85
       }
     ]
   }
