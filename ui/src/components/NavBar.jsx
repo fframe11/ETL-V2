@@ -46,6 +46,40 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
   
   const isLoggedIn = !!sessionStorage.getItem("sdoqap_admin_token");
 
+  // Notification badge states for pending governance items
+  const [schemaCount, setSchemaCount] = useState(0);
+  const [aiRulesCount, setAiRulesCount] = useState(0);
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const fetchCounts = async () => {
+      try {
+        const schemaRes = await fetch("/api/v1/schema/proposals");
+        if (schemaRes.ok) {
+          const schemaData = await schemaRes.json();
+          const pendingSchema = schemaData.proposals ? schemaData.proposals.filter(p => p.status === "PENDING") : [];
+          setSchemaCount(pendingSchema.length);
+        }
+      } catch (e) {
+        console.error("Failed to fetch schema proposals count", e);
+      }
+
+      try {
+        const aiRes = await fetch("/api/v1/rules/ai-proposals");
+        if (aiRes.ok) {
+          const aiData = await aiRes.json();
+          setAiRulesCount(aiData.count || 0);
+        }
+      } catch (e) {
+        console.error("Failed to fetch AI proposals count", e);
+      }
+    };
+
+    fetchCounts();
+    const interval = setInterval(fetchCounts, 10000);
+    return () => clearInterval(interval);
+  }, [isLoggedIn]);
+
   const handleLogout = () => {
     sessionStorage.removeItem("sdoqap_admin_token");
     navigate("/login");
@@ -78,8 +112,8 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
         title: "Governance",
         key: "governance",
         links: [
-          { to: "/schema", label: "Schema Drift", icon: <SchemaIcon /> },
-          { to: "/rules", label: "Rules Hub", icon: <RulesIcon /> }
+          { to: "/schema", label: "Schema Drift", icon: <SchemaIcon />, badge: schemaCount > 0 ? schemaCount : null },
+          { to: aiRulesCount > 0 ? "/rules?tab=proposals" : "/rules", label: "Rules Hub", icon: <RulesIcon />, badge: aiRulesCount > 0 ? aiRulesCount : null }
         ]
       },
       {
@@ -208,8 +242,16 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
                       className={`gs-nav-item ${isActive ? "active" : ""}`}
                       title={link.label}
                     >
-                      <span className="gs-nav-icon">{link.icon}</span>
+                      <span className="gs-nav-icon" style={{ position: "relative" }}>
+                        {link.icon}
+                        {!navOpen && link.badge && (
+                          <span className="gs-nav-badge-dot" />
+                        )}
+                      </span>
                       {navOpen && <span className="gs-nav-label">{link.label}</span>}
+                      {navOpen && link.badge && (
+                        <span className="gs-nav-badge">{link.badge}</span>
+                      )}
                     </Link>
                   );
                 })}

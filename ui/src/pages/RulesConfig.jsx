@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useApi, postApi } from "../hooks/useApi";
 import Tooltip from "../components/Tooltip";
 import ConfirmationModal from "../components/ConfirmationModal";
@@ -51,7 +52,15 @@ const generateYamlDsl = (rules, tableName) => {
 };
 
 export default function RulesConfig() {
-  const [activeTab, setActiveTab] = useState("tables"); // "tables" or "proposals" or "remediations"
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "tables"); // "tables" or "proposals" or "remediations"
+
+  useEffect(() => {
+    const tabParam = searchParams.get("tab");
+    if (tabParam) {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams]);
   const [selectedTable, setSelectedTable] = useState("users");
   const [selectedProposalId, setSelectedProposalId] = useState(null);
   
