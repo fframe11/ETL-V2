@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { BrowserRouter, Routes, Route, useLocation, Navigate, Link } from "react-router-dom";
 import NavBar from "./components/NavBar";
 import ErrorBoundary from "./components/ErrorBoundary";
 import Home from "./pages/Home";
@@ -25,6 +25,40 @@ function RequireAuth({ children }) {
 }
 
 function AppContent({ isSidebarOpen, toggleSidebar }) {
+  const [schemaCount, setSchemaCount] = useState(0);
+  const [aiRulesCount, setAiRulesCount] = useState(0);
+  const [isAlertDismissed, setIsAlertDismissed] = useState(false);
+  const isLoggedIn = !!sessionStorage.getItem("sdoqap_admin_token");
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const fetchCounts = async () => {
+      try {
+        const schemaRes = await fetch("/api/v1/schema/proposals");
+        if (schemaRes.ok) {
+          const schemaData = await schemaRes.json();
+          const pendingSchema = schemaData.proposals ? schemaData.proposals.filter(p => p.status === "PENDING") : [];
+          setSchemaCount(pendingSchema.length);
+        }
+      } catch (e) {
+        console.error("Failed to fetch schema proposals count", e);
+      }
+
+      try {
+        const aiRes = await fetch("/api/v1/rules/ai-proposals");
+        if (aiRes.ok) {
+          const aiData = await aiRes.json();
+          setAiRulesCount(aiData.count || 0);
+        }
+      } catch (e) {
+        console.error("Failed to fetch AI proposals count", e);
+      }
+    };
+
+    fetchCounts();
+    const interval = setInterval(fetchCounts, 10000);
+    return () => clearInterval(interval);
+  }, [isLoggedIn]);
   const location = useLocation();
   const isHome = location.pathname === "/";
   const isLogin = location.pathname === "/login";
@@ -71,6 +105,75 @@ function AppContent({ isSidebarOpen, toggleSidebar }) {
                 <line x1="4" y1="18" x2="20" y2="18" />
               </svg>
             </button>
+          )}
+
+          {/* Global Action Required Alert Banner */}
+          {isLoggedIn && !isAlertDismissed && (schemaCount > 0 || aiRulesCount > 0) && (
+            <div style={{
+              margin: '16px 24px 0 24px',
+              background: 'rgba(239, 68, 68, 0.08)',
+              border: '1px solid rgba(239, 68, 68, 0.25)',
+              borderRadius: '12px',
+              padding: '12px 20px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              boxShadow: '0 4px 20px rgba(239, 68, 68, 0.06)'
+            }}>
+              <span style={{ fontSize: '18px' }}>🚨</span>
+              <div style={{ flex: 1 }}>
+                <span style={{ color: 'var(--text-main, #ffffff)', fontSize: '12.5px', fontWeight: 500 }}>
+                  <strong>Action Required:</strong> There are {schemaCount > 0 ? `${schemaCount} Schema Drift proposal${schemaCount > 1 ? 's' : ''}` : ''} 
+                  {schemaCount > 0 && aiRulesCount > 0 ? ' and ' : ''}
+                  {aiRulesCount > 0 ? `${aiRulesCount} AI Rule proposal${aiRulesCount > 1 ? 's' : ''}` : ''} awaiting your review.
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {schemaCount > 0 && (
+                  <Link to="/schema" style={{
+                    padding: '6px 12px',
+                    fontSize: '11px',
+                    background: '#ef4444',
+                    borderRadius: '6px',
+                    color: '#ffffff',
+                    textDecoration: 'none',
+                    fontWeight: 600
+                  }}>
+                    Review Schema
+                  </Link>
+                )}
+                {aiRulesCount > 0 && (
+                  <Link to="/rules?tab=proposals" style={{
+                    padding: '6px 12px',
+                    fontSize: '11px',
+                    background: 'var(--accent-purple, #6C47FF)',
+                    borderRadius: '6px',
+                    color: '#ffffff',
+                    textDecoration: 'none',
+                    fontWeight: 600
+                  }}>
+                    Review AI Rules
+                  </Link>
+                )}
+                <button
+                  onClick={() => setIsAlertDismissed(true)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--text-muted, #64748B)',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    padding: '4px',
+                    marginLeft: '8px',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
+                  title="Dismiss Alert"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
           )}
           <ErrorBoundary>
             <Routes>

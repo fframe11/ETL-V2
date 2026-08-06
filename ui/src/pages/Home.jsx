@@ -491,64 +491,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Alert Banner for pending tasks */}
-      {(schemaCount > 0 || aiRulesCount > 0) && (
-        <div style={{ padding: '0 48px', margin: '20px 0 0 0' }}>
-          <div style={{
-            background: 'rgba(239, 68, 68, 0.08)',
-            border: '1px solid rgba(239, 68, 68, 0.25)',
-            borderRadius: '12px',
-            padding: '16px 24px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '16px',
-            boxShadow: '0 4px 20px rgba(239, 68, 68, 0.08)'
-          }}>
-            <span style={{ fontSize: '24px' }}>🚨</span>
-            <div style={{ flex: 1 }}>
-              <strong style={{ color: '#ef4444', fontSize: '14px', display: 'block', marginBottom: '2px' }}>
-                Action Required: Pending Governance Decisions
-              </strong>
-              <span style={{ color: 'var(--text-main, #ffffff)', fontSize: '12.5px' }}>
-                There are {schemaCount > 0 ? `${schemaCount} Schema Drift proposal${schemaCount > 1 ? 's' : ''}` : ''} 
-                {schemaCount > 0 && aiRulesCount > 0 ? ' and ' : ''}
-                {aiRulesCount > 0 ? `${aiRulesCount} AI Rule proposal${aiRulesCount > 1 ? 's' : ''}` : ''} awaiting your review.
-              </span>
-            </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              {schemaCount > 0 && (
-                <Link to="/schema" className="gs-btn-primary" style={{
-                  padding: '8px 14px',
-                  fontSize: '12px',
-                  background: '#ef4444',
-                  borderColor: '#ef4444',
-                  borderRadius: '8px',
-                  color: '#ffffff',
-                  textDecoration: 'none',
-                  fontWeight: 600
-                }}>
-                  Review Schema Drifts
-                </Link>
-              )}
-              {aiRulesCount > 0 && (
-                <Link to="/rules?tab=proposals" className="gs-btn-primary" style={{
-                  padding: '8px 14px',
-                  fontSize: '12px',
-                  background: 'var(--accent-purple, #6C47FF)',
-                  borderColor: 'var(--accent-purple, #6C47FF)',
-                  borderRadius: '8px',
-                  color: '#ffffff',
-                  textDecoration: 'none',
-                  fontWeight: 600
-                }}>
-                  Review AI Rules
-                </Link>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Trusted Partners Bar (Real System Stack) */}
       <div className="gs-tech-bar">
         <span className="gs-tech-label">Built on:</span>
