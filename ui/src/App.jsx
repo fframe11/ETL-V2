@@ -65,6 +65,8 @@ function AppContent({ isSidebarOpen, toggleSidebar }) {
   const isHome = location.pathname === "/";
   const isLogin = location.pathname === "/login";
 
+  console.log("AppContent Render:", { schemaCount, aiRulesCount, isLoggedIn, isAlertDismissed, pathname: location.pathname });
+
   if (isLogin) {
     return (
       <ErrorBoundary>
