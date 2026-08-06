@@ -111,7 +111,7 @@ def create_dsl_v2_udf(steps: list, categories: dict, default_fallback: str = "un
             return (default_fallback, 0.0, "fallback", json.dumps(trace_list))
         except Exception as udf_err:
             import traceback
-            with open("C:/DataEngProj/udf_error_v2.log", "a", encoding="utf-8") as f_err:
+            with open("udf_error_v2.log", "a", encoding="utf-8") as f_err:
                 f_err.write(f"ERROR on val={val}: {udf_err}\n")
                 traceback.print_exc(file=f_err)
             raise udf_err

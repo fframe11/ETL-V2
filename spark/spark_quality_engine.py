@@ -724,7 +724,7 @@ def create_semantic_standardize_udf(categories: dict, threshold: float, fallback
             return res
         except Exception as udf_err:
             import traceback
-            with open("C:/DataEngProj/udf_error.log", "a", encoding="utf-8") as f_err:
+            with open("udf_error.log", "a", encoding="utf-8") as f_err:
                 f_err.write(f"ERROR on val={val}: {udf_err}\n")
                 traceback.print_exc(file=f_err)
             raise udf_err
