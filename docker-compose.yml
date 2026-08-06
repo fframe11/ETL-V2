@@ -124,6 +124,7 @@ services:
       - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST:-elasticsearch}
       - ELASTICSEARCH_PORT=${ELASTICSEARCH_PORT:-9200}
       - HADOOP_USER_NAME=spark
+      - N8N_WEBHOOK_URL=http://n8n:5678
     depends_on:
       namenode:
         condition: service_healthy
@@ -169,6 +170,7 @@ services:
       - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST:-elasticsearch}
       - ELASTICSEARCH_PORT=${ELASTICSEARCH_PORT:-9200}
       - HADOOP_USER_NAME=spark
+      - N8N_WEBHOOK_URL=http://n8n:5678
     depends_on:
       spark-master:
         condition: service_healthy
