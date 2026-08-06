@@ -4,6 +4,52 @@ import Tooltip from "../components/Tooltip";
 import ConfirmationModal from "../components/ConfirmationModal";
 import "./RulesConfig.css";
 
+const generateYamlDsl = (rules, tableName) => {
+  if (!rules) return "";
+  let yaml = `version: 1.0\n\nglobal:\n`;
+  const schemaMode = rules.schema_mode || "strict";
+  yaml += `  schema_mode: ${schemaMode}\n`;
+  yaml += `  execution_id: auto\n`;
+  yaml += `  dry_run: false\n\ncolumns:\n`;
+  
+  if (rules.remediation_rules && Array.isArray(rules.remediation_rules)) {
+    rules.remediation_rules.forEach(r => {
+      const col = r.column;
+      if (r.type === "semantic_standardize") {
+        yaml += `  ${col}:\n`;
+        yaml += `    semantic:\n`;
+        yaml += `      enabled: true\n`;
+        yaml += `      threshold: ${r.threshold || 0.85}\n`;
+        yaml += `      model_version: ${r.version || "v1.0"}\n`;
+        yaml += `      low_confidence_policy: ${r.low_confidence_policy || "map_to_fallback"}\n`;
+        yaml += `      semantic_type: ${r.semantic_type || "rule_based"}\n`;
+        yaml += `      fallback: ${r.fallback || "original"}\n`;
+        yaml += `    output:\n`;
+        yaml += `      mode: ${r.output_mode || "enriched"}\n`;
+        yaml += `      enriched_format: ${r.enriched_format || "struct"}\n`;
+        yaml += `      preserve_raw: ${r.preserve_raw !== false}\n`;
+        if (r.lineage_mode) {
+          yaml += `      lineage_mode: ${r.lineage_mode}\n`;
+        }
+        if (r.enabled_lineage_fields && Array.isArray(r.enabled_lineage_fields)) {
+          yaml += `      enabled_lineage_fields: [${r.enabled_lineage_fields.map(f => `"${f}"`).join(", ")}]\n`;
+        }
+      } else if (r.type === "auto_strategy" && r.strategies && r.strategies.includes("clean")) {
+        yaml += `  ${col}:\n`;
+        yaml += `    cleaning:\n`;
+        yaml += `      type: numeric\n`;
+        yaml += `    output:\n`;
+        yaml += `      mode: clean_only\n`;
+      } else if (r.type === "cast") {
+        yaml += `  ${col}:\n`;
+        yaml += `    cleaning:\n`;
+        yaml += `      cast_to: ${r.to}\n`;
+      }
+    });
+  }
+  return yaml;
+};
+
 export default function RulesConfig() {
   const [activeTab, setActiveTab] = useState("tables"); // "tables" or "proposals" or "remediations"
   const [selectedTable, setSelectedTable] = useState("users");
@@ -36,6 +82,15 @@ export default function RulesConfig() {
   };
   
   const [tables, setTables] = useState([]);
+  const [reviewQueue, setReviewQueue] = useState([]);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewPage, setReviewPage] = useState(1);
+  const reviewPageSize = 8;
+  const [overrideModalOpen, setOverrideModalOpen] = useState(false);
+  const [overrideItemId, setOverrideItemId] = useState(null);
+  const [customCategory, setCustomCategory] = useState("");
+  const [editingItemId, setEditingItemId] = useState(null);
+  const [editingValue, setEditingValue] = useState("");
   const [tablesLoading, setTablesLoading] = useState(true);
   const [detailTab, setDetailTab] = useState("edit"); // "edit" or "profile"
 
@@ -115,6 +170,83 @@ export default function RulesConfig() {
     );
   };
 
+  const fetchReviewQueue = async () => {
+    setReviewLoading(true);
+    try {
+      const res = await fetch("/api/v1/standardize/review-queue");
+      if (res.ok) {
+        const data = await res.json();
+        setReviewQueue(data.items || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch standardize review queue:", err);
+    } finally {
+      setReviewLoading(false);
+    }
+  };
+
+  const handleApproveStandardize = (itemId) => {
+    triggerConfirm(
+      "Confirm Category Approval",
+      "Are you sure you want to approve this suggested category standardization? This will update the memory mappings configuration.",
+      async () => {
+        try {
+          const res = await fetch(`/api/v1/standardize/review-queue/${itemId}/approve`, {
+            method: "POST"
+          });
+          if (res.ok) {
+            setActionResult({ success: true, message: "Category mapping approved and updated." });
+            fetchReviewQueue();
+          } else {
+            setActionResult({ success: false, message: "Failed to approve category." });
+          }
+        } catch (err) {
+          setActionResult({ success: false, message: "Error approving category mapping." });
+        }
+      }
+    );
+  };
+
+  const handleRejectStandardize = (itemId) => {
+    triggerConfirm(
+      "Confirm Rejection",
+      "Are you sure you want to reject this item? It will be removed from the review queue and ignored.",
+      async () => {
+        try {
+          const res = await fetch(`/api/v1/standardize/review-queue/${itemId}/reject`, {
+            method: "POST"
+          });
+          if (res.ok) {
+            setActionResult({ success: true, message: "Item rejected and removed from queue." });
+            fetchReviewQueue();
+          } else {
+            setActionResult({ success: false, message: "Failed to reject item." });
+          }
+        } catch (err) {
+          setActionResult({ success: false, message: "Error rejecting item." });
+        }
+      }
+    );
+  };
+
+  const handleOverrideStandardize = async (itemId, categoryVal) => {
+    try {
+      const res = await fetch(`/api/v1/standardize/review-queue/${itemId}/override`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approved_category: categoryVal })
+      });
+      if (res.ok) {
+        setActionResult({ success: true, message: "Category mapping overridden and updated." });
+        fetchReviewQueue();
+      } else {
+        setActionResult({ success: false, message: "Failed to override category." });
+      }
+    } catch (err) {
+      setActionResult({ success: false, message: "Error overriding category mapping." });
+    }
+  };
+
   useEffect(() => {
     fetchSettings();
   }, []);
@@ -122,6 +254,9 @@ export default function RulesConfig() {
   useEffect(() => {
     if (activeTab === "remediations") {
       fetchRemediations();
+    }
+    if (activeTab === "standardize") {
+      fetchReviewQueue();
     }
   }, [activeTab]);
 
@@ -334,6 +469,12 @@ export default function RulesConfig() {
             <span className="gs-badge-count">{remediations.filter(t => t.status === "OPEN").length}</span>
           )}
         </button>
+        <button className={`gs-rules-tab-btn ${activeTab === "standardize" ? "active" : ""}`} onClick={() => { setActiveTab("standardize"); setActionResult(null); }}>
+          Standardization Review
+          {reviewQueue.length > 0 && (
+            <span className="gs-badge-count">{reviewQueue.length}</span>
+          )}
+        </button>
       </div>
 
       {/* 3. Tab Workspace render */}
@@ -369,6 +510,7 @@ export default function RulesConfig() {
                 <h2>Rules Control Workspace: <span>{selectedTable}</span></h2>
                 <div style={{ display: 'flex', gap: '4px' }}>
                   <button className={`gs-btn-outline ${detailTab === "edit" ? "active" : ""}`} onClick={() => setDetailTab("edit")}>Rules Editor</button>
+                  <button className={`gs-btn-outline ${detailTab === "yaml" ? "active" : ""}`} onClick={() => setDetailTab("yaml")}>YAML DSL Export</button>
                   <button className={`gs-btn-outline ${detailTab === "profile" ? "active" : ""}`} onClick={() => setDetailTab("profile")}>Column Profiler</button>
                 </div>
               </div>
@@ -521,6 +663,61 @@ export default function RulesConfig() {
                       {submitting ? "Saving..." : "Save Rule Overrides"}
                     </button>
                   </form>
+                ) : detailTab === "yaml" ? (
+                  /* YAML DSL Export View */
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                      Declarative YAML Specification file for PySpark Ingestion Pipelines. Copy this file into your Spark cluster directory or import it into your code via <code>SemanticCleaner(config='rules.yaml')</code>.
+                    </p>
+                    <textarea
+                      readOnly
+                      value={generateYamlDsl(tableRules, selectedTable)}
+                      style={{
+                        width: '100%',
+                        height: '350px',
+                        background: 'var(--bg-secondary)',
+                        color: 'var(--accent-green)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '6px',
+                        padding: '12px',
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: '11px',
+                        lineHeight: '1.5',
+                        resize: 'none'
+                      }}
+                    />
+                    <div style={{ display: 'flex', gap: '8px', alignSelf: 'flex-end' }}>
+                      <button
+                        type="button"
+                        className="gs-btn-outline"
+                        style={{ padding: '6px 12px', fontSize: '11.5px' }}
+                        onClick={() => {
+                          const yamlText = generateYamlDsl(tableRules, selectedTable);
+                          navigator.clipboard.writeText(yamlText);
+                          setActionResult({ success: true, message: "YAML copied to clipboard!" });
+                        }}
+                      >
+                        Copy YAML
+                      </button>
+                      <button
+                        type="button"
+                        className="gs-btn-save"
+                        style={{ padding: '6px 12px', fontSize: '11.5px' }}
+                        onClick={() => {
+                          const yamlText = generateYamlDsl(tableRules, selectedTable);
+                          const blob = new Blob([yamlText], { type: "text/yaml" });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = `${selectedTable}_rules.yaml`;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                      >
+                        Download DSL Config
+                      </button>
+                    </div>
+                  </div>
                 ) : (
                   /* Profiler Column Metrics */
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -907,6 +1104,156 @@ export default function RulesConfig() {
                   </button>
                   <span className="gs-muted">Page {remediationPage} of {totalPages}</span>
                   <button disabled={remediationPage >= totalPages} onClick={() => setRemediationPage(p => p + 1)}>
+                    Next
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })()}
+
+      {activeTab === "standardize" && (() => {
+        const paginatedQueue = reviewQueue.slice((reviewPage - 1) * 8, reviewPage * 8);
+        const totalPages = Math.ceil(reviewQueue.length / 8) || 1;
+
+        return (
+          <div className="gs-rcard" style={{ marginTop: '20px' }}>
+            <div className="gs-rcard-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div>
+                <h3>Standardization & Auto-Learning Governance</h3>
+                <p style={{ margin: '4px 0 0 0', color: 'var(--text-muted)' }}>Review anomalous and unmapped categories, approve AI suggestions, or apply custom overrides.</p>
+              </div>
+              <button onClick={fetchReviewQueue} disabled={reviewLoading} className="gs-btn-outline">
+                {reviewLoading ? "Refreshing..." : "Refresh Queue"}
+              </button>
+            </div>
+
+            {reviewLoading && reviewQueue.length === 0 ? (
+              <div className="gs-empty">Loading review queue...</div>
+            ) : reviewQueue.length === 0 ? (
+              <div className="gs-empty" style={{ padding: '60px', display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center' }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--accent-green)' }}>
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                  <path d="m9 11 2 2 4-4"/>
+                </svg>
+                <span>All unmapped categories resolved! Standard pipelines are running optimally.</span>
+              </div>
+            ) : (
+              <>
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="gs-governance-table">
+                    <thead>
+                      <tr>
+                        <th>Source Detail</th>
+                        <th>Raw Value</th>
+                        <th>AI Suggestion</th>
+                        <th>Confidence</th>
+                        <th>Frequency</th>
+                        <th>Priority</th>
+                        <th style={{ textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paginatedQueue.map((item) => {
+                        const isEditing = editingItemId === item.id;
+                        return (
+                          <tr key={item.id}>
+                            <td>
+                              <div style={{ fontWeight: 700 }}>{item.table_name}</div>
+                              <div className="gs-muted" style={{ fontSize: '10px' }}>col: <code>{item.column_name}</code></div>
+                            </td>
+                            <td>
+                              <span className="gs-badge" style={{ background: 'rgba(239, 68, 68, 0.08)', color: 'var(--accent-red)' }}>{item.unmapped_value}</span>
+                            </td>
+                            <td>
+                              {isEditing ? (
+                                <input
+                                  type="text"
+                                  className="gs-input"
+                                  style={{ padding: '4px 8px', fontSize: '11px', width: '150px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-main)', borderRadius: '4px' }}
+                                  value={editingValue}
+                                  onChange={(e) => setEditingValue(e.target.value)}
+                                  placeholder="Type category..."
+                                />
+                              ) : (
+                                <strong>{item.suggested_category || "อื่นๆ"}</strong>
+                              )}
+                            </td>
+                            <td>
+                              <span className="gs-mono">{(item.confidence * 100).toFixed(1)}%</span>
+                            </td>
+                            <td>
+                              <strong>{item.frequency}</strong>
+                            </td>
+                            <td>
+                              <span className="gs-mono" style={{ color: item.priority > 50 ? 'var(--accent-red)' : 'var(--text-main)', fontWeight: item.priority > 50 ? 700 : 400 }}>
+                                {item.priority.toFixed(1)}
+                              </span>
+                            </td>
+                            <td style={{ textAlign: 'right' }}>
+                              {isEditing ? (
+                                <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                                  <button
+                                    className="gs-btn-retry"
+                                    style={{ background: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)', color: 'var(--accent-green)', padding: '4px 8px' }}
+                                    onClick={() => {
+                                      handleOverrideStandardize(item.id, editingValue);
+                                      setEditingItemId(null);
+                                    }}
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    className="gs-btn-outline"
+                                    style={{ padding: '4px 8px' }}
+                                    onClick={() => setEditingItemId(null)}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              ) : (
+                                <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                                  <button
+                                    className="gs-btn-retry"
+                                    style={{ background: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)', color: 'var(--accent-green)', padding: '4px 8px' }}
+                                    onClick={() => handleApproveStandardize(item.id)}
+                                  >
+                                    ✓ Approve
+                                  </button>
+                                  <button
+                                    className="gs-btn-outline"
+                                    style={{ padding: '4px 8px' }}
+                                    onClick={() => {
+                                      setEditingItemId(item.id);
+                                      setEditingValue(item.suggested_category || "");
+                                    }}
+                                  >
+                                    ✎ Override
+                                  </button>
+                                  <button
+                                    className="gs-btn-retry"
+                                    style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.3)', color: 'var(--accent-red)', padding: '4px 8px' }}
+                                    onClick={() => handleRejectStandardize(item.id)}
+                                  >
+                                    ✕ Reject
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="gs-pagination">
+                  <button disabled={reviewPage === 1} onClick={() => setReviewPage(p => Math.max(p - 1, 1))}>
+                    Prev
+                  </button>
+                  <span className="gs-muted">Page {reviewPage} of {totalPages}</span>
+                  <button disabled={reviewPage >= totalPages} onClick={() => setReviewPage(p => p + 1)}>
                     Next
                   </button>
                 </div>

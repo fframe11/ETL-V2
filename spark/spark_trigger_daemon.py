@@ -52,7 +52,7 @@ def run_stream_job(subreddits, duration):
         # Start streaming_job.py
         append_log("[SPARK] Starting background Spark streaming job...")
         spark_cmd = [
-            "spark-submit",
+            "/opt/bitnami/spark/bin/spark-submit",
             "--master", "spark://spark-master:7077",
             "/opt/spark-apps/streaming_job.py"
         ]
@@ -202,7 +202,7 @@ class SparkTriggerHandler(BaseHTTPRequestHandler):
 
                 # Re-run Spark quality engine on the remediated data
                 rerun_cmd = [
-                    "spark-submit",
+                    "/opt/bitnami/spark/bin/spark-submit",
                     "--master", "spark://spark-master:7077",
                     "--conf", "spark.executorEnv.HADOOP_USER_NAME=spark",
                     "--conf", "spark.executor.extraJavaOptions=-DHADOOP_USER_NAME=spark",
@@ -276,7 +276,7 @@ class SparkTriggerHandler(BaseHTTPRequestHandler):
 
                 print(f"[DAEMON] Triggering Spark rerun for table: {table_name}")
                 cmd = [
-                    "spark-submit",
+                    "/opt/bitnami/spark/bin/spark-submit",
                     "--master", "spark://spark-master:7077",
                     "--conf", "spark.executorEnv.HADOOP_USER_NAME=spark",
                     "--conf", "spark.executor.extraJavaOptions=-DHADOOP_USER_NAME=spark",

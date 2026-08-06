@@ -94,10 +94,10 @@ def get_spark_session(app_name):
         .appName(app_name)
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
-        .config("spark.executor.memory", "1g")
-        .config("spark.executor.cores", "1")
+        .config("spark.executor.memory", "2g")
+        .config("spark.executor.cores", "2")
         .config("spark.sql.adaptive.enabled", "true")
-        .config("spark.sql.shuffle.partitions", "16")
+        .config("spark.sql.shuffle.partitions", "200")
         .config("spark.dynamicAllocation.enabled", "true")
         .config("spark.dynamicAllocation.minExecutors", "1")
         .config("spark.dynamicAllocation.maxExecutors", "4")
@@ -105,6 +105,8 @@ def get_spark_session(app_name):
         .config("spark.hadoop.fs.hdfs.impl", "org.apache.hadoop.hdfs.DistributedFileSystem")
         .config("spark.hadoop.fs.file.impl", "org.apache.hadoop.fs.LocalFileSystem")
         .config("spark.databricks.delta.schema.autoMerge.enabled", "true")
+        .config("spark.databricks.delta.properties.defaults.autoOptimize.optimizeWrite", "true")
+        .config("spark.databricks.delta.properties.defaults.autoOptimize.autoCompact", "true")
     )
     if "SPARK_HOME" not in os.environ:
         builder = builder.master("local[*]")
@@ -261,6 +263,1084 @@ def _load_standardization_rules(table_name: str) -> dict:
         pass
 
     return {}
+
+# ─── DETERMINISTIC DSL REMEDIATION ENGINE (Layer 3) ─────────────────────────
+LATEST_FALLBACK_METRICS = {}
+
+def create_standardize_udf(categories: dict, fallback: str):
+    from pyspark.sql.types import StringType
+    from pyspark.sql.functions import udf
+
+    norm_categories = {str(k).lower().strip(): str(v) for k, v in categories.items()}
+
+    def standardize_val(val):
+        if val is None:
+            if fallback == "original":
+                return None
+            return fallback
+        
+        val_str = str(val).strip()
+        val_lower = val_str.lower()
+
+        # 1. Memory Mapping: Exact Match
+        if val_lower in norm_categories:
+            return norm_categories[val_lower]
+
+        # 2. Semantic Mapping: Substring/Keyword Check
+        for key, target_val in norm_categories.items():
+            if len(key) >= 3 and key in val_lower:
+                return target_val
+            if len(val_lower) >= 3 and val_lower in key:
+                return target_val
+
+        # 3. Fallback Mapping
+        if fallback == "original":
+            return val_str
+        return fallback
+
+    return udf(standardize_val, StringType())
+
+class LocalSemanticStandardizer:
+    def __init__(self, categories: dict, threshold: float, fallback: str):
+        self.threshold = threshold
+        self.fallback = fallback
+        self.norm_categories = {str(k).lower().strip(): str(v) for k, v in categories.items()}
+        
+        self.first_token_to_keys = {}
+        self.word_token_to_keys = {}
+        for key in self.norm_categories.keys():
+            words = str(key).split()
+            if words:
+                self.first_token_to_keys.setdefault(words[0], set()).add(key)
+                for word in words:
+                    if len(word) >= 2:
+                        self.word_token_to_keys.setdefault(word, set()).add(key)
+
+        self.ngram_to_keys = {}
+        for key in self.norm_categories.keys():
+            for ng in self.get_char_ngrams(key):
+                self.ngram_to_keys.setdefault(ng, set()).add(key)
+
+    def get_char_ngrams(self, s, n=2):
+        s = str(s).lower().strip()
+        return [s[i:i+n] for i in range(len(s)-n+1)]
+
+    def n_gram_cosine_similarity(self, s1, s2):
+        ngrams1 = self.get_char_ngrams(s1)
+        ngrams2 = self.get_char_ngrams(s2)
+        if not ngrams1 or not ngrams2:
+            return 0.0
+        
+        bag1 = {}
+        for ng in ngrams1:
+            bag1[ng] = bag1.get(ng, 0) + 1
+        
+        bag2 = {}
+        for ng in ngrams2:
+            bag2[ng] = bag2.get(ng, 0) + 1
+            
+        all_ngrams = set(bag1.keys()).union(set(bag2.keys()))
+        dot = sum(bag1.get(ng, 0) * bag2.get(ng, 0) for ng in all_ngrams)
+        norm1 = sum(v**2 for v in bag1.values())**0.5
+        norm2 = sum(v**2 for v in bag2.values())**0.5
+        
+        if norm1 == 0 or norm2 == 0:
+            return 0.0
+        return dot / (norm1 * norm2)
+
+    def hybrid_similarity(self, s1, s2):
+        s1_clean = str(s1).lower().strip()
+        s2_clean = str(s2).lower().strip()
+        
+        if s1_clean == s2_clean:
+            return 1.0
+            
+        # 1. Substring component (containment check)
+        sub_score = 0.0
+        if s2_clean in s1_clean or s1_clean in s2_clean:
+            sub_score = 1.0
+            
+        # 2. Token Overlap component
+        overlap = 0.0
+        tokens1 = set(s1_clean.split())
+        tokens2 = set(s2_clean.split())
+        if tokens1 and tokens2:
+            intersection = tokens1.intersection(tokens2)
+            overlap = len(intersection) / min(len(tokens1), len(tokens2))
+            
+        # 3. N-gram Cosine component
+        ngram = self.n_gram_cosine_similarity(s1_clean, s2_clean)
+        
+        # If token overlap is 0 (like in Thai run-together words), fallback to n-gram overlap
+        if overlap == 0.0:
+            ng1 = self.get_char_ngrams(s1_clean)
+            ng2 = self.get_char_ngrams(s2_clean)
+            if ng1 and ng2:
+                overlap = len(set(ng1).intersection(set(ng2))) / min(len(set(ng1)), len(set(ng2)))
+                
+        final_score = (sub_score * 0.4) + (overlap * 0.3) + (ngram * 0.3)
+        if final_score >= 0.95:
+            return 1.0
+            
+        return final_score
+
+    def standardize(self, val):
+        if val is None:
+            if self.fallback == "original":
+                return (None, 0.0)
+            return (self.fallback, 0.0)
+            
+        val_str = str(val).strip()
+        val_lower = val_str.lower()
+        
+        if val_lower in self.norm_categories:
+            return (self.norm_categories[val_lower], 1.0)
+            
+        val_words = val_lower.split()
+        first_token = val_words[0] if val_words else ""
+        
+        candidates = set()
+        
+        if first_token and first_token in self.first_token_to_keys:
+            candidates.update(self.first_token_to_keys[first_token])
+            
+        if len(candidates) < 5:
+            for token in val_words:
+                if len(token) >= 2 and token in self.word_token_to_keys:
+                    candidates.update(self.word_token_to_keys[token])
+                    
+        if not candidates or len(candidates) < 3:
+            val_ngrams = self.get_char_ngrams(val_lower)
+            for ng in val_ngrams:
+                if ng in self.ngram_to_keys:
+                    candidates.update(self.ngram_to_keys[ng])
+                    
+        if not candidates:
+            if self.fallback == "original":
+                return (val_str, 0.0)
+            return (self.fallback, 0.0)
+            
+        best_match = None
+        best_score = -1.0
+        
+        for key in candidates:
+            target_val = self.norm_categories[key]
+            score = self.hybrid_similarity(val_lower, key)
+            if score > best_score:
+                best_score = score
+                best_match = target_val
+                
+        if best_score >= self.threshold:
+            return (best_match, float(best_score))
+            
+        if self.fallback == "original":
+            return (val_str, float(best_score) if best_score > 0 else 0.0)
+        return (self.fallback, float(best_score) if best_score > 0 else 0.0)
+
+def apply_optimized_semantic_standardize(df, col_name, target_col, categories, threshold, fallback, version="v1.0", low_confidence_policy="keep_original", semantic_type="rule_based"):
+    from pyspark.sql import functions as F
+    
+    # 1. Get unique values of the input column, filtering out nulls
+    unique_df = df.select(col_name).distinct().filter(F.col(col_name).isNotNull())
+    
+    # 2. Split unique values into exact matches and fuzzy matches
+    spark = df.sparkSession
+    mapping_data = [(k, v) for k, v in categories.items()]
+    score_col = f"{target_col}_score"
+    method_col = f"{target_col}_method"
+    version_col = f"{target_col}_version"
+    processed_at_col = f"{target_col}_processed_at"
+    semantic_type_col = f"{target_col}_semantic_type"
+    
+    if mapping_data:
+        # Convert categories dictionary to a Spark DataFrame for joining
+        # Lowercase the key for case-insensitive matching
+        mapping_df = spark.createDataFrame(mapping_data, ["raw_key", "mapped_val"])
+        mapping_df = mapping_df.withColumn("raw_key_lower", F.lower(F.trim(F.col("raw_key")))).drop("raw_key")
+        
+        # Left join unique_df with mapping_df
+        unique_df_lower = unique_df.withColumn("raw_val_lower", F.lower(F.trim(F.col(col_name))))
+        joined_unique = unique_df_lower.join(F.broadcast(mapping_df), unique_df_lower.raw_val_lower == mapping_df.raw_key_lower, "left")
+        
+        # Split into exact matches (mapped_val is not null) and fuzzy matches (mapped_val is null)
+        exact_matches = joined_unique.filter(F.col("mapped_val").isNotNull()) \
+                                     .select(
+                                         col_name, 
+                                         F.col("mapped_val").alias(target_col), 
+                                         F.lit(1.0).alias(score_col),
+                                         F.lit("exact").alias(method_col),
+                                         F.lit(version).alias(version_col),
+                                         F.current_timestamp().cast("string").alias(processed_at_col),
+                                         F.lit(semantic_type).alias(semantic_type_col)
+                                     )
+                                     
+        fuzzy_needed = joined_unique.filter(F.col("mapped_val").isNull()).select(col_name)
+    else:
+        exact_matches = None
+        fuzzy_needed = unique_df
+        
+    # 3. Apply UDF ONLY on the fuzzy_needed subset
+    bc_categories = spark.sparkContext.broadcast(categories)
+    semantic_udf = create_semantic_standardize_udf(bc_categories.value, threshold, fallback, version, low_confidence_policy, semantic_type)
+    
+    struct_col = f"{target_col}_struct"
+    
+    # Check if we have records that require fuzzy match
+    fuzzy_count = 0
+    try:
+        # Limit to check non-emptiness without full count overhead
+        fuzzy_count = len(fuzzy_needed.limit(1).collect())
+    except Exception:
+        pass
+        
+    if fuzzy_count > 0:
+        fuzzy_mapped = fuzzy_needed.withColumn(struct_col, semantic_udf(F.col(col_name))) \
+                                   .withColumn(target_col, F.col(f"{struct_col}.value")) \
+                                   .withColumn(score_col, F.col(f"{struct_col}.score")) \
+                                   .withColumn(method_col, F.col(f"{struct_col}.match_method")) \
+                                   .withColumn(version_col, F.col(f"{struct_col}.mapping_version")) \
+                                   .withColumn(processed_at_col, F.col(f"{struct_col}.processed_at")) \
+                                   .withColumn(semantic_type_col, F.col(f"{struct_col}.semantic_type")) \
+                                   .drop(struct_col)
+    else:
+        # Create empty DataFrame with same schema
+        from pyspark.sql.types import StructType, StructField, StringType, DoubleType
+        schema = StructType([
+            StructField(col_name, StringType(), True),
+            StructField(target_col, StringType(), True),
+            StructField(score_col, DoubleType(), True),
+            StructField(method_col, StringType(), True),
+            StructField(version_col, StringType(), True),
+            StructField(processed_at_col, StringType(), True),
+            StructField(semantic_type_col, StringType(), True)
+        ])
+        fuzzy_mapped = spark.createDataFrame([], schema)
+        
+    # 4. Combine exact matches and fuzzy matches
+    if exact_matches:
+        unique_mapped = exact_matches.unionByName(fuzzy_mapped)
+    else:
+        unique_mapped = fuzzy_mapped
+        
+    # 5. Left join the combined unique mapping table back to the main dataframe
+    df_joined = df.join(F.broadcast(unique_mapped), on=col_name, how="left")
+    
+    # Handle null input values or unjoined fallback
+    df_joined = df_joined.withColumn(
+        target_col,
+        F.when(F.col(col_name).isNull(), F.lit(fallback if fallback != "original" else None))
+         .otherwise(F.coalesce(F.col(target_col), F.lit(fallback if fallback != "original" else None)))
+    ).withColumn(
+        score_col,
+        F.when(F.col(col_name).isNull(), F.lit(0.0))
+         .otherwise(F.coalesce(F.col(score_col), F.lit(0.0)))
+    ).withColumn(
+        method_col,
+        F.when(F.col(col_name).isNull(), F.lit("fallback"))
+         .otherwise(F.coalesce(F.col(method_col), F.lit("fallback")))
+    ).withColumn(
+        version_col,
+        F.when(F.col(col_name).isNull(), F.lit(version))
+         .otherwise(F.coalesce(F.col(version_col), F.lit(version)))
+    ).withColumn(
+        processed_at_col,
+        F.when(F.col(col_name).isNull(), F.current_timestamp().cast("string"))
+         .otherwise(F.coalesce(F.col(processed_at_col), F.current_timestamp().cast("string")))
+    ).withColumn(
+        semantic_type_col,
+        F.when(F.col(col_name).isNull(), F.lit(semantic_type))
+         .otherwise(F.coalesce(F.col(semantic_type_col), F.lit(semantic_type)))
+    )
+    return df_joined
+
+def create_semantic_standardize_udf(categories: dict, threshold: float, fallback: str, version: str = "v1.0", low_confidence_policy: str = "map_to_fallback", semantic_type: str = "rule_based"):
+    from pyspark.sql.types import StructType, StructField, StringType, DoubleType
+    from pyspark.sql.functions import udf
+
+    norm_categories = {str(k).lower().strip(): str(v) for k, v in categories.items()}
+    _local_cache = {}
+
+    def get_char_ngrams(s, n=2):
+        s = str(s).lower().strip()
+        return [s[i:i+n] for i in range(len(s)-n+1)]
+
+    def n_gram_cosine_similarity(s1, s2):
+        ngrams1 = get_char_ngrams(s1)
+        ngrams2 = get_char_ngrams(s2)
+        if not ngrams1 or not ngrams2:
+            return 0.0
+        
+        bag1 = {}
+        for ng in ngrams1:
+            bag1[ng] = bag1.get(ng, 0) + 1
+        
+        bag2 = {}
+        for ng in ngrams2:
+            bag2[ng] = bag2.get(ng, 0) + 1
+            
+        all_ngrams = set(bag1.keys()).union(set(bag2.keys()))
+        dot = sum(bag1.get(ng, 0) * bag2.get(ng, 0) for ng in all_ngrams)
+        norm1 = sum(v**2 for v in bag1.values())**0.5
+        norm2 = sum(v**2 for v in bag2.values())**0.5
+        
+        if norm1 == 0 or norm2 == 0:
+            return 0.0
+        return dot / (norm1 * norm2)
+
+    def hybrid_similarity(s1, s2):
+        s1_clean = str(s1).lower().strip()
+        s2_clean = str(s2).lower().strip()
+        
+        if s1_clean == s2_clean:
+            return 1.0
+            
+        # 1. Substring component (containment check)
+        sub_score = 0.0
+        if s2_clean in s1_clean or s1_clean in s2_clean:
+            sub_score = 1.0
+            
+        # 2. Token Overlap component
+        overlap = 0.0
+        tokens1 = set(s1_clean.split())
+        tokens2 = set(s2_clean.split())
+        if tokens1 and tokens2:
+            intersection = tokens1.intersection(tokens2)
+            overlap = len(intersection) / min(len(tokens1), len(tokens2))
+            
+        # 3. N-gram Cosine component
+        ngram = n_gram_cosine_similarity(s1_clean, s2_clean)
+        
+        # If token overlap is 0 (like in Thai run-together words), fallback to n-gram overlap
+        if overlap == 0.0:
+            ng1 = get_char_ngrams(s1_clean)
+            ng2 = get_char_ngrams(s2_clean)
+            if ng1 and ng2:
+                overlap = len(set(ng1).intersection(set(ng2))) / min(len(set(ng1)), len(set(ng2)))
+                
+        final_score = (sub_score * 0.4) + (overlap * 0.3) + (ngram * 0.3)
+        if final_score >= 0.95:
+            return 1.0
+            
+        return final_score
+
+    # 1. Build Token-based Indexes for Multi-Stage Candidate Pruning
+    first_token_to_keys = {}
+    word_token_to_keys = {}
+    for key in norm_categories.keys():
+        words = str(key).split()
+        if words:
+            first_token_to_keys.setdefault(words[0], set()).add(key)
+            for word in words:
+                if len(word) >= 2:
+                    word_token_to_keys.setdefault(word, set()).add(key)
+
+    # 2. Build Inverted Character N-gram Index (typo fallback)
+    ngram_to_keys = {}
+    for key in norm_categories.keys():
+        for ng in get_char_ngrams(key):
+            ngram_to_keys.setdefault(ng, set()).add(key)
+
+    def semantic_standardize_val(val):
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc).isoformat()
+        try:
+            if val is None:
+                if low_confidence_policy == "keep_original":
+                    return (None, 0.0, "fallback", version, ts, semantic_type)
+                elif low_confidence_policy == "null":
+                    return (None, 0.0, "fallback", version, ts, semantic_type)
+                else:
+                    return (fallback if fallback != "original" else None, 0.0, "fallback", version, ts, semantic_type)
+                
+            val_str = str(val).strip()
+            val_lower = val_str.lower()
+            
+            # Check local worker cache
+            if val_lower in _local_cache:
+                return _local_cache[val_lower]
+                
+            if val_lower in norm_categories:
+                res = (norm_categories[val_lower], 1.0, "exact", version, ts, semantic_type)
+                _local_cache[val_lower] = res
+                return res
+                
+            val_words = val_lower.split()
+            first_token = val_words[0] if val_words else ""
+            
+            # Multi-stage Candidate Pruning
+            candidates = set()
+            match_method = "fuzzy_token"
+            
+            # Stage 1: First Token Filter
+            if first_token and first_token in first_token_to_keys:
+                candidates.update(first_token_to_keys[first_token])
+                
+            # Stage 2: Inverted Word Token Index (expand search if candidates < 5)
+            if len(candidates) < 5:
+                match_method = "fuzzy_ngram"
+                for token in val_words:
+                    if len(token) >= 2 and token in word_token_to_keys:
+                        candidates.update(word_token_to_keys[token])
+                        
+            # Stage 3: Character N-gram Index (expand search if candidates < 3, robust to typos)
+            if not candidates or len(candidates) < 3:
+                match_method = "fuzzy_ngram"
+                val_ngrams = get_char_ngrams(val_lower)
+                for ng in val_ngrams:
+                    if ng in ngram_to_keys:
+                        candidates.update(ngram_to_keys[ng])
+                        
+            if not candidates:
+                if low_confidence_policy == "keep_original":
+                    res = (val_str, 0.0, "fallback", version, ts, semantic_type)
+                elif low_confidence_policy == "null":
+                    res = (None, 0.0, "fallback", version, ts, semantic_type)
+                else:
+                    res = (fallback if fallback != "original" else val_str, 0.0, "fallback", version, ts, semantic_type)
+                _local_cache[val_lower] = res
+                return res
+                
+            best_match = None
+            best_score = -1.0
+            
+            for key in candidates:
+                target_val = norm_categories[key]
+                score = hybrid_similarity(val_lower, key)
+                if score > best_score:
+                    best_score = score
+                    best_match = target_val
+                    
+            if best_score >= threshold:
+                res = (best_match, float(best_score), match_method, version, ts, semantic_type)
+            else:
+                if low_confidence_policy == "keep_original":
+                    res = (val_str, float(best_score) if best_score > 0 else 0.0, "fallback", version, ts, semantic_type)
+                elif low_confidence_policy == "null":
+                    res = (None, float(best_score) if best_score > 0 else 0.0, "fallback", version, ts, semantic_type)
+                else:
+                    res = (fallback if fallback != "original" else val_str, float(best_score) if best_score > 0 else 0.0, "fallback", version, ts, semantic_type)
+                
+            _local_cache[val_lower] = res
+            return res
+        except Exception as udf_err:
+            import traceback
+            with open("C:/DataEngProj/udf_error.log", "a", encoding="utf-8") as f_err:
+                f_err.write(f"ERROR on val={val}: {udf_err}\n")
+                traceback.print_exc(file=f_err)
+            raise udf_err
+
+    struct_schema = StructType([
+        StructField("value", StringType(), True),
+        StructField("score", DoubleType(), True),
+        StructField("match_method", StringType(), True),
+        StructField("mapping_version", StringType(), True),
+        StructField("processed_at", StringType(), True),
+        StructField("semantic_type", StringType(), True)
+    ])
+
+    return udf(semantic_standardize_val, struct_schema)
+
+def _update_standardization_memory(table_name: str, col_name: str, raw_val: str, mapped_val: str):
+    """Adds a new category mapping to memory registry (ES + rules_config.json) for the given table/column."""
+    import json
+    import os
+    import requests
+    
+    # 1. Update rules_config.json on disk
+    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rules_config.json")
+    if not os.path.exists(config_path):
+        config_path = "/opt/spark-apps/rules_config.json"
+        if not os.path.exists(config_path):
+            config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rules_config.json")
+            
+    try:
+        config = {}
+        if os.path.exists(config_path):
+            with open(config_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+                
+        table_rules = config.setdefault(table_name, {})
+        remediation_rules = table_rules.setdefault("remediation_rules", [])
+        
+        # Find semantic_standardize or auto_strategy rule for this column
+        target_rule = None
+        for r in remediation_rules:
+            if r.get("column") == col_name and r.get("type") in ("semantic_standardize", "auto_strategy"):
+                target_rule = r
+                break
+                
+        if not target_rule:
+            target_rule = {
+                "column": col_name,
+                "type": "semantic_standardize",
+                "categories": {},
+                "fallback": "อื่นๆ",
+                "threshold": 0.85
+            }
+            remediation_rules.append(target_rule)
+            
+        categories = target_rule.setdefault("categories", {})
+        norm_key = str(raw_val).lower().strip()
+        if norm_key not in categories:
+            categories[norm_key] = mapped_val
+            
+            with open(config_path, "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
+                f.write("\n")
+            print(f"[AUTO-LEARN] Saved new mapping '{norm_key}' -> '{mapped_val}' to rules_config.json")
+            
+            # 2. Update Elasticsearch index sdoqap_rules_registry
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(ELASTICSEARCH_URL)
+                auth = (parsed.username, parsed.password) if parsed.username else None
+                base_url = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+                
+                url_table = f"{base_url}/sdoqap_rules_registry/_doc/{table_name}"
+                requests.post(url_table, auth=auth, json=table_rules, timeout=3)
+                print(f"[AUTO-LEARN] Updated ES registry for table '{table_name}'")
+            except Exception as es_err:
+                print(f"[AUTO-LEARN] Warning: failed to sync memory to ES: {es_err}")
+    except Exception as e:
+        print(f"[AUTO-LEARN] Failed to update standardization memory: {e}")
+
+def _process_standardize_learning(df, col_name, target_col, score_col, fallback, threshold, table_name, rules_dict, categories):
+    global LATEST_FALLBACK_METRICS
+    from datetime import datetime, timezone
+    import requests
+    from pyspark.sql import functions as F
+    
+    # 1. Group by the raw column and count, then collect to driver.
+    # This does NOT execute any UDFs inside Spark, making it 100% stable and fast!
+    try:
+        raw_counts_df = df.groupBy(col_name).count()
+        raw_counts_rows = raw_counts_df.orderBy(F.col("count").desc()).collect()
+    except Exception as count_err:
+        print(f"[AUTO-LEARN] Warning: failed to collect raw counts for standardization learning: {count_err}")
+        return
+        
+    if not raw_counts_rows:
+        return
+
+    # 2. Instantiate LocalSemanticStandardizer
+    local_std = LocalSemanticStandardizer(categories, threshold, fallback)
+    
+    # 3. Calculate metrics and build unmapped/learning suggestions locally
+    total_count = 0
+    fallback_count = 0
+    total_confidence = 0.0
+    low_conf_count = 0
+    
+    unmapped_list = []
+    new_unseen_count = 0
+    
+    mapping_override_rate = 0.0
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(ELASTICSEARCH_URL)
+        auth = (parsed.username, parsed.password) if parsed.username else None
+        base_url = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+        
+        res_reviews = requests.post(f"{base_url}/sdoqap_mapping_reviews/_search", auth=auth, json={
+            "size": 0,
+            "aggs": {
+                "total_reviews": {"value_count": {"field": "is_override"}},
+                "overrides": {"filter": {"term": {"is_override": True}}}
+            }
+        }, timeout=2)
+        if res_reviews.status_code == 200:
+            agg_data = res_reviews.json().get("aggregations", {})
+            total_revs = agg_data.get("total_reviews", {}).get("value") or 0
+            ovrs = agg_data.get("overrides", {}).get("doc_count") or 0
+            if total_revs > 0:
+                mapping_override_rate = (ovrs / total_revs) * 100.0
+    except Exception:
+        pass
+
+    for row in raw_counts_rows:
+        raw_val = row[col_name]
+        freq = int(row["count"])
+        total_count += freq
+        
+        # Local evaluation
+        mapped_val, score = local_std.standardize(raw_val)
+        total_confidence += score * freq
+        
+        if mapped_val == fallback:
+            fallback_count += freq
+            
+        if score < 0.85 or mapped_val == fallback:
+            low_conf_count += freq
+            
+        if not raw_val or not str(raw_val).strip():
+            continue
+            
+        raw_val_str = str(raw_val).strip()
+        if score == 1.0:
+            continue
+            
+        if score > 0.90:
+            _update_standardization_memory(table_name, col_name, raw_val_str, mapped_val)
+            print(f"[AUTO-LEARN] Auto-learned mapping: '{raw_val_str}' -> '{mapped_val}' (confidence={score:.2f})")
+        elif score > 0.60:
+            unmapped_list.append({"term": raw_val_str, "count": freq})
+            new_unseen_count += 1
+            priority = freq * (1.0 - score)
+            try:
+                log_to_elasticsearch("sdoqap_unmapped_terms", {
+                    "table_name": table_name,
+                    "column_name": col_name,
+                    "unmapped_value": raw_val_str,
+                    "suggested_category": mapped_val,
+                    "confidence": score,
+                    "frequency": freq,
+                    "priority": priority,
+                    "status": "PENDING_REVIEW",
+                    "detected_at": datetime.now(timezone.utc).isoformat()
+                })
+            except Exception as e:
+                print(f"[AUTO-LEARN] Failed to log Level 2 unmapped term: {e}")
+        else:
+            unmapped_list.append({"term": raw_val_str, "count": freq})
+            new_unseen_count += 1
+            priority = freq * (1.0 - score)
+            try:
+                log_to_elasticsearch("sdoqap_unmapped_terms", {
+                    "table_name": table_name,
+                    "column_name": col_name,
+                    "unmapped_value": raw_val_str,
+                    "suggested_category": "อื่นๆ",
+                    "confidence": score,
+                    "frequency": freq,
+                    "priority": priority,
+                    "status": "PENDING_REVIEW",
+                    "detected_at": datetime.now(timezone.utc).isoformat()
+                })
+            except Exception as e:
+                print(f"[AUTO-LEARN] Failed to log Level 3 unmapped term: {e}")
+                
+    fallback_rate = (fallback_count / total_count) * 100.0 if total_count > 0 else 0.0
+    match_rate = 100.0 - fallback_rate
+    avg_confidence = (total_confidence / total_count) if total_count > 0 else 0.0
+    concept_drift_rate = (low_conf_count / total_count) * 100.0 if total_count > 0 else 0.0
+    
+    LATEST_FALLBACK_METRICS[target_col] = {
+        "fallback_value": fallback,
+        "fallback_count": fallback_count,
+        "fallback_rate": fallback_rate,
+        "match_rate": match_rate,
+        "avg_confidence": avg_confidence * 100.0,
+        "concept_drift_rate": concept_drift_rate,
+        "mapping_override_rate": mapping_override_rate,
+        "new_unseen_values": new_unseen_count,
+        "unmapped_samples": unmapped_list[:20]
+    }
+    
+    print(f"[DSL ENGINE] Standardized stats for '{target_col}': Match={match_rate:.2f}%, Fallback={fallback_rate:.2f}%, AvgConf={avg_confidence * 100.0:.2f}%, ConceptDrift={concept_drift_rate:.2f}%")
+
+def apply_dsl_remediation_rules(df, rules_dict: dict):
+    """Applies declarative DSL remediation rules natively to PySpark DataFrame.
+    Guarantees 100% deterministic execution and avoids executing arbitrary python code.
+    """
+    global LATEST_FALLBACK_METRICS
+    import re
+    from pyspark.sql import functions as F
+    
+    # Early idempotency check: exit if dataset has already been processed with the same execution_id
+    execution_id = rules_dict.get("execution_id")
+    if execution_id and "_meta" in df.columns:
+        try:
+            first_row = df.select("_meta.execution_id").first()
+            if first_row and first_row[0] == execution_id:
+                print(f"[DSL ENGINE] [IDEMPOTENCY] Skip processing: Dataset already processed with execution_id '{execution_id}'.")
+                return df
+        except Exception as e:
+            print(f"[DSL ENGINE] [IDEMPOTENCY] Non-fatal check error: {e}")
+    
+    remediation_rules = rules_dict.get("remediation_rules", [])
+    if not remediation_rules:
+        return df
+        
+    import uuid
+    schema_mode = rules_dict.get("schema_mode", "strict")
+    execution_id = rules_dict.get("execution_id", str(uuid.uuid4()))
+    processed_cols = []
+    print(f"[DSL ENGINE] Applying {len(remediation_rules)} deterministic remediation rule(s) (schema_mode={schema_mode}, execution_id={execution_id})...")
+    for rule in remediation_rules:
+        col_name = rule.get("column")
+        r_type = rule.get("type")
+        
+        if r_type == "fillna":
+            val = rule.get("value")
+            if col_name in df.columns:
+                df = df.withColumn(col_name, F.coalesce(F.col(col_name), F.lit(val)))
+                print(f"[DSL ENGINE] Applied fillna for column '{col_name}' with value '{val}'")
+                
+        elif r_type == "calculate":
+            expr_str = rule.get("expression")
+            cond_str = rule.get("condition")
+            if not expr_str:
+                continue
+                
+            # Security verification: only allow alphanumeric, spaces, and math operators
+            if not re.match(r'^[\w\s\+\-\*/\(\)]+$', expr_str):
+                print(f"[DSL ENGINE] Security Warning: Skipped invalid calculate expression: {expr_str}")
+                continue
+                
+            if col_name not in df.columns:
+                continue
+                
+            # Apply condition if present
+            if cond_str:
+                if not re.match(r'^[\w\s\+\-\*/\(\)<>=!]+$', cond_str):
+                    print(f"[DSL ENGINE] Security Warning: Skipped invalid condition: {cond_str}")
+                    continue
+                df = df.withColumn(
+                    col_name,
+                    F.when(F.expr(cond_str), F.expr(expr_str)).otherwise(F.col(col_name))
+                )
+                print(f"[DSL ENGINE] Applied conditional calculation for '{col_name}': if '{cond_str}' then '{expr_str}'")
+            else:
+                df = df.withColumn(col_name, F.expr(expr_str))
+                print(f"[DSL ENGINE] Applied calculation for '{col_name}': '{expr_str}'")
+                
+        elif r_type == "cast":
+            to_type = rule.get("to")
+            if col_name in df.columns and to_type in ("int", "integer", "double", "float", "string", "timestamp"):
+                df = df.withColumn(col_name, F.col(col_name).cast(to_type))
+                print(f"[DSL ENGINE] Applied cast for column '{col_name}' to '{to_type}'")
+                
+        elif r_type == "standardize":
+            categories = rule.get("categories")
+            fallback = rule.get("fallback", "original")
+            keep_orig = rule.get("keep_original", True)
+            out_col = rule.get("output_column", col_name)
+            if not categories or not isinstance(categories, dict):
+                print(f"[DSL ENGINE] Skipped invalid standardize rule for '{col_name}': categories must be a dictionary.")
+                continue
+            if col_name in df.columns:
+                target_col = out_col if keep_orig else col_name
+                standardize_udf = create_standardize_udf(categories, fallback)
+                df = df.withColumn(target_col, standardize_udf(F.col(col_name)))
+                print(f"[DSL ENGINE] Applied adaptive standardization mapping for '{col_name}' -> '{target_col}'")
+                
+        elif r_type == "semantic_standardize":
+            categories = rule.get("categories")
+            threshold = float(rule.get("threshold", 0.85))
+            fallback = rule.get("fallback", "original")
+            keep_orig = rule.get("keep_original", True)
+            out_col = rule.get("output_column", f"{col_name}_semantic")
+            if not categories or not isinstance(categories, dict):
+                print(f"[DSL ENGINE] Skipped invalid semantic_standardize rule for '{col_name}': categories must be a dictionary.")
+                continue
+            if col_name in df.columns:
+                target_col = out_col if keep_orig else col_name
+                score_col = f"{target_col}_score"
+                method_col = f"{target_col}_method"
+                version_col = f"{target_col}_version"
+                processed_at_col = f"{target_col}_processed_at"
+                semantic_type_col = f"{target_col}_semantic_type"
+                version = rule.get("version", "v1.0")
+                
+                # Check Idempotency Guarantee
+                overwrite_strategy = rule.get("overwrite_strategy", "skip_if_processed")
+                if overwrite_strategy == "skip_if_processed":
+                    if f"_raw_{col_name}" in df.columns or f"_semantic_{col_name}" in df.columns:
+                        print(f"[DSL ENGINE] Column '{col_name}' already processed in a previous execution. Skipping due to skip_if_processed idempotency policy.")
+                        continue
+                
+                # Extract Lineage Configurations
+                low_confidence_policy = rule.get("low_confidence_policy", "map_to_fallback")
+                semantic_type = rule.get("semantic_type", "rule_based")
+                dry_run = rules_dict.get("dry_run", False)
+                
+                output_mode = rule.get("output_mode", "enriched")  # Default to enriched for semantic rules to avoid data loss
+                if dry_run:
+                    print(f"[DSL ENGINE] [DRY RUN] Overriding output mode to 'full' for column '{col_name}' to prevent data modification.")
+                    output_mode = "full"
+                elif schema_mode == "strict" and output_mode in ("enriched", "full"):
+                    print(f"[SCHEMA GUARD] [WARN] Schema mode is set to 'strict'. Overriding output mode from '{output_mode}' to 'semantic_overwrite' for column '{col_name}' to prevent schema changes. In-place values will be overwritten.")
+                    output_mode = "semantic_overwrite"
+                
+                if output_mode == "clean_only":
+                    # Just trim, lowercase, and handle null fallback in-place (Syntax cleaning only)
+                    df = df.withColumn(
+                        col_name,
+                        F.when(F.col(col_name).isNull(), F.lit(fallback if fallback != "original" else None))
+                         .otherwise(F.lower(F.trim(F.col(col_name))))
+                    )
+                    print(f"[DSL ENGINE] Applied 'clean_only' syntactic cleaning on column '{col_name}' (Semantic mapping bypassed).")
+                else:
+                    # Track processed columns for lineage auditing
+                    processed_cols.append(col_name)
+                    # Apply optimized broadcast exact-match + fuzzy UDF on unique values
+                    df = apply_optimized_semantic_standardize(
+                        df, col_name, target_col, categories, threshold, fallback, version,
+                        low_confidence_policy=low_confidence_policy, semantic_type=semantic_type
+                    )
+                    print(f"[DSL ENGINE] Applied optimized semantic standardization mapping for '{col_name}' -> '{target_col}' with threshold={threshold} (version={version})")
+                    
+                    try:
+                        table_name = rules_dict.get("table_name", "unknown")
+                        _process_standardize_learning(df, col_name, target_col, score_col, fallback, threshold, table_name, rules_dict, categories)
+                    except Exception as fe:
+                        print(f"[DSL ENGINE] Non-fatal error calculating fallback rate: {fe}")
+
+                    if output_mode == "enriched":
+                        # Ensure original column is syntactically cleaned
+                        df = df.withColumn(col_name, F.lower(F.trim(F.col(col_name))))
+                        # Nest semantic fields into namespace-isolated struct or JSON
+                        struct_name = f"_semantic_{col_name}"
+                        struct_expr = F.struct(
+                            F.col(target_col).alias("category"),
+                            F.col(score_col).alias("confidence"),
+                            F.col(method_col).alias("method"),
+                            F.col(version_col).alias("version"),
+                            F.col(processed_at_col).alias("processed_at"),
+                            F.col(semantic_type_col).alias("semantic_type")
+                        )
+                        enriched_format = rule.get("enriched_format", "struct")
+                        if enriched_format == "json":
+                            df = df.withColumn(struct_name, F.to_json(struct_expr))
+                            print(f"[DSL ENGINE] Semantic results nested under namespace '{struct_name}' in JSON format.")
+                        else:
+                            df = df.withColumn(struct_name, struct_expr)
+                            print(f"[DSL ENGINE] Semantic results nested under namespace '{struct_name}' in Struct format.")
+                            
+                        df = df.drop(target_col, score_col, method_col, version_col, processed_at_col, semantic_type_col)
+                    elif output_mode == "semantic_overwrite":
+                        preserve_raw = rule.get("preserve_raw", True)
+                        if preserve_raw:
+                            if schema_mode == "evolve":
+                                df = df.withColumn(f"_raw_{col_name}", F.col(col_name))
+                                print(f"[DSL ENGINE] Backed up raw values of '{col_name}' into '_raw_{col_name}' before overwriting.")
+                            else:
+                                print(f"[SCHEMA GUARD] [WARN] Schema mode is set to 'strict'. Cannot backup raw column to '_raw_{col_name}' because schema alterations are locked. Overwriting in-place without backup.")
+                        
+                        print(f"[DSL WARNING] Output mode 'semantic_overwrite' will replace original values in column '{col_name}'. Data loss warning!")
+                        df = df.withColumn(col_name, F.col(target_col))
+                        df = df.drop(target_col, score_col, method_col, version_col, processed_at_col, semantic_type_col)
+                    elif output_mode == "full":
+                        # Keep original column syntactically cleaned and flat lineage columns
+                        df = df.withColumn(col_name, F.lower(F.trim(F.col(col_name))))
+                        
+                        # Apply lineage field limiting to prevent schema explosion
+                        lineage_mode = rule.get("lineage_mode", "full")
+                        if lineage_mode == "minimal":
+                            enabled_fields = ["category", "confidence"]
+                        else:
+                            enabled_fields = rule.get("enabled_lineage_fields", ["category", "confidence", "method", "version", "processed_at", "semantic_type"])
+                            
+                        if "category" not in enabled_fields:
+                            df = df.drop(target_col)
+                        if "confidence" not in enabled_fields:
+                            df = df.drop(score_col)
+                        if "method" not in enabled_fields:
+                            df = df.drop(method_col)
+                        if "version" not in enabled_fields:
+                            df = df.drop(version_col)
+                        if "processed_at" not in enabled_fields:
+                            df = df.drop(processed_at_col)
+                        if "semantic_type" not in enabled_fields:
+                            df = df.drop(semantic_type_col)
+                    
+        elif r_type == "auto_strategy":
+            strategies = rule.get("strategies", ["clean", "categorize", "semantic_expand"])
+            threshold = float(rule.get("confidence_threshold", 0.80))
+            fallback = rule.get("fallback", "original")
+            keep_orig = rule.get("keep_original", True)
+            out_col = rule.get("output_column", f"{col_name}_semantic")
+            categories = rule.get("categories", {})
+            
+            if col_name in df.columns:
+                print(f"[DSL AUTO-STRATEGY] Starting dynamic data-aware profiling on '{col_name}'...")
+                try:
+                    total_count = df.count()
+                    if total_count == 0:
+                        print(f"[DSL AUTO-STRATEGY] Empty DataFrame. Skipping strategy execution for '{col_name}'")
+                        continue
+                        
+                    distinct_count = df.select(col_name).distinct().count()
+                    dtype = dict(df.dtypes)[col_name]
+                    is_numeric = dtype in ("int", "integer", "double", "float", "long", "short", "decimal")
+                    
+                    avg_len = 0.0
+                    if not is_numeric:
+                        avg_len_row = df.select(F.mean(F.length(F.col(col_name)))).collect()[0][0]
+                        avg_len = float(avg_len_row) if avg_len_row is not None else 0.0
+                        
+                    print(f"[DSL AUTO-STRATEGY] Profile results for '{col_name}': type={dtype}, cardinality={distinct_count}, avg_length={avg_len:.2f}")
+                    
+                    selected_strategy = "preserve_mode"
+                    confidence = 1.0
+                    
+                    if is_numeric and "clean" in strategies:
+                        selected_strategy = "numeric_cleaning"
+                    elif not is_numeric:
+                        if distinct_count < 50 and avg_len < 12 and "categorize" in strategies:
+                            selected_strategy = "categorical_mapping"
+                        elif "semantic_expand" in strategies:
+                            selected_strategy = "semantic_expand"
+                            
+                    print(f"[DSL AUTO-STRATEGY] Selected strategy: '{selected_strategy}' (confidence={confidence})")
+                    
+                    target_col = out_col if keep_orig else col_name
+                    
+                    if selected_strategy == "numeric_cleaning":
+                        df = df.withColumn(target_col, F.coalesce(F.col(col_name).cast("double"), F.lit(0.0)))
+                        print(f"[DSL AUTO-STRATEGY] Applied 'numeric_cleaning' on '{col_name}' -> '{target_col}'")
+                        
+                    elif selected_strategy == "categorical_mapping":
+                        standardize_udf = create_standardize_udf(categories, fallback)
+                        df = df.withColumn(target_col, standardize_udf(F.col(col_name)))
+                        print(f"[DSL AUTO-STRATEGY] Applied 'categorical_mapping' on '{col_name}' -> '{target_col}'")
+                        
+                    elif selected_strategy == "semantic_expand":
+                        score_col = f"{target_col}_score"
+                        version = rule.get("version", "v1.0")
+                        output_mode = rule.get("output_mode", "enriched")  # Default to enriched for semantic rules to avoid data loss
+                        if dry_run:
+                            print(f"[DSL AUTO-STRATEGY] [DRY RUN] Overriding output mode to 'full' for column '{col_name}' to prevent data modification.")
+                            output_mode = "full"
+                        elif schema_mode == "strict" and output_mode in ("enriched", "full"):
+                            print(f"[SCHEMA GUARD] [WARN] Schema mode is set to 'strict'. Overriding output mode from '{output_mode}' to 'semantic_overwrite' for column '{col_name}' to prevent schema changes. In-place values will be overwritten.")
+                            output_mode = "semantic_overwrite"
+                            
+                        method_col = f"{target_col}_method"
+                        version_col = f"{target_col}_version"
+                        processed_at_col = f"{target_col}_processed_at"
+                        semantic_type_col = f"{target_col}_semantic_type"
+
+                        # Extract Lineage Configurations
+                        low_confidence_policy = rule.get("low_confidence_policy", "map_to_fallback")
+                        semantic_type = rule.get("semantic_type", "rule_based")
+
+                        if output_mode == "clean_only":
+                            # Just trim, lowercase, and handle null fallback in-place (Syntax cleaning only)
+                            df = df.withColumn(
+                                col_name,
+                                F.when(F.col(col_name).isNull(), F.lit(fallback if fallback != "original" else None))
+                                 .otherwise(F.lower(F.trim(F.col(col_name))))
+                            )
+                            print(f"[DSL AUTO-STRATEGY] Applied 'clean_only' syntactic cleaning on column '{col_name}' (Semantic mapping bypassed).")
+                        else:
+                            # Apply optimized broadcast exact-match + fuzzy UDF on unique values
+                            df = apply_optimized_semantic_standardize(
+                                df, col_name, target_col, categories, threshold, fallback, version,
+                                low_confidence_policy=low_confidence_policy, semantic_type=semantic_type
+                            )
+                            print(f"[DSL AUTO-STRATEGY] Applied 'semantic_expand' on '{col_name}' -> '{target_col}' (version={version})")
+                            
+                            try:
+                                table_name = rules_dict.get("table_name", "unknown")
+                                _process_standardize_learning(df, col_name, target_col, score_col, fallback, threshold, table_name, rules_dict, categories)
+                            except Exception as fe:
+                                print(f"[DSL AUTO-STRATEGY] Non-fatal error calculating fallback rate: {fe}")
+
+                            if output_mode == "enriched":
+                                # Ensure original column is syntactically cleaned
+                                df = df.withColumn(col_name, F.lower(F.trim(F.col(col_name))))
+                                # Nest semantic fields into namespace-isolated struct or JSON
+                                struct_name = f"_semantic_{col_name}"
+                                struct_expr = F.struct(
+                                    F.col(target_col).alias("category"),
+                                    F.col(score_col).alias("confidence"),
+                                    F.col(method_col).alias("method"),
+                                    F.col(version_col).alias("version"),
+                                    F.col(processed_at_col).alias("processed_at"),
+                                    F.col(semantic_type_col).alias("semantic_type")
+                                )
+                                enriched_format = rule.get("enriched_format", "struct")
+                                if enriched_format == "json":
+                                    df = df.withColumn(struct_name, F.to_json(struct_expr))
+                                    print(f"[DSL AUTO-STRATEGY] Semantic results nested under namespace '{struct_name}' in JSON format.")
+                                else:
+                                    df = df.withColumn(struct_name, struct_expr)
+                                    print(f"[DSL AUTO-STRATEGY] Semantic results nested under namespace '{struct_name}' in Struct format.")
+                                    
+                                df = df.drop(target_col, score_col, method_col, version_col, processed_at_col, semantic_type_col)
+                            elif output_mode == "semantic_overwrite":
+                                print(f"[DSL WARNING] Output mode 'semantic_overwrite' will replace original values in column '{col_name}'. Data loss warning!")
+                                df = df.withColumn(col_name, F.col(target_col))
+                                df = df.drop(target_col, score_col, method_col, version_col, processed_at_col, semantic_type_col)
+                            elif output_mode == "full":
+                                # Keep original column syntactically cleaned and flat lineage columns
+                                df = df.withColumn(col_name, F.lower(F.trim(F.col(col_name))))
+                                
+                                # Apply lineage field limiting to prevent schema explosion
+                                lineage_mode = rule.get("lineage_mode", "full")
+                                if lineage_mode == "minimal":
+                                    enabled_fields = ["category", "confidence"]
+                                else:
+                                    enabled_fields = rule.get("enabled_lineage_fields", ["category", "confidence", "method", "version", "processed_at", "semantic_type"])
+                                    
+                                if "category" not in enabled_fields:
+                                    df = df.drop(target_col)
+                                if "confidence" not in enabled_fields:
+                                    df = df.drop(score_col)
+                                if "method" not in enabled_fields:
+                                    df = df.drop(method_col)
+                                if "version" not in enabled_fields:
+                                    df = df.drop(version_col)
+                                if "processed_at" not in enabled_fields:
+                                    df = df.drop(processed_at_col)
+                                if "semantic_type" not in enabled_fields:
+                                    df = df.drop(semantic_type_col)
+                            
+                    else:
+                        print(f"[DSL AUTO-STRATEGY] Applied 'preserve_mode' (Do Nothing) on '{col_name}'")
+                        
+                except Exception as prof_err:
+                    print(f"[DSL AUTO-STRATEGY] Profiler execution failed: {prof_err}. Defaulting to preserve_mode.")
+                
+        elif r_type == "filter":
+            cond_str = rule.get("condition")
+            if cond_str:
+                if not re.match(r'^[\w\s\+\-\*/\(\)<>=!]+$', cond_str):
+                    print(f"[DSL ENGINE] Security Warning: Skipped invalid filter condition: {cond_str}")
+                    continue
+                df = df.filter(F.expr(cond_str))
+                print(f"[DSL ENGINE] Applied filter condition: '{cond_str}'")
+                
+    # Append global metadata struct column if schema_mode is evolve to support data contract verification
+    if schema_mode == "evolve":
+        fallback_cols = []
+        for rule in remediation_rules:
+            if rule.get("type") in ("standardize", "semantic_standardize", "auto_strategy"):
+                fallback_cols.append(rule.get("column"))
+                
+        if fallback_cols:
+            fb_arr = F.array([F.lit(c) for c in fallback_cols])
+        else:
+            fb_arr = F.lit(None).cast("array<string>")
+            
+        if processed_cols:
+            pc_arr = F.array([F.lit(c) for c in processed_cols])
+        else:
+            pc_arr = F.lit(None).cast("array<string>")
+            
+        # Get semantic version from the first semantic standardization rule if available
+        semantic_version = "v1.0"
+        for rule in remediation_rules:
+            if rule.get("type") in ("semantic_standardize", "auto_strategy") and "version" in rule:
+                semantic_version = rule["version"]
+                break
+
+        df = df.withColumn(
+            "_meta",
+            F.struct(
+                F.lit(schema_mode).alias("schema_mode"),
+                F.lit(True).alias("contract_enforced"),
+                fb_arr.alias("fallback_columns"),
+                pc_arr.alias("processed_columns"),
+                F.lit(semantic_version).alias("semantic_version"),
+                F.lit(execution_id).alias("execution_id")
+            )
+        )
+        print(f"[DSL ENGINE] Appended contract metadata layer to '_meta' column (schema_mode=evolve, execution_id={execution_id}).")
+
+    return df
+
 
 # ─── FIX 3B: Database-Backed Schema Registry via Elasticsearch ───────────────
 def load_expected_schema(table_name: str) -> dict:
@@ -625,8 +1705,8 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
     else:
         spark.conf.set("spark.sql.shuffle.partitions", "10")
 
-    # ─── DYNAMIC RULES ENGINE: Load and adapt per-table validation rules ─────
     rules = load_rules_config(table_name)
+    rules["table_name"] = table_name
     
     # Try to apply dynamic adaptive rules (Layer 2: Statistical Engine)
     # Falls back gracefully to base values if dynamic_rules_engine is unavailable
@@ -668,7 +1748,31 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
     try:
         # Load raw data from HDFS as strings to avoid inference issues (Bug 6)
         print(f"Reading raw CSV data from {raw_path}")
-        df = spark.read.option("header", "true").csv(raw_path)
+        df = spark.read.option("header", "true").option("multiLine", "true").option("escape", "\"").option("quote", "\"").csv(raw_path)
+
+        # ─── GUARD: CSV Ingestion Safety Check (Goal 3) ───
+        is_csv_input = "csv" in raw_path.lower()
+        if is_csv_input:
+            string_cols = [c for c, t in df.dtypes if t == "string"]
+            if string_cols:
+                try:
+                    sample_df = df.limit(100)
+                    avg_lens = sample_df.select([F.mean(F.length(c)).alias(c) for c in string_cols]).first()
+                    if avg_lens:
+                        max_avg_len = max([float(avg_lens[c]) if avg_lens[c] is not None else 0.0 for c in string_cols])
+                        if max_avg_len > 150.0:
+                            print(f"[INGESTION-GUARD] WARNING: Detected long text column(s) (avg length={max_avg_len:.1f} chars) in CSV format!")
+                            ingestion_policy = rules.get("ingestion_guard", {})
+                            strict_guard = ingestion_policy.get("strict_csv_guard", False)
+                            if strict_guard:
+                                raise ValueError(
+                                    f"Data Contract Violation: Ingestion of CSV files with long text columns (avg length > 150) is blocked in production. "
+                                    f"Please convert to JSON Lines (.jsonl) or Parquet format to prevent row misalignment and corruption."
+                                )
+                except Exception as check_err:
+                    if isinstance(check_err, ValueError):
+                        raise check_err
+                    print(f"[INGESTION-GUARD] Non-fatal check error: {check_err}")
 
         # ─── GUARD: Empty file protection ─────────────────────────
         if len(df.columns) == 0 or df.head(1) is None or len(df.head(1)) == 0:
@@ -681,8 +1785,8 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
             if col_name != cleaned_col:
                 df = df.withColumnRenamed(col_name, cleaned_col)
 
-        # Dynamically add row_hash if it is in schema_spec (Dynamic single primary key hashing for Big Data scaling)
-        if "row_hash" in schema_spec:
+        # Dynamically add row_hash if it is in schema_spec or if it is the primary key (Dynamic single primary key hashing for Big Data scaling)
+        if "row_hash" in schema_spec or primary_key == "row_hash":
             exclude_cols = {"run_id", "rejected_at", "reject_reason", "is_invalid", "row_hash"}
             hash_cols = sorted([c for c in df.columns if c not in exclude_cols])
             concat_exprs = []
@@ -839,9 +1943,26 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
             "timestamp": datetime.now(timezone.utc).isoformat()
         })
 
-        # FIX 2B: Self-Healing Schema Evolution Gate
+        # FIX 2B: Self-Healing Schema Evolution Gate with Governance Policy
         is_safe_drift = all(details["error"] == "new_column" for details in drift_details.values())
-        if is_safe_drift:
+        
+        # Load schema evolution governance configurations
+        se_config = rules.get("schema_evolution", {})
+        policy_allow_new = se_config.get("allow_new_columns", True)
+        policy_max_cols = se_config.get("max_columns", 50)
+        policy_req_approval = se_config.get("require_approval", True)
+        
+        num_proposed_cols = len(actual_columns)
+        
+        # Auto approve only if safe drift, new columns allowed, no manual approval required, and columns under limit
+        can_auto_approve = (
+            is_safe_drift and 
+            policy_allow_new and 
+            (not policy_req_approval) and 
+            (num_proposed_cols <= policy_max_cols)
+        )
+        
+        if can_auto_approve:
             print(f"[SELF-HEALING] Safe schema drift detected (only new columns). Automatically evolving schema...")
             auto_evolve_schema_registry(table_name, actual_columns)
             log_to_elasticsearch("sdoqap_schema_proposals", {
@@ -858,7 +1979,18 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
             })
             print(f"[SELF-HEALING] Auto-evolved schema proposal logged as APPROVED.")
         else:
-            # Dangerous drift (missing columns, type mismatches) requires manual Data Engineer approval
+            # Requires Data Engineer manual approval or rejected due to policies
+            status = "PENDING"
+            reason = "Awaiting manual approval"
+            if not policy_allow_new and is_safe_drift:
+                status = "REJECTED"
+                reason = "Blocked by governance policy: allow_new_columns is set to false"
+            elif num_proposed_cols > policy_max_cols:
+                status = "REJECTED"
+                reason = f"Blocked by governance policy: proposed column count ({num_proposed_cols}) exceeds limit ({policy_max_cols})"
+            elif not is_safe_drift:
+                reason = "Contains dangerous changes (missing columns or type mismatches)"
+                
             log_to_elasticsearch("sdoqap_schema_proposals", {
                 "run_id": run_id,
                 "table_name": table_name,
@@ -866,17 +1998,19 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
                 "proposed_schema": actual_columns,
                 "drift_details": drift_details,
                 "drift_severity": total_drift_severity,
-                "status": "PENDING",
+                "status": status,
+                "rejection_reason": reason if status == "REJECTED" else None,
                 "proposed_at": datetime.now(timezone.utc).isoformat(),
                 "proposed_by": f"spark_engine/{run_id}"
             })
-            print(f"[APPROVAL GATE] Schema drift proposal written as PENDING. Awaiting Data Engineer approval.")
+            print(f"[APPROVAL GATE] Schema drift proposal written as {status}. Reason: {reason}")
             print(f"[APPROVAL GATE] schema_registry.json NOT modified. Review at /api/v1/schema/proposals")
-
+            
+            # Send alert
             send_n8n_alert(
-                title=f"⚠️ Schema Change PENDING Approval: {table_name}",
-                message=f"Run ID: {run_id}\nChanges: {json.dumps(drift_details)}\nSeverity: {total_drift_severity}\nAction Required: Review at /api/v1/schema/proposals",
-                severity="warning"
+                title=f"⚠️ Schema Change {status}: {table_name}",
+                message=f"Run ID: {run_id}\nChanges: {json.dumps(drift_details)}\nStatus: {status}\nReason: {reason}",
+                severity="critical" if status == "REJECTED" else "warning"
             )
 
     # 2. AUTO-CLEANSING & HEALING (Self-Healing Data Pipeline - Correct Enterprise Logic)
@@ -887,6 +2021,9 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
     
     if auto_clean:
         print("[AUTO-CLEAN] Starting self-healing preprocessing...")
+        # Apply deterministic DSL remediation rules (L3 Rule Engine)
+        df = apply_dsl_remediation_rules(df, rules)
+        
         # 2.1 Safe Deduplication (Resolve duplicates on valid PKs)
         pk_cols = [primary_key] if isinstance(primary_key, str) else primary_key
         
@@ -1212,9 +2349,19 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
 
     print("Writing validated datasets to HDFS using Delta Lake...")
 
-    # ─── Column Filtering: Only keep columns defined in schema_spec ─────────────
     if schema_spec:
         allowed_cols = list(schema_spec.keys())
+        if primary_key == "row_hash" and "row_hash" not in allowed_cols:
+            allowed_cols.append("row_hash")
+        for rule in rules.get("remediation_rules", []):
+            if rule.get("type") in ("standardize", "semantic_standardize", "auto_strategy"):
+                keep_orig = rule.get("keep_original", True)
+                if keep_orig:
+                    c_name = rule.get("column")
+                    out_col = rule.get("output_column", f"{c_name}_semantic" if rule.get("type") in ("semantic_standardize", "auto_strategy") else c_name)
+                    if out_col not in allowed_cols:
+                        allowed_cols.append(out_col)
+                        
         extra_cols = [c for c in clean_df.columns if c not in allowed_cols]
         if extra_cols:
             print(f"[COLUMN FILTER] Stripping {len(extra_cols)} extra columns not in schema: {extra_cols}")
@@ -1251,6 +2398,16 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
             .format("delta") \
             .mode("overwrite") \
             .save(active_path)
+    # ─── Delta Maintenance (Optimize & Vacuum for scale-ready Day-2 Operations) ───
+    try:
+        print("[DELTA MAINTENANCE] Running OPTIMIZE and ZORDER BY (row_hash)...")
+        spark.sql(f"OPTIMIZE delta.`{active_path}` ZORDER BY (row_hash)")
+        
+        print("[DELTA MAINTENANCE] Running VACUUM (RETAIN 168 HOURS)...")
+        spark.sql(f"VACUUM delta.`{active_path}` RETAIN 168 HOURS")
+        print("[DELTA MAINTENANCE] Delta Table optimized and vacuumed successfully.")
+    except Exception as maint_err:
+        print(f"[DELTA MAINTENANCE] Non-fatal maintenance error: {maint_err}")
 
     # Quarantined data written with run_id partition for traceability
     all_quarantined_write.write.format("delta").mode("append").partitionBy("run_id").save(quarantine_path)
@@ -1260,7 +2417,7 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
     all_quarantined_write.unpersist()
 
     # Class Balance / Data Distribution calculation
-    class_balance = {}
+    class_balance = []
     group_col = None
     if clean_count > 0:
         try:
@@ -1292,14 +2449,16 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
 
             if group_col:
                 balance_df = clean_run_df.groupBy(group_col).count().collect()
-                class_balance = {}
-                for row in balance_df:
+                # Sort descending by count and take top 25 to avoid large payload and prevent mapping explosion
+                sorted_balance = sorted(balance_df, key=lambda x: x['count'] if x['count'] is not None else 0, reverse=True)[:25]
+                class_balance = []
+                for row in sorted_balance:
                     val = row[group_col]
                     key_str = str(val) if val is not None else "NULL"
                     if not key_str.strip():
                         key_str = "SPACES"
                     key_str = key_str.replace(".", "_")
-                    class_balance[key_str] = row["count"]
+                    class_balance.append({"key": key_str, "value": int(row["count"])})
                 print(f"Data Distribution for {table_name} grouped by '{group_col}': {class_balance}")
         except Exception as e:
             print(f"Error computing data distribution: {e}")
@@ -1644,6 +2803,12 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
     if value_range_profile:
         quality_run_doc["value_range_profile"] = value_range_profile
 
+    # Inject tracked fallback rate metrics
+    global LATEST_FALLBACK_METRICS
+    if LATEST_FALLBACK_METRICS:
+        quality_run_doc["fallback_metrics"] = dict(LATEST_FALLBACK_METRICS)
+        LATEST_FALLBACK_METRICS = {}
+
     log_to_elasticsearch("sdoqap_quality_runs", quality_run_doc)
 
     log_to_elasticsearch("sdoqap_lineage_runs", {
@@ -1689,8 +2854,11 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
         fs = FileSystem.get(URI(HDFS_URL), conf)
         raw_dir_path = Path(f"/data/raw/{cleanup_target}")
         if fs.exists(raw_dir_path):
-            print(f"[CLEANUP] Deleting raw HDFS source folder after successful quality check: {raw_dir_path}")
-            fs.delete(raw_dir_path, True)
+            if quarantine_count == 0:
+                print(f"[CLEANUP] Deleting raw HDFS source folder after successful quality check with 0 quarantine records: {raw_dir_path}")
+                fs.delete(raw_dir_path, True)
+            else:
+                print(f"[CLEANUP] Retaining raw HDFS source folder since {quarantine_count} record(s) are quarantined for auto-remediation: {raw_dir_path}")
     except Exception as cleanup_err:
         print(f"[CLEANUP] Warning: Failed to delete raw HDFS source folder: {cleanup_err}")
 
@@ -1728,7 +2896,7 @@ if __name__ == "__main__":
         raw_path = f"hdfs://namenode:9000/data/raw/{target_table}"
         try:
             # 1. Read raw strings to preserve exact values
-            df_raw = temp_spark.read.option("header", "true").csv(raw_path)
+            df_raw = temp_spark.read.option("header", "true").option("multiLine", "true").option("escape", "\"").option("quote", "\"").csv(raw_path)
 
             # ─── GUARD: Empty file protection in schema inference ───
             if len(df_raw.columns) == 0 or df_raw.head(1) is None or len(df_raw.head(1)) == 0:
@@ -1742,7 +2910,7 @@ if __name__ == "__main__":
                     df_raw = df_raw.withColumnRenamed(col_name, cleaned_col)
 
             # 2. Read with inferSchema to get Spark's baseline guesses
-            df_infer = temp_spark.read.option("header", "true").option("inferSchema", "true").csv(raw_path)
+            df_infer = temp_spark.read.option("header", "true").option("inferSchema", "true").option("multiLine", "true").option("escape", "\"").option("quote", "\"").csv(raw_path)
             for col_name in df_infer.columns:
                 cleaned_col = clean_column_name(col_name)
                 if col_name != cleaned_col:

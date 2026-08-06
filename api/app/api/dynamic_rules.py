@@ -122,6 +122,27 @@ def _save_rules_config(config: dict) -> None:
                 time.sleep(0.1)
                 
         try:
+            # Create a versioned backup before writing
+            if os.path.exists(path):
+                try:
+                    import shutil
+                    import glob
+                    backup_dir = os.path.join(os.path.dirname(path), "backups")
+                    os.makedirs(backup_dir, exist_ok=True)
+                    timestamp = int(time.time())
+                    shutil.copy(path, os.path.join(backup_dir, f"rules_config_{timestamp}.json"))
+                    
+                    # Keep only latest 10 versions in backups folder
+                    backups = sorted(glob.glob(os.path.join(backup_dir, "rules_config_*.json")))
+                    if len(backups) > 10:
+                        for b in backups[:-10]:
+                            try:
+                                os.remove(b)
+                            except Exception:
+                                pass
+                except Exception as backup_err:
+                    logger.warning("Failed to create versioned rules backup: %s", backup_err)
+
             with open(path, "w", encoding="utf-8") as fh:
                 json.dump(config, fh, indent=2, ensure_ascii=False)
                 fh.write("\n")

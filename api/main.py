@@ -24,6 +24,7 @@ from app.api.quality import router as quality_router
 from app.api.schema import router as schema_router  # Fix 2B: Schema Governance API
 from app.api.data_export import router as data_export_router
 from app.api.dynamic_rules import router as dynamic_rules_router
+from app.api.standardize import router as standardize_router
 
 app = FastAPI(
     title="SDOQAP Serving API",
@@ -80,6 +81,7 @@ app.include_router(quality_router)
 app.include_router(schema_router)  # Fix 2B: Schema Governance API
 app.include_router(data_export_router)
 app.include_router(dynamic_rules_router)
+app.include_router(standardize_router)
 
 def get_elasticsearch_url():
     # Prefer full URL if provided via environment

@@ -489,6 +489,7 @@ export default function Dashboard() {
                 <button className={`gs-btn-outline ${leftTab === 'Ratio' ? 'active' : ''}`} onClick={() => setLeftTab('Ratio')}>Ratio</button>
                 <button className={`gs-btn-outline ${leftTab === 'Quarantine' ? 'active' : ''}`} onClick={() => setLeftTab('Quarantine')}>Quarantine</button>
                 <button className={`gs-btn-outline ${leftTab === 'Insights' ? 'active' : ''}`} onClick={() => setLeftTab('Insights')}>Insights</button>
+                <button className={`gs-btn-outline ${leftTab === 'Standardize' ? 'active' : ''}`} onClick={() => setLeftTab('Standardize')}>Standardization</button>
               </div>
             </div>
 
@@ -554,6 +555,38 @@ export default function Dashboard() {
                           Detected {selectedRun.quarantined_records.toLocaleString()} anomalous rows.
                           Auto-routed to <code>/data/quarantine/{selectedRun.table_name}</code> on HDFS to protect downstream systems.
                         </div>
+                      )}
+                    </div>
+                  )}
+
+                  {leftTab === 'Standardize' && (
+                    <div style={{ maxHeight: '150px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px', width: '100%' }}>
+                      {selectedRun.fallback_metrics && Object.keys(selectedRun.fallback_metrics).length > 0 ? (
+                        Object.entries(selectedRun.fallback_metrics).map(([col, met]) => (
+                          <div key={col} style={{ fontSize: '11px', border: '1px solid var(--border-color)', padding: '6px', borderRadius: '6px', background: 'var(--bg-secondary)' }}>
+                            <div style={{ fontWeight: 700, color: 'var(--accent-purple)', marginBottom: '4px' }}>col: {col}</div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginBottom: '4px' }}>
+                              <div>Match Rate: <strong>{met.match_rate ? met.match_rate.toFixed(1) : '0.0'}%</strong></div>
+                              <div>Fallback Rate: <strong>{met.fallback_rate ? met.fallback_rate.toFixed(1) : '0.0'}%</strong></div>
+                              <div>Avg Conf: <strong>{met.avg_confidence ? met.avg_confidence.toFixed(1) : '0.0'}%</strong></div>
+                              <div>Drift Rate: <strong>{met.concept_drift_rate ? met.concept_drift_rate.toFixed(1) : '0.0'}%</strong></div>
+                            </div>
+                            {met.unmapped_samples && met.unmapped_samples.length > 0 && (
+                              <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                                <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '4px', marginTop: '4px', fontWeight: 600 }}>Unmapped values:</div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '2px' }}>
+                                  {met.unmapped_samples.map((s, idx) => (
+                                    <span key={idx} className="gs-badge" style={{ background: 'rgba(239, 68, 68, 0.06)', color: 'var(--accent-red)', fontSize: '9px', padding: '2px 4px' }}>
+                                      {s.term} ({s.count})
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="gs-empty">No active standardization metrics for this run.</div>
                       )}
                     </div>
                   )}

@@ -133,6 +133,7 @@ services:
     ports:
       - "8081:8080" # Spark Web UI (map to 8081 to avoid conflict)
       - "7077:7077"
+      - "8099:8099" # Spark Trigger Daemon
     healthcheck:
       test: ["CMD", "bash", "-c", "ps aux | grep -v grep | grep -q org.apache.spark.deploy.master.Master || exit 1"]
       interval: 10s
@@ -144,7 +145,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 3G
     networks:
       - sdoqap_network
 
@@ -160,8 +161,8 @@ services:
     environment:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
-      - SPARK_WORKER_MEMORY=1G
-      - SPARK_WORKER_CORES=1
+      - SPARK_WORKER_MEMORY=3G
+      - SPARK_WORKER_CORES=2
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
       - ELASTICSEARCH_USER=${ELASTICSEARCH_USER:-elastic}
       - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:-sdoqap_secure}
@@ -178,7 +179,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1.5G
+          memory: 3.5G
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8081"]
       interval: 30s

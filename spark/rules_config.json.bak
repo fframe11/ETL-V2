@@ -514,7 +514,14 @@
       "model": "llama-3.3-70b-versatile",
       "max_rows_to_analyze": 50,
       "confidence_threshold": 0.7
-    }
+    },
+    "remediation_rules": [
+      {
+        "column": "\u0e22\u0e2d\u0e14\u0e02\u0e32\u0e22\u0e23\u0e27\u0e21",
+        "type": "fillna",
+        "value": null
+      }
+    ]
   },
   "grocery_raw_sales_data": {
     "null_primary_key": {
