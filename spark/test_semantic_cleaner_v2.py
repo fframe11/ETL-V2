@@ -112,19 +112,27 @@ columns:
         # Assertions
         assert "น้ำอัดลม" in rows[0]["_semantic_text_input"]
         assert "exact" in rows[0]["_semantic_text_input"]
-        print(f"Row 1 Assertion Passed: exact match -> {rows[0]['_semantic_text_input']}")
+        assert "exact_match" in rows[0]["_semantic_text_input"]
+        assert "HIT" in rows[0]["_semantic_text_input"]
+        print(f"Row 1 Assertion Passed: exact match & trace -> {rows[0]['_semantic_text_input']}")
         
         assert "น้ำดื่ม" in rows[1]["_semantic_text_input"]
         assert "fuzzy" in rows[1]["_semantic_text_input"]
-        print(f"Row 2 Assertion Passed: fuzzy match -> {rows[1]['_semantic_text_input']}")
+        assert "exact_match" in rows[1]["_semantic_text_input"]
+        assert "MISS" in rows[1]["_semantic_text_input"]
+        assert "fuzzy_match" in rows[1]["_semantic_text_input"]
+        print(f"Row 2 Assertion Passed: fuzzy match & trace -> {rows[1]['_semantic_text_input']}")
         
         assert "Introverted Intuitive Thinking Judging" in rows[2]["_semantic_text_input"]
         assert "ml_model" in rows[2]["_semantic_text_input"]
-        print(f"Row 3 Assertion Passed: ML model match -> {rows[2]['_semantic_text_input']}")
+        assert "exact_match" in rows[2]["_semantic_text_input"]
+        assert "ml_model" in rows[2]["_semantic_text_input"]
+        print(f"Row 3 Assertion Passed: ML model match & trace -> {rows[2]['_semantic_text_input']}")
         
         assert "unknown_fallback" in rows[3]["_semantic_text_input"]
         assert "fallback" in rows[3]["_semantic_text_input"]
-        print(f"Row 4 Assertion Passed: fallback default -> {rows[3]['_semantic_text_input']}")
+        assert "fallback" in rows[3]["_semantic_text_input"]
+        print(f"Row 4 Assertion Passed: fallback default & trace -> {rows[3]['_semantic_text_input']}")
         
         print("\n=== Declarative DSL v2.0 Graph Execution Test PASSED SUCCESSFULLY ===")
         
