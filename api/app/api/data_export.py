@@ -299,6 +299,87 @@ def list_export_tables():
     }
 
 
+@router.delete("/tables/{table_name}")
+def delete_table(table_name: str):
+    """Delete a table across HDFS layers, ES metadata indices, and local configs."""
+    es = get_es()
+    
+    # 1. Delete from HDFS
+    layers = ["/data/raw", "/data/active", "/data/quarantine"]
+    deleted_layers = []
+    for layer in layers:
+        hdfs_path = f"{layer}/{table_name}"
+        webhdfs_url = f"http://namenode:9870/webhdfs/v1{hdfs_path}?op=DELETE&recursive=true&user.name=spark"
+        try:
+            r = requests.delete(webhdfs_url, timeout=10)
+            if r.status_code == 200:
+                deleted_layers.append(layer.split("/")[-1])
+        except Exception as e:
+            print(f"[DELETE TABLE] Failed to delete HDFS path {hdfs_path}: {e}")
+            
+    # 2. Delete Elasticsearch entries
+    indices_to_clean = {
+        "sdoqap_quality_runs": "table_name.keyword",
+        "sdoqap_pipeline_runs": "table_name.keyword",
+        "sdoqap_schema_drifts": "table_name.keyword",
+        "sdoqap_schema_proposals": "table_name.keyword",
+        "sdoqap_ai_rule_proposals": "table_name.keyword",
+        "sdoqap_unmapped_terms": "table_name.keyword",
+        "sdoqap_upstream_remediations": "table_name.keyword"
+    }
+    
+    for idx, field in indices_to_clean.items():
+        try:
+            if es.indices.exists(index=idx):
+                es.delete_by_query(
+                    index=idx,
+                    body={"query": {"term": {field: table_name}}},
+                    refresh=True
+                )
+        except Exception as e:
+            print(f"[DELETE TABLE] Failed to delete from ES index {idx}: {e}")
+            
+    # Delete from sdoqap_rules_registry and sdoqap_schema_registry
+    for idx in ["sdoqap_rules_registry", "sdoqap_schema_registry"]:
+        try:
+            if es.indices.exists(index=idx) and es.exists(index=idx, id=table_name):
+                es.delete(index=idx, id=table_name, refresh=True)
+        except Exception as e:
+            print(f"[DELETE TABLE] Failed to delete document from {idx}: {e}")
+            
+    # 3. Delete from local rules_config.json
+    try:
+        from .dynamic_rules import _resolve_rules_path, _load_rules_config, _save_rules_config
+        rules_path = _resolve_rules_path()
+        if os.path.exists(rules_path):
+            config = _load_rules_config()
+            if table_name in config:
+                del config[table_name]
+                _save_rules_config(config)
+    except Exception as e:
+        print(f"[DELETE TABLE] Failed to remove table from rules_config.json: {e}")
+        
+    # 4. Delete from local schema_registry.json
+    try:
+        from .schema import SCHEMA_REGISTRY_PATH
+        if os.path.exists(SCHEMA_REGISTRY_PATH):
+            with open(SCHEMA_REGISTRY_PATH, "r", encoding="utf-8") as f:
+                schema_registry = json.load(f)
+            if table_name in schema_registry:
+                del schema_registry[table_name]
+                with open(SCHEMA_REGISTRY_PATH, "w", encoding="utf-8") as f:
+                    json.dump(schema_registry, f, indent=2, ensure_ascii=False)
+                    f.write("\n")
+    except Exception as e:
+        print(f"[DELETE TABLE] Failed to remove table from schema_registry.json: {e}")
+        
+    return {
+        "status": "success",
+        "message": f"Table '{table_name}' and all associated metadata deleted successfully.",
+        "hdfs_deleted_layers": deleted_layers
+    }
+
+
 @router.get("/preview/{layer}/{table_name}")
 def get_dataset_preview(layer: str, table_name: str):
     """Get a 10-row JSON preview of the dataset from HDFS raw, active, or quarantine layers."""

@@ -43,6 +43,27 @@ export default function DataExport() {
     }
   };
 
+  const handleDeleteTable = async () => {
+    if (!selectedTable) return;
+    if (window.confirm(`⚠️ WARNING: Are you sure you want to completely delete dataset '${selectedTable}'? This will delete all raw, active, and quarantined data in HDFS, along with all rules configurations, AI proposals, lineage runs, and schema metrics from Elasticsearch. This action cannot be undone.`)) {
+      try {
+        const response = await fetch(`/api/v1/export/tables/${selectedTable}`, {
+          method: "DELETE"
+        });
+        if (response.ok) {
+          alert(`Successfully deleted dataset '${selectedTable}'.`);
+          setSelectedTable("");
+          fetchTables();
+        } else {
+          const err = await response.json();
+          alert(`Failed to delete dataset: ${err.detail || "Server error"}`);
+        }
+      } catch (e) {
+        alert(`Failed to delete dataset: ${e.message}`);
+      }
+    }
+  };
+
   useEffect(() => {
     fetchTables();
   }, []);
@@ -223,11 +244,30 @@ export default function DataExport() {
                   {tablesLoading ? (
                     <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Loading catalog...</span>
                   ) : (
-                    <select value={selectedTable} onChange={(e) => setSelectedTable(e.target.value)}>
-                      {tables.map(t => (
-                        <option key={t.name} value={t.name}>{t.name}</option>
-                      ))}
-                    </select>
+                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                      <select value={selectedTable} onChange={(e) => setSelectedTable(e.target.value)} style={{ flex: 1 }}>
+                        {tables.map(t => (
+                          <option key={t.name} value={t.name}>{t.name}</option>
+                        ))}
+                      </select>
+                      <button
+                        className="gs-btn-outline"
+                        style={{
+                          padding: "8px 12px",
+                          color: "var(--accent-red)",
+                          borderColor: "var(--accent-red)",
+                          background: "rgba(239, 68, 68, 0.05)",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          borderRadius: "8px",
+                          height: "38px"
+                        }}
+                        onClick={handleDeleteTable}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   )}
                 </div>
               )}

@@ -314,6 +314,29 @@ export default function RulesConfig() {
     }
   };
 
+  const handleDeleteTable = async (tblToDelete) => {
+    if (!tblToDelete) return;
+    if (window.confirm(`⚠️ WARNING: Are you sure you want to completely delete dataset '${tblToDelete}'? This will delete all raw, active, and quarantined data in HDFS, along with all rules configurations, AI proposals, lineage runs, and schema metrics from Elasticsearch. This action cannot be undone.`)) {
+      try {
+        const response = await fetch(`/api/v1/export/tables/${tblToDelete}`, {
+          method: "DELETE"
+        });
+        if (response.ok) {
+          alert(`Successfully deleted dataset '${tblToDelete}'.`);
+          if (selectedTable === tblToDelete) {
+            setSelectedTable("");
+          }
+          fetchTables();
+        } else {
+          const err = await response.json();
+          alert(`Failed to delete dataset: ${err.detail || "Server error"}`);
+        }
+      } catch (e) {
+        alert(`Failed to delete dataset: ${e.message}`);
+      }
+    }
+  };
+
   useEffect(() => {
     fetchTables();
   }, []);
@@ -494,8 +517,27 @@ export default function RulesConfig() {
                       key={tbl}
                       className={`gs-list-item ${isSelected ? "selected" : ""}`}
                       onClick={() => { setSelectedTable(tbl); setActionResult(null); }}
+                      style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
                     >
                       <strong>{tbl}</strong>
+                      <button
+                        style={{
+                          background: "transparent",
+                          border: "none",
+                          color: "var(--accent-red)",
+                          cursor: "pointer",
+                          padding: "2px 6px",
+                          borderRadius: "4px",
+                          fontSize: "11px"
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteTable(tbl);
+                        }}
+                        title={`Delete dataset ${tbl}`}
+                      >
+                        🗑️
+                      </button>
                     </div>
                   );
                 })}
