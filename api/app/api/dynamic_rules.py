@@ -26,7 +26,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, HTTPException, Query
 from elasticsearch import Elasticsearch
 
-from .config import get_elasticsearch_url
+from .config import get_elasticsearch_url, get_es_client
 
 logger = logging.getLogger(__name__)
 
@@ -197,21 +197,8 @@ def _merge_rules(default: dict, table_specific: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Singleton Elasticsearch client
 # ---------------------------------------------------------------------------
-_es_client: Optional[Elasticsearch] = None
-
-
 def _get_es() -> Elasticsearch:
-    """Return a lazily-initialised Elasticsearch client."""
-    global _es_client
-    if _es_client is None:
-        try:
-            _es_client = Elasticsearch(ELASTICSEARCH_URL)
-        except Exception as exc:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to connect to Elasticsearch: {exc}",
-            )
-    return _es_client
+    return get_es_client()
 
 
 # ═══════════════════════════════════════════════════════════════════════════

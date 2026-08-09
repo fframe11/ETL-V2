@@ -7,18 +7,7 @@ router = APIRouter(
     tags=["quality"]
 )
 
-from .config import get_elasticsearch_url
-
-_es_client = None
-
-def get_es_client():
-    global _es_client
-    if _es_client is None:
-        try:
-            _es_client = Elasticsearch(get_elasticsearch_url())
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to connect to Elasticsearch: {str(e)}")
-    return _es_client
+from .config import get_elasticsearch_url, get_es_client
 
 @router.get("")
 def list_quality_runs(page: int = 1, size: int = 50, limit: int = 50, paginated: bool = False):

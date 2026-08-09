@@ -1,4 +1,5 @@
 import os
+import time
 from datetime import datetime
 import requests
 from typing import Optional
@@ -11,18 +12,7 @@ router = APIRouter(
     tags=["pipeline"]
 )
 
-from .config import get_elasticsearch_url
-
-_es_client = None
-
-def get_es_client():
-    global _es_client
-    if _es_client is None:
-        try:
-            _es_client = Elasticsearch(get_elasticsearch_url())
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to connect to Elasticsearch: {str(e)}")
-    return _es_client
+from .config import get_elasticsearch_url, get_es_client
 
 @router.get("")
 def list_pipeline_runs(page: int = 1, size: int = 50, limit: int = 50, paginated: bool = False):
@@ -206,25 +196,46 @@ class RedditIngestPayload(BaseModel):
     duration: int = 40
 
 async def upload_to_webhdfs(table_name: str, content: bytes):
-    try:
-        # Step 1: PUT without data to initialize
-        webhdfs_url = f"http://namenode:9870/webhdfs/v1/data/raw/{table_name}/{table_name}.csv?op=CREATE&overwrite=true&user.name=spark"
-        r1 = requests.put(webhdfs_url, allow_redirects=False, timeout=5)
-        if r1.status_code != 307:
-            raise HTTPException(status_code=500, detail=f"WebHDFS create handshake failed: HTTP {r1.status_code}")
-        
-        redirect_url = r1.headers["Location"]
-        # Replace localhost/127.0.0.1 with datanode if Namenode returns host redirection
-        redirect_url = redirect_url.replace("localhost:", "datanode:").replace("127.0.0.1:", "datanode:")
-        
-        # Step 2: PUT with data
-        r2 = requests.put(redirect_url, data=content, timeout=180)
-        if r2.status_code not in (200, 201):
-            raise HTTPException(status_code=500, detail=f"WebHDFS write failed: HTTP {r2.status_code} - {r2.text}")
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"WebHDFS upload exception: {str(e)}")
+    max_retries = 5
+    retry_delay = 3
+    for attempt in range(max_retries):
+        try:
+            # Step 1: PUT without data to initialize
+            webhdfs_url = f"http://namenode:9870/webhdfs/v1/data/raw/{table_name}/{table_name}.csv?op=CREATE&overwrite=true&user.name=spark"
+            r1 = requests.put(webhdfs_url, allow_redirects=False, timeout=5)
+            if r1.status_code != 307:
+                # Check for SafeModeException
+                if "SafeModeException" in r1.text or r1.status_code == 403:
+                    print(f"[WebHDFS] NameNode is in Safe Mode. Retrying in {retry_delay}s... (Attempt {attempt+1}/{max_retries})")
+                    time.sleep(retry_delay)
+                    continue
+                raise HTTPException(status_code=500, detail=f"WebHDFS create handshake failed: HTTP {r1.status_code}")
+            
+            redirect_url = r1.headers["Location"]
+            # Replace localhost/127.0.0.1 with datanode if Namenode returns host redirection
+            redirect_url = redirect_url.replace("localhost:", "datanode:").replace("127.0.0.1:", "datanode:")
+            
+            # Step 2: PUT with data
+            r2 = requests.put(redirect_url, data=content, timeout=180)
+            if r2.status_code not in (200, 201):
+                if "SafeModeException" in r2.text:
+                    print(f"[WebHDFS] NameNode is in Safe Mode during write. Retrying in {retry_delay}s... (Attempt {attempt+1}/{max_retries})")
+                    time.sleep(retry_delay)
+                    continue
+                raise HTTPException(status_code=500, detail=f"WebHDFS write failed: HTTP {r2.status_code} - {r2.text}")
+            return # Success!
+        except HTTPException as he:
+            if attempt == max_retries - 1:
+                raise he
+            time.sleep(retry_delay)
+        except Exception as e:
+            if "SafeModeException" in str(e) or "ConnectionRefused" in str(e) or "connection" in str(e).lower():
+                print(f"[WebHDFS] Transient error: {e}. Retrying in {retry_delay}s... (Attempt {attempt+1}/{max_retries})")
+                time.sleep(retry_delay)
+                continue
+            if attempt == max_retries - 1:
+                raise HTTPException(status_code=500, detail=f"WebHDFS upload exception: {str(e)}")
+            time.sleep(retry_delay)
 
 def trigger_spark_job(table_name: str):
     spark_host = os.getenv("SPARK_MASTER_HOST", "spark-master")

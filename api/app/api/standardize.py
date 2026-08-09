@@ -3,22 +3,14 @@ import json
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Body
 from elasticsearch import Elasticsearch
-from .config import get_elasticsearch_url
+from .config import get_elasticsearch_url, get_es_client
 from .dynamic_rules import _load_rules_config, _save_rules_config
 
 router = APIRouter(prefix="/api/v1/standardize", tags=["Standardization Governance"])
 
 ELASTICSEARCH_URL = get_elasticsearch_url()
-_es_client = None
-
 def get_es():
-    global _es_client
-    if _es_client is None:
-        try:
-            _es_client = Elasticsearch(ELASTICSEARCH_URL)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to connect to Elasticsearch: {str(e)}")
-    return _es_client
+    return get_es_client()
 
 @router.get("/review-queue")
 def list_review_queue(status: str = "PENDING_REVIEW"):
