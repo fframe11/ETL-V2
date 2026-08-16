@@ -84,12 +84,12 @@ export default function Schema() {
       let badgeColor = "var(--accent-green)";
       let detailText = col;
 
-      if (details.error === "type_mismatch" || details.error === "type") {
+      if (details && (details.error === "type_mismatch" || details.error === "type")) {
         typeLabel = "Type column";
         badgeLabel = "TYPE MISMATCH";
         badgeColor = "var(--accent-yellow)";
         detailText = `${col} → ${details.actual || "type"}`;
-      } else if (details.error === "missing_column") {
+      } else if (details && details.error === "missing_column") {
         typeLabel = "Missing column";
         badgeLabel = "MISSING COLUMN";
         badgeColor = "var(--accent-red)";
@@ -159,7 +159,7 @@ export default function Schema() {
                 <div className="gs-empty">Loading proposals...</div>
               ) : proposals.error ? (
                 <div className="gs-empty" style={{ color: 'var(--accent-red)' }}>Failed to load proposals</div>
-              ) : !proposals.data?.proposals || proposals.data.proposals.length === 0 ? (
+              ) : !Array.isArray(proposals.data?.proposals) || proposals.data.proposals.length === 0 ? (
                 <div className="gs-empty">No {statusFilter.toLowerCase()} proposals found</div>
               ) : (
                 proposals.data.proposals.map((p) => {
@@ -331,7 +331,7 @@ export default function Schema() {
                     marginTop: "auto"
                   }}
                 >
-                  PROPOSAL {statusFilter} AT {new Date(selectedProposal.resolved_at || selectedProposal.timestamp).toLocaleString()}
+                  PROPOSAL {statusFilter} AT {selectedProposal.resolved_at || selectedProposal.timestamp ? new Date(selectedProposal.resolved_at || selectedProposal.timestamp).toLocaleString() : "N/A"}
                 </div>
               )}
             </div>
