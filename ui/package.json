@@ -8,7 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "puppeteer": "^25.2.1",
+    "puppeteer": "^25.7.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.23.1",

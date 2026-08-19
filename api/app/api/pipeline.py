@@ -196,13 +196,14 @@ class RedditIngestPayload(BaseModel):
     duration: int = 40
 
 async def upload_to_webhdfs(table_name: str, content: bytes):
+    from .config import get_http_session
     max_retries = 5
     retry_delay = 3
     for attempt in range(max_retries):
         try:
             # Step 1: PUT without data to initialize
             webhdfs_url = f"http://namenode:9870/webhdfs/v1/data/raw/{table_name}/{table_name}.csv?op=CREATE&overwrite=true&user.name=spark"
-            r1 = requests.put(webhdfs_url, allow_redirects=False, timeout=5)
+            r1 = get_http_session().put(webhdfs_url, allow_redirects=False, timeout=5)
             if r1.status_code != 307:
                 # Check for SafeModeException
                 if "SafeModeException" in r1.text or r1.status_code == 403:
@@ -216,7 +217,7 @@ async def upload_to_webhdfs(table_name: str, content: bytes):
             redirect_url = redirect_url.replace("localhost:", "datanode:").replace("127.0.0.1:", "datanode:")
             
             # Step 2: PUT with data
-            r2 = requests.put(redirect_url, data=content, timeout=180)
+            r2 = get_http_session().put(redirect_url, data=content, timeout=180)
             if r2.status_code not in (200, 201):
                 if "SafeModeException" in r2.text:
                     print(f"[WebHDFS] NameNode is in Safe Mode during write. Retrying in {retry_delay}s... (Attempt {attempt+1}/{max_retries})")
@@ -239,14 +240,22 @@ async def upload_to_webhdfs(table_name: str, content: bytes):
 
 def trigger_spark_job(table_name: str):
     spark_host = os.getenv("SPARK_MASTER_HOST", "spark-master")
+    from .config import get_http_session
     try:
-        res = requests.post(
+        res = get_http_session().post(
             f"http://{spark_host}:8099/retry",
             json={"table": table_name},
             timeout=5
         )
         if res.status_code == 200:
             return True
+        elif res.status_code == 409:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Spark quality engine job for table '{table_name}' is already running."
+            )
+    except HTTPException as he:
+        raise he
     except Exception:
         pass
     

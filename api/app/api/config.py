@@ -54,3 +54,17 @@ def get_es_client() -> Elasticsearch:
             time.sleep(2)
         raise HTTPException(status_code=500, detail=f"Failed to connect to Elasticsearch: {last_err}")
     return _es_client
+
+_session = None
+
+def get_http_session():
+    """Returns a thread-safe singleton requests.Session with connection pooling."""
+    global _session
+    if _session is None:
+        import requests
+        from requests.adapters import HTTPAdapter
+        _session = requests.Session()
+        adapter = HTTPAdapter(pool_connections=20, pool_maxsize=50)
+        _session.mount("http://", adapter)
+        _session.mount("https://", adapter)
+    return _session

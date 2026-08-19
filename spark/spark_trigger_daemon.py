@@ -22,6 +22,11 @@ stream_lock = threading.Lock()
 # to prevent infinite re-trigger loops (max 1 retry per table per ingestion)
 remediation_in_progress = set()
 
+# Concurrency Lock: tracks tables currently running a Spark Quality Engine rerun job
+# to prevent concurrent write transaction conflicts on Delta Lake
+running_rerun_jobs = set()
+running_jobs_lock = threading.Lock()
+
 def append_log(msg):
     stream_logs.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}")
     if len(stream_logs) > 500:
@@ -274,6 +279,16 @@ class SparkTriggerHandler(BaseHTTPRequestHandler):
                     self.wfile.write(b"Missing 'table' in payload")
                     return
 
+                with running_jobs_lock:
+                    if table_name in running_rerun_jobs:
+                        self.send_response(409)
+                        self.send_header("Content-Type", "application/json")
+                        self.end_headers()
+                        response = {"status": "error", "message": f"Spark job is already running for table '{table_name}'"}
+                        self.wfile.write(json.dumps(response).encode("utf-8"))
+                        return
+                    running_rerun_jobs.add(table_name)
+
                 print(f"[DAEMON] Triggering Spark rerun for table: {table_name}")
                 cmd = [
                     "/opt/bitnami/spark/bin/spark-submit",
@@ -325,6 +340,8 @@ class SparkTriggerHandler(BaseHTTPRequestHandler):
                     except Exception as e:
                         append_log(f"[ERROR] Spark Quality Engine run failed: {e}")
                     finally:
+                        with running_jobs_lock:
+                            running_rerun_jobs.discard(tbl)
                         with stream_lock:
                             stream_status = "idle"
                 
