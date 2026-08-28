@@ -190,3 +190,163 @@ def reject_proposal(proposal_id: str):
     return {
         "message": f"Schema proposal '{proposal_id}' REJECTED. sdoqap_schema_registry unchanged."
     }
+
+
+@router.post("/proposals/approve-all")
+def approve_all_proposals():
+    """
+    Approve all PENDING schema proposals in bulk.
+    Updates the registry in ES and writes to schema_registry.json on disk.
+    """
+    es = get_es()
+    if not es.indices.exists(index="sdoqap_schema_proposals"):
+        return {"message": "No pending proposals found."}
+    
+    try:
+        res = es.search(
+            index="sdoqap_schema_proposals",
+            body={
+                "query": {"term": {"status.keyword": "PENDING"}},
+                "size": 1000
+            }
+        )
+        hits = res.get("hits", {}).get("hits", [])
+        if not hits:
+            return {"message": "No pending proposals found."}
+
+        # Load disk registry first to update it in-place
+        disk_registry = {}
+        if os.path.exists(SCHEMA_REGISTRY_PATH):
+            try:
+                with open(SCHEMA_REGISTRY_PATH, "r", encoding="utf-8") as f:
+                    disk_registry = json.load(f)
+            except Exception as disk_err:
+                print(f"[APPROVE ALL] Failed to read schema_registry.json: {disk_err}")
+
+        # Default registry fallback dictionary
+        default_registry = {
+            "mbti": {
+                "primary_key": ["author", "text"],
+                "date_column": None,
+                "schema_spec": {
+                    "author": "StringType",
+                    "text": "StringType",
+                    "label": "StringType",
+                    "EI": "StringType",
+                    "NS": "StringType",
+                    "TF": "StringType",
+                    "JP": "StringType"
+                }
+            },
+            "users": {
+                "primary_key": "id",
+                "date_column": "updated_at",
+                "schema_spec": {
+                    "id": "IntegerType",
+                    "username": "StringType",
+                    "email": "StringType",
+                    "role": "StringType",
+                    "created_at": "TimestampType",
+                    "updated_at": "TimestampType"
+                }
+            },
+            "benchmark_test": {
+                "primary_key": "id",
+                "date_column": "updated_at",
+                "schema_spec": {
+                    "id": "IntegerType",
+                    "username": "StringType",
+                    "email": "StringType",
+                    "role": "StringType",
+                    "created_at": "TimestampType",
+                    "updated_at": "TimestampType"
+                }
+            }
+        }
+
+        approved_count = 0
+        resolved_time = datetime.now(timezone.utc).isoformat()
+
+        for h in hits:
+            proposal_id = h["_id"]
+            proposal = h["_source"]
+            table_name = proposal["table_name"]
+            proposed_schema = proposal["proposed_schema"]
+
+            # 1. Update Elasticsearch sdoqap_schema_registry
+            if es.indices.exists(index="sdoqap_schema_registry") and es.exists(index="sdoqap_schema_registry", id=table_name):
+                reg_doc = es.get(index="sdoqap_schema_registry", id=table_name)["_source"]
+            else:
+                reg_doc = default_registry.get(table_name, {
+                    "primary_key": "id",
+                    "date_column": None,
+                    "schema_spec": {}
+                })
+            reg_doc["schema_spec"] = proposed_schema
+            es.index(index="sdoqap_schema_registry", id=table_name, document=reg_doc)
+
+            # 2. Update memory registry for writing to disk later
+            disk_registry[table_name] = reg_doc
+
+            # 3. Update proposal status in ES
+            es.update(
+                index="sdoqap_schema_proposals",
+                id=proposal_id,
+                body={"doc": {"status": "APPROVED", "resolved_at": resolved_time}}
+            )
+            approved_count += 1
+
+        # 4. Write back to disk registry
+        if disk_registry and os.path.exists(SCHEMA_REGISTRY_PATH):
+            try:
+                with open(SCHEMA_REGISTRY_PATH, "w", encoding="utf-8") as f:
+                    json.dump(disk_registry, f, indent=2, ensure_ascii=False)
+                    f.write("\n")
+                print(f"[APPROVE ALL] schema_registry.json updated on disk for {approved_count} tables.")
+            except Exception as disk_err:
+                print(f"[APPROVE ALL] Failed to write schema_registry.json: {disk_err}")
+
+        return {"message": f"Successfully approved {approved_count} proposals."}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to approve all proposals in ES: {e}")
+
+
+@router.post("/proposals/reject-all")
+def reject_all_proposals():
+    """
+    Reject all PENDING schema proposals in bulk.
+    The current registry remains unchanged.
+    """
+    es = get_es()
+    if not es.indices.exists(index="sdoqap_schema_proposals"):
+        return {"message": "No pending proposals found."}
+
+    try:
+        res = es.search(
+            index="sdoqap_schema_proposals",
+            body={
+                "query": {"term": {"status.keyword": "PENDING"}},
+                "size": 1000
+            }
+        )
+        hits = res.get("hits", {}).get("hits", [])
+        if not hits:
+            return {"message": "No pending proposals found."}
+
+        rejected_count = 0
+        resolved_time = datetime.now(timezone.utc).isoformat()
+
+        for h in hits:
+            proposal_id = h["_id"]
+            es.update(
+                index="sdoqap_schema_proposals",
+                id=proposal_id,
+                body={"doc": {"status": "REJECTED", "resolved_at": resolved_time}}
+            )
+            rejected_count += 1
+
+        return {"message": f"Successfully rejected {rejected_count} proposals."}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to reject all proposals in ES: {e}")

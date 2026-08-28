@@ -191,7 +191,7 @@ export default function Analytics() {
               <div style={{ padding: '16px', background: 'rgba(239,68,68,0.04)', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.1)', textAlign: 'center', marginTop: '10px' }}>
                 <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>Estimated Cumulative Business Losses:</span>
                 <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--accent-red)', fontFamily: 'var(--font-mono)', marginTop: '4px' }}>
-                  ${impact.data.total_financial_impact_usd.toLocaleString()} USD
+                  ${(impact.data?.total_financial_impact_usd || 0).toLocaleString()} USD
                 </div>
               </div>
 

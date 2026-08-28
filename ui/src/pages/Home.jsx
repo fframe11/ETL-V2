@@ -474,7 +474,7 @@ export default function Home() {
                 {kpis.data
                   ? kpis.data.total_records_ingested >= 1000000
                     ? `${(kpis.data.total_records_ingested / 1000000).toFixed(1)}M`
-                    : kpis.data.total_records_ingested.toLocaleString()
+                    : (kpis.data.total_records_ingested || 0).toLocaleString()
                   : '---'}
               </span>
               <span className="gs-mini-label">Records Checked</span>

@@ -35,6 +35,25 @@ export default function Schema() {
     }
   }, [selectedId, selectedProposal]);
 
+  const handleBulkAction = async (action) => {
+    if (!window.confirm(`Are you sure you want to ${action.replace("-", " ")} pending proposals?`)) {
+      return;
+    }
+    setSubmitting(true);
+    setActionResult(null);
+    try {
+      const endpoint = `/schema/proposals/${action}`;
+      const res = await postApi(endpoint);
+      setActionResult({ success: true, message: res.message || `Bulk ${action} completed successfully.` });
+      setSelectedId(null);
+      proposals.refetch();
+    } catch (err) {
+      setActionResult({ success: false, message: `Failed to execute bulk action: ${err.message}` });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleAction = async (proposalId, action) => {
     setSubmitting(true);
     setActionResult(null);
@@ -154,6 +173,50 @@ export default function Schema() {
         <div className="gs-schema-list">
           <div className="gs-scard">
             <h3>{statusFilter} Proposals</h3>
+            {statusFilter === "PENDING" && Array.isArray(proposals.data?.proposals) && proposals.data.proposals.length > 0 && (
+              <div style={{
+                display: "flex",
+                gap: "8px",
+                padding: "8px 12px 12px 12px",
+                borderBottom: "1px solid var(--border-color, rgba(255,255,255,0.06))",
+                marginBottom: "8px"
+              }}>
+                <button
+                  onClick={() => handleBulkAction("approve-all")}
+                  disabled={submitting}
+                  style={{
+                    flex: 1,
+                    padding: "6px 10px",
+                    fontSize: "11px",
+                    fontWeight: "600",
+                    background: "rgba(16, 185, 129, 0.15)",
+                    border: "1.5px solid var(--accent-green, #10B981)",
+                    color: "var(--accent-green, #10B981)",
+                    borderRadius: "6px",
+                    cursor: submitting ? "not-allowed" : "pointer"
+                  }}
+                >
+                  {submitting ? "Processing..." : "Approve All"}
+                </button>
+                <button
+                  onClick={() => handleBulkAction("reject-all")}
+                  disabled={submitting}
+                  style={{
+                    flex: 1,
+                    padding: "6px 10px",
+                    fontSize: "11px",
+                    fontWeight: "600",
+                    background: "rgba(239, 68, 68, 0.15)",
+                    border: "1.5px solid var(--accent-red, #EF4444)",
+                    color: "var(--accent-red, #EF4444)",
+                    borderRadius: "6px",
+                    cursor: submitting ? "not-allowed" : "pointer"
+                  }}
+                >
+                  {submitting ? "Processing..." : "Reject All"}
+                </button>
+              </div>
+            )}
             <div className="gs-proposals">
               {proposals.loading ? (
                 <div className="gs-empty">Loading proposals...</div>
@@ -331,7 +394,10 @@ export default function Schema() {
                     marginTop: "auto"
                   }}
                 >
-                  PROPOSAL {statusFilter} AT {selectedProposal.resolved_at || selectedProposal.timestamp ? new Date(selectedProposal.resolved_at || selectedProposal.timestamp).toLocaleString() : "N/A"}
+                  PROPOSAL {statusFilter} AT {(() => {
+                    const t = selectedProposal?.resolved_at || selectedProposal?.proposed_at || selectedProposal?.timestamp;
+                    return t ? new Date(t).toLocaleString() : "N/A";
+                  })()}
                 </div>
               )}
             </div>
