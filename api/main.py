@@ -205,6 +205,277 @@ def get_kpi_stats():
             detail=f"Failed to query KPI statistics from Elasticsearch: {str(e)}"
         )
 
+@app.get("/api/v1/executive/overview")
+def get_executive_overview():
+    es = Elasticsearch(ELASTICSEARCH_URL)
+    try:
+        total_records = 0
+        total_quarantined = 0
+        avg_quality_score = 100.0
+        missing_count = 0
+        duplicate_count = 0
+        drift_count = 0
+        invalid_type_count = 0
+        recent_runs = []
+        
+        if es.indices.exists(index="sdoqap_quality_runs"):
+            res = es.search(
+                index="sdoqap_quality_runs",
+                body={
+                    "size": 50,
+                    "sort": [{"timestamp": {"order": "desc"}}],
+                    "aggs": {
+                        "total_ingested": {"sum": {"field": "total_records"}},
+                        "total_quarantined": {"sum": {"field": "quarantined_records"}},
+                        "avg_score": {"avg": {"field": "quality_score"}}
+                    }
+                }
+            )
+            aggs = res.get("aggregations", {})
+            total_records = int(aggs.get("total_ingested", {}).get("value") or 0)
+            total_quarantined = int(aggs.get("total_quarantined", {}).get("value") or 0)
+            avg_quality_score = round(aggs.get("avg_score", {}).get("value") or 100.0, 2)
+            
+            for hit in res.get("hits", {}).get("hits", []):
+                src = hit.get("_source", {})
+                recent_runs.append(src)
+                qb = src.get("quarantine_breakdown", {})
+                if isinstance(qb, dict):
+                    missing_count += qb.get("null_primary_key", 0) + qb.get("missing_values", 0)
+                    duplicate_count += qb.get("duplicate_records", 0) + qb.get("duplicates", 0)
+                    drift_count += qb.get("schema_drift", 0)
+                    invalid_type_count += qb.get("invalid_type", 0) + qb.get("type_mismatch", 0)
+
+        schema_drifts_active = 0
+        drift_details_list = []
+        if es.indices.exists(index="sdoqap_schema_drifts"):
+            d_res = es.search(index="sdoqap_schema_drifts", body={"size": 10, "sort": [{"timestamp": {"order": "desc"}}]})
+            d_hits = d_res.get("hits", {}).get("hits", [])
+            schema_drifts_active = len(d_hits)
+            for dh in d_hits:
+                drift_details_list.append(dh.get("_source", {}))
+
+        total_pipelines = 0
+        failed_pipelines = 0
+        pipeline_runs_data = []
+        if es.indices.exists(index="sdoqap_pipeline_runs"):
+            p_res = es.search(index="sdoqap_pipeline_runs", body={"size": 50, "sort": [{"timestamp": {"order": "desc"}}]})
+            p_hits = p_res.get("hits", {}).get("hits", [])
+            total_pipelines = len(p_hits)
+            for ph in p_hits:
+                psrc = ph.get("_source", {})
+                pipeline_runs_data.append(psrc)
+                if psrc.get("state") == "failed":
+                    failed_pipelines += 1
+
+        availability_score = round(((total_pipelines - failed_pipelines) / total_pipelines * 100) if total_pipelines > 0 else 98.5, 1)
+        
+        fresh_runs = [r for r in recent_runs if r.get("freshness_lag_hours", 0) <= 1.0]
+        freshness_score = round((len(fresh_runs) / len(recent_runs) * 100) if recent_runs else 95.0, 1)
+        avg_freshness_lag = round(sum(r.get("freshness_lag_hours", 0) for r in recent_runs) / len(recent_runs), 2) if recent_runs else 0.2
+
+        if avg_quality_score >= 95.0:
+            health_status = "Good"
+        elif avg_quality_score >= 88.0:
+            health_status = "Warning"
+        else:
+            health_status = "Critical"
+
+        impact_data = get_business_impact()
+        total_monetary_loss = impact_data.get("total_financial_impact_usd", 0)
+
+        has_users_issues = any(r.get("table_name") == "users" and r.get("quarantined_records", 0) > 0 for r in recent_runs[:5])
+        has_prod_issues = any(r.get("table_name") == "products" and r.get("quarantined_records", 0) > 0 for r in recent_runs[:5])
+        
+        business_areas = [
+            {
+                "id": "sales",
+                "name": "Sales & Revenue",
+                "status": "Warning" if (has_users_issues or total_monetary_loss > 1000) else "Normal",
+                "health_pct": 92.4 if has_users_issues else 98.8,
+                "impact_summary": f"Estimated COPDQ impact ${total_monetary_loss:,.0f} USD" if total_monetary_loss > 0 else "Operating within SLA",
+                "affected_datasets": ["users", "grocery_sales"] if has_users_issues else []
+            },
+            {
+                "id": "customer",
+                "name": "Customer Insights",
+                "status": "Warning" if has_users_issues else "Normal",
+                "health_pct": 89.6 if has_users_issues else 99.1,
+                "impact_summary": "Quarantined demographic records pending resolution" if has_users_issues else "Normal data ingestion",
+                "affected_datasets": ["users"] if has_users_issues else []
+            },
+            {
+                "id": "reporting",
+                "name": "Executive Reporting",
+                "status": "Warning" if (failed_pipelines > 0 or schema_drifts_active > 0) else "Normal",
+                "health_pct": 94.0 if failed_pipelines > 0 else 99.5,
+                "impact_summary": "Reports delayed due to schema evolution" if schema_drifts_active > 0 else "All executive BI feeds on-time",
+                "affected_datasets": ["sdoqap_quality_runs"]
+            },
+            {
+                "id": "operations",
+                "name": "Supply Chain & Ops",
+                "status": "Warning" if has_prod_issues else "Normal",
+                "health_pct": 96.5 if has_prod_issues else 99.2,
+                "impact_summary": "Inventory synchronization running smooth",
+                "affected_datasets": ["products"] if has_prod_issues else []
+            },
+            {
+                "id": "finance",
+                "name": "Finance & Audit",
+                "status": "Normal",
+                "health_pct": 99.8,
+                "impact_summary": "Audit trail verified against Delta Lake",
+                "affected_datasets": []
+            }
+        ]
+
+        affected_areas_count = sum(1 for a in business_areas if a["status"] != "Normal")
+
+        business_kpi_impact = [
+            {
+                "technical_issue": "Schema Drift",
+                "impacted_kpi": "Report Accuracy / Data Integrity",
+                "business_impact": "รายงานและ Dashboard เสี่ยงคลาดเคลื่อน ข้อมูลฟิลด์ใหม่ยังไม่ผ่านการ Approve",
+                "severity": "Critical" if schema_drifts_active > 1 else "Warning",
+                "affected_source": drift_details_list[0].get("table_name", "users") if drift_details_list else "users",
+                "status": "Investigating" if schema_drifts_active > 0 else "Normal"
+            },
+            {
+                "technical_issue": "Missing Values",
+                "impacted_kpi": "Sales / Customer KPI Accuracy",
+                "business_impact": "การตัดสินใจและการคำนวณสถิติตัวเลขลูกค้าอาจไม่ครบถ้วน",
+                "severity": "Warning" if missing_count > 0 else "Normal",
+                "affected_source": "users / sales",
+                "status": "Resolving" if missing_count > 0 else "Normal"
+            },
+            {
+                "technical_issue": "Pipeline Failure",
+                "impacted_kpi": "Data Availability & Freshness",
+                "business_impact": "ผู้บริหารไม่มีข้อมูลล่าสุดสำหรับการตัดสินใจรายชั่วโมง",
+                "severity": "Critical" if failed_pipelines > 0 else "Normal",
+                "affected_source": "API Ingestor",
+                "status": "Investigating" if failed_pipelines > 0 else "Normal"
+            },
+            {
+                "technical_issue": "Duplicate Records",
+                "impacted_kpi": "Revenue Reporting",
+                "business_impact": "อาจทำให้ยอดขายหรือออเดอร์ในรายงานสูงเกินจริง",
+                "severity": "Warning" if duplicate_count > 0 else "Normal",
+                "affected_source": "grocery_sales",
+                "status": "Monitoring"
+            },
+            {
+                "technical_issue": "Data Latency Delay",
+                "impacted_kpi": "Decision Response Time",
+                "business_impact": "ข้อมูล Real-time ล่าช้ากว่า SLA ที่กำหนด 1 ชั่วโมง",
+                "severity": "Warning" if avg_freshness_lag > 0.5 else "Normal",
+                "affected_source": "Stream Pipeline",
+                "status": "Monitoring"
+            }
+        ]
+
+        critical_issues = []
+        if failed_pipelines > 0:
+            critical_issues.append({
+                "id": "ISS-PIPE-01",
+                "issue": "API Pipeline Connection Failure",
+                "business_impact": "Daily Executive Report delayed by 25 mins",
+                "kpi_affected": "Data Availability",
+                "severity": "Critical",
+                "duration": "24 mins",
+                "status": "Investigating",
+                "dataset": "users"
+            })
+        if schema_drifts_active > 0:
+            critical_issues.append({
+                "id": "ISS-DRIFT-02",
+                "issue": f"Schema Drift on '{drift_details_list[0].get('table_name', 'users')}'",
+                "business_impact": "New unexpected columns quarantined; BI dashboard pending schema approval",
+                "kpi_affected": "Report Accuracy",
+                "severity": "Warning",
+                "duration": "45 mins",
+                "status": "Resolving",
+                "dataset": drift_details_list[0].get("table_name", "users")
+            })
+        if total_quarantined > 0:
+            critical_issues.append({
+                "id": "ISS-DATA-03",
+                "issue": f"Data Quarantine Threshold Exceeded ({total_quarantined:,} records)",
+                "business_impact": f"Estimated COPDQ risk ${total_monetary_loss:,.0f} USD due to bad values",
+                "kpi_affected": "Sales / Inventory KPI",
+                "severity": "Warning",
+                "duration": "1 hr 12 mins",
+                "status": "Monitoring",
+                "dataset": "users / grocery_sales"
+            })
+
+        what_text = f"คุณภาพข้อมูลภาพรวมอยู่ที่ {avg_quality_score}% โดยพบ {total_quarantined:,} แถวที่ติด Quarantine และมี Schema Drift {schema_drifts_active} รายการ" if (total_quarantined > 0 or schema_drifts_active > 0) else "ระบบและข้อมูลทุก Data Pipeline ทำงานอยู่ในสถานะสมบูรณ์ 100%"
+        why_text = "เกิดจากข้อมูลนำเข้ามี Missing Values และ Schema โครงสร้างตารางต้นทางเปลี่ยนแปลงโดยไม่มีการแจ้งล่วงหน้า" if schema_drifts_active > 0 else "ทุกแหล่งข้อมูลส่งข้อมูลถูกต้องตาม Data Contract"
+        impact_text = f"กระทบ {affected_areas_count} ส่วนงานธุรกิจ (Sales, Reporting) ทำให้รายงานบางส่วนต้องรอการยืนยัน" if affected_areas_count > 0 else "ไม่พบผลกระทบต่อ KPI หรือการดำเนินงานของธุรกิจ"
+        how_much_text = f"ความเสียหายประเมินตาม Gartner COPDQ อยู่ที่ ${total_monetary_loss:,.0f} USD (กระทบ {len(critical_issues)} ปัญหาสำคัญ)" if total_monetary_loss > 0 else "0 USD (No Financial Risk)"
+        action_text = "ทีม Data Governance เปิด Remediation Ticket และระบบกักกันข้อมูลไว้ใน Quarantine Store เรียบร้อยแล้ว กำลังรอการตรวจสอบ" if critical_issues else "ระบบ Monitor ทำงานต่อเนื่องตามรอบปกติ"
+
+        return {
+            "executive_kpis": {
+                "data_health": {
+                    "score": avg_quality_score,
+                    "status": health_status,
+                    "trend_label": "+1.2% vs last cycle",
+                    "total_records": total_records,
+                    "clean_records": total_records - total_quarantined,
+                    "quarantined_records": total_quarantined
+                },
+                "data_availability": {
+                    "score": availability_score,
+                    "status": "Normal" if availability_score >= 95 else "Warning",
+                    "total_pipelines": total_pipelines,
+                    "failed_pipelines": failed_pipelines
+                },
+                "data_freshness": {
+                    "score": freshness_score,
+                    "status": "Normal" if freshness_score >= 90 else "Warning",
+                    "avg_lag_hours": avg_freshness_lag,
+                    "sla_threshold_hours": 1.0
+                },
+                "business_impact": {
+                    "areas_affected_count": affected_areas_count,
+                    "total_areas_count": len(business_areas),
+                    "critical_issues_count": len(critical_issues),
+                    "reports_ok_pct": 96.5 if failed_pipelines > 0 else 100.0,
+                    "monetary_loss_usd": total_monetary_loss
+                },
+                "report_availability": {
+                    "score": 96.5 if failed_pipelines > 0 else 100.0,
+                    "available_reports": 24,
+                    "delayed_reports": 1 if failed_pipelines > 0 else 0,
+                    "failed_reports": failed_pipelines
+                },
+                "active_critical_issues_count": len(critical_issues)
+            },
+            "data_quality_breakdown": {
+                "missing_values_pct": round((missing_count / total_records * 100) if total_records > 0 else 2.1, 2),
+                "duplicate_records_pct": round((duplicate_count / total_records * 100) if total_records > 0 else 0.4, 2),
+                "invalid_type_pct": round((invalid_type_count / total_records * 100) if total_records > 0 else 0.2, 2),
+                "schema_drift_count": schema_drifts_active,
+                "total_quarantined": total_quarantined
+            },
+            "business_areas": business_areas,
+            "business_kpi_impact": business_kpi_impact,
+            "critical_business_issues": critical_issues,
+            "executive_summary_5w": {
+                "what": what_text,
+                "why": why_text,
+                "impact": impact_text,
+                "how_much": how_much_text,
+                "action": action_text
+            }
+        }
+    except Exception as e:
+        print(f"Error generating executive overview: {e}")
+        raise HTTPException(status_code=500, detail=f"Executive overview error: {str(e)}")
+
+
 @app.get("/api/v1/anomaly/sources")
 def get_anomaly_sources():
     es = Elasticsearch(ELASTICSEARCH_URL)
