@@ -10,6 +10,7 @@ import Schema from "./pages/Schema";
 import Ingestion from "./pages/Ingestion";
 import DataExport from "./pages/DataExport";
 import RulesConfig from "./pages/RulesConfig";
+import ConfigGuide from "./pages/ConfigGuide";
 import Login from "./pages/Login";
 import "./App.css";
 
@@ -187,6 +188,7 @@ function AppContent({ isSidebarOpen, toggleSidebar }) {
               <Route path="/pipeline" element={<RequireAuth><Pipeline /></RequireAuth>} />
               <Route path="/schema" element={<RequireAuth><Schema /></RequireAuth>} />
               <Route path="/rules" element={<RequireAuth><RulesConfig /></RequireAuth>} />
+              <Route path="/guide" element={<RequireAuth><ConfigGuide /></RequireAuth>} />
               <Route path="/rules-config" element={<RequireAuth><RulesConfig /></RequireAuth>} />
               <Route path="/rules_config" element={<RequireAuth><RulesConfig /></RequireAuth>} />
               <Route path="/rules config" element={<RequireAuth><RulesConfig /></RequireAuth>} />
