@@ -1,402 +1,704 @@
-﻿import React from 'react';
+import React, { useState } from 'react';
 import './RulesConfig.css';
 
+// --- Enterprise SVG Icons ---
+const Icons = {
+  BookOpen: () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+      <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+    </svg>
+  ),
+  Sliders: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="4" y1="21" x2="4" y2="14" /><line x1="4" y1="10" x2="4" y2="3" />
+      <line x1="12" y1="21" x2="12" y2="12" /><line x1="12" y1="8" x2="12" y2="3" />
+      <line x1="20" y1="21" x2="20" y2="16" /><line x1="20" y1="12" x2="20" y2="3" />
+      <line x1="1" y1="14" x2="7" y2="14" /><line x1="9" y1="8" x2="15" y2="8" /><line x1="17" y1="16" x2="23" y2="16" />
+    </svg>
+  ),
+  Layers: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="12 2 2 7 12 12 22 7 12 2" />
+      <polyline points="2 17 12 22 22 17" />
+      <polyline points="2 12 12 17 22 12" />
+    </svg>
+  ),
+  ShieldCheck: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <path d="m9 12 2 2 4-4" />
+    </svg>
+  ),
+  Database: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <ellipse cx="12" cy="5" rx="9" ry="3" />
+      <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+      <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+    </svg>
+  ),
+  CheckCircle: () => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+      <polyline points="22 4 12 14.01 9 11.01" />
+    </svg>
+  ),
+  AlertTriangle: () => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+      <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  ),
+  Cpu: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="4" width="16" height="16" rx="2" />
+      <rect x="9" y="9" width="6" height="6" />
+      <line x1="9" y1="1" x2="9" y2="4" /><line x1="15" y1="1" x2="15" y2="4" />
+      <line x1="9" y1="20" x2="9" y2="23" /><line x1="15" y1="20" x2="15" y2="23" />
+      <line x1="20" y1="9" x2="23" y2="9" /><line x1="20" y1="14" x2="23" y2="14" />
+      <line x1="1" y1="9" x2="4" y2="9" /><line x1="1" y1="14" x2="4" y2="14" />
+    </svg>
+  ),
+  Compass: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+    </svg>
+  ),
+  UploadCloud: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="16 16 12 12 8 16" />
+      <line x1="12" y1="12" x2="12" y2="21" />
+      <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
+      <polyline points="16 16 12 12 8 16" />
+    </svg>
+  ),
+  DownloadCloud: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="8 17 12 21 16 17" />
+      <line x1="12" y1="12" x2="12" y2="21" />
+      <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
+      <polyline points="8 17 12 21 16 17" />
+    </svg>
+  ),
+  Activity: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+    </svg>
+  )
+};
+
 export default function ConfigGuide() {
+  const [activeTab, setActiveTab] = useState('parameters');
+
   return (
-    <div style={{ height: '100%', overflowY: 'auto', padding: '0 20px', backgroundColor: 'var(--bg-primary)' }}>
-    <div style={{ maxWidth: '960px', margin: '20px auto 40px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div style={{ height: '100%', overflowY: 'auto', padding: '0 24px', backgroundColor: 'var(--bg-primary)' }}>
+      <div style={{ maxWidth: '1080px', margin: '24px auto 60px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
-      {/* === HEADER === */}
-      <div className="gs-guide-card" style={{ background: 'linear-gradient(135deg, var(--accent-purple) 0%, #7c3aed 100%)', color: 'white', padding: '28px 32px' }}>
-        <h2 style={{ fontSize: '22px', fontWeight: 800, margin: 0, color: 'white' }}>📖 Platform Configuration Guide</h2>
-        <p style={{ fontSize: '13px', margin: '8px 0 0', opacity: 0.9, lineHeight: 1.6, color: 'rgba(255,255,255,0.9)' }}>
-          Guidance by Platform, Final Decisions by User — แพลตฟอร์มแนะนำค่าเริ่มต้น ผู้ใช้ตัดสินใจขั้นสุดท้าย
-        </p>
-        <div style={{ marginTop: '12px', padding: '10px 14px', background: 'rgba(255,255,255,0.15)', borderRadius: '8px', fontSize: '11.5px', lineHeight: 1.6, color: 'rgba(255,255,255,0.95)' }}>
-          <strong>Core Philosophy:</strong> "Users do not guess the parameters." — ระบบจะวิเคราะห์ข้อมูล นำวัตถุประสงค์และกฎทางธุรกิจมาพิจารณา จากนั้นจึงแนะนำช่วงค่าเริ่มต้นที่สมเหตุสมผล
-        </div>
-      </div>
+        {/* === ENTERPRISE HEADER === */}
+        <div className="gs-guide-card" style={{ 
+          background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%)', 
+          color: '#ffffff', 
+          padding: '28px 32px',
+          border: '1px solid rgba(129, 140, 248, 0.3)',
+          boxShadow: '0 10px 25px -5px rgba(30, 27, 75, 0.4)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+            <span style={{ 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              width: '32px', 
+              height: '32px', 
+              borderRadius: '8px', 
+              background: 'rgba(255, 255, 255, 0.15)',
+              color: '#ffffff'
+            }}>
+              <Icons.BookOpen />
+            </span>
+            <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: '#c7d2fe' }}>
+              SDOQAP Governance & Operations
+            </span>
+          </div>
 
-      {/* === PHASE 1 === */}
-      <div style={{ marginTop: '10px', paddingBottom: '8px', borderBottom: '2px solid rgba(139, 92, 246, 0.3)' }}>
-        <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--accent-purple)', margin: 0 }}>Phase 1: Ingestion & Integration</h2>
-        <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 0' }}>การนำเข้าและจัดการโครงสร้างข้อมูล</p>
-      </div>
-      {/* === SECTION 6: Ingestion Stage === */}
-      <div className="gs-guide-card">
-        <h3 style={{ fontSize: '15px', fontWeight: 800, color: 'var(--accent-purple)', marginBottom: '16px', borderBottom: '2px solid var(--accent-purple)', paddingBottom: '8px' }}>
-          📥 Ingestion Stage — การนำเข้าข้อมูล
-        </h3>
-        <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.5 }}>
-          รองรับการดึงข้อมูลจากหลากหลายแหล่งเพื่อส่งเข้า HDFS (Data Lake) อย่างปลอดภัย
-        </p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-          <div style={{ padding: '14px', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border-color)', textAlign: 'center' }}>
-            <div style={{ fontSize: '20px', marginBottom: '8px' }}>📄</div>
-            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--accent-blue)' }}>CSV / Batch Upload</div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>อัปโหลดไฟล์ตรงเข้าสู่ระบบ เหมาะกับข้อมูลย้อนหลัง</div>
-          </div>
-          <div style={{ padding: '14px', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border-color)', textAlign: 'center' }}>
-            <div style={{ fontSize: '20px', marginBottom: '8px' }}>🌐</div>
-            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--accent-purple)' }}>REST API Push</div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>ยิงข้อมูลผ่าน API Endpoint เหมาะกับการเชื่อมต่อระบบภายนอก</div>
-          </div>
-          <div style={{ padding: '14px', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border-color)', textAlign: 'center' }}>
-            <div style={{ fontSize: '20px', marginBottom: '8px' }}>⚡</div>
-            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--accent-green)' }}>Kafka Streaming</div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>สตรีมมิ่งข้อมูลแบบ Real-time เหมาะสำหรับระบบ IoT/Logs</div>
-          </div>
-        </div>
-      </div>
+          <h1 style={{ fontSize: '24px', fontWeight: 800, margin: 0, color: '#ffffff', letterSpacing: '-0.02em' }}>
+            Platform Configuration & Operational Standard
+          </h1>
+          <p style={{ fontSize: '13px', margin: '8px 0 0', color: 'rgba(224, 231, 255, 0.9)', lineHeight: 1.6 }}>
+            คู่มือมาตรฐานการกำหนดค่าวศวกรรมข้อมูล แนวทางการปรับพารามิเตอร์ และวิธีปฏิบัติงานในแต่ละโมดูลของระบบ
+          </p>
 
-      {/* === SECTION 7: Schema Drift === */}
-      <div className="gs-guide-card">
-        <h3 style={{ fontSize: '15px', fontWeight: 800, color: 'var(--accent-purple)', marginBottom: '16px', borderBottom: '2px solid var(--accent-purple)', paddingBottom: '8px' }}>
-          ⚠️ Schema Drift — การจัดการโครงสร้างข้อมูลที่เปลี่ยนไป
-        </h3>
-        <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.5 }}>
-          เมื่อโครงสร้างข้อมูลต้นทางเปลี่ยน (มีคอลัมน์ใหม่ หรือ Data Type เปลี่ยน) ระบบจะดักจับไว้ที่ Schema Drift Hub เพื่อให้ผู้ใช้งานตัดสินใจ
-        </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div style={{ display: 'flex', gap: '12px', padding: '12px', background: '#d1fae5', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.3)' }}>
-            <div style={{ fontSize: '16px' }}>✅</div>
-            <div>
-              <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--accent-green)' }}>Accept (Evolve Schema)</div>
-              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>ยอมรับโครงสร้างใหม่ คอลัมน์ที่เพิ่มมาใหม่จะถูกบรรจุเข้าสู่ Data Warehouse อย่างเป็นทางการ</div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: '12px', padding: '12px', background: '#fee2e2', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.3)' }}>
-            <div style={{ fontSize: '16px' }}>❌</div>
-            <div>
-              <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--accent-red)' }}>Reject (Strict Schema)</div>
-              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>ปฏิเสธการเปลี่ยนแปลง คอลัมน์ที่เกินมาจะถูกทิ้ง (Drop) เพื่อรักษาความเสถียรของ Pipeline เดิม</div>
+          <div style={{ 
+            marginTop: '16px', 
+            padding: '12px 16px', 
+            background: 'rgba(0, 0, 0, 0.25)', 
+            borderRadius: '8px', 
+            fontSize: '12px', 
+            lineHeight: 1.6, 
+            borderLeft: '3px solid #818cf8',
+            color: '#e0e7ff'
+          }}>
+            <strong style={{ color: '#ffffff' }}>System Engineering Philosophy: Upstream-First Remediation</strong>
+            <div style={{ marginTop: '4px', fontSize: '11.5px', color: '#c7d2fe' }}>
+              "Users do not guess the parameters." ระบบทำการสแกนสถิติข้อมูลจริง (Data Profiling) และแนะนำช่วงค่าที่เหมาะสม ผู้ควบคุมระบบทำหน้าที่ตัดสินใจและยืนยันในระดับนโยบายธุรกิจ เพื่อปิดความผิดปกติที่ต้นน้ำ (Upstream) แทนการแก้ปัญหาชั่วคราวที่ปลายน้ำ
             </div>
           </div>
         </div>
-      </div>
 
-      {/* === PHASE 2 === */}
-      <div style={{ marginTop: '24px', paddingBottom: '8px', borderBottom: '2px solid rgba(139, 92, 246, 0.3)' }}>
-        <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--accent-purple)', margin: 0 }}>Phase 2: Transformation & Quality Control</h2>
-        <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 0' }}>การประมวลผล ตรวจสอบ และตั้งค่าคุณภาพข้อมูล</p>
-      </div>
-      {/* === SECTION 2: ระบบ Transform ข้อมูลอย่างไร === */}
-      <div className="gs-guide-card">
-        <h3 style={{ fontSize: '15px', fontWeight: 800, color: 'var(--accent-purple)', marginBottom: '16px', borderBottom: '2px solid var(--accent-purple)', paddingBottom: '8px' }}>
-          🔄 ระบบ Transform ข้อมูลอย่างไร?
-        </h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {/* === SECTION SELECTOR TABS === */}
+        <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
           {[
-            { step: '1', title: 'ระบบสแกนข้อมูลจริง', icon: '🔍', desc: 'ระบบใช้ Column Profiler คำนวณค่า Null Rate %, Min, Max และ Outliers ให้โดยอัตโนมัติจากชุดข้อมูลจริง', color: 'var(--accent-blue)' },
-            { step: '2', title: 'ระบบแนะนำค่าที่เหมาะสม', icon: '🤖', desc: 'ใช้ Domain Presets & AI ช่วยโหลดค่ามาตรฐานลงในฟอร์มให้อัตโนมัติด้วยการคลิกเพียง 1 ครั้ง', color: 'var(--accent-purple)' },
-            { step: '3', title: 'ผู้ใช้ยืนยัน / ปรับแต่ง', icon: '✅', desc: 'ผู้ใช้งานตรวจสอบตามบริบททางธุรกิจ ปรับตัวเลขได้ตามต้องการ แล้วกดยืนยันบันทึกได้ทันที โดยไม่ต้องเขียนโค้ด Spark ใหม่', color: 'var(--accent-green)' }
-          ].map((item) => (
-            <div key={item.step} style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', padding: '14px 16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-              <div style={{ background: item.color, color: 'white', borderRadius: '50%', minWidth: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 800 }}>{item.step}</div>
-              <div>
-                <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '4px' }}>{item.icon} {item.title}</div>
-                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{item.desc}</div>
-              </div>
-            </div>
+            { id: 'parameters', label: 'Parameter Tuning Guide (การปรับพารามิเตอร์)', icon: <Icons.Sliders /> },
+            { id: 'navigation', label: 'Platform Modules Guide (คู่มือการใช้งานหน้าต่างๆ)', icon: <Icons.Compass /> },
+            { id: 'lifecycle', label: 'End-to-End Architecture (วงจรข้อมูลต้นน้ำ-ปลายน้ำ)', icon: <Icons.Layers /> },
+            { id: 'casestudy', label: 'Reference Case Study (กรณีศึกษามาตรฐาน)', icon: <Icons.ShieldCheck /> }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 16px',
+                borderRadius: '8px',
+                border: activeTab === tab.id ? '1px solid var(--accent-purple)' : '1px solid transparent',
+                background: activeTab === tab.id ? 'rgba(108, 71, 255, 0.1)' : 'transparent',
+                color: activeTab === tab.id ? 'var(--accent-purple)' : 'var(--text-muted)',
+                fontWeight: activeTab === tab.id ? 700 : 500,
+                fontSize: '12px',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
           ))}
         </div>
-        <div style={{ marginTop: '14px', padding: '10px 14px', background: 'rgba(139, 92, 246, 0.06)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '8px', fontSize: '11px', color: 'var(--text-secondary)', textAlign: 'center' }}>
-          Data Profiling → Data Purpose → Business Rules → Recommended Range → <strong style={{ color: 'var(--accent-purple)' }}>User Confirmation</strong>
-        </div>
-      </div>
 
-      {/* === SECTION 1: System Configuration === */}
-      <div className="gs-guide-card">
-        <h3 style={{ fontSize: '15px', fontWeight: 800, color: 'var(--accent-purple)', marginBottom: '16px', borderBottom: '2px solid var(--accent-purple)', paddingBottom: '8px' }}>
-          ⚙️ System Configuration — การตั้งค่าระบบ
-        </h3>
+        {/* ========================================================================= */}
+        {/* TAB 1: PARAMETERS CONFIGURATION                                           */}
+        {/* ========================================================================= */}
+        {activeTab === 'parameters' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div className="gs-guide-card">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '2px solid var(--border-color)', paddingBottom: '10px' }}>
+                <Icons.Sliders />
+                <h2 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
+                  Data Quality Rule Parameters Specification
+                </h2>
+              </div>
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6, margin: '0 0 16px' }}>
+                พารามิเตอร์แต่ละตัวถูกออกแบบมาเพื่อควบคุมเกณฑ์ความสมบูรณ์ ความถูกต้อง และความน่าเชื่อถือของข้อมูลใน Apache Spark Engine รายละเอียดการคำนวณและข้อแนะนำในการกำหนดค่ามีดังต่อไปนี้:
+              </p>
 
-        {/* 1. Target Quality Score */}
-        <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-            <span style={{ background: 'var(--accent-purple)', color: 'white', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700 }}>1</span>
-            <h4 style={{ fontSize: '13px', fontWeight: 700, margin: 0 }}>Target Quality Score</h4>
-          </div>
-          <table style={{ width: '100%', fontSize: '11.5px', borderCollapse: 'collapse' }}>
-            <tbody>
-              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <td style={{ padding: '8px 0', fontWeight: 600, width: '30%', color: 'var(--accent-purple)' }}>หน้าที่</td>
-                <td style={{ padding: '8px 0' }}>กำหนดคะแนนรวมขั้นต่ำที่ยอมให้ข้อมูลผ่านเข้าไปยังคลังข้อมูล</td>
-              </tr>
-              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <td style={{ padding: '8px 0', fontWeight: 600, color: 'var(--accent-green)' }}>ระบบช่วยคำนวณ</td>
-                <td style={{ padding: '8px 0' }}>มี Profiler คำนวณคะแนนเฉลี่ยย้อนหลัง 15 รอบให้ดูเพื่อเป็นแนวทาง</td>
-              </tr>
-              <tr>
-                <td style={{ padding: '8px 0', fontWeight: 600, color: 'var(--accent-blue)' }}>ผู้ใช้ตัดสินใจ</td>
-                <td style={{ padding: '8px 0' }}>เลือกตั้งค่าคะแนนขั้นต่ำ (เช่น 90% หรือ 99%) หากข้อมูลได้คะแนนต่ำกว่าเกณฑ์นี้จะถูกบล็อก</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+              {/* 1. Target Quality Score */}
+              <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ background: 'var(--accent-purple)', color: 'white', borderRadius: '4px', padding: '2px 8px', fontSize: '11px', fontWeight: 700 }}>RULE 01</span>
+                    <h3 style={{ fontSize: '14px', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>Target Quality Score (quality_score_threshold)</h3>
+                  </div>
+                  <span className="gs-badge" style={{ background: 'rgba(108,71,255,0.1)', color: 'var(--accent-purple)' }}>Circuit Breaker</span>
+                </div>
+                <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', marginBottom: '12px' }}>
+                  <tbody>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '8px 0', width: '25%', fontWeight: 600, color: 'var(--text-muted)' }}>วัตถุประสงค์</td>
+                      <td style={{ padding: '8px 0', color: 'var(--text-secondary)' }}>กำหนดคะแนนชี้วัดขั้นต่ำของชุดข้อมูล (Overall Health Score 0–100%) หากคะแนนของแบตช์ต่ำกว่าเกณฑ์ ระบบจะทำการกักกัน (Quarantine) ทันที</td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '8px 0', fontWeight: 600, color: 'var(--text-muted)' }}>พารามิเตอร์ย่อย</td>
+                      <td style={{ padding: '8px 0', color: 'var(--text-secondary)' }}>
+                        <code className="gs-mono">base_value</code> (คะแนนเป้าหมาย เช่น 90.0), <code className="gs-mono">min_value</code> (ขอบเขตต่ำสุดที่ยอมรับได้ เช่น 70.0), <code className="gs-mono">adjustment_window_runs</code> (จำนวนรอบที่ใช้คำนวณค่าเฉลี่ย เช่น 15)
+                      </td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '8px 0', fontWeight: 600, color: 'var(--accent-purple)' }}>การวิเคราะห์อัตโนมัติ</td>
+                      <td style={{ padding: '8px 0', color: 'var(--text-secondary)' }}>ระบบ Profiler คำนวณ Historical Moving Average จาก 15 แบตช์ล่าสุด เพื่อแนะนำค่าฐานที่เหมาะสมโดยไม่ต้องเดาตัวเลข</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div style={{ background: 'var(--bg-primary)', padding: '10px 14px', borderRadius: '6px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                  <strong>เกณฑ์แนะนำตามการใช้งาน:</strong>
+                  <span style={{ marginLeft: '8px', color: 'var(--accent-green)' }}>95.0% - 100.0%</span> สำหรับรายงานการเงินและคะแนนประเมินอย่างเป็นทางการ | 
+                  <span style={{ marginLeft: '8px', color: 'var(--accent-blue)' }}>90.0% - 94.9%</span> สำหรับการประมวลผลทางธุรกิจทั่วไป | 
+                  <span style={{ marginLeft: '8px', color: 'var(--accent-yellow)' }}>80.0% - 89.9%</span> สำหรับข้อมูลสถิติ/การสำรวจเบื้องต้น
+                </div>
+              </div>
 
-        {/* 2. Null Checks Constraint */}
-        <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-            <span style={{ background: 'var(--accent-purple)', color: 'white', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700 }}>2</span>
-            <h4 style={{ fontSize: '13px', fontWeight: 700, margin: 0 }}>Null Checks Constraint</h4>
-          </div>
-          <table style={{ width: '100%', fontSize: '11.5px', borderCollapse: 'collapse' }}>
-            <tbody>
-              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <td style={{ padding: '8px 0', fontWeight: 600, width: '30%', color: 'var(--accent-purple)' }}>หน้าที่</td>
-                <td style={{ padding: '8px 0' }}>จัดการการยอมรับค่าว่าง (Missing Values) ในแต่ละคอลัมน์</td>
-              </tr>
-              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <td style={{ padding: '8px 0', fontWeight: 600, color: 'var(--accent-green)' }}>ระบบช่วยคำนวณ</td>
-                <td style={{ padding: '8px 0' }}>คำนวณ Current Null Rate % (อัตราค่าว่างในปัจจุบัน) ของแต่ละคอลัมน์จากข้อมูลจริง</td>
-              </tr>
-              <tr>
-                <td style={{ padding: '8px 0', fontWeight: 600, color: 'var(--accent-blue)' }}>ผู้ใช้ตัดสินใจ</td>
-                <td style={{ padding: '8px 0' }}>กำหนดเงื่อนไขว่าคอลัมน์ใดต้องเป็นแบบ Strict (ห้ามมีค่าว่างเด็ดขาด หรือ 0%) หรือยอมรับค่าว่างได้ที่กี่ %</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+              {/* 2. Primary Key & Null Checks */}
+              <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ background: 'var(--accent-purple)', color: 'white', borderRadius: '4px', padding: '2px 8px', fontSize: '11px', fontWeight: 700 }}>RULE 02</span>
+                    <h3 style={{ fontSize: '14px', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>Primary Key & Null Checks (null_primary_key, null_checks)</h3>
+                  </div>
+                  <span className="gs-badge" style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--accent-red)' }}>Integrity Guard</span>
+                </div>
+                <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', marginBottom: '12px' }}>
+                  <tbody>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '8px 0', width: '25%', fontWeight: 600, color: 'var(--text-muted)' }}>วัตถุประสงค์</td>
+                      <td style={{ padding: '8px 0', color: 'var(--text-secondary)' }}>ตรวจสอบการขาดหายไปของข้อมูล (Missing Values) ป้องกันการนำข้อมูลไม่สมบูรณ์เข้าสู่คลังข้อมูลกลาง</td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '8px 0', fontWeight: 600, color: 'var(--text-muted)' }}>พารามิเตอร์ย่อย</td>
+                      <td style={{ padding: '8px 0', color: 'var(--text-secondary)' }}>
+                        <code className="gs-mono">null_primary_key: strict</code> (ห้ามว่าง 0% เด็ดขาด), <code className="gs-mono">default_tolerance</code> (อัตราค่าว่างทั่วไป เช่น 0.05 หรือ 5%), <code className="gs-mono">column_overrides</code> (กำหนดข้อยกเว้นเฉพาะคอลัมน์)
+                      </td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '8px 0', fontWeight: 600, color: 'var(--accent-purple)' }}>การวิเคราะห์อัตโนมัติ</td>
+                      <td style={{ padding: '8px 0', color: 'var(--text-secondary)' }}>คำนวณ Current Null Rate % รายคอลัมน์จากข้อมูลดิบจริง และแจ้งเตือนทันทีหากฟิลด์สำคัญมีค่าว่างเกินกำหนด</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div style={{ background: 'var(--bg-primary)', padding: '10px 14px', borderRadius: '6px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                  <strong>ข้อกำหนดมาตรฐาน:</strong> คอลัมน์ระบุตัวตน (Identifier เช่น <code className="gs-mono">student_id</code>, <code className="gs-mono">transaction_id</code>) ต้องกำหนดเป็น <strong style={{ color: 'var(--accent-red)' }}>Strict 0% Null</strong> เสมอ ส่วนคอลัมน์ประกอบสามารถกำหนด Tolerance ได้ตามสัญญาข้อมูล (Data Contract)
+                </div>
+              </div>
 
-        {/* 3. Outliers IQR Range */}
-        <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-            <span style={{ background: 'var(--accent-purple)', color: 'white', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700 }}>3</span>
-            <h4 style={{ fontSize: '13px', fontWeight: 700, margin: 0 }}>Outliers (IQR) Range</h4>
-          </div>
-          <table style={{ width: '100%', fontSize: '11.5px', borderCollapse: 'collapse' }}>
-            <tbody>
-              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <td style={{ padding: '8px 0', fontWeight: 600, width: '30%', color: 'var(--accent-purple)' }}>หน้าที่</td>
-                <td style={{ padding: '8px 0' }}>ดักจับค่าตัวเลขที่สูงหรือต่ำผิดปกติ</td>
-              </tr>
-              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <td style={{ padding: '8px 0', fontWeight: 600, color: 'var(--accent-green)' }}>ระบบช่วยคำนวณ</td>
-                <td style={{ padding: '8px 0' }}>สแกนหาช่วงสถิติ Q1, Q3 และคำนวณกรอบ 1.5×IQR</td>
-              </tr>
-              <tr>
-                <td style={{ padding: '8px 0', fontWeight: 600, color: 'var(--accent-blue)' }}>ผู้ใช้ตัดสินใจ</td>
-                <td style={{ padding: '8px 0' }}>เลือกว่าจะเปิดหรือปิดการใช้งาน Auto IQR เพื่อกรองค่าที่ผิดปกติทางสถิติ</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+              {/* 3. Value Range & Outlier IQR */}
+              <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ background: 'var(--accent-purple)', color: 'white', borderRadius: '4px', padding: '2px 8px', fontSize: '11px', fontWeight: 700 }}>RULE 03</span>
+                    <h3 style={{ fontSize: '14px', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>Value Range & Statistical Outlier (value_range, iqr)</h3>
+                  </div>
+                  <span className="gs-badge" style={{ background: 'rgba(59,130,246,0.1)', color: 'var(--accent-blue)' }}>Statistical Boundary</span>
+                </div>
+                <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', marginBottom: '12px' }}>
+                  <tbody>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '8px 0', width: '25%', fontWeight: 600, color: 'var(--text-muted)' }}>วัตถุประสงค์</td>
+                      <td style={{ padding: '8px 0', color: 'var(--text-secondary)' }}>ตรวจจับค่าผิดปกติทางสถิติ (Anomalies) และค่าที่อยู่นอกกรอบความเป็นจริงทางธุรกิจ (Out of Boundary)</td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '8px 0', fontWeight: 600, color: 'var(--text-muted)' }}>พารามิเตอร์ย่อย</td>
+                      <td style={{ padding: '8px 0', color: 'var(--text-secondary)' }}>
+                        <code className="gs-mono">mode: auto/manual</code>, <code className="gs-mono">method: iqr</code>, <code className="gs-mono">iqr_multiplier</code> (1.5, 2.0, 2.5, 3.0), <code className="gs-mono">column_overrides</code>
+                      </td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '8px 0', fontWeight: 600, color: 'var(--accent-purple)' }}>หลักการทำงาน</td>
+                      <td style={{ padding: '8px 0', color: 'var(--text-secondary)' }}>
+                        คำนวณ Quartile [Q1, Q3] และสร้างกรอบตรวจสอบ: <code className="gs-mono">[Q1 - (k × IQR), Q3 + (k × IQR)]</code> เพื่อคัดกรองเรคคอร์ดที่หลุดช่วงออกจากชุดข้อมูลหลัก
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                  <div style={{ padding: '8px 12px', background: 'var(--bg-primary)', borderRadius: '6px', fontSize: '11px', borderLeft: '2px solid var(--accent-green)' }}>
+                    <strong>1.5× Multiplier (Standard)</strong><br />
+                    <span style={{ color: 'var(--text-muted)' }}>กรองตามมาตรฐานสถิติทั่วไป เหมาะกับข้อมูลที่มีการกระจายตัวแบบปกติ (Normal Distribution)</span>
+                  </div>
+                  <div style={{ padding: '8px 12px', background: 'var(--bg-primary)', borderRadius: '6px', fontSize: '11px', borderLeft: '2px solid var(--accent-blue)' }}>
+                    <strong>2.0× – 2.5× (Tolerant)</strong><br />
+                    <span style={{ color: 'var(--text-muted)' }}>เพิ่มความยืดหยุ่น เหมาะกับตัวแปรที่มีความผันผวนสูง เช่น ชั่วโมงการเรียน หรือยอดขายช่วงแคมเปญ</span>
+                  </div>
+                  <div style={{ padding: '8px 12px', background: 'var(--bg-primary)', borderRadius: '6px', fontSize: '11px', borderLeft: '2px solid var(--accent-red)' }}>
+                    <strong>3.0× (Extreme Filter)</strong><br />
+                    <span style={{ color: 'var(--text-muted)' }}>ดักจับเฉพาะกรณีข้อผิดพลาดร้ายแรงของระบบ เช่น ตัวเลขทะลักหรือความผิดพลาดของฮาร์ดแวร์</span>
+                  </div>
+                </div>
+              </div>
 
-        {/* 4. Max Freshness Delay */}
-        <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-            <span style={{ background: 'var(--accent-purple)', color: 'white', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700 }}>4</span>
-            <h4 style={{ fontSize: '13px', fontWeight: 700, margin: 0 }}>Max Freshness Delay</h4>
-          </div>
-          <table style={{ width: '100%', fontSize: '11.5px', borderCollapse: 'collapse' }}>
-            <tbody>
-              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <td style={{ padding: '8px 0', fontWeight: 600, width: '30%', color: 'var(--accent-purple)' }}>หน้าที่</td>
-                <td style={{ padding: '8px 0' }}>กำหนดความถี่ในการอัปเดตข้อมูลว่าต้องอัปเดตบ่อยแค่ไหน (หน่วยเป็นชั่วโมง)</td>
-              </tr>
-              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <td style={{ padding: '8px 0', fontWeight: 600, color: 'var(--accent-green)' }}>ระบบช่วยคำนวณ</td>
-                <td style={{ padding: '8px 0' }}>ตรวจสอบ Timestamp ล่าสุดของข้อมูลเทียบกับเวลาปัจจุบัน</td>
-              </tr>
-              <tr>
-                <td style={{ padding: '8px 0', fontWeight: 600, color: 'var(--accent-blue)' }}>ผู้ใช้ตัดสินใจ</td>
-                <td style={{ padding: '8px 0' }}>กำหนดระยะเวลาล่าช้าสูงสุดที่รับได้ เช่น 2h สำหรับ IoT หรือ 24h สำหรับร้านค้า</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+              {/* 4. Freshness SLA */}
+              <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ background: 'var(--accent-purple)', color: 'white', borderRadius: '4px', padding: '2px 8px', fontSize: '11px', fontWeight: 700 }}>RULE 04</span>
+                    <h3 style={{ fontSize: '14px', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>Data Freshness & Latency SLA (freshness_threshold_hours)</h3>
+                  </div>
+                  <span className="gs-badge" style={{ background: 'rgba(245,158,11,0.1)', color: 'var(--accent-yellow)' }}>SLA Compliance</span>
+                </div>
+                <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', marginBottom: '12px' }}>
+                  <tbody>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '8px 0', width: '25%', fontWeight: 600, color: 'var(--text-muted)' }}>วัตถุประสงค์</td>
+                      <td style={{ padding: '8px 0', color: 'var(--text-secondary)' }}>ตรวจสอบความสดใหม่ของข้อมูล โดยคำนวณผลต่างระหว่างเวลาประมวลผลปัจจุบัน (Ingestion Time) กับ Event Timestamp ล่าสุดของข้อมูล</td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '8px 0', fontWeight: 600, color: 'var(--text-muted)' }}>พารามิเตอร์ย่อย</td>
+                      <td style={{ padding: '8px 0', color: 'var(--text-secondary)' }}>
+                        <code className="gs-mono">base_value</code> (จำนวนชั่วโมงสูงสุดที่รับได้), <code className="gs-mono">mode: adaptive/strict</code>, <code className="gs-mono">learn_from_history</code>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div style={{ background: 'var(--bg-primary)', padding: '10px 14px', borderRadius: '6px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                  <strong>แนวทาง SLA รายรูปแบบข้อมูล:</strong>
+                  <span style={{ marginLeft: '8px', color: 'var(--accent-blue)' }}>≤ 1–2 ชม.</span> สำหรับ Real-time / Streaming (Kafka) | 
+                  <span style={{ marginLeft: '8px', color: 'var(--accent-purple)' }}>≤ 24 ชม.</span> สำหรับ Daily Batch ETL | 
+                  <span style={{ marginLeft: '8px', color: 'var(--accent-muted)' }}>≤ 168 ชม. (7 วัน)</span> สำหรับ Weekly Analytical Reporting
+                </div>
+              </div>
 
-        {/* 5. AI Advisor & Clean */}
-        <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-            <span style={{ background: 'var(--accent-purple)', color: 'white', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700 }}>5</span>
-            <h4 style={{ fontSize: '13px', fontWeight: 700, margin: 0 }}>AI Advisor & Clean</h4>
-          </div>
-          <table style={{ width: '100%', fontSize: '11.5px', borderCollapse: 'collapse' }}>
-            <tbody>
-              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <td style={{ padding: '8px 0', fontWeight: 600, width: '30%', color: 'var(--accent-purple)' }}>หน้าที่</td>
-                <td style={{ padding: '8px 0' }}>การแปลงข้อมูลและการจัดมาตรฐานคำศัพท์ (Casting / Mapping)</td>
-              </tr>
-              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <td style={{ padding: '8px 0', fontWeight: 600, color: 'var(--accent-green)' }}>ระบบช่วยคำนวณ</td>
-                <td style={{ padding: '8px 0' }}>AI จะอ่านข้อความแล้วร่างกฎสำหรับการแปลงข้อมูลให้</td>
-              </tr>
-              <tr>
-                <td style={{ padding: '8px 0', fontWeight: 600, color: 'var(--accent-blue)' }}>ผู้ใช้ตัดสินใจ</td>
-                <td style={{ padding: '8px 0' }}>เลือกว่าจะเปิดหรือปิด AI รวมถึงกดยืนยันเพื่อนำกฎไปใช้งานจริง</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+              {/* 5. AI Remediation Engine */}
+              <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ background: 'var(--accent-purple)', color: 'white', borderRadius: '4px', padding: '2px 8px', fontSize: '11px', fontWeight: 700 }}>RULE 05</span>
+                    <h3 style={{ fontSize: '14px', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>AI Remediation & Adaptive Rules (ai_advisor, remediation_rules)</h3>
+                  </div>
+                  <span className="gs-badge" style={{ background: 'rgba(16,185,129,0.1)', color: 'var(--accent-green)' }}>Intelligent Automation</span>
+                </div>
+                <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', marginBottom: '12px' }}>
+                  <tbody>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '8px 0', width: '25%', fontWeight: 600, color: 'var(--text-muted)' }}>วัตถุประสงค์</td>
+                      <td style={{ padding: '8px 0', color: 'var(--text-secondary)' }}>วิเคราะห์แพทเทิร์นของข้อมูลที่มีปัญหาใน Quarantine และนำเสนอข้อเสนอแนะในการทำความสะอาด (Remediation Proposal) พร้อมคำสั่งแก้ไขอัตโนมัติ</td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '8px 0', fontWeight: 600, color: 'var(--text-muted)' }}>พารามิเตอร์ย่อย</td>
+                      <td style={{ padding: '8px 0', color: 'var(--text-secondary)' }}>
+                        <code className="gs-mono">enabled: true/false</code>, <code className="gs-mono">trigger: on_anomaly</code>, <code className="gs-mono">model: llama-3.3-70b-versatile</code>, <code className="gs-mono">confidence_threshold: 0.70</code>, <code className="gs-mono">max_rows_to_analyze: 50</code>
+                      </td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '8px 0', fontWeight: 600, color: 'var(--text-muted)' }}>ประเภทการซ่อมแซม</td>
+                      <td style={{ padding: '8px 0', color: 'var(--text-secondary)' }}>
+                        <strong style={{ color: 'var(--accent-blue)' }}>fillna</strong> (การแทนที่ค่าว่างด้วยค่าคงที่หรือมัธยฐาน) และ <strong style={{ color: 'var(--accent-purple)' }}>calculate</strong> (การคำนวณอนุมานค่าจากคอลัมน์ที่มีความสัมพันธ์กัน เช่น คำนวณคะแนนจากชั่วโมงเรียน)
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div style={{ background: 'var(--bg-primary)', padding: '10px 14px', borderRadius: '6px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                  <strong>นโยบายความปลอดภัย:</strong> ข้อเสนอจาก AI ทุกรายการจะไม่อนุญาตให้แก้ไขข้อมูลจริงโดยพลการจนกว่าผู้ดูแลระบบจะกด Approve ในหน้า Rules Config เพื่อให้เป็นไปตามหลักการ Human-in-the-loop Governance
+                </div>
+              </div>
 
-      {/* === SECTION 4: Platform Configuration Guide === */}
-      <div className="gs-guide-card">
-        <h3 style={{ fontSize: '15px', fontWeight: 800, color: 'var(--accent-purple)', marginBottom: '16px', borderBottom: '2px solid var(--accent-purple)', paddingBottom: '8px' }}>
-          📐 Platform Configuration Guide — คู่มือการตั้งค่า
-        </h3>
-
-        {/* Grid of 4 guides */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-          {/* 1. Null Tolerance */}
-          <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-            <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '10px' }}>1. Null Tolerance</div>
-            <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginBottom: '8px' }}>คำถามหลัก: ฟิลด์นี้จำเป็นต้องมีค่าหรือไม่?</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', background: '#fee2e2', borderRadius: '4px' }}><span style={{ fontWeight: 600 }}>0% Strict</span><span>Required / Critical Field</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', background: 'rgba(245,158,11,0.08)', borderRadius: '4px' }}><span style={{ fontWeight: 600 }}>1–5%</span><span>Missing บางส่วนพอรับได้</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', background: 'var(--bg-primary)', borderRadius: '4px' }}><span style={{ fontWeight: 600 }}>{'>'}5%</span><span>ต้องประเมิน Business Impact</span></div>
             </div>
-            <div style={{ marginTop: '8px', fontSize: '10px', color: 'var(--accent-purple)', fontStyle: 'italic' }}>📌 Score Case → 0% Strict (ID • Score)</div>
           </div>
+        )}
 
-          {/* 2. Freshness SLA */}
-          <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-            <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '10px' }}>2. Freshness (SLA)</div>
-            <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginBottom: '8px' }}>คำถามหลัก: ข้อมูลต้องสดใหม่ระดับใด?</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', background: '#fee2e2', borderRadius: '4px' }}><span style={{ fontWeight: 600 }}>≤ 1h</span><span>Real-time / Critical Ops</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', background: 'rgba(245,158,11,0.08)', borderRadius: '4px' }}><span style={{ fontWeight: 600 }}>≤ 24h</span><span>Daily Batch / Report</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', background: 'var(--bg-primary)', borderRadius: '4px' }}><span style={{ fontWeight: 600 }}>1–7d</span><span>Periodic / Weekly Analytics</span></div>
+        {/* ========================================================================= */}
+        {/* TAB 2: PLATFORM MODULES & PAGES NAVIGATION                                */}
+        {/* ========================================================================= */}
+        {activeTab === 'navigation' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div className="gs-guide-card">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '2px solid var(--border-color)', paddingBottom: '10px' }}>
+                <Icons.Compass />
+                <h2 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
+                  Platform Modules & User Workflow Manual
+                </h2>
+              </div>
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6, margin: '0 0 16px' }}>
+                ระบบ SDOQAP ประกอบด้วย 8 โมดูลหลักที่เชื่อมโยงกันอย่างเป็นระบบ เพื่อให้การกำกับดูแลข้อมูลเป็นไปตามมาตรฐานวิศวกรรมข้อมูลแบบครบวงจร:
+              </p>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+
+                {/* 1. Home */}
+                <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    <span style={{ color: 'var(--accent-blue)' }}><Icons.Activity /></span>
+                    <h3 style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>1. Home Overview (/)</h3>
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                    ศูนย์กลางภาพรวมของแพลตฟอร์ม แสดงสถานะความพร้อมของคลัสเตอร์บริการ (Service Topology) เช่น HDFS, Spark, Kafka, Elasticsearch, PostgreSQL และแถบแจ้งเตือนระดับระบบ
+                  </div>
+                  <div style={{ marginTop: '10px', fontSize: '11px', color: 'var(--accent-purple)', fontWeight: 600 }}>
+                    หน้าที่หลัก: ตรวจสอบความสมบูรณ์ของโครงสร้างพื้นฐานก่อนเริ่มรันงาน
+                  </div>
+                </div>
+
+                {/* 2. Dashboard */}
+                <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    <span style={{ color: 'var(--accent-purple)' }}><Icons.Sliders /></span>
+                    <h3 style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>2. Quality Dashboard (/dashboard)</h3>
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                    แดชบอร์ดหลักสำหรับผู้บริหารและวิศวกรข้อมูล แสดงค่า Data Quality Score รวม, จำนวนเรคคอร์ดที่ประมวลผลสำเร็จ, อัตราข้อมูลกักกัน (Quarantine Rate) และดัชนีชี้วัด SLA แบบ Real-time
+                  </div>
+                  <div style={{ marginTop: '10px', fontSize: '11px', color: 'var(--accent-purple)', fontWeight: 600 }}>
+                    หน้าที่หลัก: ติดตามผลการประมวลผลและแนวโน้มคุณภาพข้อมูลประจำวัน
+                  </div>
+                </div>
+
+                {/* 3. Ingestion */}
+                <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    <span style={{ color: 'var(--accent-green)' }}><Icons.UploadCloud /></span>
+                    <h3 style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>3. Ingestion & Quarantine (/ingestion)</h3>
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                    ส่วนจัดการการนำเข้าข้อมูลจาก 3 ช่องทาง (Batch CSV Upload, REST API Endpoint, Kafka Streaming) และเป็นที่ตั้งของ Quarantine Viewer สำหรับตรวจสอบเรคคอร์ดที่มีข้อผิดพลาดพร้อมเหตุผลระบุชัดเจน
+                  </div>
+                  <div style={{ marginTop: '10px', fontSize: '11px', color: 'var(--accent-green)', fontWeight: 600 }}>
+                    หน้าที่หลัก: นำเข้าไฟล์ข้อมูลใหม่และตรวจสอบสาเหตุที่ข้อมูลถูกกักกัน
+                  </div>
+                </div>
+
+                {/* 4. Schema Drift */}
+                <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    <span style={{ color: 'var(--accent-yellow)' }}><Icons.AlertTriangle /></span>
+                    <h3 style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>4. Schema Drift Hub (/schema)</h3>
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                    ระบบดักจับการเปลี่ยนแปลงโครงสร้างข้อมูลต้นทาง (Schema Evolution) เช่น การเพิ่มคอลัมน์ใหม่ หรือการเปลี่ยน Data Type โดยมีระบบคัดกรองให้เลือก Accept เพื่อรับฟิลด์ใหม่ หรือ Reject เพื่อตัดทิ้ง
+                  </div>
+                  <div style={{ marginTop: '10px', fontSize: '11px', color: 'var(--accent-yellow)', fontWeight: 600 }}>
+                    หน้าที่หลัก: ควบคุมการกลายพันธุ์ของ Schema เพื่อป้องกัน Pipeline พังทลาย
+                  </div>
+                </div>
+
+                {/* 5. Rules Config */}
+                <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    <span style={{ color: 'var(--accent-purple)' }}><Icons.Sliders /></span>
+                    <h3 style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>5. Rules Configuration (/rules)</h3>
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                    ศูนย์กลางการตั้งค่ากฎเกณฑ์คุณภาพข้อมูล สามารถเลือก Preset ตามประเภทธุรกิจ (University, Retail, IoT), ปรับจูนพารามิเตอร์แบบ Visual, ตรวจสอบข้อเสนอ AI Rules และบันทึกคำสั่งตรงเข้า Spark Config
+                  </div>
+                  <div style={{ marginTop: '10px', fontSize: '11px', color: 'var(--accent-purple)', fontWeight: 600 }}>
+                    หน้าที่หลัก: กำหนดเกณฑ์คุณภาพ ปรับพารามิเตอร์ และอนุมัติกฎจาก AI
+                  </div>
+                </div>
+
+                {/* 6. Pipeline */}
+                <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    <span style={{ color: 'var(--accent-blue)' }}><Icons.Cpu /></span>
+                    <h3 style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>6. Pipeline Orchestration (/pipeline)</h3>
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                    หน้าควบคุมการรัน Spark Processing Job สามารถสั่ง Trigger แบตช์ด้วยตนเอง ดูสถานะความคืบหน้ารายสเต็ป (Ingestion → Drift Check → Quality Audit → Warehouse Load) และเปิดดู Log เชิงลึก
+                  </div>
+                  <div style={{ marginTop: '10px', fontSize: '11px', color: 'var(--accent-blue)', fontWeight: 600 }}>
+                    หน้าที่หลัก: สั่งรันไปป์ไลน์ ตรวจสอบ Execution DAG และแก้ไขข้อผิดพลาด
+                  </div>
+                </div>
+
+                {/* 7. Analytics */}
+                <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    <span style={{ color: 'var(--accent-green)' }}><Icons.Database /></span>
+                    <h3 style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>7. Analytics & Profiling (/analytics)</h3>
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                    เครื่องมือวิเคราะห์เชิงลึก แสดงสถิติการกระจายตัวของคอลัมน์ (Null Rate, Min, Max, Mean, Outliers Count), กราฟสัดส่วน Error Type และประวัติความเปลี่ยนแปลงของข้อมูลย้อนหลัง
+                  </div>
+                  <div style={{ marginTop: '10px', fontSize: '11px', color: 'var(--accent-green)', fontWeight: 600 }}>
+                    หน้าที่หลัก: สำรวจเนื้อข้อมูลเพื่อนำมาตั้งค่าพารามิเตอร์ใน Rules Config
+                  </div>
+                </div>
+
+                {/* 8. Data Export */}
+                <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    <span style={{ color: 'var(--accent-purple)' }}><Icons.DownloadCloud /></span>
+                    <h3 style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>8. Export Hub (/export)</h3>
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                    จุดส่งมอบข้อมูลที่ผ่านการตรวจสอบคุณภาพแล้ว (Cleaned Data) ไปยังปลายทางต่างๆ เช่น PostgreSQL สำหรับระบบแอปพลิเคชัน, Elasticsearch สำหรับ Kibana BI, หรือดาวน์โหลดเป็นไฟล์ CSV/Excel
+                  </div>
+                  <div style={{ marginTop: '10px', fontSize: '11px', color: 'var(--accent-purple)', fontWeight: 600 }}>
+                    หน้าที่หลัก: นำข้อมูลสะอาดส่งออกไปใช้งานจริงในระบบปลายทาง
+                  </div>
+                </div>
+
+              </div>
             </div>
-            <div style={{ marginTop: '8px', fontSize: '10px', color: 'var(--accent-purple)', fontStyle: 'italic' }}>📌 Score Case → ≤ 24h Delay (Daily Batch)</div>
           </div>
+        )}
 
-          {/* 3. Quality Target */}
-          <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-            <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '10px' }}>3. Quality Target</div>
-            <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginBottom: '8px' }}>คำถามหลัก: ระดับความน่าเชื่อถือของผลลัพธ์?</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', background: '#d1fae5', borderRadius: '4px' }}><span style={{ fontWeight: 600 }}>95–100%</span><span>Official / Critical</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', background: 'rgba(245,158,11,0.08)', borderRadius: '4px' }}><span style={{ fontWeight: 600 }}>90–95%</span><span>General Business Use</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', background: 'var(--bg-primary)', borderRadius: '4px' }}><span style={{ fontWeight: 600 }}>80–90%</span><span>Exploratory / Ad-hoc</span></div>
+        {/* ========================================================================= */}
+        {/* TAB 3: END-TO-END DATA LIFECYCLE                                          */}
+        {/* ========================================================================= */}
+        {activeTab === 'lifecycle' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div className="gs-guide-card">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '2px solid var(--border-color)', paddingBottom: '10px' }}>
+                <Icons.Layers />
+                <h2 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
+                  End-to-End Data Pipeline Architecture
+                </h2>
+              </div>
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6, margin: '0 0 16px' }}>
+                การเดินทางของข้อมูลผ่าน 4 ขั้นตอนการกำกับดูแลตามสถาปัตยกรรม Upstream-First Resilience:
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {[
+                  {
+                    step: 'PHASE 1',
+                    title: 'Ingestion & Data Lake Landing',
+                    badge: 'Landing Zone',
+                    badgeColor: 'var(--accent-blue)',
+                    desc: 'ข้อมูลดิบถูกส่งเข้า HDFS Raw Zone ผ่าน 3 รูปแบบ: CSV Batch Upload, Kafka Event Streaming, หรือ REST API Ingestion มีการตรวจสอบสิทธิ์การเข้าถึงและความปลอดภัยของ Payload ในขั้นแรก'
+                  },
+                  {
+                    step: 'PHASE 2',
+                    title: 'Schema Drift Detection & Gatekeeper',
+                    badge: 'Schema Guard',
+                    badgeColor: 'var(--accent-yellow)',
+                    desc: 'ก่อนที่ข้อมูลจะเข้าสู่ Engine ระบบจะเปรียบเทียบโครงสร้างฟิลด์และ Data Type กับ Schema Baseline หากพบคอลัมน์ใหม่จะแจ้งเตือนที่ Schema Drift Hub เพื่อให้วิศวกรเลือกว่าจะ Evolve Schema หรือ Drop ฟิลด์แปลกปลอม'
+                  },
+                  {
+                    step: 'PHASE 3',
+                    title: 'Spark Quality Engine & Automated Quarantine',
+                    badge: 'Core Processing',
+                    badgeColor: 'var(--accent-purple)',
+                    desc: 'Spark ดำเนินการตรวจสอบตามกฎ 5 ข้อใน rules_config.json เรคคอร์ดที่ผ่านเกณฑ์จะไหลเข้า Cleaned Warehouse ส่วนเรคคอร์ดที่มีข้อผิดพลาดจะถูกคัดแยกเข้า Quarantine Table พร้อมส่ง Metadata ไปยัง AI Advisor เพื่อวิเคราะห์ Root Cause'
+                  },
+                  {
+                    step: 'PHASE 4',
+                    title: 'Governed Serving & Downstream Delivery',
+                    badge: 'Delivery Hub',
+                    badgeColor: 'var(--accent-green)',
+                    desc: 'ข้อมูลใน Cleaned Warehouse พร้อมสำหรับการส่งมอบไปยัง PostgreSQL สำหรับ Operational Databases, Elasticsearch สำหรับ Full-text Search & Kibana Dashboard, หรือส่งออกเป็นไฟล์สำหรับ Data Science Teams'
+                  }
+                ].map((phase, idx) => (
+                  <div key={idx} style={{ display: 'flex', gap: '16px', padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)', alignItems: 'flex-start' }}>
+                    <div style={{ minWidth: '80px' }}>
+                      <span className="gs-badge" style={{ background: phase.badgeColor, color: '#ffffff', fontWeight: 700, padding: '4px 8px' }}>
+                        {phase.step}
+                      </span>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                        <h4 style={{ fontSize: '13.5px', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>{phase.title}</h4>
+                      </div>
+                      <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
+                        {phase.desc}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div style={{ marginTop: '8px', fontSize: '10px', color: 'var(--accent-purple)', fontStyle: 'italic' }}>📌 Score Case → Suggested 95–100%</div>
           </div>
+        )}
 
-          {/* 4. Schema Guard */}
-          <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-            <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '10px' }}>4. Schema Guard</div>
-            <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginBottom: '8px' }}>คำถามหลัก: โครงสร้าง Pipeline เสถียรไหม?</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', background: '#fee2e2', borderRadius: '4px' }}><span style={{ fontWeight: 600 }}>Strict</span><span>ห้ามเปลี่ยน Type / Column</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', background: 'rgba(245,158,11,0.08)', borderRadius: '4px' }}><span style={{ fontWeight: 600 }}>Evolution</span><span>ยอมให้เพิ่มฟิลด์ได้</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', background: 'var(--bg-primary)', borderRadius: '4px' }}><span style={{ fontWeight: 600 }}>Flexible</span><span>Schema on-read ยืดหยุ่นสูง</span></div>
+        {/* ========================================================================= */}
+        {/* TAB 4: CASE STUDY REFERENCE                                               */}
+        {/* ========================================================================= */}
+        {activeTab === 'casestudy' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div className="gs-guide-card">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '2px solid var(--border-color)', paddingBottom: '10px' }}>
+                <Icons.ShieldCheck />
+                <h2 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
+                  Case Study: Student Course Score Governance
+                </h2>
+              </div>
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6, margin: '0 0 16px' }}>
+                ตัวอย่างการนำหลักการไปใช้จริงในกรณีศึกษาการบริหารจัดการข้อมูลคะแนนสอบของนักศึกษา (University Grade Evaluation):
+              </p>
+
+              {/* Sample Data Table */}
+              <div style={{ marginBottom: '18px' }}>
+                <h3 style={{ fontSize: '13px', fontWeight: 700, marginBottom: '8px', color: 'var(--text-main)' }}>
+                  1. ตัวอย่างข้อมูลดิบและการตรวจจับข้อผิดพลาด (Observation Matrix)
+                </h3>
+                <table className="gs-governance-table">
+                  <thead>
+                    <tr>
+                      <th>student_id</th>
+                      <th>course_code</th>
+                      <th>score</th>
+                      <th>study_hours</th>
+                      <th>การวิเคราะห์ความผิดปกติ</th>
+                      <th>สถานะการประมวลผล</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td className="gs-mono">STD-65001</td>
+                      <td>CS301</td>
+                      <td>85.0</td>
+                      <td>24</td>
+                      <td>ข้อมูลถูกต้องตามกรอบ</td>
+                      <td><span className="gs-badge" style={{ background: '#d1fae5', color: '#059669' }}>VALID (ผ่าน)</span></td>
+                    </tr>
+                    <tr>
+                      <td className="gs-mono">STD-65002</td>
+                      <td>CS301</td>
+                      <td style={{ color: 'var(--accent-red)', fontWeight: 700 }}>NULL</td>
+                      <td>32</td>
+                      <td>Missing Critical Attribute (Null Score)</td>
+                      <td><span className="gs-badge" style={{ background: '#fee2e2', color: '#dc2626' }}>QUARANTINE (กักกัน)</span></td>
+                    </tr>
+                    <tr>
+                      <td className="gs-mono">STD-65003</td>
+                      <td>CS301</td>
+                      <td style={{ color: 'var(--accent-red)', fontWeight: 700 }}>155.0</td>
+                      <td>18</td>
+                      <td>Domain Violation (คะแนนสอบเกิน 100)</td>
+                      <td><span className="gs-badge" style={{ background: '#fee2e2', color: '#dc2626' }}>QUARANTINE (กักกัน)</span></td>
+                    </tr>
+                    <tr>
+                      <td className="gs-mono">STD-65004</td>
+                      <td>CS302</td>
+                      <td>45.0</td>
+                      <td style={{ color: 'var(--accent-yellow)', fontWeight: 700 }}>120</td>
+                      <td>Statistical Outlier (Study Hours สูงผิดปกติ)</td>
+                      <td><span className="gs-badge" style={{ background: '#fef3c7', color: '#d97706' }}>FLAGGED (ตรวจสอบ)</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mapped Rules Configuration */}
+              <div>
+                <h3 style={{ fontSize: '13px', fontWeight: 700, marginBottom: '8px', color: 'var(--text-main)' }}>
+                  2. การแมปบริบททางธุรกิจสู่ค่าคอนฟิกูเรชัน (Business Rules Mapping)
+                </h3>
+                <table className="gs-governance-table">
+                  <thead>
+                    <tr>
+                      <th>Rule Category</th>
+                      <th>Business Requirement</th>
+                      <th>Platform Parameter Setting</th>
+                      <th>ผลลัพธ์การกำกับดูแล</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td style={{ fontWeight: 700 }}>Identifier Integrity</td>
+                      <td>รหัสนักศึกษาและรหัสวิชาต้องห้ามว่าง</td>
+                      <td><code className="gs-mono">null_primary_key: strict</code></td>
+                      <td>กักกันเรคคอร์ดทันทีหาก ID ขาดหาย</td>
+                    </tr>
+                    <tr>
+                      <td style={{ fontWeight: 700 }}>Score Bound</td>
+                      <td>คะแนนเต็มวิชาการคือ 0 ถึง 100 คะแนน</td>
+                      <td><code className="gs-mono">value_range: min=0.0, max=100.0</code></td>
+                      <td>ปฏิเสธคะแนนที่ติดลบหรือเกิน 100 คะแนน</td>
+                    </tr>
+                    <tr>
+                      <td style={{ fontWeight: 700 }}>Outlier Multiplier</td>
+                      <td>ชั่วโมงเรียนอาจมีความยืดหยุ่นสูง</td>
+                      <td><code className="gs-mono">study_hours: iqr_multiplier=2.5</code></td>
+                      <td>เพิ่มเพดานรองรับความผันผวนของพฤติกรรมผู้เรียน</td>
+                    </tr>
+                    <tr>
+                      <td style={{ fontWeight: 700 }}>Batch Freshness</td>
+                      <td>รายงานคะแนนตัดเกรดประจำวัน</td>
+                      <td><code className="gs-mono">freshness_threshold_hours: 24</code></td>
+                      <td>แจ้งเตือน SLA ทันทีหากข้อมูลไม่อัปเดตใน 1 วัน</td>
+                    </tr>
+                    <tr>
+                      <td style={{ fontWeight: 700 }}>AI Imputation</td>
+                      <td>คำนวณคะแนนทดแทนกรณีขาดสอบ</td>
+                      <td><code className="gs-mono">calculate: study_hours * 1.5</code></td>
+                      <td>เสนอสูตรคำนวณให้ผู้บริหารอนุมัติก่อนบันทึกจริง</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
-            <div style={{ marginTop: '8px', fontSize: '10px', color: 'var(--accent-purple)', fontStyle: 'italic' }}>📌 Score Case → Strict Schema</div>
           </div>
-        </div>
+        )}
+
       </div>
-
-      {/* === SECTION 5: Domain Rule vs Auto IQR === */}
-      <div className="gs-guide-card">
-        <h3 style={{ fontSize: '15px', fontWeight: 800, color: 'var(--accent-purple)', marginBottom: '16px', borderBottom: '2px solid var(--accent-purple)', paddingBottom: '8px' }}>
-          📊 Domain Rule vs. Auto IQR
-        </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '16px' }}>
-          <div style={{ padding: '16px', background: '#d1fae5', borderRadius: '10px', border: '1px solid rgba(16,185,129,0.3)' }}>
-            <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '6px', color: 'var(--accent-green)' }}>✅ Known Domain → Range Check First</div>
-            <div style={{ fontSize: '11px', lineHeight: 1.6 }}>ใช้เมื่อทราบช่วงค่าชัดเจน เช่น Score (0–100) หรือ GPA (0–4) โดยไม่ต้องพึ่งพาสถิติ IQR</div>
-          </div>
-          <div style={{ padding: '16px', background: 'rgba(59,130,246,0.06)', borderRadius: '10px', border: '1px solid rgba(59,130,246,0.2)' }}>
-            <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '6px', color: 'var(--accent-blue)' }}>🔍 Unknown Domain → Auto IQR Multiplier</div>
-            <div style={{ fontSize: '11px', lineHeight: 1.6 }}>ใช้เมื่อไม่ทราบช่วงค่าที่แน่นอน โดยเลือกปรับตัวคูณ (Multiplier) ตามความไว</div>
-          </div>
-        </div>
-        <table className="gs-governance-table">
-          <thead><tr><th>Multiplier</th><th>Sensitivity</th><th>คำอธิบาย</th></tr></thead>
-          <tbody>
-            <tr><td style={{ fontWeight: 700 }}>1.5×</td><td><span className="gs-badge" style={{ background: '#d1fae5', color: 'var(--accent-green)' }}>Standard</span></td><td>จุดเริ่มต้นทั่วไป (Default) — เหมาะกับข้อมูลส่วนใหญ่</td></tr>
-            <tr><td style={{ fontWeight: 700 }}>2.0×</td><td><span className="gs-badge" style={{ background: 'rgba(245,158,11,0.08)', color: 'var(--accent-yellow)' }}>More Tolerant</span></td><td>เหมาะสำหรับข้อมูลที่มีความผันผวนตามธรรมชาติ</td></tr>
-            <tr><td style={{ fontWeight: 700 }}>3.0×</td><td><span className="gs-badge" style={{ background: '#fee2e2', color: 'var(--accent-red)' }}>Extreme Only</span></td><td>เน้นจับเฉพาะค่าที่หลุดสุดโต่งจริงๆ เท่านั้น</td></tr>
-          </tbody>
-        </table>
-      </div>
-
-            {/* === PHASE 3 === */}
-      <div style={{ marginTop: '24px', paddingBottom: '8px', borderBottom: '2px solid rgba(139, 92, 246, 0.3)' }}>
-        <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--accent-purple)', margin: 0 }}>Phase 3: Example in Action</h2>
-        <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 0' }}>สาธิตตัวอย่างการทำงานของระบบผ่านกรณีศึกษา</p>
-      </div>
-      {/* === SECTION 3: Case Study === */}
-      <div className="gs-guide-card">
-        <h3 style={{ fontSize: '15px', fontWeight: 800, color: 'var(--accent-purple)', marginBottom: '6px', borderBottom: '2px solid var(--accent-purple)', paddingBottom: '8px' }}>
-          🎓 Case Study: University Course Score Management
-        </h3>
-        <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '0 0 16px' }}>จากข้อมูลจริง สู่การปรับแต่งบนแพลตฟอร์มที่ผู้ใช้ยืนยันได้</p>
-
-        {/* Observed Records */}
-        <h4 style={{ fontSize: '12px', fontWeight: 700, marginBottom: '8px' }}>01 — Real Data Input & Profiling</h4>
-        <table className="gs-governance-table" style={{ marginBottom: '16px' }}>
-          <thead><tr><th>รหัส</th><th>วิชา</th><th>คะแนน</th><th>สถานะ</th></tr></thead>
-          <tbody>
-            <tr><td className="gs-mono">65001</td><td>Big Data</td><td>85</td><td><span className="gs-badge" style={{ background: '#d1fae5', color: 'var(--accent-green)' }}>Valid</span></td></tr>
-            <tr><td className="gs-mono">65002</td><td>Database</td><td>78</td><td><span className="gs-badge" style={{ background: '#d1fae5', color: 'var(--accent-green)' }}>Valid</span></td></tr>
-            <tr><td className="gs-mono">65003</td><td>Big Data</td><td style={{ color: 'var(--accent-red)', fontWeight: 700 }}>NULL</td><td><span className="gs-badge" style={{ background: '#fee2e2', color: 'var(--accent-red)' }}>Missing</span></td></tr>
-            <tr><td className="gs-mono">65004</td><td>Database</td><td style={{ color: 'var(--accent-red)', fontWeight: 700 }}>150</td><td><span className="gs-badge" style={{ background: '#fee2e2', color: 'var(--accent-red)' }}>Invalid</span></td></tr>
-          </tbody>
-        </table>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
-          <div style={{ padding: '12px', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, marginBottom: '6px', color: 'var(--accent-blue)' }}>🔍 Data Layer แสดงให้เห็น</div>
-            <ul style={{ fontSize: '11px', margin: 0, paddingLeft: '16px', lineHeight: 1.8, color: 'var(--text-secondary)' }}>
-              <li><strong>Null Rate:</strong> พบค่าว่าง (Missing) ในบาง Student ID</li>
-              <li><strong>Score Range:</strong> ตรวจพบคะแนน 150 (out of range)</li>
-              <li><strong>Schema:</strong> 3 Columns, Daily Batch Pipeline</li>
-            </ul>
-          </div>
-          <div style={{ padding: '12px', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, marginBottom: '6px', color: 'var(--accent-purple)' }}>💼 Business Context Layer</div>
-            <ul style={{ fontSize: '11px', margin: 0, paddingLeft: '16px', lineHeight: 1.8, color: 'var(--text-secondary)' }}>
-              <li><strong>Purpose:</strong> Official Grade (เกรดอย่างเป็นทางการ)</li>
-              <li><strong>Required:</strong> Student ID + Score</li>
-              <li><strong>Rule:</strong> ช่วงคะแนนคือ 0–100</li>
-              <li><strong>SLA:</strong> Daily Report ภายใน 24h</li>
-            </ul>
-          </div>
-        </div>
-
-        {/* Guided Platform Rules */}
-        <h4 style={{ fontSize: '12px', fontWeight: 700, marginBottom: '8px' }}>02 — Guided Platform Rules Configuration</h4>
-        <table className="gs-governance-table">
-          <thead><tr><th>Rule</th><th>Business Context</th><th style={{ color: 'var(--accent-purple)' }}>Platform Recommendation</th></tr></thead>
-          <tbody>
-            <tr><td style={{ fontWeight: 700 }}>Null Check</td><td>Student ID + Score ห้ามว่าง</td><td><span className="gs-badge" style={{ background: '#fee2e2', color: 'var(--accent-red)' }}>Strict (0% Null)</span></td></tr>
-            <tr><td style={{ fontWeight: 700 }}>Value Range</td><td>คะแนนสอบ = 0–100</td><td><span className="gs-badge" style={{ background: 'rgba(59,130,246,0.08)', color: 'var(--accent-blue)' }}>Range: 0–100</span></td></tr>
-            <tr><td style={{ fontWeight: 700 }}>Freshness</td><td>Daily Batch Report</td><td><span className="gs-badge" style={{ background: 'rgba(245,158,11,0.08)', color: 'var(--accent-yellow)' }}>{'Max Delay: < 24h'}</span></td></tr>
-            <tr><td style={{ fontWeight: 700 }}>Quality</td><td>Official Grade ระดับมหาวิทยาลัย</td><td><span className="gs-badge" style={{ background: '#d1fae5', color: 'var(--accent-green)' }}>Suggested: 95–100%</span></td></tr>
-            <tr><td style={{ fontWeight: 700 }}>Schema</td><td>Data Pipeline ต้องคงที่</td><td><span className="gs-badge" style={{ background: 'rgba(139,92,246,0.08)', color: 'var(--accent-purple)' }}>Strict Schema</span></td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      {/* === PHASE 4 === */}
-      <div style={{ marginTop: '24px', paddingBottom: '8px', borderBottom: '2px solid rgba(139, 92, 246, 0.3)' }}>
-        <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--accent-purple)', margin: 0 }}>Phase 4: Export & Serving</h2>
-        <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 0' }}>การส่งมอบข้อมูลที่สะอาดเพื่อนำไปใช้ประโยชน์</p>
-      </div>
-      {/* === SECTION 8: Export Hub === */}
-      <div className="gs-guide-card">
-        <h3 style={{ fontSize: '15px', fontWeight: 800, color: 'var(--accent-purple)', marginBottom: '16px', borderBottom: '2px solid var(--accent-purple)', paddingBottom: '8px' }}>
-          📤 Export Hub — การส่งออกข้อมูลที่สะอาดแล้ว
-        </h3>
-        <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.5 }}>
-          ข้อมูลที่ผ่านการทำความสะอาด (Cleaned Data) และตรวจสอบคุณภาพผ่านเกณฑ์ที่กำหนดแล้ว จะพร้อมให้ Export ไปยังปลายทาง
-        </p>
-        <table className="gs-governance-table">
-          <thead><tr><th>Destination</th><th>Use Case</th><th>Status</th></tr></thead>
-          <tbody>
-            <tr><td style={{ fontWeight: 700 }}>Elasticsearch</td><td>Log Analysis, Full-text Search, Kibana Dashboard</td><td><span className="gs-badge" style={{ background: '#d1fae5', color: 'var(--accent-green)' }}>Active</span></td></tr>
-            <tr><td style={{ fontWeight: 700 }}>PostgreSQL</td><td>Relational Database, Business Application, BI Tools</td><td><span className="gs-badge" style={{ background: '#d1fae5', color: 'var(--accent-green)' }}>Active</span></td></tr>
-            <tr><td style={{ fontWeight: 700 }}>CSV / Excel</td><td>Ad-hoc Analysis, Data Science, ส่งมอบไฟล์ให้ทีมงาน</td><td><span className="gs-badge" style={{ background: '#d1fae5', color: 'var(--accent-green)' }}>Active</span></td></tr>
-          </tbody>
-        </table>
-      </div>
-
     </div>
-  </div>
   );
 }
