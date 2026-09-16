@@ -505,3 +505,400 @@
   display: flex; align-items: center; justify-content: center;
   color: var(--text-muted); font-size: 11px; font-family: var(--font-mono);
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   EXECUTIVE DASHBOARD EXTENSIONS (SDOQAP Executive Spec)
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Mode Switcher Tabs ── */
+.exec-view-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 3px;
+}
+.exec-view-tab {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.exec-view-tab:hover {
+  color: var(--text-main);
+  background: rgba(108, 71, 255, 0.08);
+}
+.exec-view-tab.active {
+  color: #ffffff;
+  background: var(--accent-purple, #6C47FF);
+  box-shadow: 0 2px 10px rgba(108, 71, 255, 0.35);
+}
+.exec-view-tab-badge {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-family: var(--font-mono);
+}
+
+/* ── Filter & Control Bar ── */
+.exec-controls-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 8px 16px;
+  flex-shrink: 0;
+  gap: 12px;
+}
+.exec-filters-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.exec-filter-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.exec-filter-select {
+  background: var(--bg-primary) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 7px !important;
+  padding: 4px 10px !important;
+  font-size: 11px !important;
+  color: var(--text-main) !important;
+  font-weight: 600;
+  cursor: pointer;
+}
+.exec-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.exec-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-main);
+}
+.exec-btn:hover {
+  border-color: var(--accent-purple);
+  color: var(--accent-purple);
+}
+.exec-btn-primary {
+  background: var(--accent-purple);
+  border-color: var(--accent-purple);
+  color: #fff;
+}
+.exec-btn-primary:hover {
+  background: #5a35e0;
+  color: #fff;
+}
+
+/* ── Executive 6-Card KPI Grid ── */
+.exec-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+  flex-shrink: 0;
+}
+.exec-kpi-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+  box-shadow: var(--shadow-sm);
+}
+.exec-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+.exec-kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+}
+.exec-kpi-card.kpi-good::before { background: var(--accent-green, #10B981); }
+.exec-kpi-card.kpi-warn::before { background: var(--accent-yellow, #F59E0B); }
+.exec-kpi-card.kpi-crit::before { background: var(--accent-red, #EF4444); }
+.exec-kpi-card.kpi-purple::before { background: var(--accent-purple, #6C47FF); }
+.exec-kpi-card.kpi-blue::before { background: #3B82F6; }
+
+.exec-kpi-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.exec-kpi-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.exec-chip {
+  padding: 2px 7px;
+  border-radius: 12px;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+}
+.exec-chip-good { background: rgba(16, 185, 129, 0.15); color: #10B981; }
+.exec-chip-warn { background: rgba(245, 158, 11, 0.15); color: #F59E0B; }
+.exec-chip-crit { background: rgba(239, 68, 68, 0.15); color: #EF4444; }
+
+.exec-kpi-val {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  line-height: 1.1;
+  margin-bottom: 4px;
+}
+.exec-kpi-sub {
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* ── 5-Questions Executive Decision Box ── */
+.exec-5w-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-sm);
+}
+.exec-5w-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 8px;
+}
+.exec-5w-header h3 {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--text-main);
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+.exec-5w-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.exec-5w-row {
+  display: grid;
+  grid-template-columns: 85px 1fr;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 6px 10px;
+  background: var(--bg-primary);
+  border-radius: 8px;
+  border-left: 3px solid var(--border-color);
+}
+.exec-5w-row.what { border-left-color: var(--accent-purple); }
+.exec-5w-row.why { border-left-color: #3B82F6; }
+.exec-5w-row.impact { border-left-color: var(--accent-red); }
+.exec-5w-row.howmuch { border-left-color: var(--accent-yellow); }
+.exec-5w-row.action { border-left-color: var(--accent-green); }
+
+.exec-5w-tag {
+  font-size: 9.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.exec-5w-tag.what { color: var(--accent-purple); }
+.exec-5w-tag.why { color: #3B82F6; }
+.exec-5w-tag.impact { color: var(--accent-red); }
+.exec-5w-tag.howmuch { color: var(--accent-yellow); }
+.exec-5w-tag.action { color: var(--accent-green); }
+
+.exec-5w-text {
+  font-size: 11px;
+  color: var(--text-main);
+  line-height: 1.45;
+}
+
+/* ── Business KPI Impact Table ── */
+.exec-table-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-sm);
+}
+.exec-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.exec-table th {
+  background: var(--bg-primary);
+  padding: 8px 10px;
+  text-align: left;
+  color: var(--text-muted);
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border-color);
+}
+.exec-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-main);
+  vertical-align: middle;
+}
+.exec-table tr:last-child td { border-bottom: none; }
+.exec-table tr:hover td {
+  background: rgba(108, 71, 255, 0.04);
+}
+
+/* ── Quality Dimension Progress Bars ── */
+.exec-dim-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 6px 0;
+}
+.exec-dim-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.exec-dim-top {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+}
+.exec-dim-name { font-weight: 600; color: var(--text-main); }
+.exec-dim-score { font-family: var(--font-mono); font-weight: 700; color: var(--accent-purple); }
+.exec-dim-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-primary);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.exec-dim-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+/* ── Business Area Impact View ── */
+.biz-area-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.biz-area-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+}
+.biz-area-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent-purple);
+  box-shadow: var(--shadow-md);
+}
+.biz-area-card.selected {
+  border-color: var(--accent-purple);
+  background: rgba(108, 71, 255, 0.05);
+  box-shadow: 0 0 0 2px rgba(108, 71, 255, 0.2);
+}
+.biz-area-name {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-main);
+  margin-bottom: 4px;
+}
+.biz-area-score {
+  font-size: 20px;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  margin-bottom: 6px;
+}
+
+/* ── Flow Diagram in Business View ── */
+.biz-flow-diagram {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 14px 18px;
+  margin-bottom: 16px;
+  gap: 8px;
+}
+.biz-flow-box {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 8px 12px;
+  text-align: center;
+  flex: 1;
+}
+.biz-flow-box.purple { border-color: var(--accent-purple); background: rgba(108, 71, 255, 0.06); }
+.biz-flow-box.blue { border-color: #3B82F6; background: rgba(59, 130, 246, 0.06); }
+.biz-flow-box.amber { border-color: var(--accent-yellow); background: rgba(245, 158, 11, 0.06); }
+.biz-flow-box.red { border-color: var(--accent-red); background: rgba(239, 68, 68, 0.06); }
+.biz-flow-box.green { border-color: var(--accent-green); background: rgba(16, 185, 129, 0.06); }
+
+.biz-flow-title { font-size: 11px; font-weight: 800; color: var(--text-main); margin-bottom: 2px; }
+.biz-flow-sub { font-size: 9px; color: var(--text-muted); }
+.biz-flow-arrow { font-size: 16px; color: var(--text-muted); font-weight: bold; flex-shrink: 0; }
