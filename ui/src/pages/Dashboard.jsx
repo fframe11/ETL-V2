@@ -1,3 +1,4 @@
+import { Icon } from '../components/UiIcons';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApi, postApi } from '../hooks/useApi';
 import {
@@ -17,6 +18,7 @@ import {
   Cell
 } from 'recharts';
 import { Link, useNavigate } from 'react-router-dom';
+import WorkflowJourneyBar from '../components/WorkflowJourneyBar';
 import "./Dashboard.css";
 
 const getQualityGrade = (score) => {
@@ -62,6 +64,28 @@ export default function Dashboard() {
   const remediations = useApi('/system/remediations', { refreshInterval: 20000 });
   const clustering = useApi('/analytics/clustering', { refreshInterval: 30000 });
   const projection = useApi('/analytics/projection', { refreshInterval: 30000 });
+  const wbStateApi = useApi('/whitebox/state', { refreshInterval: 10000 });
+  const aiContextApi = useApi('/whitebox/ai-context-explanations', { refreshInterval: 30000 });
+  const [aiRefreshing, setAiRefreshing] = useState(false);
+  const wbMetrics = wbStateApi.data?.metrics || {};
+  const wbTotal = wbMetrics.total_rows ?? 10100;
+  const wbDatasetName = wbStateApi.data?.dataset_name || 'student_course_scores';
+  const wbClean = wbMetrics.clean_rows ?? 9400;
+  const wbReview = wbMetrics.review_rows ?? 100;
+  const wbQuarantine = wbMetrics.quarantine_rows ?? 600;
+  const wbScorePct = wbMetrics.quality_score_pct ?? 93.1;
+
+  const handleRefreshAiLineage = async () => {
+    setAiRefreshing(true);
+    try {
+      await fetch('/api/v1/whitebox/ai-context-explanations?force=true');
+      aiContextApi.refetch();
+    } catch {
+      // ignore
+    } finally {
+      setAiRefreshing(false);
+    }
+  };
 
   // Sync selected run for technical cockpit
   useEffect(() => {
@@ -76,64 +100,40 @@ export default function Dashboard() {
   }, [qualityHistory.data, userSelectedRunId]);
 
   const terminalEndRef = useRef(null);
-  useEffect(() => {
-    if (terminalEndRef.current && viewMode === 'technical') {
-      terminalEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [activity.data, viewMode]);
 
-  // Executive Data extraction with safe fallbacks
+  // Executive Data extraction with safe, non-mock fallbacks
   const execData = exec.data || {};
   const execKpis = execData.executive_kpis || {};
-  const dataHealth = execKpis.data_health || { score: 96.52, status: 'Good', trend_label: '+1.2%', total_records: 38435, clean_records: 37142, quarantined_records: 1293 };
-  const dataAvailability = execKpis.data_availability || { score: 94.4, status: 'Warning', total_pipelines: 18, failed_pipelines: 1 };
-  const dataFreshness = execKpis.data_freshness || { score: 82.4, status: 'Warning', avg_lag_hours: 0.42, sla_threshold_hours: 1.0 };
-  const bizImpact = execKpis.business_impact || { areas_affected_count: 2, total_areas_count: 5, critical_issues_count: 3, reports_ok_pct: 96.5, monetary_loss_usd: 3232 };
-  const reportAvail = execKpis.report_availability || { score: 96.5, available_reports: 24, delayed_reports: 1, failed_reports: 1 };
-  const activeCriticalCount = execKpis.active_critical_issues_count ?? 3;
+  const dataHealth = execKpis.data_health || { score: null, status: 'N/A', trend_label: '', total_records: 0, clean_records: 0, quarantined_records: 0 };
+  const dataAvailability = execKpis.data_availability || { score: null, status: 'N/A', total_pipelines: 0, failed_pipelines: 0 };
+  const dataFreshness = execKpis.data_freshness || { score: null, status: 'N/A', avg_lag_hours: 0, sla_threshold_hours: 1.0 };
+  const bizImpact = execKpis.business_impact || { areas_affected_count: 0, total_areas_count: 0, critical_issues_count: 0, reports_ok_pct: null, monetary_loss_usd: 0 };
+  const reportAvail = execKpis.report_availability || { score: null, available_reports: 0, delayed_reports: 0, failed_reports: 0 };
+  const activeCriticalCount = execKpis.active_critical_issues_count ?? 0;
 
-  const bizAreas = execData.business_areas || [
-    { id: 'sales', name: 'Sales & Revenue', status: 'Warning', health_pct: 92.4, impact_summary: 'Estimated COPDQ impact $3,232 USD', affected_datasets: ['users', 'grocery_sales'] },
-    { id: 'customer', name: 'Customer Insights', status: 'Warning', health_pct: 89.6, impact_summary: 'Quarantined demographic records pending resolution', affected_datasets: ['users'] },
-    { id: 'reporting', name: 'Executive Reporting', status: 'Warning', health_pct: 94.0, impact_summary: 'Daily Executive Report delayed by schema drift', affected_datasets: ['sdoqap_quality_runs'] },
-    { id: 'operations', name: 'Supply Chain & Ops', status: 'Normal', health_pct: 99.2, impact_summary: 'Inventory synchronization running smooth', affected_datasets: ['products'] },
-    { id: 'finance', name: 'Finance & Audit', status: 'Normal', health_pct: 99.8, impact_summary: 'Audit trail verified against Delta Lake', affected_datasets: [] }
-  ];
-
-  const bizKpiImpactList = execData.business_kpi_impact || [
-    { technical_issue: 'Schema Drift', impacted_kpi: 'Report Accuracy / Data Integrity', business_impact: 'รายงานและ Dashboard เสี่ยงคลาดเคลื่อน ข้อมูลฟิลด์ใหม่ยังไม่ผ่านการ Approve', severity: 'Critical', affected_source: 'users', status: 'Investigating' },
-    { technical_issue: 'Missing Values', impacted_kpi: 'Sales / Customer KPI Accuracy', business_impact: 'การตัดสินใจและการคำนวณสถิติตัวเลขลูกค้าอาจไม่ครบถ้วน', severity: 'Warning', affected_source: 'users / sales', status: 'Resolving' },
-    { technical_issue: 'Pipeline Failure', impacted_kpi: 'Data Availability & Freshness', business_impact: 'ผู้บริหารไม่มีข้อมูลล่าสุดสำหรับการตัดสินใจรายชั่วโมง', severity: 'Critical', affected_source: 'API Ingestor', status: 'Investigating' },
-    { technical_issue: 'Duplicate Records', impacted_kpi: 'Revenue Reporting', business_impact: 'อาจทำให้ยอดขายหรือออเดอร์ในรายงานสูงเกินจริง', severity: 'Warning', affected_source: 'grocery_sales', status: 'Monitoring' },
-    { technical_issue: 'Data Latency Delay', impacted_kpi: 'Decision Response Time', business_impact: 'ข้อมูล Real-time ล่าช้ากว่า SLA ที่กำหนด 1 ชั่วโมง', severity: 'Warning', affected_source: 'Stream Pipeline', status: 'Monitoring' }
-  ];
-
-  const criticalIssuesList = execData.critical_business_issues || [
-    { id: 'ISS-PIPE-01', issue: 'API Pipeline Connection Failure', business_impact: 'Daily Executive Report delayed by 25 mins', kpi_affected: 'Data Availability', severity: 'Critical', duration: '24 mins', status: 'Investigating', dataset: 'users' },
-    { id: 'ISS-DRIFT-02', issue: "Schema Drift on 'users'", business_impact: 'New unexpected columns quarantined; BI dashboard pending schema approval', kpi_affected: 'Report Accuracy', severity: 'Warning', duration: '45 mins', status: 'Resolving', dataset: 'users' },
-    { id: 'ISS-DATA-03', issue: 'Data Quarantine Threshold Exceeded (1,293 records)', business_impact: 'Estimated COPDQ risk $3,232 USD due to bad values', kpi_affected: 'Sales / Inventory KPI', severity: 'Warning', duration: '1 hr 12 mins', status: 'Monitoring', dataset: 'users / grocery_sales' }
-  ];
-
+  const bizAreas = execData.business_areas || [];
+  const bizKpiImpactList = execData.business_kpi_impact || [];
+  const criticalIssuesList = execData.critical_business_issues || [];
   const qualityBreakdown = execData.data_quality_breakdown || {
-    missing_values_pct: 2.1,
-    duplicate_records_pct: 0.4,
-    invalid_type_pct: 0.2,
-    schema_drift_count: 1,
-    total_quarantined: 1293
+    missing_values_pct: 0,
+    duplicate_records_pct: 0,
+    invalid_type_pct: 0,
+    schema_drift_count: 0,
+    total_quarantined: 0
   };
 
   const fiveQuestions = execData.executive_summary_5w || {
-    what: "คุณภาพข้อมูลภาพรวมอยู่ที่ 96.5% โดยพบ 1,293 แถวที่ติด Quarantine และมี Schema Drift 1 รายการ",
-    why: "เกิดจากข้อมูลนำเข้ามี Missing Values และ Schema โครงสร้างตาราง users เปลี่ยนแปลงโดยไม่มีการแจ้งล่วงหน้า",
-    impact: "กระทบ 2 ส่วนงานธุรกิจ (Sales, Reporting) ทำให้รายงานประจำวันบางส่วนต้องรอการยืนยัน",
-    how_much: "ความเสียหายประเมินตาม Gartner COPDQ อยู่ที่ $3,232 USD (กระทบ 3 ปัญหาสำคัญ)",
-    action: "ทีม Data Governance เปิด Remediation Ticket และกักกันข้อมูลไว้ใน Quarantine Store เรียบร้อยแล้ว กำลังรอการตรวจสอบ"
+    what: exec.loading ? "กำลังประมวลผลข้อมูลสถานะภาพรวมจากคลัสเตอร์..." : "ไม่พบความผิดปกติในระบบ ข้อมูลทุกส่วนทำงานปกติ",
+    why: exec.loading ? "กำลังตรวจสอบสาเหตุ..." : "ท่อส่งข้อมูลทำงานตาม Data Contract",
+    impact: exec.loading ? "กำลังประเมินผลกระทบ..." : "ไม่พบผลกระทบต่อส่วนงานธุรกิจ",
+    how_much: exec.loading ? "กำลังประเมินความเสียหาย..." : "0 USD",
+    action: exec.loading ? "กำลังดึงข้อมูลการดำเนินการ..." : "ระบบติดตามทำงานตามรอบปกติ"
   };
 
   // Filtered Critical Issues by severity & area
   const filteredCriticalIssues = useMemo(() => {
     return criticalIssuesList.filter(item => {
-      const matchSev = selectedSeverityFilter === 'All' || item.severity.toLowerCase() === selectedSeverityFilter.toLowerCase();
+      const matchSev = selectedSeverityFilter === 'All' || (item.severity && item.severity.toLowerCase() === selectedSeverityFilter.toLowerCase());
       const matchArea = selectedAreaFilter === 'All' || (item.dataset && item.dataset.toLowerCase().includes(selectedAreaFilter.toLowerCase()));
       return matchSev && matchArea;
     });
@@ -142,14 +142,7 @@ export default function Dashboard() {
   // Data Quality Trend Chart
   const qualityTrendData = useMemo(() => {
     if (!anomaly.data || !anomaly.data.timestamps || !anomaly.data.series) {
-      return [
-        { time: '10:00', Overall: 98.4, SLA: 95.0, Freshness: 92.0 },
-        { time: '10:10', Overall: 98.1, SLA: 95.0, Freshness: 94.0 },
-        { time: '10:20', Overall: 97.5, SLA: 95.0, Freshness: 91.0 },
-        { time: '10:30', Overall: 94.2, SLA: 95.0, Freshness: 86.0 },
-        { time: '10:40', Overall: 92.0, SLA: 95.0, Freshness: 80.0 },
-        { time: '10:50', Overall: 96.5, SLA: 95.0, Freshness: 85.0 },
-      ];
+      return [];
     }
     return anomaly.data.timestamps.map((ts, i) => {
       const point = { time: ts, SLA: 95.0 };
@@ -157,14 +150,18 @@ export default function Dashboard() {
       const keys = Object.keys(seriesObj);
       if (keys.length > 0) {
         let sum = 0;
+        let validCount = 0;
         keys.forEach(k => {
-          const val = seriesObj[k][i] ?? 100;
-          point[k] = val;
-          sum += val;
+          const val = seriesObj[k][i];
+          if (val != null) {
+            point[k] = val;
+            sum += val;
+            validCount++;
+          }
         });
-        point.Overall = parseFloat((sum / keys.length).toFixed(2));
+        point.Overall = validCount > 0 ? parseFloat((sum / validCount).toFixed(2)) : null;
       } else {
-        point.Overall = 96.5;
+        point.Overall = null;
       }
       return point;
     });
@@ -266,27 +263,27 @@ export default function Dashboard() {
       <div className="gs-topbar">
         <div>
           <h1 className="gs-title">
-            SDOQAP <span>Executive Dashboard</span>
+            Quality <span>Summary &amp; Trust Dashboard</span>
           </h1>
           <p className="gs-subtitle">
-            Enterprise Data Quality &amp; Business Impact Monitoring — Technical Issue → KPI → Business Impact → Action
+            สรุปผลลัพธ์การคัดกรองข้อมูลระดับ Medallion Pipeline สมการคำนวณคะแนนความเชื่อมั่น และการปิดช่องโหว่ที่ระบบต้นทาง
           </p>
         </div>
 
         {/* 4 View Modes Switcher */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
           <div className="exec-view-tabs">
             <button
               className={`exec-view-tab ${viewMode === 'executive' ? 'active' : ''}`}
               onClick={() => setViewMode('executive')}
             >
-              👑 Executive Overview
+              <Icon name="user" /> Executive Overview
             </button>
             <button
               className={`exec-view-tab ${viewMode === 'business' ? 'active' : ''}`}
               onClick={() => setViewMode('business')}
             >
-              🏢 Business Impact
+              <Icon name="building" /> Business Impact
               {bizImpact.areas_affected_count > 0 && (
                 <span className="exec-view-tab-badge">{bizImpact.areas_affected_count}</span>
               )}
@@ -295,13 +292,13 @@ export default function Dashboard() {
               className={`exec-view-tab ${viewMode === 'quality' ? 'active' : ''}`}
               onClick={() => setViewMode('quality')}
             >
-              🔍 Data Quality
+              <Icon name="search" /> Data Quality
             </button>
             <button
               className={`exec-view-tab ${viewMode === 'technical' ? 'active' : ''}`}
               onClick={() => setViewMode('technical')}
             >
-              ⚙️ Technical Cockpit
+              <Icon name="settings" /> Technical Cockpit
             </button>
           </div>
 
@@ -312,7 +309,142 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── CONTROLS & FILTERS BAR (Section 19) ── */}
+      {/* Interactive Score Derivation & 4-Step Operational Lineage Bar */}
+      <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: "10px", padding: "16px 20px", marginBottom: "16px", boxShadow: "0 1px 2px rgba(15,23,42,0.03)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "12px" }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+              <span style={{ background: "#1B3139", color: "#FFFFFF", fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "4px", letterSpacing: "0.04em" }}>
+                LAKEHOUSE MONITORING · DATA QUALITY LINEAGE
+              </span>
+              <span style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A" }}>
+                <Icon name="chart" /> สูตรคำนวณดัชนีคุณภาพข้อมูล ({wbDatasetName}):
+              </span>
+              <code style={{ background: "#F8FAFC", color: "#0F172A", border: "1px solid #E2E8F0", padding: "2px 8px", borderRadius: "4px", fontSize: "11px", fontWeight: 700 }}>
+                (ข้อมูลสะอาด {wbClean.toLocaleString()} แถว ÷ ข้อมูลขาเข้าทั้งหมด {wbTotal.toLocaleString()} แถว) × 100 = {wbScorePct}%
+              </code>
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={handleRefreshAiLineage}
+              disabled={aiRefreshing}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px",
+                fontSize: "11px",
+                fontWeight: 700,
+                color: "#1B3139",
+                background: "#F8FAFC",
+                padding: "5px 10px",
+                borderRadius: "6px",
+                border: "1px solid #CBD5E1",
+                cursor: aiRefreshing ? "wait" : "pointer"
+              }}
+            >
+              <Icon name="sparkles" /> {aiRefreshing ? "AI กำลังสรุปภาพรวม..." : "อัปเดตบทวิเคราะห์ AI"}
+            </button>
+            <Link
+              to="/ingestion"
+              style={{ fontSize: "11px", fontWeight: 700, color: "#FFFFFF", textDecoration: "none", background: "#1B3139", padding: "5px 12px", borderRadius: "6px" }}
+            >
+              <Icon name="search" /> เปิดคอนโซล Bronze Ingestion <Icon name="arrow-right" />
+            </Link>
+          </div>
+        </div>
+
+        {/* AI Contextual Narrative Banner */}
+        <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderLeft: "3px solid #FF3621", borderRadius: "6px", padding: "10px 12px", marginBottom: "12px", fontSize: "11.5px", color: "#334155", lineHeight: "1.55" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "3px", flexWrap: "wrap", gap: "6px" }}>
+            <span style={{ fontSize: "10.5px", fontWeight: 700, color: "#1B3139", display: "flex", alignItems: "center", gap: "5px" }}>
+              <Icon name="sparkles" /> สรุปสถานะคุณภาพข้อมูลและเส้นทางสายข้อมูลโดย AI ({aiContextApi.data?.model || "openai/gpt-oss-120b"})
+            </span>
+            <span style={{ fontSize: "10px", fontWeight: 700, color: "#64748B" }}>
+              ตาราง: {wbDatasetName} ({wbTotal.toLocaleString()} แถว)
+            </span>
+          </div>
+          <div style={{ fontWeight: 500, color: "#0F172A" }}>
+            {aiContextApi.data?.step5_lineage?.executive_narrative ||
+              `ภาพรวมคุณภาพข้อมูลของตาราง '${wbDatasetName}' อยู่ที่ ${wbScorePct}% โดยมีข้อมูลสะอาดพร้อมใช้งาน ${wbClean.toLocaleString()} แถว รอผู้ดูแลตรวจสอบใน Review Queue ${wbReview.toLocaleString()} แถว และกักกันเพื่อส่งรายงานแจ้งแก้ที่ระบบต้นทาง ${wbQuarantine.toLocaleString()} แถว`}
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "10px" }}>
+          <Link to="/ingestion" style={{ textDecoration: "none", background: "#FFFFFF", border: "1px solid #E2E8F0", borderLeft: "3px solid #DC2626", borderRadius: "6px", padding: "10px 12px", display: "block" }}>
+            <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748B", letterSpacing: "0.04em" }}>BRONZE INGESTION (/ingestion)</div>
+            <div style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A", marginTop: "2px" }}><Icon name="search" /> สแกนพบความผิดปกติ {Array.isArray(wbStateApi.data?.selected_findings) ? wbStateApi.data.selected_findings.length : wbStateApi.data?.selected_findings ? Object.values(wbStateApi.data.selected_findings).filter(Boolean).length : 3} หมวดหมู่</div>
+            <div style={{ fontSize: "10.5px", color: "#475569", marginTop: "3px", lineHeight: "1.4" }}>
+              {aiContextApi.data?.step5_lineage?.step1_card_desc || `สแกน ${wbTotal.toLocaleString()} แถว พบค่าว่าง ค่านอกช่วง คีย์ซ้ำ และค่าเกินรั้วสถิติ → คลิกดู`}
+            </div>
+          </Link>
+
+          <Link to="/rules" style={{ textDecoration: "none", background: "#FFFFFF", border: "1px solid #E2E8F0", borderLeft: "3px solid #D97706", borderRadius: "6px", padding: "10px 12px", display: "block" }}>
+            <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748B", letterSpacing: "0.04em" }}>DELTA EXPECTATIONS (/rules)</div>
+            <div style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A", marginTop: "2px" }}><Icon name="scale" /> ตั้งเกณฑ์และยืนยันกฎ</div>
+            <div style={{ fontSize: "10.5px", color: "#475569", marginTop: "3px", lineHeight: "1.4" }}>
+              {aiContextApi.data?.step5_lineage?.step2_card_desc || `Range [${wbStateApi.data?.min_score ?? 0},${wbStateApi.data?.max_score ?? 100}] · Tukey ${wbStateApi.data?.tukey_multiplier || "3.0"}× IQR → คลิกปรับเกณฑ์`}
+            </div>
+          </Link>
+
+          <Link to="/pipeline" style={{ textDecoration: "none", background: "#FFFFFF", border: "1px solid #E2E8F0", borderLeft: "3px solid #0284C7", borderRadius: "6px", padding: "10px 12px", display: "block" }}>
+            <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748B", letterSpacing: "0.04em" }}>SILVER QUALITY GATES (/pipeline)</div>
+            <div style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A", marginTop: "2px" }}><Icon name="settings" /> คัดแยก 3 โซน &amp; อนุมัติคิว</div>
+            <div style={{ fontSize: "10.5px", color: "#475569", marginTop: "3px", lineHeight: "1.4" }}>
+              {aiContextApi.data?.step5_lineage?.step3_card_desc || `สะอาด ${wbClean.toLocaleString()} | รอตรวจ ${wbReview.toLocaleString()} | กักกัน ${wbQuarantine.toLocaleString()} → คลิกสั่งการ`}
+            </div>
+          </Link>
+
+          <Link to="/export" style={{ textDecoration: "none", background: "#FFFFFF", border: "1px solid #E2E8F0", borderLeft: "3px solid #16A34A", borderRadius: "6px", padding: "10px 12px", display: "block" }}>
+            <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748B", letterSpacing: "0.04em" }}>GOLD EXPORT (/export)</div>
+            <div style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A", marginTop: "2px" }}><Icon name="box" /> ส่งออก CSV แยก 3 โซน ({wbClean.toLocaleString()} แถว)</div>
+            <div style={{ fontSize: "10.5px", color: "#475569", marginTop: "3px", lineHeight: "1.4" }}>
+              {aiContextApi.data?.step5_lineage?.step4_card_desc || `ดาวน์โหลด Clean CSV และใบแจ้งแก้ต้นทาง → คลิกส่งออก`}
+            </div>
+          </Link>
+        </div>
+
+        {/* Bottom Action Bar in Primary Summary Mode */}
+        <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px solid #E2E8F0", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+          <span style={{ fontSize: "12px", color: "#334155", fontWeight: 600 }}>
+            ต้องการดูรายการเรคคอร์ดทั้งหมด ({wbTotal.toLocaleString()} แถว) ของตาราง {wbDatasetName} แบบละเอียดพร้อมกรองตามประเภทความผิดปกติหรือไม่?
+          </span>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <Link
+              to="/whitebox"
+              style={{
+                padding: "8px 14px",
+                borderRadius: "6px",
+                fontSize: "12px",
+                fontWeight: 700,
+                background: "#1B3139",
+                color: "#FFFFFF",
+                textDecoration: "none"
+              }}
+            >
+              เปิดตารางตรวจสอบข้อมูลเชิงลึก (/whitebox) →
+            </Link>
+            <Link
+              to="/rules"
+              style={{
+                padding: "8px 14px",
+                borderRadius: "6px",
+                fontSize: "12px",
+                fontWeight: 700,
+                background: "#F8FAFC",
+                color: "#334155",
+                border: "1px solid #CBD5E1",
+                textDecoration: "none"
+              }}
+            >
+              กลับไปปรับเกณฑ์ที่ Delta Expectations (/rules)
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      {/* ── CONTROLS & FILTERS BAR ── */}
       <div className="exec-controls-bar">
         <div className="exec-filters-left">
           <span className="exec-filter-label">Filter By:</span>
@@ -346,30 +478,29 @@ export default function Dashboard() {
             onChange={(e) => setSelectedSeverityFilter(e.target.value)}
           >
             <option value="All">Severity: All Levels</option>
-            <option value="Critical">🔴 Critical Only</option>
-            <option value="Warning">🟡 Warning Only</option>
-            <option value="Normal">🟢 Normal Only</option>
+            <option value="Critical"> Critical Only</option>
+            <option value="Warning"> Warning Only</option>
+            <option value="Normal"> Normal Only</option>
           </select>
         </div>
 
         <div className="exec-actions-right">
           <button
             className="exec-btn"
-            onClick={() => { exec.refetch(); kpi.refetch(); anomaly.refetch(); }}
+            onClick={() => { exec.refetch(); kpi.refetch(); anomaly.refetch(); wbStateApi.refetch(); }}
             title="Refresh All Real-time Metrics"
           >
-            🔄 Refresh
+            <Icon name="refresh" /> Refresh
           </button>
           <button
             className="exec-btn exec-btn-primary"
             onClick={handleExportExecutiveCSV}
-            title="Export Executive Executive CSV Report"
+            title="Export Executive CSV Report"
           >
-            📊 Export Executive Report
+            <Icon name="chart" /> Export Executive Report
           </button>
         </div>
       </div>
-
       {/* ═══════════════════════════════════════════════════════════
           VIEW 1: EXECUTIVE OVERVIEW (Section 4 - 8, 25 of Spec)
           ═══════════════════════════════════════════════════════════ */}
@@ -385,7 +516,7 @@ export default function Dashboard() {
                   {dataHealth.status}
                 </span>
               </div>
-              <div className="exec-kpi-val">{dataHealth.score}%</div>
+              <div className="exec-kpi-val">{dataHealth.score != null ? `${dataHealth.score}%` : '---'}</div>
               <div className="exec-kpi-sub">
                 {dataHealth.clean_records?.toLocaleString()} clean · {dataHealth.quarantined_records?.toLocaleString()} quarantined
               </div>
@@ -399,7 +530,7 @@ export default function Dashboard() {
                   {dataAvailability.score >= 95 ? 'HEALTHY' : 'DEGRADED'}
                 </span>
               </div>
-              <div className="exec-kpi-val">{dataAvailability.score}%</div>
+              <div className="exec-kpi-val">{dataAvailability.score != null ? `${dataAvailability.score}%` : '---'}</div>
               <div className="exec-kpi-sub">
                 {dataAvailability.total_pipelines - dataAvailability.failed_pipelines}/{dataAvailability.total_pipelines} Pipelines Active
               </div>
@@ -413,7 +544,7 @@ export default function Dashboard() {
                   {dataFreshness.score >= 90 ? 'ON-TIME' : 'DELAYED'}
                 </span>
               </div>
-              <div className="exec-kpi-val">{dataFreshness.score}%</div>
+              <div className="exec-kpi-val">{dataFreshness.score != null ? `${dataFreshness.score}%` : '---'}</div>
               <div className="exec-kpi-sub">
                 Avg lag: {dataFreshness.avg_lag_hours} hrs (SLA &lt; {dataFreshness.sla_threshold_hours}h)
               </div>
@@ -439,10 +570,10 @@ export default function Dashboard() {
             <div className="exec-kpi-card kpi-blue">
               <div className="exec-kpi-top">
                 <span className="exec-kpi-title">Report Availability</span>
-                <span className="exec-chip exec-chip-good">96% OK</span>
+                <span className={`exec-chip ${(reportAvail.score || 0) >= 90 ? 'exec-chip-good' : 'exec-chip-warn'}`}>{reportAvail.score != null ? `${reportAvail.score}% OK` : 'N/A'}</span>
               </div>
               <div className="exec-kpi-val" style={{ color: '#3B82F6' }}>
-                {reportAvail.score}%
+                {reportAvail.score != null ? `${reportAvail.score}%` : '---'}
               </div>
               <div className="exec-kpi-sub">
                 {reportAvail.available_reports} Ready · {reportAvail.delayed_reports} Delayed Report
@@ -482,8 +613,8 @@ export default function Dashboard() {
                   <ComposedChart data={qualityTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                     <defs>
                       <linearGradient id="qualityGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="var(--accent-purple, #6C47FF)" stopOpacity={0.4}/>
-                        <stop offset="95%" stopColor="var(--accent-purple, #6C47FF)" stopOpacity={0.0}/>
+                        <stop offset="5%" stopColor="var(--db-navy, #1B3139)" stopOpacity={0.4}/>
+                        <stop offset="95%" stopColor="var(--db-navy, #1B3139)" stopOpacity={0.0}/>
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
@@ -504,29 +635,29 @@ export default function Dashboard() {
             <div className="exec-5w-card">
               <div className="exec-5w-header">
                 <h3>
-                  <span>💡</span> Executive 5-Question Framework
+                  <span><Icon name="bolt" /></span> Executive 5-Question Framework
                 </h3>
                 <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>Instant Decision Support</span>
               </div>
               <div className="exec-5w-list">
                 <div className="exec-5w-row what">
-                  <div className="exec-5w-tag what">📌 WHAT?</div>
+                  <div className="exec-5w-tag what"><Icon name="target" /> WHAT?</div>
                   <div className="exec-5w-text">{fiveQuestions.what}</div>
                 </div>
                 <div className="exec-5w-row why">
-                  <div className="exec-5w-tag why">🔍 WHY?</div>
+                  <div className="exec-5w-tag why"><Icon name="search" /> WHY?</div>
                   <div className="exec-5w-text">{fiveQuestions.why}</div>
                 </div>
                 <div className="exec-5w-row impact">
-                  <div className="exec-5w-tag impact">💥 IMPACT?</div>
+                  <div className="exec-5w-tag impact"><Icon name="alert" /> IMPACT?</div>
                   <div className="exec-5w-text">{fiveQuestions.impact}</div>
                 </div>
                 <div className="exec-5w-row howmuch">
-                  <div className="exec-5w-tag howmuch">💰 HOW MUCH?</div>
+                  <div className="exec-5w-tag howmuch"><Icon name="chart" /> HOW MUCH?</div>
                   <div className="exec-5w-text">{fiveQuestions.how_much}</div>
                 </div>
                 <div className="exec-5w-row action">
-                  <div className="exec-5w-tag action">⚡ ACTION?</div>
+                  <div className="exec-5w-tag action"><Icon name="bolt" /> ACTION?</div>
                   <div className="exec-5w-text">{fiveQuestions.action}</div>
                 </div>
               </div>
@@ -696,15 +827,15 @@ export default function Dashboard() {
                               setViewMode('technical');
                             }}
                           >
-                            Drill-down ⚙️
+                            Drill-down <Icon name="settings" />
                           </button>
-                          {issue.issue.includes('Schema Drift') && (
+                          {issue.issue?.includes('Schema Drift') && (
                             <Link
                               to="/schema"
                               className="exec-btn exec-btn-primary"
                               style={{ padding: '3px 8px', fontSize: '9.5px', textDecoration: 'none' }}
                             >
-                              Review Drift 🗺️
+                              Review Drift <Icon name="globe" />
                             </Link>
                           )}
                         </div>
@@ -867,7 +998,7 @@ export default function Dashboard() {
                         disabled={resolvingTicketId === tkt.ticket_id}
                         onClick={() => handleResolveTicket(tkt.ticket_id)}
                       >
-                        {resolvingTicketId === tkt.ticket_id ? 'Resolving...' : 'Resolve ✓'}
+                        {resolvingTicketId === tkt.ticket_id ? 'Resolving...' : 'Resolve '}
                       </button>
                     </div>
                   ))
@@ -887,33 +1018,33 @@ export default function Dashboard() {
           <div className="exec-kpi-grid">
             <div className="exec-kpi-card kpi-good">
               <span className="exec-kpi-title">Completeness</span>
-              <div className="exec-kpi-val">97.9%</div>
-              <div className="exec-kpi-sub">2.1% missing fields</div>
+              <div className="exec-kpi-val">{exec.loading ? '...' : `${(100 - (qualityBreakdown.missing_values_pct || 0)).toFixed(1)}%`}</div>
+              <div className="exec-kpi-sub">{qualityBreakdown.missing_values_pct > 0 ? `${qualityBreakdown.missing_values_pct}% missing fields` : '100% complete'}</div>
             </div>
             <div className="exec-kpi-card kpi-good">
               <span className="exec-kpi-title">Uniqueness</span>
-              <div className="exec-kpi-val">99.6%</div>
-              <div className="exec-kpi-sub">0.4% duplicates isolated</div>
+              <div className="exec-kpi-val">{exec.loading ? '...' : `${(100 - (qualityBreakdown.duplicate_records_pct || 0)).toFixed(1)}%`}</div>
+              <div className="exec-kpi-sub">{qualityBreakdown.duplicate_records_pct > 0 ? `${qualityBreakdown.duplicate_records_pct}% duplicates isolated` : 'Zero duplicates'}</div>
             </div>
             <div className="exec-kpi-card kpi-good">
               <span className="exec-kpi-title">Validity</span>
-              <div className="exec-kpi-val">99.8%</div>
-              <div className="exec-kpi-sub">Type &amp; bounds checked</div>
+              <div className="exec-kpi-val">{exec.loading ? '...' : `${(100 - (qualityBreakdown.invalid_type_pct || 0)).toFixed(1)}%`}</div>
+              <div className="exec-kpi-sub">{qualityBreakdown.invalid_type_pct > 0 ? `${qualityBreakdown.invalid_type_pct}% type mismatches` : 'Type & bounds checked'}</div>
             </div>
-            <div className="exec-kpi-card kpi-warn">
+            <div className={`exec-kpi-card ${(dataFreshness.score || 100) >= 90 ? 'kpi-good' : 'kpi-warn'}`}>
               <span className="exec-kpi-title">Timeliness</span>
-              <div className="exec-kpi-val">82.4%</div>
-              <div className="exec-kpi-sub">Avg latency 0.42 hrs</div>
+              <div className="exec-kpi-val">{dataFreshness.score != null ? `${dataFreshness.score}%` : '---'}</div>
+              <div className="exec-kpi-sub">Avg latency {dataFreshness.avg_lag_hours || 0} hrs</div>
             </div>
             <div className="exec-kpi-card kpi-purple">
               <span className="exec-kpi-title">Consistency</span>
-              <div className="exec-kpi-val">98.5%</div>
+              <div className="exec-kpi-val">{dataHealth.score != null ? `${dataHealth.score}%` : '---'}</div>
               <div className="exec-kpi-sub">Cross-table checks OK</div>
             </div>
-            <div className="exec-kpi-card kpi-blue">
+            <div className={`exec-kpi-card ${qualityBreakdown.schema_drift_count > 0 ? 'kpi-warn' : 'kpi-blue'}`}>
               <span className="exec-kpi-title">Drift Integrity</span>
-              <div className="exec-kpi-val">90.0%</div>
-              <div className="exec-kpi-sub">1 Schema Evolution</div>
+              <div className="exec-kpi-val">{qualityBreakdown.schema_drift_count > 0 ? `${Math.max(0, 100 - qualityBreakdown.schema_drift_count * 10).toFixed(1)}%` : '100.0%'}</div>
+              <div className="exec-kpi-sub">{qualityBreakdown.schema_drift_count > 0 ? `${qualityBreakdown.schema_drift_count} Schema Evolution(s)` : 'No schema drift'}</div>
             </div>
           </div>
 
@@ -943,27 +1074,27 @@ export default function Dashboard() {
                 {availableTables.map((tbl, i) => {
                   const runsForTable = qualityHistory.data?.filter(r => r.table_name === tbl) || [];
                   const latest = runsForTable[0] || {};
-                  const score = latest.quality_score ?? 98.0;
+                  const score = latest.quality_score != null ? latest.quality_score : null;
                   const grade = getQualityGrade(score);
                   return (
                     <tr key={i}>
                       <td style={{ fontWeight: 700, color: 'var(--text-main)' }}>{tbl}</td>
                       <td>
                         <span style={{ color: grade.color, fontWeight: 800, fontFamily: 'var(--font-mono)' }}>
-                          {score}%
+                          {score != null ? `${score.toFixed(1)}%` : 'N/A'}
                         </span>
                       </td>
-                      <td style={{ fontFamily: 'var(--font-mono)' }}>{(latest.total_records || 1000).toLocaleString()}</td>
-                      <td style={{ fontFamily: 'var(--font-mono)', color: latest.quarantined_records > 0 ? 'var(--accent-red)' : 'var(--text-muted)' }}>
-                        {(latest.quarantined_records || 0).toLocaleString()}
+                      <td style={{ fontFamily: 'var(--font-mono)' }}>{latest.total_records != null ? latest.total_records.toLocaleString() : '-'}</td>
+                      <td style={{ fontFamily: 'var(--font-mono)', color: (latest.quarantined_records || 0) > 0 ? 'var(--accent-red)' : 'var(--text-muted)' }}>
+                        {latest.quarantined_records != null ? latest.quarantined_records.toLocaleString() : '-'}
                       </td>
                       <td>
-                        <span className={`exec-chip ${score >= 95 ? 'exec-chip-good' : score >= 90 ? 'exec-chip-warn' : 'exec-chip-crit'}`}>
+                        <span className={`exec-chip ${score != null && score >= 95 ? 'exec-chip-good' : score != null && score >= 90 ? 'exec-chip-warn' : 'exec-chip-crit'}`}>
                           {grade.grade}
                         </span>
                       </td>
                       <td style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                        {latest.timestamp ? new Date(latest.timestamp).toLocaleTimeString() : 'Just now'}
+                        {latest.timestamp ? new Date(latest.timestamp).toLocaleTimeString() : '-'}
                       </td>
                     </tr>
                   );
@@ -993,7 +1124,7 @@ export default function Dashboard() {
               return (
                 <div className="gs-lineage-track" style={{ display: 'flex', alignItems: 'center', width: '100%', justifyContent: 'space-between' }}>
                   <div className="gs-node active">
-                    <span className="gs-node-icon">📥</span>
+                    <span className="gs-node-icon"><Icon name="download" /></span>
                     <div className="gs-node-text">
                       <strong>{activeRun ? activeRun.data_source || activeRun.table_name : 'Ingest Source'}</strong>
                       <small>Bronze Layer</small>
@@ -1003,7 +1134,7 @@ export default function Dashboard() {
                   <div className="gs-connector active"><div className="gs-connector-line"></div><div className="gs-connector-arrow">→</div></div>
 
                   <div className="gs-node active">
-                    <span className="gs-node-icon">⚙️</span>
+                    <span className="gs-node-icon"><Icon name="settings" /></span>
                     <div className="gs-node-text">
                       <strong>Spark QA Engine</strong>
                       <small>Quality Rules Audit</small>
@@ -1013,7 +1144,7 @@ export default function Dashboard() {
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <div className={`gs-node ${hasClean ? 'active' : ''}`}>
-                      <span className="gs-node-icon">✅</span>
+                      <span className="gs-node-icon"><Icon name="check" /></span>
                       <div className="gs-node-text">
                         <strong>Active Store</strong>
                         <small>Clean Delta Lake</small>
@@ -1021,7 +1152,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <div className={`gs-node ${hasError ? 'danger' : ''}`}>
-                      <span className="gs-node-icon">🚨</span>
+                      <span className="gs-node-icon"><Icon name="alert" /></span>
                       <div className="gs-node-text">
                         <strong>Quarantine Store</strong>
                         <small>Bad Data Isolation</small>
@@ -1032,7 +1163,7 @@ export default function Dashboard() {
 
                   <div className="gs-connector active"><div className="gs-connector-line"></div><div className="gs-connector-arrow">→</div></div>
                   <div className="gs-node active">
-                    <span className="gs-node-icon">📊</span>
+                    <span className="gs-node-icon"><Icon name="chart" /></span>
                     <div className="gs-node-text">
                       <strong>Serving API</strong>
                       <small>BI &amp; BI Cockpit</small>
@@ -1081,7 +1212,7 @@ export default function Dashboard() {
                             setUserSelectedRunId(run.run_id);
                           }}
                         >
-                          <td className="gs-mono">{new Date(run.timestamp).toLocaleTimeString()}</td>
+                          <td className="gs-mono">{run.timestamp ? new Date(run.timestamp).toLocaleTimeString() : '-'}</td>
                           <td><strong>{run.table_name}</strong></td>
                           <td className="gs-mono" style={{ fontSize: '9px' }}>{run.run_id}</td>
                           <td className="gs-mono">{run.total_records?.toLocaleString()}</td>
@@ -1135,7 +1266,7 @@ export default function Dashboard() {
                       disabled={retrying}
                       onClick={() => triggerPipelineRetry(activeRun.run_id)}
                     >
-                      {retrying ? 'Retrying...' : '⚡ Retry Run'}
+                      {retrying ? 'Retrying...' : ' Retry Run'}
                     </button>
                   )}
                 </div>

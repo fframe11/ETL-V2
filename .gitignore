@@ -58,3 +58,4 @@ temp_input.txt
 # Large data files
 spark/*.csv
 **/*.csv
+whitebox_ui_preview.png

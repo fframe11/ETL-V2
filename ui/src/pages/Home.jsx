@@ -1,6 +1,8 @@
+import { Icon } from '../components/UiIcons';
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
+import WorkflowJourneyBar from '../components/WorkflowJourneyBar';
 import "./Home.css";
 
 export default function Home() {
@@ -86,17 +88,17 @@ export default function Home() {
                 <tr>
                   <td><code>id</code></td>
                   <td>NOT NULL</td>
-                  <td style={{ color: '#10B981', fontWeight: 600 }}>✓ PASS</td>
+                  <td style={{ color: '#10B981', fontWeight: 600 }}><Icon name="check" size={12} /> PASS</td>
                 </tr>
                 <tr>
                   <td><code>price</code></td>
                   <td>MIN_VALUE &gt;= 0.0</td>
-                  <td style={{ color: '#10B981', fontWeight: 600 }}>✓ PASS</td>
+                  <td style={{ color: '#10B981', fontWeight: 600 }}><Icon name="check" size={12} /> PASS</td>
                 </tr>
                 <tr>
                   <td><code>device_id</code></td>
                   <td>LENGTH == 16</td>
-                  <td style={{ color: '#10B981', fontWeight: 600 }}>✓ PASS</td>
+                  <td style={{ color: '#10B981', fontWeight: 600 }}><Icon name="check" size={12} /> PASS</td>
                 </tr>
               </tbody>
             </table>
@@ -106,7 +108,7 @@ export default function Home() {
         return (
           <div className="preview-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <span className="preview-card-title">Dynamic Profiling Insights</span>
+              <span className="preview-card-title">Dynamic Profiling Insights <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 400 }}>[ตัวอย่าง / Preview]</span></span>
               <span className="preview-badge success">Anomaly Score: 0.12 (Low)</span>
             </div>
             <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '12px', fontSize: '12px', color: '#475569', display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -133,7 +135,7 @@ export default function Home() {
         return (
           <div className="preview-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <span className="preview-card-title">AI Profiling & Anomaly Detection</span>
+              <span className="preview-card-title">AI Profiling & Anomaly Detection <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 400 }}>[ตัวอย่าง / Preview]</span></span>
               <span className="preview-badge warning">1 Suspicious Attribute</span>
             </div>
             <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '8px', padding: '12px', fontSize: '12px', color: '#78350F' }}>
@@ -151,7 +153,7 @@ export default function Home() {
         return (
           <div className="preview-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <span className="preview-card-title">Safe Schema Drift Auto-Evolution</span>
+              <span className="preview-card-title">Safe Schema Drift Auto-Evolution <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 400 }}>[ตัวอย่าง / Preview]</span></span>
               <span className="preview-badge success">Drift Severity: 1 (Evolved)</span>
             </div>
             <table className="preview-table">
@@ -424,12 +426,15 @@ export default function Home() {
             SDOQAP bridges the gap between raw data lakes and reliable downstream analytics. Run multi-layered quality rules checks, monitor schema evolutions, and route anomalies to quarantine automatically.
           </p>
           <div className="gs-hero-actions">
-            <Link to="/dashboard" className="gs-btn-primary gs-btn-lg">
-              Start monitoring
+            <Link to="/guide" className="gs-btn-primary gs-btn-lg" style={{ background: "#4F46E5", display: "inline-flex", alignItems: "center", gap: "8px", color: "#FFFFFF", fontWeight: 700 }}>
+              <span><Icon name="book" /> เริ่มต้นที่คู่มือการใช้งาน (System Guideline)</span>
             </Link>
-            <Link to="/analytics" className="gs-btn-ghost">
-              <span>Explore analytics</span>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginLeft: '6px' }}><polyline points="6 9 12 15 18 9"/></svg>
+            <Link to="/ingestion" className="gs-btn-primary gs-btn-lg" style={{ background: "#2563EB", display: "inline-flex", alignItems: "center", gap: "8px", color: "#FFFFFF", fontWeight: 700 }}>
+              <span><Icon name="bolt" /> เริ่มขั้นที่ 1: สำรวจข้อมูลดิบ (Step 1)</span>
+            </Link>
+            <Link to="/dashboard" className="gs-btn-ghost">
+              <span>ดูสรุปผล Dashboard</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginLeft: '6px' }}><polyline points="9 18 15 12 9 6"/></svg>
             </Link>
           </div>
         </div>
@@ -465,15 +470,15 @@ export default function Home() {
           <div className="gs-hero-kpis">
             <div className="gs-mini-kpi">
               <span className="gs-mini-val">
-                {kpis.data ? `${kpis.data.global_quality_score.toFixed(1)}%` : '---'}
+                {kpis.data?.global_quality_score != null ? `${kpis.data.global_quality_score.toFixed(1)}%` : '---'}
               </span>
               <span className="gs-mini-label">AVG Quality Score</span>
             </div>
             <div className="gs-mini-kpi">
               <span className="gs-mini-val">
                 {kpis.data
-                  ? kpis.data.total_records_ingested >= 1000000
-                    ? `${(kpis.data.total_records_ingested / 1000000).toFixed(1)}M`
+                  ? (kpis.data.total_records_ingested || 0) >= 1000000
+                    ? `${((kpis.data.total_records_ingested || 0) / 1000000).toFixed(1)}M`
                     : (kpis.data.total_records_ingested || 0).toLocaleString()
                   : '---'}
               </span>
@@ -481,8 +486,8 @@ export default function Home() {
             </div>
             <div className="gs-mini-kpi">
               <span className="gs-mini-val">
-                {kpis.data && kpis.data.total_records_ingested > 0
-                  ? `${(kpis.data.quarantined_records / kpis.data.total_records_ingested * 100).toFixed(3)}%`
+                {kpis.data && (kpis.data.total_records_ingested || 0) > 0
+                  ? `${(((kpis.data.quarantined_records || 0) / kpis.data.total_records_ingested) * 100).toFixed(3)}%`
                   : '0.000%'}
               </span>
               <span className="gs-mini-label">Quarantine Rate</span>
@@ -490,6 +495,7 @@ export default function Home() {
           </div>
         </div>
       </section>
+
 
       {/* Trusted Partners Bar (Real System Stack) */}
       <div className="gs-tech-bar">

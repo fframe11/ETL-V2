@@ -36,8 +36,36 @@ const ExportIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
 );
 
+const RunsIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 14 16 14"/></svg>
+);
+
+const GuideIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
+);
+
+const TableIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="9" x2="9" y2="21"/></svg>
+);
+
 const SearchIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+);
+
+const PanelCollapseIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+    <line x1="9" y1="3" x2="9" y2="21"/>
+    <polyline points="16 15 13 12 16 9"/>
+  </svg>
+);
+
+const PanelExpandIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+    <line x1="9" y1="3" x2="9" y2="21"/>
+    <polyline points="13 15 16 12 13 9"/>
+  </svg>
 );
 
 export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
@@ -49,6 +77,11 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
   // Notification badge states for pending governance items
   const [schemaCount, setSchemaCount] = useState(0);
   const [aiRulesCount, setAiRulesCount] = useState(0);
+  const [collapsedGroups, setCollapsedGroups] = useState({});
+
+  const toggleGroup = (key) => {
+    setCollapsedGroups(prev => ({ ...prev, [key]: !prev[key] }));
+  };
 
   useEffect(() => {
     const fetchCounts = async () => {
@@ -89,47 +122,41 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
 
   // Fetch services status for bottom panel
   const services = useApi('/services/status', { refreshInterval: 15000 });
-  const isHealthy = !services.error && services.data && Object.values(services.data).every(s => s.status === 'online');
+  const isHealthy = !services.error && services.data && typeof services.data === 'object' && Object.values(services.data).every(s => s?.status === 'online');
 
-  // Categories and their links (dynamic based on logged in status)
+  // Primary-First Navigation Ordering (Databricks Lakehouse Architecture):
+  // 1) Lakehouse Workspace (Home + Runbook)
+  // 2) Medallion Pipeline (Bronze Ingestion -> Delta Rules -> Silver Segregation -> Gold Export)
+  // 3) Observability & Catalog (Executive Trust Dashboard, Audit, Analytics, Schemas)
   const menuGroups = [
     {
-      title: "General",
-      key: "general",
+      title: "",
+      key: "getting_started",
       links: [
         { to: "/", label: "Home", icon: <HomeIcon /> },
-        ...(isLoggedIn ? [
-          { to: "/dashboard", label: "Dashboard", icon: <DashboardIcon /> },
-          { to: "/guide", label: "Configuration Guide", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg> }
-        ] : [])
+        { to: "/guide", label: "Learn & Architecture", icon: <GuideIcon /> },
+        { to: "/schema", label: "Catalog", icon: <SchemaIcon />, badge: schemaCount > 0 ? schemaCount : null },
+        { to: "/pipeline", label: "Jobs & Pipelines", icon: <PipelineIcon /> }
       ]
     },
-    ...(isLoggedIn ? [
-      {
-        title: "Observability",
-        key: "observability",
-        links: [
-          { to: "/analytics", label: "Live Analytics", icon: <AnalyticsIcon /> },
-          { to: "/pipeline", label: "Pipeline Runs", icon: <PipelineIcon /> }
-        ]
-      },
-      {
-        title: "Governance",
-        key: "governance",
-        links: [
-          { to: "/schema", label: "Schema Drift", icon: <SchemaIcon />, badge: schemaCount > 0 ? schemaCount : null },
-          { to: aiRulesCount > 0 ? "/rules?tab=proposals" : "/rules", label: "Rules Hub", icon: <RulesIcon />, badge: aiRulesCount > 0 ? aiRulesCount : null }
-        ]
-      },
-      {
-        title: "Data Pipeline",
-        key: "pipeline_stages",
-        links: [
-          { to: "/ingestion", label: "Ingestion Stage", icon: <IngestionIcon /> },
-          { to: "/export", label: "Export Hub", icon: <ExportIcon /> }
-        ]
-      }
-    ] : [])
+    {
+      title: "SQL",
+      key: "sql_section",
+      links: [
+        { to: "/dashboard", label: "Dashboards", icon: <DashboardIcon /> },
+        { to: aiRulesCount > 0 ? "/rules?tab=proposals" : "/rules", label: "Expectations & Alerts", icon: <RulesIcon />, badge: aiRulesCount > 0 ? aiRulesCount : null },
+        { to: "/export", label: "Workspace Exports", icon: <ExportIcon /> },
+        { to: "/analytics", label: "Query & Metrics", icon: <AnalyticsIcon /> }
+      ]
+    },
+    {
+      title: "Data Engineering",
+      key: "data_eng_section",
+      links: [
+        { to: "/whitebox", label: "Runs", icon: <RunsIcon /> },
+        { to: "/ingestion", label: "Data Ingestion", icon: <IngestionIcon /> }
+      ]
+    }
   ];
 
   // Command Palette states
@@ -175,10 +202,10 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
   const handleModalKeyDown = (e) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setSelectedIndex(prev => (prev + 1) % filteredLinks.length);
+      if (filteredLinks.length > 0) setSelectedIndex(prev => (prev + 1) % filteredLinks.length);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setSelectedIndex(prev => (prev - 1 + filteredLinks.length) % filteredLinks.length);
+      if (filteredLinks.length > 0) setSelectedIndex(prev => (prev - 1 + filteredLinks.length) % filteredLinks.length);
     } else if (e.key === "Enter") {
       e.preventDefault();
       if (filteredLinks[selectedIndex]) {
@@ -195,74 +222,181 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
   return (
     <>
       <aside className={`gs-nav ${navOpen ? "open" : "closed"}`}>
-        {/* Sidebar Header */}
-        <div className="gs-nav-logo">
-          <Link to="/" className="gs-nav-brand">
-            <div className="gs-nav-logo-icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-              </svg>
-            </div>
-            {navOpen && (
-              <div className="gs-nav-logo-text">
-                <span className="gs-nav-logo-name">SDOQAP</span>
-                <span className="gs-nav-logo-sub">Observability</span>
-              </div>
-            )}
-          </Link>
-          {navOpen && (
-            <button className="gs-nav-toggle" onClick={toggleSidebar} title="Collapse Sidebar">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
-          )}
+        {/* Interactive Right-Edge Rail — Click anywhere on the white sidebar border/rail to open/close */}
+        <div
+          className="gs-nav-edge-rail"
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleSidebar();
+          }}
+          title={navOpen ? "คลิกขอบแถบด้านข้างเพื่อพับเมนู" : "คลิกขอบแถบด้านข้างเพื่อกางเมนู"}
+        >
+          <span className="gs-nav-edge-grip" />
         </div>
 
-        {/* Search Bar */}
+        {/* Sidebar Header with Pro 3-Line Hamburger Icon */}
+        <div className="gs-nav-logo" style={{ flexDirection: "row", justifyContent: navOpen ? "space-between" : "center", padding: navOpen ? "14px 16px" : "14px 8px" }}>
+          {navOpen && (
+            <Link to="/" className="gs-nav-brand" title="หน้าแรก (Home)" onClick={(e) => e.stopPropagation()}>
+              <div className="gs-nav-logo-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                </svg>
+              </div>
+              <div className="gs-nav-logo-text">
+                <span className="gs-nav-logo-name">SDOQAP</span>
+                <span className="gs-nav-logo-sub">Lakehouse Engine</span>
+              </div>
+            </Link>
+          )}
+          <button
+            type="button"
+            className="gs-nav-hamburger-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleSidebar();
+            }}
+            title={navOpen ? "พับแถบเมนู (Collapse Sidebar)" : "เปิดแถบเมนู (Expand Sidebar)"}
+            aria-label={navOpen ? "Collapse Sidebar" : "Expand Sidebar"}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Databricks "+ New" Primary Action Button */}
         {navOpen ? (
-          <div className="gs-nav-search" onClick={() => setShowSearchModal(true)}>
-            <SearchIcon />
-            <span>Search page...</span>
-            <kbd>Ctrl K</kbd>
+          <div style={{ padding: "8px 12px 6px 12px" }}>
+            <Link
+              to="/ingestion"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                width: "100%",
+                padding: "8px 12px",
+                borderRadius: "6px",
+                background: "rgba(255, 54, 33, 0.14)",
+                border: "1px solid rgba(255, 54, 33, 0.32)",
+                color: "#FF6B57",
+                fontSize: "13px",
+                fontWeight: 600,
+                textDecoration: "none",
+                boxSizing: "border-box"
+              }}
+            >
+              <span style={{ fontSize: "16px", lineHeight: 1, fontWeight: 400 }}>+</span>
+              <span>New</span>
+            </Link>
           </div>
         ) : (
-          <div className="gs-nav-search" style={{ justifyContent: "center", padding: "8px 0" }} onClick={() => setShowSearchModal(true)}>
-            <SearchIcon />
+          <div style={{ display: "flex", justifyContent: "center", padding: "8px 0" }}>
+            <Link
+              to="/ingestion"
+              title="+ New"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "32px",
+                height: "32px",
+                borderRadius: "6px",
+                background: "rgba(255, 54, 33, 0.16)",
+                border: "1px solid rgba(255, 54, 33, 0.35)",
+                color: "#FF6B57",
+                fontSize: "16px",
+                fontWeight: 600,
+                textDecoration: "none"
+              }}
+            >
+              +
+            </Link>
           </div>
         )}
 
-        {/* Navigation Categories */}
+        {/* Navigation Categories (Databricks Flat & Grouped Hierarchy) */}
         <div className="gs-nav-groups">
-          {menuGroups.map((group) => (
-            <div className="gs-nav-group" key={group.key}>
-              {navOpen && <span className="gs-nav-group-label">{group.title}</span>}
-              <div className="gs-nav-items">
-                {group.links.map((link) => {
-                  const isActive = location.pathname === link.to;
-                  return (
-                    <Link
-                      key={link.to}
-                      to={link.to}
-                      className={`gs-nav-item ${isActive ? "active" : ""}`}
-                      title={link.label}
-                    >
-                      <span className="gs-nav-icon" style={{ position: "relative" }}>
-                        {link.icon}
-                        {!navOpen && link.badge && (
-                          <span className="gs-nav-badge-dot" />
-                        )}
-                      </span>
-                      {navOpen && <span className="gs-nav-label">{link.label}</span>}
-                      {navOpen && link.badge && (
-                        <span className="gs-nav-badge">{link.badge}</span>
-                      )}
-                    </Link>
-                  );
-                })}
+          {menuGroups.map((group) => {
+            const isGroupCollapsed = !!collapsedGroups[group.key];
+            return (
+              <div className="gs-nav-group" key={group.key}>
+                {navOpen && group.title && (
+                  <button
+                    type="button"
+                    className="gs-nav-group-header"
+                    onClick={() => toggleGroup(group.key)}
+                    title="คลิกเพื่อพับหรือกางหมวดหมู่นี้"
+                  >
+                    <span className="gs-nav-group-label" style={{ padding: 0, textTransform: "none", fontSize: "11px", color: "#94A3B8" }}>{group.title}</span>
+                    <span className="gs-nav-group-chevron">{isGroupCollapsed ? "▸" : "▾"}</span>
+                  </button>
+                )}
+                {(!navOpen || !isGroupCollapsed) && (
+                  <div className="gs-nav-items">
+                    {group.links.map((link) => {
+                      const cleanTo = link.to.split("?")[0];
+                      const isActive = location.pathname === cleanTo || (cleanTo === "/guide" && location.pathname === "/guideline");
+                      return (
+                        <Link
+                          key={link.to}
+                          to={link.to}
+                          className={`gs-nav-item ${isActive ? "active" : ""}`}
+                          title={`${link.label}${link.stepTag ? ` (${link.stepTag})` : ""}`}
+                        >
+                          <span className="gs-nav-icon" style={{ position: "relative" }}>
+                            {link.icon}
+                            {!navOpen && link.badge && (
+                              <span className="gs-nav-badge-dot" />
+                            )}
+                          </span>
+                          {navOpen && (
+                            <span className="gs-nav-label" style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              {link.label}
+                            </span>
+                          )}
+                          {navOpen && link.stepTag && !link.badge && (
+                            <span
+                              className="gs-nav-step-tag"
+                              style={{
+                                fontSize: "9px",
+                                fontWeight: 800,
+                                padding: "2px 5px",
+                                borderRadius: "4px",
+                                fontFamily: "var(--font-mono)",
+                                background: isActive
+                                  ? "rgba(255,255,255,0.22)"
+                                  : link.highlightTag
+                                  ? "#DCFCE7"
+                                  : "#F1F5F9",
+                                color: isActive
+                                  ? "#FFFFFF"
+                                  : link.highlightTag
+                                  ? "#15803D"
+                                  : "#475569",
+                                border: isActive
+                                  ? "1px solid rgba(255,255,255,0.35)"
+                                  : link.highlightTag
+                                  ? "1px solid #86EFAC"
+                                  : "1px solid #E2E8F0"
+                              }}
+                            >
+                              {link.stepTag}
+                            </span>
+                          )}
+                          {navOpen && link.badge && (
+                            <span className="gs-nav-badge">{link.badge}</span>
+                          )}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Bottom System Status */}

@@ -1,4 +1,5 @@
 import React from "react";
+import { Icon } from "../components/UiIcons";
 
 export default function Metadata() {
   return (
@@ -16,10 +17,10 @@ export default function Metadata() {
           fontSize: "0.85rem",
           fontWeight: 600
         }}>
-          ⚠️ บริการทางเลือก (Optional)
+          <Icon name="alert" size={14} /> บริการทางเลือก (Optional)
         </div>
-        <div className="service-icon-large card-icon purple" style={{ width: 80, height: 80, fontSize: "2.5rem" }}>
-          🗂️
+        <div className="service-icon-large card-icon purple" style={{ width: 80, height: 80, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Icon name="box" size={36} style={{ marginRight: 0 }} />
         </div>
         <h1>OpenMetadata</h1>
         <p className="service-desc">
@@ -35,7 +36,7 @@ export default function Metadata() {
           className="btn btn-secondary"
           style={{ opacity: 0.6, cursor: "not-allowed", pointerEvents: "none" }}
         >
-          🔒 ไม่เปิดบริการ (ปิดอยู่)
+          <Icon name="key" size={14} /> ไม่เปิดบริการ (ปิดอยู่)
         </a>
       </div>
     </div>

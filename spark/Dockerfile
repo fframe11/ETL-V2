@@ -6,8 +6,8 @@
 FROM bitnamilegacy/spark:3.4.1
 
 USER root
-RUN apt-get update && apt-get install -y bash
-RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+RUN echo 'deb http://deb.debian.org/debian bullseye main' > /etc/apt/sources.list && \
+    apt-get update && apt-get install -y --no-install-recommends bash curl && rm -rf /var/lib/apt/lists/*
 
 ENV SPARK_CONF_DIR=/opt/bitnami/spark/conf
 

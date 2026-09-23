@@ -1,18 +1,42 @@
 import React, { useState } from "react";
 import { useApi, postApi } from "../hooks/useApi";
+import WorkflowJourneyBar from "../components/WorkflowJourneyBar";
+import { Icon } from "../components/UiIcons";
 import "./Schema.css";
 
 export default function Schema() {
+  const [workspaceMode, setWorkspaceMode] = useState("primary");
   const [statusFilter, setStatusFilter] = useState("PENDING");
   const proposals = useApi(`/schema/proposals?status=${statusFilter}`, { refreshInterval: 10000 });
 
   const [selectedId, setSelectedId] = useState(null);
+  const [searchTable, setSearchTable] = useState("");
   const [primaryKeyOverride, setPrimaryKeyOverride] = useState("");
   const [dateColumnOverride, setDateColumnOverride] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [actionResult, setActionResult] = useState(null);
 
-  const selectedProposal = proposals.data?.proposals?.find((p) => p.id === selectedId);
+  // Schema Evolution Proposal Registration State
+  const [simTable, setSimTable] = useState("student_course_scores");
+  const [simColumn, setSimColumn] = useState("gpa_weighted");
+  const [simType, setSimType] = useState("DoubleType");
+  const [simDriftType, setSimDriftType] = useState("new_column");
+
+  const filteredProposals = React.useMemo(() => {
+    const raw = proposals.data?.proposals || [];
+    const q = searchTable.trim().toLowerCase();
+    if (!q) return raw;
+    return raw.filter(p => String(p.table_name || "").toLowerCase().includes(q) || String(p.run_id || "").toLowerCase().includes(q));
+  }, [proposals.data, searchTable]);
+
+  // Auto-select the first proposal so the right workspace and inputs are immediately ready
+  React.useEffect(() => {
+    if (filteredProposals.length > 0 && (!selectedId || !filteredProposals.some(p => p.id === selectedId))) {
+      setSelectedId(filteredProposals[0].id);
+    }
+  }, [filteredProposals, selectedId]);
+
+  const selectedProposal = filteredProposals.find((p) => p.id === selectedId) || proposals.data?.proposals?.find((p) => p.id === selectedId);
 
   React.useEffect(() => {
     if (selectedProposal) {
@@ -25,8 +49,11 @@ export default function Schema() {
       } else if (selectedProposal.table_name === "users") {
         setPrimaryKeyOverride("id");
         setDateColumnOverride("created_utc");
+      } else if (selectedProposal.table_name === "student_course_scores") {
+        setPrimaryKeyOverride("student_id");
+        setDateColumnOverride("semester");
       } else {
-        setPrimaryKeyOverride("");
+        setPrimaryKeyOverride("id");
         setDateColumnOverride("");
       }
     } else {
@@ -35,10 +62,30 @@ export default function Schema() {
     }
   }, [selectedId, selectedProposal]);
 
-  const handleBulkAction = async (action) => {
-    if (!window.confirm(`Are you sure you want to ${action.replace("-", " ")} pending proposals?`)) {
-      return;
+  const handleCreateProposal = async (e) => {
+    e.preventDefault();
+    if (!simTable.trim() || !simColumn.trim()) return;
+    setSubmitting(true);
+    setActionResult(null);
+    try {
+      const res = await postApi("/schema/proposals/create", {
+        table_name: simTable.trim(),
+        column_name: simColumn.trim(),
+        column_type: simType,
+        drift_type: simDriftType
+      });
+      setStatusFilter("PENDING");
+      setActionResult({ success: true, message: res.message || `บันทึกข้อเสนอการปรับโครงสร้างตาราง '${simTable}.${simColumn}' สำเร็จแล้ว` });
+      await proposals.refetch();
+      if (res.id) setSelectedId(res.id);
+    } catch (err) {
+      setActionResult({ success: false, message: `ไม่สามารถบันทึกข้อเสนอได้: ${err.message}` });
+    } finally {
+      setSubmitting(false);
     }
+  };
+
+  const handleBulkAction = async (action) => {
     setSubmitting(true);
     setActionResult(null);
     try {
@@ -70,8 +117,6 @@ export default function Schema() {
 
       const res = await postApi(endpoint);
       setActionResult({ success: true, message: res.message || `Proposal ${action}d successfully.` });
-      
-      // Reset inputs & refresh
       setPrimaryKeyOverride("");
       setDateColumnOverride("");
       setSelectedId(null);
@@ -126,13 +171,89 @@ export default function Schema() {
 
   return (
     <div className="gs-schema">
+
       {/* 1. Page Header */}
       <div className="gs-page-header">
         <div>
-          <h1 className="gs-page-title">Schema <span>Drift Governance</span></h1>
-          <p className="gs-page-desc">Approve or reject table structure auto-evolutions proposal queue</p>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(255, 54, 33, 0.08)", color: "#FF3621", border: "1px solid rgba(255, 54, 33, 0.25)", borderRadius: "4px", padding: "2px 8px", fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em", marginBottom: "6px" }}>
+            UNITY CATALOG · DATA ASSETS & SCHEMA GOVERNANCE
+          </div>
+          <h1 className="gs-page-title">Unity Catalog <span style={{ color: "#1B3139" }}>& Schema Registry</span></h1>
+          <p className="gs-page-desc">จัดการและควบคุมวิวัฒนาการโครงสร้างตาราง (Schema Evolution), คีย์หลัก และ Partitioning ในระบบแคตตาล็อกกลาง</p>
         </div>
       </div>
+
+      {/* Schema Evolution Registration Bar */}
+      <form onSubmit={handleCreateProposal} style={{ background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '10px', padding: '12px 16px', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'flex-end', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
+        <div style={{ minWidth: '170px', flex: 1 }}>
+          <label style={{ display: 'block', fontSize: '10px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '3px' }}>
+            1. ชื่อตาราง (Target Table):
+          </label>
+          <input
+            type="text"
+            value={simTable}
+            onChange={(e) => setSimTable(e.target.value.replace(/[^a-zA-Z0-9_]/g, "_"))}
+            placeholder="student_course_scores"
+            style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '12px', fontWeight: 700, color: '#0F172A' }}
+          />
+        </div>
+        <div style={{ minWidth: '170px', flex: 1 }}>
+          <label style={{ display: 'block', fontSize: '10px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '3px' }}>
+            2. คอลัมน์ที่เปลี่ยน/เพิ่มใหม่ (Column Name):
+          </label>
+          <input
+            type="text"
+            value={simColumn}
+            onChange={(e) => setSimColumn(e.target.value.replace(/[^a-zA-Z0-9_]/g, "_"))}
+            placeholder="gpa_weighted"
+            style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '12px', fontWeight: 700, color: '#0F172A' }}
+          />
+        </div>
+        <div style={{ minWidth: '140px' }}>
+          <label style={{ display: 'block', fontSize: '10px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '3px' }}>
+            3. ชนิดข้อมูล (Data Type):
+          </label>
+          <select
+            value={simType}
+            onChange={(e) => setSimType(e.target.value)}
+            style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '12px', fontWeight: 700, color: '#0F172A', background: '#FFFFFF' }}
+          >
+            <option value="DoubleType">DoubleType</option>
+            <option value="StringType">StringType</option>
+            <option value="IntegerType">IntegerType</option>
+            <option value="TimestampType">TimestampType</option>
+          </select>
+        </div>
+        <div style={{ minWidth: '150px' }}>
+          <label style={{ display: 'block', fontSize: '10px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '3px' }}>
+            4. ประเภทความเปลี่ยนแปลง (Drift Type):
+          </label>
+          <select
+            value={simDriftType}
+            onChange={(e) => setSimDriftType(e.target.value)}
+            style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '12px', fontWeight: 700, color: '#0F172A', background: '#FFFFFF' }}
+          >
+            <option value="new_column">NEW COLUMN (เพิ่มคอลัมน์ใหม่)</option>
+            <option value="type_mismatch">TYPE MISMATCH (ชนิดข้อมูลเปลี่ยน)</option>
+          </select>
+        </div>
+        <button
+          type="submit"
+          disabled={submitting}
+          style={{
+            padding: '7px 14px',
+            background: '#2563EB',
+            color: '#FFFFFF',
+            border: 'none',
+            borderRadius: '6px',
+            fontSize: '12px',
+            fontWeight: 700,
+            cursor: submitting ? 'not-allowed' : 'pointer'
+          }}
+        >
+          + บันทึกการเปลี่ยนแปลงโครงสร้างตาราง (Register Schema Change)
+        </button>
+      </form>
 
       {actionResult && (
         <div 
@@ -150,21 +271,33 @@ export default function Schema() {
         </div>
       )}
 
-      {/* 2. Navigation Filter Tabs */}
-      <div className="gs-filter-tabs" style={{ alignSelf: 'flex-start' }}>
-        {["PENDING", "APPROVED", "REJECTED"].map((tab) => (
-          <button
-            key={tab}
-            className={`gs-filter-btn ${statusFilter === tab ? "active" : ""}`}
-            onClick={() => {
-              setStatusFilter(tab);
-              setSelectedId(null);
-              setActionResult(null);
-            }}
-          >
-            {tab}
-          </button>
-        ))}
+      {/* 2. Navigation Filter Tabs & Search Input */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+        <div className="gs-filter-tabs" style={{ alignSelf: 'flex-start' }}>
+          {["PENDING", "APPROVED", "REJECTED"].map((tab) => (
+            <button
+              key={tab}
+              className={`gs-filter-btn ${statusFilter === tab ? "active" : ""}`}
+              onClick={() => {
+                setStatusFilter(tab);
+                setSelectedId(null);
+                setActionResult(null);
+              }}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ minWidth: '240px' }}>
+          <input
+            type="text"
+            value={searchTable}
+            onChange={(e) => setSearchTable(e.target.value)}
+            placeholder="ค้นหาชื่อตาราง เช่น products, orders, users..."
+            style={{ width: '100%', padding: '6px 12px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '12px', background: '#FFFFFF', color: '#0F172A' }}
+          />
+        </div>
       </div>
 
       {/* 3. Main Workspace */}
@@ -172,8 +305,8 @@ export default function Schema() {
         {/* Left Column: Proposals List */}
         <div className="gs-schema-list">
           <div className="gs-scard">
-            <h3>{statusFilter} Proposals</h3>
-            {statusFilter === "PENDING" && Array.isArray(proposals.data?.proposals) && proposals.data.proposals.length > 0 && (
+            <h3>{statusFilter} Proposals ({filteredProposals.length})</h3>
+            {statusFilter === "PENDING" && filteredProposals.length > 0 && (
               <div style={{
                 display: "flex",
                 gap: "8px",
@@ -222,10 +355,10 @@ export default function Schema() {
                 <div className="gs-empty">Loading proposals...</div>
               ) : proposals.error ? (
                 <div className="gs-empty" style={{ color: 'var(--accent-red)' }}>Failed to load proposals</div>
-              ) : !Array.isArray(proposals.data?.proposals) || proposals.data.proposals.length === 0 ? (
+              ) : filteredProposals.length === 0 ? (
                 <div className="gs-empty">No {statusFilter.toLowerCase()} proposals found</div>
               ) : (
-                proposals.data.proposals.map((p) => {
+                filteredProposals.map((p) => {
                   const isSelected = p.id === selectedId;
                   return (
                     <div

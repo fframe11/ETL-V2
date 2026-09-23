@@ -1,4 +1,5 @@
 import React from "react";
+import { Icon } from "./UiIcons";
 
 export default class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -28,7 +29,7 @@ export default class ErrorBoundary extends React.Component {
           color: "#f8d7da",
           fontFamily: "'Inter', sans-serif"
         }}>
-          <h2 style={{ color: "#f43f5e", marginBottom: "1rem" }}>⚠️ Something went wrong</h2>
+          <h2 style={{ color: "#f43f5e", marginBottom: "1rem" }}><Icon name="alert" size={18} /> Something went wrong</h2>
           <p style={{ marginBottom: "0.5rem", color: "#fca5a5" }}>
             The page encountered an error and could not render properly.
           </p>
@@ -65,7 +66,7 @@ export default class ErrorBoundary extends React.Component {
               fontWeight: "600"
             }}
           >
-            🔄 Reload Page
+            <Icon name="refresh" size={14} /> Reload Page
           </button>
         </div>
       );

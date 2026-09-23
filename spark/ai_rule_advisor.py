@@ -215,8 +215,9 @@ class AIRuleAdvisor:
             "Content-Type": "application/json",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
+        active_model = groq_model if (groq_model and groq_model != "llama-3.3-70b-versatile") else "openai/gpt-oss-120b"
         payload = {
-            "model": groq_model if groq_model else "llama-3.3-70b-versatile",
+            "model": active_model,
             "messages": [
                 {"role": "user", "content": prompt}
             ],

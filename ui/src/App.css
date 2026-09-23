@@ -1,33 +1,53 @@
 /* ═══════════════════════════════════════════════════════════════
-   SDOQAP ENTERPRISE observABILITY — BRAND CONFIG
-   Brand signal: Clerk-inspired white/purple palette
-   Structural logic: Quiet grid layout with asymmetric container tracks
+   SDOQAP LAKEHOUSE ARCHITECTURE — DATABRICKS DESIGN SYSTEM
+   Brand signal: Databricks Navy Slate (#1B3139), Flame Accent (#FF3621), Emerald (#00A972)
+   Surface: High-density workspace grid, clean 1px borders, crisp data tables
    ═══════════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
 :root {
-  --bg-primary: #FAFAFC;
+  /* Databricks Core Palette */
+  --db-navy: #1B3139;
+  --db-navy-hover: #26404B;
+  --db-navy-dark: #101E24;
+  --db-orange: #FF3621;
+  --db-orange-hover: #E02B18;
+  --db-orange-light: rgba(255, 54, 33, 0.08);
+  --db-emerald: #00A972;
+  --db-emerald-light: rgba(0, 169, 114, 0.1);
+  --db-amber: #D97706;
+  --db-amber-light: rgba(217, 119, 6, 0.1);
+  --db-red: #DC2626;
+  --db-red-light: rgba(220, 38, 38, 0.1);
+  --db-blue: #0284C7;
+  --db-blue-light: rgba(2, 132, 199, 0.1);
+
+  /* Surface & Canvas */
+  --bg-primary: #F5F7FA;
   --bg-secondary: #FFFFFF;
   --border-color: #E2E8F0;
-  
-  --accent-purple: #6C47FF;
-  --accent-purple-light: #F3EFFF;
-  --accent-blue: #3B82F6;
-  --accent-green: #10B981;
-  --accent-red: #EF4444;
-  --accent-yellow: #F59E0B;
-  
-  --text-main: #0F172A;
+  --border-dark: #CBD5E1;
+
+  /* Backward Compatibility Mappings */
+  --accent-purple: #1B3139;
+  --accent-purple-light: #F1F5F9;
+  --accent-blue: #0284C7;
+  --accent-green: #00A972;
+  --accent-red: #DC2626;
+  --accent-yellow: #D97706;
+
+  /* High-Contrast Databricks Typography */
+  --text-main: #0B1924;
   --text-secondary: #334155;
   --text-muted: #64748B;
-  
-  --font-sans: 'Inter', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
-  
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
-  --shadow-md: 0 4px 20px rgba(108, 71, 255, 0.03);
-  --shadow-lg: 0 10px 30px rgba(108, 71, 255, 0.05);
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, "SF Mono", Consolas, monospace;
+
+  --shadow-sm: 0 1px 2px rgba(11, 25, 36, 0.04);
+  --shadow-md: 0 2px 8px rgba(27, 49, 57, 0.06);
+  --shadow-lg: 0 8px 24px rgba(27, 49, 57, 0.08);
 }
 
 *, *::before, *::after {
@@ -43,12 +63,6 @@ html {
 body {
   margin: 0;
   background-color: var(--bg-primary);
-  background-image: 
-    radial-gradient(at 100% 0%, rgba(108, 71, 255, 0.03) 0px, transparent 50%),
-    radial-gradient(at 0% 100%, rgba(59, 130, 246, 0.02) 0px, transparent 50%),
-    linear-gradient(rgba(108, 71, 255, 0.008) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(108, 71, 255, 0.008) 1px, transparent 1px);
-  background-size: 100% 100%, 100% 100%, 20px 20px, 20px 20px;
   color: var(--text-main);
   font-family: var(--font-sans);
   line-height: 1.4;
@@ -75,10 +89,11 @@ body {
 .app-main-content {
   flex-grow: 1;
   height: 100vh;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  display: block !important;
   position: relative;
+  scroll-behavior: auto;
 }
 .layout-with-banner .app-main-content {
   height: calc(100vh - 38px);
@@ -87,9 +102,44 @@ body {
   height: 100vh;
 }
 
-/* ── PREMIUM TOP BANNER ── */
+/* Unified Page & Tab Scroll Freedom — Prevent inner flex/grid overflow:hidden traps */
+.gs-ingestion,
+.gs-rules,
+.gs-pipeline,
+.gs-export,
+.gs-dashboard,
+.gs-analytics,
+.gs-schema,
+.gs-guide,
+.wb-container,
+.gs-home {
+  height: auto !important;
+  min-height: 100% !important;
+  overflow-y: visible !important;
+  overflow-x: visible !important;
+  padding-bottom: 48px !important;
+}
+
+.gs-schema-layout,
+.gs-rules-layout,
+.gs-analytics-layout,
+.gs-dash-grid {
+  height: auto !important;
+  min-height: 480px !important;
+  overflow: visible !important;
+}
+
+.gs-scard,
+.gs-rcard,
+.gs-acard,
+.gs-dcard {
+  height: auto !important;
+  overflow: visible !important;
+}
+
+/* ── LAKEHOUSE WORKSPACE TOP BANNER ── */
 .top-banner {
-  background: linear-gradient(90deg, #090B11 0%, #120E1E 50%, #090B11 100%);
+  background: var(--db-navy-dark);
   color: #FFFFFF;
   font-family: var(--font-sans);
   font-size: 11.5px;
@@ -100,7 +150,7 @@ body {
   align-items: center;
   z-index: 1001;
   position: relative;
-  border-bottom: 1px solid rgba(108, 71, 255, 0.15);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   letter-spacing: 0.8px;
   text-transform: uppercase;
 }
@@ -113,26 +163,25 @@ body {
   display: inline-block;
   width: 6px;
   height: 6px;
-  background-color: var(--accent-green);
+  background-color: var(--db-emerald);
   border-radius: 50%;
   margin-right: 10px;
-  box-shadow: 0 0 8px var(--accent-green);
+  box-shadow: 0 0 8px var(--db-emerald);
   animation: pulseLive 2s infinite ease-in-out;
 }
 @keyframes pulseLive {
-  0%, 100% { transform: scale(0.9); opacity: 0.6; box-shadow: 0 0 6px rgba(16, 185, 129, 0.4); }
-  50% { transform: scale(1.15); opacity: 1; box-shadow: 0 0 12px rgba(16, 185, 129, 0.8); }
+  0%, 100% { transform: scale(0.9); opacity: 0.6; box-shadow: 0 0 6px rgba(0, 169, 114, 0.4); }
+  50% { transform: scale(1.15); opacity: 1; box-shadow: 0 0 12px rgba(0, 169, 114, 0.8); }
 }
 .banner-badge {
-  background: rgba(108, 71, 255, 0.2);
-  color: #B9A5FF;
-  border: 1px solid rgba(108, 71, 255, 0.35);
+  background: rgba(255, 54, 33, 0.18);
+  color: #FF8F80;
+  border: 1px solid rgba(255, 54, 33, 0.4);
   padding: 1px 7px;
   border-radius: 20px;
   font-size: 10px;
   font-weight: 700;
   margin: 0 6px;
-  text-shadow: 0 0 6px rgba(185, 165, 255, 0.4);
   font-family: var(--font-mono);
 }
 
@@ -157,16 +206,16 @@ input, select, textarea {
   background: #ffffff !important;
   color: var(--text-main) !important;
   border: 1px solid var(--border-color) !important;
-  border-radius: 8px !important;
-  padding: 8px 12px !important;
+  border-radius: 6px !important;
+  padding: 7px 11px !important;
   font-size: 12px !important;
   outline: none;
   font-family: var(--font-sans) !important;
-  transition: all 0.2s;
+  transition: all 0.15s ease;
 }
 input:focus, select:focus, textarea:focus {
-  border-color: var(--accent-purple) !important;
-  box-shadow: 0 0 0 3px rgba(108, 71, 255, 0.08) !important;
+  border-color: var(--db-blue) !important;
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.12) !important;
 }
 
 /* Sidebar Toggle */

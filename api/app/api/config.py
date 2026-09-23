@@ -35,25 +35,33 @@ def get_elasticsearch_url():
 _es_client = None
 
 def get_es_client() -> Elasticsearch:
-    """Returns a singleton Elasticsearch client, retrying connection up to 5 times with delay if starting up."""
+    """Returns a singleton Elasticsearch client with fast failover when ES is offline."""
     global _es_client
-    if _es_client is None:
-        es_url = get_elasticsearch_url()
-        last_err = None
-        for attempt in range(5):
-            try:
-                client = Elasticsearch(es_url)
-                if client.ping():
-                    _es_client = client
-                    return _es_client
-                else:
-                    last_err = "Elasticsearch ping check returned False"
-            except Exception as e:
-                last_err = str(e)
-            print(f"[ES Connection] Elasticsearch not ready. Retrying in 2s... (Attempt {attempt+1}/5)")
-            time.sleep(2)
-        raise HTTPException(status_code=500, detail=f"Failed to connect to Elasticsearch: {last_err}")
-    return _es_client
+    if _es_client is not None:
+        return _es_client
+
+    es_host = os.getenv("ELASTICSEARCH_HOST", "localhost")
+    es_port = int(os.getenv("ELASTICSEARCH_PORT", "9200"))
+    
+    # Fast non-blocking socket probe (0.1s timeout)
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(0.1)
+        s.connect((es_host, es_port))
+        s.close()
+    except Exception:
+        raise HTTPException(status_code=503, detail="Elasticsearch service is offline")
+
+    es_url = get_elasticsearch_url()
+    try:
+        client = Elasticsearch(es_url, request_timeout=1)
+        if client.ping():
+            _es_client = client
+            return _es_client
+    except Exception:
+        pass
+    raise HTTPException(status_code=503, detail="Elasticsearch ping check failed")
 
 _session = None
 

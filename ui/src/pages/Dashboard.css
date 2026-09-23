@@ -535,12 +535,12 @@
 }
 .exec-view-tab:hover {
   color: var(--text-main);
-  background: rgba(108, 71, 255, 0.08);
+  background: rgba(27, 49, 57, 0.06);
 }
 .exec-view-tab.active {
   color: #ffffff;
-  background: var(--accent-purple, #6C47FF);
-  box-shadow: 0 2px 10px rgba(108, 71, 255, 0.35);
+  background: var(--db-navy, #1B3139);
+  box-shadow: 0 2px 6px rgba(27, 49, 57, 0.25);
 }
 .exec-view-tab-badge {
   background: rgba(255, 255, 255, 0.2);
@@ -606,16 +606,16 @@
   color: var(--text-main);
 }
 .exec-btn:hover {
-  border-color: var(--accent-purple);
-  color: var(--accent-purple);
+  border-color: var(--db-navy);
+  color: var(--db-navy);
 }
 .exec-btn-primary {
-  background: var(--accent-purple);
-  border-color: var(--accent-purple);
+  background: var(--db-navy);
+  border-color: var(--db-navy);
   color: #fff;
 }
 .exec-btn-primary:hover {
-  background: #5a35e0;
+  background: var(--db-navy-hover);
   color: #fff;
 }
 

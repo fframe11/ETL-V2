@@ -36,7 +36,17 @@ def list_quality_runs(page: int = 1, size: int = 50, limit: int = 50, paginated:
             from_=from_idx,
             size=actual_size
         )
-        data = [hit["_source"] for hit in res["hits"]["hits"]]
+        data = []
+        for hit in res["hits"]["hits"]:
+            doc = hit["_source"]
+            if not isinstance(doc, dict):
+                continue
+            # Preserve semantic truth: None indicates metric was never computed/missing, not 0
+            doc.setdefault("total_records", None)
+            doc.setdefault("clean_records", None)
+            doc.setdefault("quarantined_records", None)
+            doc.setdefault("quality_score", None)
+            data.append(doc)
         if paginated:
             total = res["hits"]["total"]["value"] if isinstance(res["hits"]["total"], dict) else res["hits"]["total"]
             return {"data": data, "total": total, "page": page, "size": actual_size}
