@@ -50,10 +50,12 @@ logging.basicConfig(level=log_level)
 # Rate limiting – 100 requests per minute per IP (adjust as needed)
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
+from slowapi.middleware import SlowAPIMiddleware
 
 limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
 app.state.limiter = limiter
 app.add_exception_handler(429, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 # Enhanced health‑check endpoint – also verifies dependent services
 @app.get("/healthz", include_in_schema=False)
