@@ -3,7 +3,19 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useApi, postApi } from '../hooks/useApi';
 import WorkflowJourneyBar, { DatabricksTileCard } from '../components/WorkflowJourneyBar';
+import ConfirmationModal from '../components/ConfirmationModal';
 import "./Pipeline.css";
+
+const ZONE_ROW_COLUMNS = [
+  { key: "dirty_row_id", label: "Row ID" },
+  { key: "student_id", label: "รหัสนักศึกษา" },
+  { key: "course", label: "วิชา" },
+  { key: "score", label: "คะแนน (Score)" },
+  { key: "study_hours", label: "ชม.เรียน (Study Hours)" },
+  { key: "whitebox_status", label: "โซนปัจจุบัน" },
+  { key: "whitebox_error_type", label: "ประเภทปัญหา" },
+  { key: "whitebox_rule_applied", label: "หลักฐานการคัดแยก (Rule Evidence)" }
+];
 
 export default function Pipeline() {
   const pipeline = useApi('/pipeline?limit=20', { refreshInterval: 30000 });
@@ -27,20 +39,38 @@ export default function Pipeline() {
   const [upstreamTicketSent, setUpstreamTicketSent] = useState(false);
   const [rowDecisions, setRowDecisions] = useState({});
   const [recordSearch, setRecordSearch] = useState("");
-  const [inlineEdits, setInlineEdits] = useState({
-    "#105": { score: 99.0, study_hours: 11.5 },
-    "#48": { score: 95.0, study_hours: 5.0 },
-    "#73": { score: 80.0, study_hours: 4.0 }
-  });
 
-  const handleSaveInlineRowEdit = async (rowId, decision = "APPROVE") => {
-    const editPayload = inlineEdits[rowId] || {};
+  // Record-Level Inspection Table: backed by the real /api/v1/whitebox/preview-zone/{zone} endpoint
+  const [zoneData, setZoneData] = useState(null);
+  const [zoneLoading, setZoneLoading] = useState(false);
+  const [zoneVersion, setZoneVersion] = useState(0);
+  const [decidingRow, setDecidingRow] = useState(null);
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalConfig, setModalConfig] = useState({ title: "", message: "", onConfirm: () => {} });
+
+  const triggerConfirm = (title, message, onConfirm) => {
+    setModalConfig({
+      title,
+      message,
+      onConfirm: () => {
+        onConfirm();
+        setModalOpen(false);
+      }
+    });
+    setModalOpen(true);
+  };
+
+  const handleRowDecision = async (rowId, decision) => {
+    setDecidingRow(rowId);
     const nextDecisions = { ...rowDecisions, [rowId]: decision };
     setRowDecisions(nextDecisions);
-    await syncPipelineState({
-      row_edits: { [rowId]: editPayload },
-      row_decisions: { [rowId]: decision }
-    });
+    try {
+      await syncPipelineState({ row_decisions: { [rowId]: decision } });
+      setZoneVersion(v => v + 1);
+    } finally {
+      setDecidingRow(null);
+    }
   };
 
   const syncPipelineState = async (overrides = {}) => {
@@ -72,12 +102,14 @@ export default function Pipeline() {
       await syncPipelineState({});
       setExecutionStep(3);
       setExecutingRules(false);
+      setZoneVersion(v => v + 1);
     }, 650);
   };
 
   const handleSetReviewAction = async (action) => {
     setReviewAction(action);
     await syncPipelineState({ review_action: action });
+    setZoneVersion(v => v + 1);
   };
 
   const handleToggleUpstreamTicket = async (forceVal) => {
@@ -115,6 +147,22 @@ export default function Pipeline() {
       })
       .catch(() => {});
   }, []);
+
+  // Fetch real per-row records for the Record-Level Inspection table (debounced on search)
+  useEffect(() => {
+    const zoneParam = selectedZone.toLowerCase();
+    setZoneLoading(true);
+    const handle = setTimeout(() => {
+      const params = new URLSearchParams({ limit: "15" });
+      if (recordSearch.trim()) params.set("search", recordSearch.trim());
+      fetch(`/api/v1/whitebox/preview-zone/${zoneParam}?${params.toString()}`)
+        .then(r => (r.ok ? r.json() : null))
+        .then(d => { if (d) setZoneData(d); })
+        .catch(() => {})
+        .finally(() => setZoneLoading(false));
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [selectedZone, recordSearch, zoneVersion]);
 
   const handleRetry = async (runId) => {
     setRetrying(prev => ({ ...prev, [runId]: true }));
@@ -177,7 +225,11 @@ export default function Pipeline() {
             <div style={{ fontSize: '10px', color: '#64748B' }}>Rebuild executive BI & analytics tables</div>
           </div>
           <button
-            onClick={handleGoldRebuild}
+            onClick={() => triggerConfirm(
+              "Rebuild Gold Layer?",
+              "This will re-aggregate the executive BI & analytics tables from the current Silver layer output. It can take a while and will affect what the Dashboard shows.",
+              handleGoldRebuild
+            )}
             disabled={goldRebuilding}
             style={{
               padding: '7px 14px',
@@ -380,14 +432,22 @@ export default function Pipeline() {
                 <div style={{ display: 'flex', gap: '6px' }}>
                   <button
                     type="button"
-                    onClick={() => handleSetReviewAction("APPROVE")}
+                    onClick={() => triggerConfirm(
+                      "Approve Review Queue into Clean?",
+                      `This will move all ${initialOutlierCount} rows currently in the Human Review Queue into the Clean Silver dataset. This action can be reversed by clicking "คืนค่า" afterward, but will affect Gold Layer rebuilds until then.`,
+                      () => handleSetReviewAction("APPROVE")
+                    )}
                     style={{ flex: 1, padding: '4px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600, border: '1px solid #2272B4', background: reviewAction === "APPROVE" ? '#2272B4' : '#FFFFFF', color: reviewAction === "APPROVE" ? '#FFFFFF' : '#2272B4', cursor: 'pointer' }}
                   >
                     {reviewAction === "APPROVE" ? `อนุมัติแล้ว (+${initialOutlierCount})` : `อนุมัติเข้า Clean (+${initialOutlierCount})`}
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleSetReviewAction("REJECT")}
+                    onClick={() => triggerConfirm(
+                      "Quarantine the Review Queue?",
+                      `This will move all ${initialOutlierCount} rows currently in the Human Review Queue into Quarantine. This action can be reversed by clicking "คืนค่า" afterward, but will affect Gold Layer rebuilds until then.`,
+                      () => handleSetReviewAction("REJECT")
+                    )}
                     style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600, border: '1px solid #DC2626', background: reviewAction === "REJECT" ? '#DC2626' : '#FFFFFF', color: reviewAction === "REJECT" ? '#FFFFFF' : '#DC2626', cursor: 'pointer' }}
                   >
                     กักกัน
@@ -486,36 +546,84 @@ export default function Pipeline() {
               </div>
             </div>
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left' }}>
-                <thead>
-                  <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', color: '#475569' }}>
-                    <th style={{ padding: '10px 12px' }}>Row ID</th>
-                    <th style={{ padding: '10px 12px' }}>รหัสคีย์ (student_id + course)</th>
-                    <th style={{ padding: '10px 12px' }}>ค่าที่ตรวจพบ (Observed Value)</th>
-                    <th style={{ padding: '10px 12px' }}>กรอกแก้ไขค่าข้อมูล (Inline Fix)</th>
-                    <th style={{ padding: '10px 12px' }}>โซนปัจจุบัน</th>
-                    <th style={{ padding: '10px 12px', minWidth: '220px' }}>หลักฐานการคัดแยก (Rule Evidence)</th>
-                    <th style={{ padding: '10px 12px' }}>การจัดการ (Action)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {/* Root Cause Fix: this table used to render 5 hardcoded fake rows
-                      (#105, #48, #73, #101, #001) regardless of the real dataset — the
-                      zone counts/tabs above are wired to real /api/v1/whitebox/state
-                      data, but the per-row detail table never was. Building real
-                      row-level inline-edit/approve endpoints is a separate feature; for
-                      now this is an honest empty state rather than fabricated rows. */}
-                  <tr>
-                    <td colSpan={7} style={{ padding: '24px 12px', textAlign: 'center', color: '#64748B', fontSize: '12px' }}>
-                      Record-level inline inspection is not yet wired to live per-row data.
-                      See the zone counts above (from /api/v1/whitebox/state) for real
-                      Clean/Review/Quarantine totals, or use the White-Box Pipeline page
-                      for the full run breakdown.
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+              {(() => {
+                const displayCols = ZONE_ROW_COLUMNS.filter(c => zoneData?.columns?.includes(c.key));
+                const cols = displayCols.length > 0 ? displayCols : (zoneData?.columns || []).slice(0, 6).map(k => ({ key: k, label: k }));
+                const rows = zoneData?.rows || [];
+                return (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', color: '#475569' }}>
+                        {cols.map(c => (
+                          <th key={c.key} style={{ padding: '10px 12px' }}>{c.label}</th>
+                        ))}
+                        {cols.some(c => c.key === "whitebox_status") && (
+                          <th style={{ padding: '10px 12px' }}>การจัดการ (Action)</th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {zoneLoading ? (
+                        <tr>
+                          <td colSpan={cols.length + 1} style={{ padding: '24px 12px', textAlign: 'center', color: '#64748B', fontSize: '12px' }}>
+                            กำลังโหลดข้อมูลเรคคอร์ด...
+                          </td>
+                        </tr>
+                      ) : rows.length === 0 ? (
+                        <tr>
+                          <td colSpan={cols.length + 1} style={{ padding: '24px 12px', textAlign: 'center', color: '#64748B', fontSize: '12px' }}>
+                            ไม่พบเรคคอร์ดในโซนนี้{recordSearch.trim() ? ` ที่ตรงกับ "${recordSearch.trim()}"` : ""}
+                          </td>
+                        </tr>
+                      ) : (
+                        rows.map((row, i) => {
+                          const rowId = String(row.dirty_row_id ?? i);
+                          const canDecide = cols.some(c => c.key === "whitebox_status") && row.whitebox_status !== undefined;
+                          return (
+                            <tr key={rowId} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                              {cols.map(c => (
+                                <td key={c.key} style={{ padding: '8px 12px', color: '#334155' }}>
+                                  {row[c.key] === null || row[c.key] === undefined || row[c.key] === "" ? "—" : String(row[c.key])}
+                                </td>
+                              ))}
+                              {cols.some(c => c.key === "whitebox_status") && (
+                                <td style={{ padding: '8px 12px' }}>
+                                  {canDecide && (
+                                    <div style={{ display: 'flex', gap: '4px' }}>
+                                      <button
+                                        type="button"
+                                        disabled={decidingRow === rowId}
+                                        onClick={() => handleRowDecision(rowId, "APPROVE")}
+                                        style={{ padding: '3px 7px', borderRadius: '4px', fontSize: '10px', fontWeight: 600, border: '1px solid #2272B4', background: '#FFFFFF', color: '#2272B4', cursor: decidingRow === rowId ? 'wait' : 'pointer' }}
+                                      >
+                                        อนุมัติ
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={decidingRow === rowId}
+                                        onClick={() => handleRowDecision(rowId, "REJECT")}
+                                        style={{ padding: '3px 7px', borderRadius: '4px', fontSize: '10px', fontWeight: 600, border: '1px solid #DC2626', background: '#FFFFFF', color: '#DC2626', cursor: decidingRow === rowId ? 'wait' : 'pointer' }}
+                                      >
+                                        กักกัน
+                                      </button>
+                                    </div>
+                                  )}
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                );
+              })()}
             </div>
+            {zoneData && (
+              <div style={{ padding: '8px 14px', fontSize: '10.5px', color: '#94A3B8', borderTop: '1px solid #E2E8F0' }}>
+                แสดง {zoneData.rows?.length || 0} จาก {zoneData.matched_rows ?? zoneData.total_zone_rows ?? 0} เรคคอร์ดที่ตรงเงื่อนไข (ทั้งโซน {zoneData.total_zone_rows ?? 0} แถว) — ข้อมูลจริงจาก /api/v1/whitebox/preview-zone
+              </div>
+            )}
           </div>
 
           {/* Single Primary Action Button */}
@@ -649,6 +757,14 @@ export default function Pipeline() {
       </div>
         </div>
       </details>
+
+      <ConfirmationModal
+        isOpen={modalOpen}
+        title={modalConfig.title}
+        message={modalConfig.message}
+        onConfirm={modalConfig.onConfirm}
+        onCancel={() => setModalOpen(false)}
+      />
     </div>
   );
 }
