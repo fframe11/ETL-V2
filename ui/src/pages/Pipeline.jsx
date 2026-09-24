@@ -499,183 +499,20 @@ export default function Pipeline() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(selectedZone === "ALL" || selectedZone === "REVIEW" || (selectedZone === "CLEAN" && (rowDecisions['#105'] === "APPROVE" || reviewAction === "APPROVE"))) &&
-                    (!recordSearch || "#105 s65105 big data 60 99 review".includes(recordSearch.toLowerCase())) && (
-                    <tr style={{ borderBottom: '1px solid #F1F5F9', background: '#FFFBEB' }}>
-                      <td style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>#105</td>
-                      <td style={{ padding: '10px 12px', fontWeight: 700 }}>65105 · Big Data (2/2026)</td>
-                      <td style={{ padding: '10px 12px', color: '#D97706', fontWeight: 700 }}>score = 99.0 | study_hours = 60.0 ชม.</td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <span style={{ fontSize: '10px', color: '#78350F' }}>study_hours:</span>
-                          <input
-                            type="number"
-                            step="0.5"
-                            value={inlineEdits["#105"]?.study_hours ?? 11.5}
-                            onChange={(e) => setInlineEdits(p => ({ ...p, "#105": { ...p["#105"], study_hours: e.target.value } }))}
-                            style={{ width: '68px', padding: '3px 6px', borderRadius: '4px', border: '1px solid #F59E0B', fontSize: '11px', fontWeight: 700 }}
-                          />
-                        </div>
-                      </td>
-                      <td style={{ padding: '10px 12px' }}>
-                        {(rowDecisions['#105'] || reviewAction) === "APPROVE" ? (
-                          <span style={{ background: '#DCFCE7', color: '#15803D', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}><Icon name="dot-green" /> อนุมัติเข้า Clean แล้ว</span>
-                        ) : (rowDecisions['#105'] || reviewAction) === "REJECT" ? (
-                          <span style={{ background: '#FEE2E2', color: '#B91C1C', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}><Icon name="dot-red" /> ส่งเข้ากักกันแล้ว</span>
-                        ) : (
-                          <span style={{ background: '#FEF3C7', color: '#D97706', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}><Icon name="dot-yellow" /> รอผู้เชี่ยวชาญตัดสินใจ</span>
-                        )}
-                      </td>
-                      <td style={{ padding: '10px 12px', color: '#78350F' }}>
-                        <code>study_hours = 60.0 &gt; Fence ({wbState?.metrics?.upper_fence ?? 12.0})</code> แต่คะแนนสอบ <code>99.0</code> ดีเยี่ยม
-                      </td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                          <button
-                            type="button"
-                            onClick={() => handleSaveInlineRowEdit('#105', 'APPROVE')}
-                            style={{ padding: '4px 8px', fontSize: '10px', fontWeight: 700, borderRadius: '4px', border: '1px solid #16A34A', background: '#DCFCE7', color: '#15803D', cursor: 'pointer' }}
-                          >
-                            <Icon name="check" /> บันทึกค่า &amp; อนุมัติ
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleSaveInlineRowEdit('#105', 'REJECT')}
-                            style={{ padding: '4px 8px', fontSize: '10px', fontWeight: 700, borderRadius: '4px', border: '1px solid #DC2626', background: '#FEE2E2', color: '#B91C1C', cursor: 'pointer' }}
-                          >
-                            <Icon name="dot-red" /> กักกัน
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                  {(selectedZone === "ALL" || selectedZone === "QUARANTINE" || (selectedZone === "CLEAN" && (rowDecisions['#48'] === "APPROVE" || rowDecisions['#73'] === "APPROVE"))) && (
-                    <>
-                      {(!recordSearch || "#48 65048 statistics 150 quarantine".includes(recordSearch.toLowerCase())) && (
-                        <tr style={{ borderBottom: '1px solid #F1F5F9' }}>
-                          <td style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>#48</td>
-                          <td style={{ padding: '10px 12px', fontWeight: 600 }}>65048 · Statistics (2/2026)</td>
-                          <td style={{ padding: '10px 12px', color: '#DC2626', fontWeight: 700 }}>score = 150.0 | study_hours = 5.0 ชม.</td>
-                          <td style={{ padding: '10px 12px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <span style={{ fontSize: '10px', color: '#7F1D1D' }}>แก้ score:</span>
-                              <input
-                                type="number"
-                                value={inlineEdits["#48"]?.score ?? 95.0}
-                                onChange={(e) => setInlineEdits(p => ({ ...p, "#48": { ...p["#48"], score: e.target.value } }))}
-                                style={{ width: '68px', padding: '3px 6px', borderRadius: '4px', border: '1px solid #FCA5A5', fontSize: '11px', fontWeight: 700 }}
-                              />
-                            </div>
-                          </td>
-                          <td style={{ padding: '10px 12px' }}>
-                            {rowDecisions['#48'] === "APPROVE" ? (
-                              <span style={{ background: '#DCFCE7', color: '#15803D', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}><Icon name="dot-green" /> แก้ไขค่า &amp; อนุมัติแล้ว</span>
-                            ) : (
-                              <span style={{ background: '#FEE2E2', color: '#B91C1C', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}><Icon name="dot-red" /> กักกัน (Quarantine)</span>
-                            )}
-                          </td>
-                          <td style={{ padding: '10px 12px', color: '#7F1D1D' }}>
-                            พบค่า <code>150.0 &gt; Max ({wbState?.max_score ?? 100})</code> ผิดขอบเขตคะแนนที่กำหนดใน Rule Hub
-                          </td>
-                          <td style={{ padding: '10px 12px' }}>
-                            <div style={{ display: 'flex', gap: '4px' }}>
-                              <button
-                                type="button"
-                                onClick={() => handleSaveInlineRowEdit('#48', 'APPROVE')}
-                                style={{ padding: '4px 8px', fontSize: '10px', fontWeight: 700, borderRadius: '4px', border: '1px solid #16A34A', background: '#DCFCE7', color: '#15803D', cursor: 'pointer' }}
-                              >
-                                <Icon name="check" /> บันทึกค่าที่แก้ &amp; อนุมัติ
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleToggleUpstreamTicket(true)}
-                                style={{ padding: '4px 8px', fontSize: '10px', fontWeight: 700, borderRadius: '4px', border: '1px solid #FCA5A5', background: '#FEF2F2', color: '#991B1B', cursor: 'pointer' }}
-                              >
-                                {upstreamTicketSent ? 'แจ้งต้นทางแล้ว' : 'แจ้งต้นทาง'}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                      {(!recordSearch || "#73 65073 statistics null missing quarantine".includes(recordSearch.toLowerCase())) && (
-                        <tr style={{ borderBottom: '1px solid #F1F5F9' }}>
-                          <td style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>#73</td>
-                          <td style={{ padding: '10px 12px', fontWeight: 600 }}>65073 · Statistics (2/2026)</td>
-                          <td style={{ padding: '10px 12px', color: '#DC2626', fontWeight: 700 }}>score = NULL | study_hours = 4.0 ชม.</td>
-                          <td style={{ padding: '10px 12px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <span style={{ fontSize: '10px', color: '#7F1D1D' }}>เติม score:</span>
-                              <input
-                                type="number"
-                                value={inlineEdits["#73"]?.score ?? 80.0}
-                                onChange={(e) => setInlineEdits(p => ({ ...p, "#73": { ...p["#73"], score: e.target.value } }))}
-                                style={{ width: '68px', padding: '3px 6px', borderRadius: '4px', border: '1px solid #FCA5A5', fontSize: '11px', fontWeight: 700 }}
-                              />
-                            </div>
-                          </td>
-                          <td style={{ padding: '10px 12px' }}>
-                            {rowDecisions['#73'] === "APPROVE" ? (
-                              <span style={{ background: '#DCFCE7', color: '#15803D', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}><Icon name="dot-green" /> เติมค่า &amp; อนุมัติแล้ว</span>
-                            ) : (
-                              <span style={{ background: '#FEE2E2', color: '#B91C1C', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}><Icon name="dot-red" /> กักกัน (Quarantine)</span>
-                            )}
-                          </td>
-                          <td style={{ padding: '10px 12px', color: '#7F1D1D' }}>
-                            คอลัมน์บังคับ <code>score</code> มีค่าเป็น <code>NULL</code> (Strict Completeness)
-                          </td>
-                          <td style={{ padding: '10px 12px' }}>
-                            <div style={{ display: 'flex', gap: '4px' }}>
-                              <button
-                                type="button"
-                                onClick={() => handleSaveInlineRowEdit('#73', 'APPROVE')}
-                                style={{ padding: '4px 8px', fontSize: '10px', fontWeight: 700, borderRadius: '4px', border: '1px solid #16A34A', background: '#DCFCE7', color: '#15803D', cursor: 'pointer' }}
-                              >
-                                <Icon name="check" /> บันทึกค่าที่เติม &amp; อนุมัติ
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleToggleUpstreamTicket(true)}
-                                style={{ padding: '4px 8px', fontSize: '10px', fontWeight: 700, borderRadius: '4px', border: '1px solid #FCA5A5', background: '#FEF2F2', color: '#991B1B', cursor: 'pointer' }}
-                              >
-                                {upstreamTicketSent ? 'แจ้งต้นทางแล้ว' : 'แจ้งต้นทาง'}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                      {(!recordSearch || "#101 s1005 duplicate cs101".includes(recordSearch.toLowerCase())) && (
-                        <tr style={{ borderBottom: '1px solid #F1F5F9' }}>
-                          <td style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)' }}>#101</td>
-                          <td style={{ padding: '10px 12px', fontWeight: 600 }}>65005 · CS101 (1/2026) [ซ้ำ]</td>
-                          <td style={{ padding: '10px 12px', color: '#DC2626', fontWeight: 700 }}>score = 81.0 (ส่งซ้ำครั้งที่ 2)</td>
-                          <td style={{ padding: '10px 12px', color: '#64748B', fontSize: '10px' }}>Deduplication Rule</td>
-                          <td style={{ padding: '10px 12px' }}><span style={{ background: '#FEE2E2', color: '#B91C1C', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}><Icon name="dot-red" /> กักกัน (Quarantine)</span></td>
-                          <td style={{ padding: '10px 12px', color: '#7F1D1D' }}>
-                            พบคีย์ผสม <code>student_id + course + semester</code> ซ้ำซ้อน (เก็บแถวแรก กักกันแถวซ้ำ)
-                          </td>
-                          <td style={{ padding: '10px 12px' }}>
-                            <span style={{ fontSize: '10px', color: '#64748B', fontWeight: 600 }}>เก็บต้นฉบับไว้แล้ว</span>
-                          </td>
-                        </tr>
-                      )}
-                    </>
-                  )}
-                  {(selectedZone === "ALL" || selectedZone === "CLEAN") &&
-                    (!recordSearch || "#001 65001 python clean".includes(recordSearch.toLowerCase())) && (
-                    <tr style={{ borderBottom: '1px solid #F1F5F9', background: '#F0FDF4' }}>
-                      <td style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)' }}>#001</td>
-                      <td style={{ padding: '10px 12px', fontWeight: 600 }}>65001 · Python (1/2026)</td>
-                      <td style={{ padding: '10px 12px', color: '#15803D', fontWeight: 700 }}>score = 70.0 | study_hours = 3.0 ชม.</td>
-                      <td style={{ padding: '10px 12px', color: '#15803D', fontSize: '10px' }}>ไม่ต้องแก้ไข (Valid)</td>
-                      <td style={{ padding: '10px 12px' }}><span style={{ background: '#DCFCE7', color: '#15803D', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}><Icon name="dot-green" /> ข้อมูลสะอาด (Clean)</span></td>
-                      <td style={{ padding: '10px 12px', color: '#14532D' }}>
-                        <code>score ∈ [{wbState?.min_score ?? 0}, {wbState?.max_score ?? 100}]</code> | <code>study_hours ≤ {wbState?.metrics?.upper_fence ?? 12.0}</code> | คีย์ไม่ซ้ำ
-                      </td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <Link to="/export" style={{ fontSize: '10px', fontWeight: 700, color: '#15803D', textDecoration: 'underline' }}>พร้อมส่งออก <Icon name="arrow-right" /></Link>
-                      </td>
-                    </tr>
-                  )}
+                  {/* Root Cause Fix: this table used to render 5 hardcoded fake rows
+                      (#105, #48, #73, #101, #001) regardless of the real dataset — the
+                      zone counts/tabs above are wired to real /api/v1/whitebox/state
+                      data, but the per-row detail table never was. Building real
+                      row-level inline-edit/approve endpoints is a separate feature; for
+                      now this is an honest empty state rather than fabricated rows. */}
+                  <tr>
+                    <td colSpan={7} style={{ padding: '24px 12px', textAlign: 'center', color: '#64748B', fontSize: '12px' }}>
+                      Record-level inline inspection is not yet wired to live per-row data.
+                      See the zone counts above (from /api/v1/whitebox/state) for real
+                      Clean/Review/Quarantine totals, or use the White-Box Pipeline page
+                      for the full run breakdown.
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>

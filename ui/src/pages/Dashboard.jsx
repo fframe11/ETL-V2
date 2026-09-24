@@ -67,13 +67,18 @@ export default function Dashboard() {
   const wbStateApi = useApi('/whitebox/state', { refreshInterval: 10000 });
   const aiContextApi = useApi('/whitebox/ai-context-explanations', { refreshInterval: 30000 });
   const [aiRefreshing, setAiRefreshing] = useState(false);
+  // Root Cause Fix: these used to fall back to hardcoded numbers (10100, 9400, 100,
+  // 600, 93.1) indistinguishable from real data whenever /whitebox/state hadn't loaded
+  // or errored. Fall back to null instead, and render "—" via fmtOrDash() below rather
+  // than fabricating a plausible-looking figure.
   const wbMetrics = wbStateApi.data?.metrics || {};
-  const wbTotal = wbMetrics.total_rows ?? 10100;
+  const wbTotal = wbMetrics.total_rows ?? null;
   const wbDatasetName = wbStateApi.data?.dataset_name || 'student_course_scores';
-  const wbClean = wbMetrics.clean_rows ?? 9400;
-  const wbReview = wbMetrics.review_rows ?? 100;
-  const wbQuarantine = wbMetrics.quarantine_rows ?? 600;
-  const wbScorePct = wbMetrics.quality_score_pct ?? 93.1;
+  const wbClean = wbMetrics.clean_rows ?? null;
+  const wbReview = wbMetrics.review_rows ?? null;
+  const wbQuarantine = wbMetrics.quarantine_rows ?? null;
+  const wbScorePct = wbMetrics.quality_score_pct ?? null;
+  const fmtOrDash = (v) => (typeof v === 'number' ? v.toLocaleString() : '—');
 
   const handleRefreshAiLineage = async () => {
     setAiRefreshing(true);
@@ -321,7 +326,7 @@ export default function Dashboard() {
                 <Icon name="chart" /> สูตรคำนวณดัชนีคุณภาพข้อมูล ({wbDatasetName}):
               </span>
               <code style={{ background: "#F8FAFC", color: "#0F172A", border: "1px solid #E2E8F0", padding: "2px 8px", borderRadius: "4px", fontSize: "11px", fontWeight: 700 }}>
-                (ข้อมูลสะอาด {wbClean.toLocaleString()} แถว ÷ ข้อมูลขาเข้าทั้งหมด {wbTotal.toLocaleString()} แถว) × 100 = {wbScorePct}%
+                (ข้อมูลสะอาด {fmtOrDash(wbClean)} แถว ÷ ข้อมูลขาเข้าทั้งหมด {fmtOrDash(wbTotal)} แถว) × 100 = {typeof wbScorePct === 'number' ? `${wbScorePct}%` : '—'}
               </code>
             </div>
           </div>
@@ -362,12 +367,14 @@ export default function Dashboard() {
               <Icon name="sparkles" /> สรุปสถานะคุณภาพข้อมูลและเส้นทางสายข้อมูลโดย AI ({aiContextApi.data?.model || "openai/gpt-oss-120b"})
             </span>
             <span style={{ fontSize: "10px", fontWeight: 700, color: "#64748B" }}>
-              ตาราง: {wbDatasetName} ({wbTotal.toLocaleString()} แถว)
+              ตาราง: {wbDatasetName} ({fmtOrDash(wbTotal)} แถว)
             </span>
           </div>
           <div style={{ fontWeight: 500, color: "#0F172A" }}>
             {aiContextApi.data?.step5_lineage?.executive_narrative ||
-              `ภาพรวมคุณภาพข้อมูลของตาราง '${wbDatasetName}' อยู่ที่ ${wbScorePct}% โดยมีข้อมูลสะอาดพร้อมใช้งาน ${wbClean.toLocaleString()} แถว รอผู้ดูแลตรวจสอบใน Review Queue ${wbReview.toLocaleString()} แถว และกักกันเพื่อส่งรายงานแจ้งแก้ที่ระบบต้นทาง ${wbQuarantine.toLocaleString()} แถว`}
+              (wbScorePct !== null
+                ? `ภาพรวมคุณภาพข้อมูลของตาราง '${wbDatasetName}' อยู่ที่ ${wbScorePct}% โดยมีข้อมูลสะอาดพร้อมใช้งาน ${fmtOrDash(wbClean)} แถว รอผู้ดูแลตรวจสอบใน Review Queue ${fmtOrDash(wbReview)} แถว และกักกันเพื่อส่งรายงานแจ้งแก้ที่ระบบต้นทาง ${fmtOrDash(wbQuarantine)} แถว`
+                : (wbStateApi.loading ? "กำลังโหลดข้อมูลคุณภาพจาก pipeline..." : "ยังไม่มีข้อมูลจาก /whitebox/state — รัน pipeline อย่างน้อยหนึ่งครั้งก่อน"))}
           </div>
         </div>
 
@@ -376,7 +383,7 @@ export default function Dashboard() {
             <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748B", letterSpacing: "0.04em" }}>BRONZE INGESTION (/ingestion)</div>
             <div style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A", marginTop: "2px" }}><Icon name="search" /> สแกนพบความผิดปกติ {Array.isArray(wbStateApi.data?.selected_findings) ? wbStateApi.data.selected_findings.length : wbStateApi.data?.selected_findings ? Object.values(wbStateApi.data.selected_findings).filter(Boolean).length : 3} หมวดหมู่</div>
             <div style={{ fontSize: "10.5px", color: "#475569", marginTop: "3px", lineHeight: "1.4" }}>
-              {aiContextApi.data?.step5_lineage?.step1_card_desc || `สแกน ${wbTotal.toLocaleString()} แถว พบค่าว่าง ค่านอกช่วง คีย์ซ้ำ และค่าเกินรั้วสถิติ → คลิกดู`}
+              {aiContextApi.data?.step5_lineage?.step1_card_desc || `สแกน ${fmtOrDash(wbTotal)} แถว พบค่าว่าง ค่านอกช่วง คีย์ซ้ำ และค่าเกินรั้วสถิติ → คลิกดู`}
             </div>
           </Link>
 
@@ -392,13 +399,13 @@ export default function Dashboard() {
             <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748B", letterSpacing: "0.04em" }}>SILVER QUALITY GATES (/pipeline)</div>
             <div style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A", marginTop: "2px" }}><Icon name="settings" /> คัดแยก 3 โซน &amp; อนุมัติคิว</div>
             <div style={{ fontSize: "10.5px", color: "#475569", marginTop: "3px", lineHeight: "1.4" }}>
-              {aiContextApi.data?.step5_lineage?.step3_card_desc || `สะอาด ${wbClean.toLocaleString()} | รอตรวจ ${wbReview.toLocaleString()} | กักกัน ${wbQuarantine.toLocaleString()} → คลิกสั่งการ`}
+              {aiContextApi.data?.step5_lineage?.step3_card_desc || `สะอาด ${fmtOrDash(wbClean)} | รอตรวจ ${fmtOrDash(wbReview)} | กักกัน ${fmtOrDash(wbQuarantine)} → คลิกสั่งการ`}
             </div>
           </Link>
 
           <Link to="/export" style={{ textDecoration: "none", background: "#FFFFFF", border: "1px solid #E2E8F0", borderLeft: "3px solid #16A34A", borderRadius: "6px", padding: "10px 12px", display: "block" }}>
             <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748B", letterSpacing: "0.04em" }}>GOLD EXPORT (/export)</div>
-            <div style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A", marginTop: "2px" }}><Icon name="box" /> ส่งออก CSV แยก 3 โซน ({wbClean.toLocaleString()} แถว)</div>
+            <div style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A", marginTop: "2px" }}><Icon name="box" /> ส่งออก CSV แยก 3 โซน ({fmtOrDash(wbClean)} แถว)</div>
             <div style={{ fontSize: "10.5px", color: "#475569", marginTop: "3px", lineHeight: "1.4" }}>
               {aiContextApi.data?.step5_lineage?.step4_card_desc || `ดาวน์โหลด Clean CSV และใบแจ้งแก้ต้นทาง → คลิกส่งออก`}
             </div>
@@ -408,7 +415,7 @@ export default function Dashboard() {
         {/* Bottom Action Bar in Primary Summary Mode */}
         <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px solid #E2E8F0", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
           <span style={{ fontSize: "12px", color: "#334155", fontWeight: 600 }}>
-            ต้องการดูรายการเรคคอร์ดทั้งหมด ({wbTotal.toLocaleString()} แถว) ของตาราง {wbDatasetName} แบบละเอียดพร้อมกรองตามประเภทความผิดปกติหรือไม่?
+            ต้องการดูรายการเรคคอร์ดทั้งหมด ({fmtOrDash(wbTotal)} แถว) ของตาราง {wbDatasetName} แบบละเอียดพร้อมกรองตามประเภทความผิดปกติหรือไม่?
           </span>
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
             <Link
@@ -523,11 +530,14 @@ export default function Dashboard() {
             </div>
 
             {/* Card 2: Data Availability */}
-            <div className={`exec-kpi-card ${dataAvailability.score >= 95 ? 'kpi-good' : 'kpi-warn'}`}>
+            {/* Root Cause Fix: score >= 95 evaluates false for score === null (still
+                loading, or /executive/overview failed), so the card rendered a false
+                "DEGRADED" alarm on every load instead of a neutral loading state. */}
+            <div className={`exec-kpi-card ${dataAvailability.score == null ? '' : dataAvailability.score >= 95 ? 'kpi-good' : 'kpi-warn'}`}>
               <div className="exec-kpi-top">
                 <span className="exec-kpi-title">Data Availability</span>
-                <span className={`exec-chip ${dataAvailability.score >= 95 ? 'exec-chip-good' : 'exec-chip-warn'}`}>
-                  {dataAvailability.score >= 95 ? 'HEALTHY' : 'DEGRADED'}
+                <span className={`exec-chip ${dataAvailability.score == null ? '' : dataAvailability.score >= 95 ? 'exec-chip-good' : 'exec-chip-warn'}`}>
+                  {dataAvailability.score == null ? 'LOADING' : dataAvailability.score >= 95 ? 'HEALTHY' : 'DEGRADED'}
                 </span>
               </div>
               <div className="exec-kpi-val">{dataAvailability.score != null ? `${dataAvailability.score}%` : '---'}</div>
@@ -537,11 +547,11 @@ export default function Dashboard() {
             </div>
 
             {/* Card 3: Data Freshness */}
-            <div className={`exec-kpi-card ${dataFreshness.score >= 90 ? 'kpi-good' : 'kpi-warn'}`}>
+            <div className={`exec-kpi-card ${dataFreshness.score == null ? '' : dataFreshness.score >= 90 ? 'kpi-good' : 'kpi-warn'}`}>
               <div className="exec-kpi-top">
                 <span className="exec-kpi-title">Data Freshness</span>
-                <span className={`exec-chip ${dataFreshness.score >= 90 ? 'exec-chip-good' : 'exec-chip-warn'}`}>
-                  {dataFreshness.score >= 90 ? 'ON-TIME' : 'DELAYED'}
+                <span className={`exec-chip ${dataFreshness.score == null ? '' : dataFreshness.score >= 90 ? 'exec-chip-good' : 'exec-chip-warn'}`}>
+                  {dataFreshness.score == null ? 'LOADING' : dataFreshness.score >= 90 ? 'ON-TIME' : 'DELAYED'}
                 </span>
               </div>
               <div className="exec-kpi-val">{dataFreshness.score != null ? `${dataFreshness.score}%` : '---'}</div>
@@ -934,26 +944,31 @@ export default function Dashboard() {
                 <span className="exec-chip exec-chip-crit">${bizImpact.monetary_loss_usd} Total</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '8px 0' }}>
+                {/* Root Cause Fix: these three figures used to be an invented client-side
+                    35/45/20% split of the total, styled identically to real analytics.
+                    The API already computes these three components server-side
+                    (api/app/api/analytics.py get_business_impact) — it just never
+                    returned them. Now consumes the real cost_breakdown field. */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
                   <div>
                     <strong style={{ fontSize: '11.5px' }}>1. Cost of Correction</strong>
                     <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Operational engineering compute to re-ingest quarantined rows</div>
                   </div>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>${(bizImpact.monetary_loss_usd * 0.35).toFixed(0)}</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>${(impact.data?.cost_breakdown?.cost_of_correction_usd ?? 0).toFixed(0)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
                   <div>
                     <strong style={{ fontSize: '11.5px' }}>2. Cost of Lost Opportunities</strong>
                     <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Sales inaccuracy and delayed decision execution</div>
                   </div>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>${(bizImpact.monetary_loss_usd * 0.45).toFixed(0)}</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>${(impact.data?.cost_breakdown?.cost_of_lost_opportunities_usd ?? 0).toFixed(0)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
                   <div>
                     <strong style={{ fontSize: '11.5px' }}>3. Cost of Risk &amp; Compliance</strong>
                     <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Schema drift SLA penalties and governance audit risk</div>
                   </div>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>${(bizImpact.monetary_loss_usd * 0.20).toFixed(0)}</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>${(impact.data?.cost_breakdown?.cost_of_risk_usd ?? 0).toFixed(0)}</span>
                 </div>
               </div>
             </div>

@@ -735,6 +735,14 @@ def get_business_impact():
                 {"kpi_name": "User Recommendations CTR", "status": "OK", "impact_pct": 0.0, "monetary_loss_usd": 0}
             ],
             "total_financial_impact_usd": total_loss,
+            # Root Cause Fix: these three components were already computed above but
+            # never returned — the UI (Dashboard.jsx) was inventing its own 35/45/20%
+            # split of the total instead. Expose the real breakdown.
+            "cost_breakdown": {
+                "cost_of_correction_usd": cost_of_correction,
+                "cost_of_lost_opportunities_usd": cost_of_lost_opportunities,
+                "cost_of_risk_usd": cost_of_risk
+            },
             "active_lineage_degradations": [
                 {"node": "active-store", "impact": degradation_desc}
             ]
@@ -749,6 +757,7 @@ def get_business_impact():
             {"kpi_name": "User Recommendations CTR", "status": "OK", "impact_pct": 0.0, "monetary_loss_usd": 0}
         ],
         "total_financial_impact_usd": 0,
+        "cost_breakdown": {"cost_of_correction_usd": 0, "cost_of_lost_opportunities_usd": 0, "cost_of_risk_usd": 0},
         "active_lineage_degradations": []
     }
 

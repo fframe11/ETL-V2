@@ -356,8 +356,6 @@ export default function DataExport() {
                 <th style={{ padding: "8px 10px", fontWeight: 600 }}>Name ↑</th>
                 <th style={{ padding: "8px 10px", fontWeight: 600 }}>Type</th>
                 <th style={{ padding: "8px 10px", fontWeight: 600 }}>Rows</th>
-                <th style={{ padding: "8px 10px", fontWeight: 600 }}>Owner</th>
-                <th style={{ padding: "8px 10px", fontWeight: 600 }}>Last updated at</th>
                 <th style={{ padding: "8px 10px", fontWeight: 600, textAlign: "right" }}>Actions</th>
               </tr>
             </thead>
@@ -368,8 +366,6 @@ export default function DataExport() {
                 </td>
                 <td style={{ padding: "10px", color: "#334155" }}>Gold Certified Table</td>
                 <td style={{ padding: "10px", fontWeight: 600, color: "#15803D" }}>{cleanCount.toLocaleString()} rows</td>
-                <td style={{ padding: "10px", color: "#475569" }}>fframew01@gmail.com</td>
-                <td style={{ padding: "10px", color: "#475569" }}>Sep 23, 2026, 12:47 PM</td>
                 <td style={{ padding: "10px", textAlign: "right" }}>
                   <button
                     type="button"
@@ -386,8 +382,6 @@ export default function DataExport() {
                 </td>
                 <td style={{ padding: "10px", color: "#334155" }}>Steward Review Queue</td>
                 <td style={{ padding: "10px", fontWeight: 600, color: "#D97706" }}>{reviewCount.toLocaleString()} rows</td>
-                <td style={{ padding: "10px", color: "#475569" }}>fframew01@gmail.com</td>
-                <td style={{ padding: "10px", color: "#475569" }}>Sep 23, 2026, 12:47 PM</td>
                 <td style={{ padding: "10px", textAlign: "right" }}>
                   <button
                     type="button"
@@ -404,8 +398,6 @@ export default function DataExport() {
                 </td>
                 <td style={{ padding: "10px", color: "#334155" }}>Quarantine Audit Log</td>
                 <td style={{ padding: "10px", fontWeight: 600, color: "#DC2626" }}>{quarantineCount.toLocaleString()} rows</td>
-                <td style={{ padding: "10px", color: "#475569" }}>fframew01@gmail.com</td>
-                <td style={{ padding: "10px", color: "#475569" }}>Sep 23, 2026, 12:47 PM</td>
                 <td style={{ padding: "10px", textAlign: "right" }}>
                   <button
                     type="button"

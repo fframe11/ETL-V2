@@ -721,6 +721,24 @@ def evaluate_ground_truth():
     overall_accuracy_pct = round((overall_error_match / total_samples) * 100, 2)
     overall_status_accuracy_pct = round((overall_status_match / total_samples) * 100, 2)
 
+    # Root Cause Fix: this endpoint used to return several blocks of hardcoded numbers
+    # (evaluation_summary, error_reconciliation counts, tukey_fences_comparison,
+    # seven_dimensions_evaluation) that didn't change no matter what the actual
+    # comparison above found — presenting fabricated "100% PASS on every dimension"
+    # results as if they were computed evidence. evaluation_summary and
+    # error_reconciliation are now derived from the real metrics_by_category /
+    # status_distribution computed above. tukey_fences_comparison (which would require
+    # actually re-running segregation at a second IQR multiplier to be real, not just
+    # relabeled) and seven_dimensions_evaluation (a static scorecard with no underlying
+    # computation at all) are removed rather than left fabricated.
+    gt_problematic = int((df_gt["expected_status"] != "Valid").sum()) if "expected_status" in df_gt.columns else None
+
+    evaluation_summary = [
+        f"{cat}: {metrics_by_category[cat]['detection_rate_recall_pct']}% Recall "
+        f"({metrics_by_category[cat]['true_positive']}/{metrics_by_category[cat]['ground_truth_count']} detected)"
+        for cat in categories
+    ]
+
     return {
         "status": "PASSED",
         "total_benchmark_rows": total_samples,
@@ -731,101 +749,22 @@ def evaluate_ground_truth():
             "Review (Human Queue)": int(len(df_review)),
             "Quarantine (Isolated Defect)": int(len(df_quarantine))
         },
-        "evaluation_summary": [
-            f"Missing Score: {metrics_by_category['Missing Score']['detection_rate_recall_pct']}% Recall (300/300 detected)",
-            f"Invalid Score: {metrics_by_category['Invalid Score Range']['detection_rate_recall_pct']}% Recall (200/200 detected)",
-            f"Study Hours Outlier: {metrics_by_category['Study Hours Outlier']['detection_rate_recall_pct']}% Recall (100/100 detected)",
-            f"Duplicate Composite: {metrics_by_category['Duplicate']['detection_rate_recall_pct']}% Recall (100/100 detected)",
-            f"Valid Retention: {metrics_by_category['None']['detection_rate_recall_pct']}% (9,400/9,400 preserved)"
-        ],
+        "evaluation_summary": evaluation_summary,
         "error_reconciliation": {
             "total_records": total_samples,
             "clean_valid_rows": int(len(df_clean)),
-            "problematic_instances_ground_truth": 700,
+            "problematic_instances_ground_truth": gt_problematic,
             "quarantine_breakdown": {
-                "missing_score": 300,
-                "invalid_score_range": 200,
-                "duplicate_composite": 100,
-                "total_quarantine": 600,
-                "note": "Composite duplicate check runs first to prevent 5 missing and 4 invalid duplicate records from misclassification."
+                "missing_score": metrics_by_category["Missing Score"]["true_positive"],
+                "invalid_score_range": metrics_by_category["Invalid Score Range"]["true_positive"],
+                "duplicate_composite": metrics_by_category["Duplicate"]["true_positive"],
+                "total_quarantine": int(len(df_quarantine)),
             },
             "review_breakdown": {
-                "study_hours_outlier": 100,
+                "study_hours_outlier": metrics_by_category["Study Hours Outlier"]["true_positive"],
                 "total_review": int(len(df_review)),
-                "note": "Isolated in Human Review Queue rather than dropped, preventing silent loss of valid high-value records."
-            },
-            "tukey_fences_comparison": {
-                "inner_fence_1_5x": {
-                    "multiplier": 1.5,
-                    "upper_fence_hours": 9.0,
-                    "rows_flagged_to_review": 154,
-                    "true_outliers_flagged": 100,
-                    "borderline_valid_students_flagged": 54,
-                    "precision_pct": 64.94,
-                    "recall_pct": 100.0,
-                    "safety_verdict": "Conservative Threshold (1.5x IQR): Routes 100 extreme anomalies and 54 borderline records (9-12h) to Human Review."
-                },
-                "outer_fence_3_0x": {
-                    "multiplier": 3.0,
-                    "upper_fence_hours": 12.0,
-                    "rows_flagged_to_review": 100,
-                    "true_outliers_flagged": 100,
-                    "borderline_valid_students_flagged": 0,
-                    "precision_pct": 100.0,
-                    "recall_pct": 100.0,
-                    "safety_verdict": "Strict Threshold (3.0x IQR): Isolates 100 extreme anomalies (>12.0h) with zero false positives."
-                }
             }
-        },
-        "seven_dimensions_evaluation": [
-            {
-                "dimension": "1. Detection",
-                "score": "100.0%",
-                "status": "PASS",
-                "description": "ตรวจจับได้หรือไม่",
-                "evidence": "All 4 error types (Missing, Range, Duplicates, Outliers) detected across 10,100 records."
-            },
-            {
-                "dimension": "2. Recall (Completeness)",
-                "score": "100.0%",
-                "status": "PASS",
-                "description": "พลาด Error จริงหรือไม่",
-                "evidence": "Zero false negatives: 700/700 problematic rows isolated from certified clean asset."
-            },
-            {
-                "dimension": "3. Precision (Exactness)",
-                "score": "100.0% (Outer) / 64.9% (Inner)",
-                "status": "PASS",
-                "description": "Flag ผิดมากแค่ไหน",
-                "evidence": "Outer fence isolates 100/100 true outliers; Inner fence flags 154 rows safely routed to Review (no clean data destroyed)."
-            },
-            {
-                "dimension": "4. Explainability (Transparent Decision Architecture)",
-                "score": "100.0%",
-                "status": "PASS",
-                "description": "อธิบายเหตุผลของ Rule ได้หรือไม่ (White-Box Property)",
-                "evidence": "Every rule exposes mathematical formulas (Q1, Q3, IQR, Fences) and concrete 'Why?' rationale."
-            },
-            {
-                "dimension": "5. User Control & Governance",
-                "score": "100.0%",
-                "status": "PASS",
-                "evidence": "User confirms/toggles rules, switches presets (1.5x vs 3.0x), and approves semi-auto joins before execution."
-            },
-            {
-                "dimension": "6. Traceability & Lineage",
-                "score": "100.0%",
-                "status": "PASS",
-                "evidence": "Every row tagged with whitebox_status, whitebox_error_type, and whitebox_rule_applied linking to source."
-            },
-            {
-                "dimension": "7. Downstream Academic Utilization",
-                "score": "100.0%",
-                "status": "PASS",
-                "description": "Clean Data นำไปใช้ต่อได้ไหม",
-                "evidence": "Clean 9,400 dataset powers academic GPA analytics, course passing rates (99.72%), and grade curves."
-            }
-        ]
+        }
     }
 
 

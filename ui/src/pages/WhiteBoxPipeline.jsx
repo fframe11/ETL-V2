@@ -1373,71 +1373,27 @@ export default function WhiteBoxPipeline() {
 
               <div className="wb-grid-2" style={{ margin: "14px 0" }}>
                 <div className="wb-card" style={{ background: "#f8fafc", border: "1px solid #cbd5e1" }}>
-                  <h4 style={{ margin: "0 0 8px 0", color: "#b91c1c" }}><Icon name="dot-red" /> Quarantine Lake: 600 Records</h4>
+                  <h4 style={{ margin: "0 0 8px 0", color: "#b91c1c" }}>
+                    <Icon name="dot-red" /> Quarantine Lake: {benchmarkResult.error_reconciliation.quarantine_breakdown.total_quarantine} Records
+                  </h4>
                   <ul className="wb-compact-list" style={{ fontSize: "13px" }}>
-                    <li><strong>Missing Score:</strong> 300 rows (Strict Required violation)</li>
-                    <li><strong>Invalid Score Range:</strong> 200 rows (&lt; 0 or &gt; 100 impossibility)</li>
-                    <li><strong>Duplicate Composite:</strong> 100 rows (student_id + course + semester uniqueness)</li>
+                    <li><strong>Missing Score:</strong> {benchmarkResult.error_reconciliation.quarantine_breakdown.missing_score} rows (Strict Required violation)</li>
+                    <li><strong>Invalid Score Range:</strong> {benchmarkResult.error_reconciliation.quarantine_breakdown.invalid_score_range} rows (&lt; 0 or &gt; 100 impossibility)</li>
+                    <li><strong>Duplicate Composite:</strong> {benchmarkResult.error_reconciliation.quarantine_breakdown.duplicate_composite} rows (student_id + course + semester uniqueness)</li>
                   </ul>
-                  <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "8px" }}>
-                    <em>Note on Relational Overlap:</em> 5 duplicate rows contain missing scores and 4 contain invalid scores. By executing composite duplicate checks first, relational identity is preserved without double-counting.
-                  </p>
                 </div>
 
                 <div className="wb-card" style={{ background: "#f8fafc", border: "1px solid #cbd5e1" }}>
-                  <h4 style={{ margin: "0 0 8px 0", color: "#d97706" }}><Icon name="dot-yellow" /> Human Review Queue: 100 or 154 Records</h4>
+                  <h4 style={{ margin: "0 0 8px 0", color: "#d97706" }}>
+                    <Icon name="dot-yellow" /> Human Review Queue: {benchmarkResult.error_reconciliation.review_breakdown.total_review} Records
+                  </h4>
                   <ul className="wb-compact-list" style={{ fontSize: "13px" }}>
-                    <li>
-                      <strong>Tukey Outer Fence (3.0×):</strong> Flags exactly <strong>100 rows</strong> (true outliers 30–60h, 0 false positives).
-                    </li>
-                    <li>
-                      <strong>Tukey Inner Fence (1.5×):</strong> Flags <strong>154 rows</strong> (100 true outliers + 54 diligent students studying 10–12h).
-                    </li>
+                    <li><strong>Study Hours Outlier (Tukey IQR fence):</strong> {benchmarkResult.error_reconciliation.review_breakdown.study_hours_outlier} rows</li>
                   </ul>
                   <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "8px" }}>
-                    <em>Zero Data Loss:</em> Because the 54 borderline records are routed to <strong>Human Review</strong> rather than deleted, our governance pipeline prevents destructive false-positive data loss.
+                    <em>Zero Data Loss:</em> Borderline records are routed to <strong>Human Review</strong> rather than deleted or auto-quarantined.
                   </p>
                 </div>
-              </div>
-            </div>
-          )}
-
-          {/* 7-Dimensional Evaluation Framework */}
-          {benchmarkResult?.seven_dimensions_evaluation && (
-            <div className="wb-card" style={{ marginTop: "1rem" }}>
-              <div className="wb-panel-header">
-                <div>
-                  <span className="wb-badge success">COMPREHENSIVE CRITERIA</span>
-                  <h3>7-Dimensional Pipeline Quality Evaluation Framework</h3>
-                  <p>
-                    Going beyond simple detection rate: Verifying explainability, user control, traceability, and business value.
-                  </p>
-                </div>
-              </div>
-
-              <div className="wb-table-wrapper" style={{ marginTop: "10px" }}>
-                <table className="wb-table">
-                  <thead>
-                    <tr>
-                      <th>Evaluation Dimension</th>
-                      <th>Score</th>
-                      <th>Status</th>
-                      <th>Criteria / Question</th>
-                      <th>Empirical Proof / Evidence</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {benchmarkResult.seven_dimensions_evaluation.map((d, idx) => (
-                      <tr key={idx}>
-                        <td><strong>{d.dimension}</strong></td>
-                        <td><span className="wb-pill success">{d.score}</span></td>
-                        <td><span className="wb-badge success">{d.status}</span></td>
-                        <td style={{ color: "var(--text-muted)" }}>{d.description}</td>
-                        <td><small>{d.evidence}</small></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
               </div>
             </div>
           )}
