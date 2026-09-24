@@ -1522,6 +1522,8 @@ def _get_groq_api_key() -> str:
                         line = line.strip()
                         if line.startswith("GROQ_API_KEY="):
                             return line.split("=", 1)[1].strip()
+            except Exception:
+                pass
     return ""
 
 
