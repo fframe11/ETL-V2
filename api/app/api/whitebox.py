@@ -13,6 +13,7 @@ Implements the transparent, explainable decision pipeline (re-architected from B
 
 import os
 import io
+import re
 import time
 import math
 import logging
@@ -1394,7 +1395,11 @@ async def upload_csv_dataset(
 ):
     content = await file.read()
     df_up = pd.read_csv(io.BytesIO(content))
-    clean_tbl = str(table_name or file.filename or "uploaded_dataset").replace(".csv", "").strip()
+    raw_tbl = str(table_name or file.filename or "uploaded_dataset").replace(".csv", "").strip()
+    # Root Cause Fix: clean_tbl was used directly in os.path.join() below with no
+    # sanitization — a table_name like "../../../malicious" would write outside
+    # OUTPUT_DIR. Strip anything but letters/digits/underscore/hyphen.
+    clean_tbl = re.sub(r"[^A-Za-z0-9_-]", "_", raw_tbl)[:128] or "uploaded_dataset"
     _WORKFLOW_STATE["dataset_name"] = clean_tbl
     _WORKFLOW_STATE["source_type"] = "FILE_UPLOAD"
 

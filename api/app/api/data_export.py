@@ -2,13 +2,15 @@ import os
 import io
 import requests
 import pandas as pd
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from elasticsearch import Elasticsearch
 
 router = APIRouter(prefix="/api/v1/export", tags=["Data Export"])
 
 from .config import get_elasticsearch_url, get_es_client
+from .auth import require_session
+from .validation import validate_table_name
 ELASTICSEARCH_URL = get_elasticsearch_url()
 
 def get_es():
@@ -292,8 +294,9 @@ def list_export_tables():
 
 
 @router.delete("/tables/{table_name}")
-def delete_table(table_name: str):
+def delete_table(table_name: str, _user: str = Depends(require_session)):
     """Delete a table across HDFS layers, ES metadata indices, and local configs."""
+    validate_table_name(table_name)
     es = get_es()
     
     # 1. Delete from HDFS
@@ -375,6 +378,7 @@ def delete_table(table_name: str):
 @router.get("/preview/{layer}/{table_name}")
 def get_dataset_preview(layer: str, table_name: str):
     """Get a 10-row JSON preview of the dataset from HDFS raw, active, or quarantine layers."""
+    validate_table_name(table_name)
     try:
         if layer == "raw":
             # Read first few lines of CSV
@@ -425,6 +429,7 @@ def get_dataset_preview(layer: str, table_name: str):
 @router.get("/raw/{table_name}")
 def export_raw_data(table_name: str):
     """Download the raw CSV file directly from HDFS raw storage."""
+    validate_table_name(table_name)
     file_path = f"/data/raw/{table_name}/{table_name}.csv"
     
     # Fast check if file exists
@@ -448,6 +453,7 @@ def export_raw_data(table_name: str):
 @router.get("/active/{table_name}")
 def export_active_data(table_name: str, limit: int = None):
     """Download clean Silver active dataset as CSV."""
+    validate_table_name(table_name)
     try:
         df = read_parquet_folder_to_df(f"/data/active/{table_name}")
         if limit:
@@ -474,6 +480,7 @@ def export_active_data(table_name: str, limit: int = None):
 @router.get("/quarantine/{table_name}")
 def export_quarantine_data(table_name: str, limit: int = None):
     """Download quarantined records dataset as CSV."""
+    validate_table_name(table_name)
     try:
         df = read_parquet_folder_to_df(f"/data/quarantine/{table_name}")
         if limit:
@@ -502,6 +509,7 @@ def export_quarantine_data(table_name: str, limit: int = None):
 @router.get("/reddit")
 def export_reddit_data(subreddit: str = "python", limit: int = None):
     """Download parsed Reddit streaming data from HDFS parquet files as CSV."""
+    validate_table_name(subreddit, field_name="subreddit")
     folder_path = f"/data/reddit/parquet/subreddit={subreddit}"
     df = read_parquet_folder_to_df(folder_path)
     

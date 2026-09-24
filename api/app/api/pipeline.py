@@ -14,6 +14,7 @@ router = APIRouter(
 
 from .config import get_elasticsearch_url, get_es_client
 from .auth import require_session, require_session_or_service_key
+from .validation import validate_table_name
 
 
 def _allowlisted_hosts(env_var: str) -> list:
@@ -319,6 +320,7 @@ async def ingest_csv(table_name: str = Form(...), file: UploadFile = File(...), 
     """
     Ingests an uploaded CSV or Excel (.xlsx/.xls) file into HDFS raw store and triggers Spark quality check.
     """
+    validate_table_name(table_name)
     filename = file.filename or ""
     content = await file.read()
     if not content:
@@ -350,7 +352,7 @@ async def ingest_api(payload: ApiIngestPayload, _user: str = Depends(require_ses
     """
     Downloads JSON data from an API, converts it to CSV, writes it to HDFS, and triggers Spark.
     """
-    table_name = payload.table_name
+    table_name = validate_table_name(payload.table_name)
     url = payload.url
     req_headers = payload.headers or {}
     
@@ -600,7 +602,7 @@ async def ingest_rdbms(payload: RdbmsIngestPayload, _user: str = Depends(require
     """
     Connects to an RDBMS database, fetches results, converts to CSV, writes to HDFS, and triggers Spark.
     """
-    table_name = payload.table_name
+    table_name = validate_table_name(payload.table_name)
     db_type = payload.db_type.lower()
     records = []
 
