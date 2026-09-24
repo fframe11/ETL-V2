@@ -196,10 +196,16 @@ services:
     image: n8nio/n8n:latest
     container_name: sdoqap-n8n
     restart: always
+    env_file:
+      - .env
     environment:
       - N8N_ENFORCE_SETTINGS_FILE_FOR_FILESYSTEM=false
       - N8N_RESTRICT_FILE_ACCESS_TO=/stress_test
       - NODE_OPTIONS=--max-old-space-size=600
+      # Required for the ingestion workflow's HTTP nodes to read $env.INGEST_SERVICE_KEY
+      # when calling the API's protected /ingest/* endpoints, without hardcoding the
+      # secret into the tracked workflow JSON.
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
     ports:
       - "${N8N_PORT}:5678"
     volumes:

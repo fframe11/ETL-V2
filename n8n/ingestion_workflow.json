@@ -42,6 +42,80 @@
     },
     {
       "parameters": {
+        "jsCode": "if ((($json.body) || {}).source_type !== 'api') { return []; }\nreturn [{ json: $json.body }];"
+      },
+      "id": "filter-webhook-api-node",
+      "name": "Filter Webhook: API Source",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 600]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:8000/api/v1/pipeline/ingest/api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Service-Key",
+              "value": "={{ $env.INGEST_SERVICE_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"table_name\": $json.table_name,\n  \"url\": $json.url,\n  \"headers\": $json.headers,\n  \"api_key\": $json.api_key\n}",
+        "options": {}
+      },
+      "id": "relay-ingest-api-node",
+      "name": "Relay Ingest API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [650, 600],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "delayBetweenRetries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "if ((($json.body) || {}).source_type !== 'rdbms') { return []; }\nreturn [{ json: $json.body }];"
+      },
+      "id": "filter-webhook-rdbms-node",
+      "name": "Filter Webhook: RDBMS Source",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 750]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:8000/api/v1/pipeline/ingest/rdbms",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Service-Key",
+              "value": "={{ $env.INGEST_SERVICE_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"table_name\": $json.table_name,\n  \"db_type\": $json.db_type,\n  \"host\": $json.host,\n  \"port\": $json.port,\n  \"username\": $json.username,\n  \"password\": $json.password,\n  \"database\": $json.database,\n  \"query\": $json.query\n}",
+        "options": {}
+      },
+      "id": "relay-ingest-rdbms-node",
+      "name": "Relay Ingest RDBMS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [650, 750],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "delayBetweenRetries": 5000
+    },
+    {
+      "parameters": {
         "filePath": "/stress_test/Olist Brazilian E-Commerce/olist_products_dataset.csv"
       },
       "id": "read-products-node",
@@ -63,7 +137,7 @@
     {
       "parameters": {
         "method": "PUT",
-        "url": "http://namenode:9870/webhdfs/v1/data/raw/products/products.csv?op=CREATE&overwrite=true&user.name=root",
+        "url": "http://namenode:9870/webhdfs/v1/data/raw/products/products.csv?op=CREATE&overwrite=true&user.name=spark",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -133,7 +207,7 @@
     {
       "parameters": {
         "method": "PUT",
-        "url": "http://namenode:9870/webhdfs/v1/data/raw/gov_data/gov_data.csv?op=CREATE&overwrite=true&user.name=root",
+        "url": "http://namenode:9870/webhdfs/v1/data/raw/gov_data/gov_data.csv?op=CREATE&overwrite=true&user.name=spark",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -210,7 +284,7 @@
     {
       "parameters": {
         "method": "PUT",
-        "url": "http://namenode:9870/webhdfs/v1/data/raw/sales_records/sales_records.csv?op=CREATE&overwrite=true&user.name=root",
+        "url": "http://namenode:9870/webhdfs/v1/data/raw/sales_records/sales_records.csv?op=CREATE&overwrite=true&user.name=spark",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -456,17 +530,34 @@
       "main": [
         [
           {
-            "node": "Read Products CSV",
+            "node": "Filter Webhook: API Source",
             "type": "main",
             "index": 0
           },
           {
-            "node": "Fetch Thai Gov API",
+            "node": "Filter Webhook: RDBMS Source",
             "type": "main",
             "index": 0
-          },
+          }
+        ]
+      ]
+    },
+    "Filter Webhook: API Source": {
+      "main": [
+        [
           {
-            "node": "Query Sales Records",
+            "node": "Relay Ingest API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Webhook: RDBMS Source": {
+      "main": [
+        [
+          {
+            "node": "Relay Ingest RDBMS",
             "type": "main",
             "index": 0
           }
