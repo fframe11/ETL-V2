@@ -50,6 +50,7 @@ export default function Dashboard() {
 
   const [selectedBusinessArea, setSelectedBusinessArea] = useState(null);
   const [lineageVisualMode, setLineageVisualMode] = useState('echarts'); // 'echarts' | 'linear'
+  const [qualityChartType, setQualityChartType] = useState('bars'); // 'bars' | 'area'
 
   // Technical Cockpit States (Preserved)
   const [searchTerm, setSearchTerm] = useState('');
@@ -496,35 +497,128 @@ export default function Dashboard() {
 
           {/* Level 3: Visualizations & 5-Questions Framework (Sections 6 & 25) */}
           <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '16px' }}>
-            {/* Left: Data Quality & Freshness Trend */}
+            {/* Left: Data Quality & Freshness Trend (SLA-Colored Bar Chart by Default) */}
             <div className="gs-card">
-              <div className="gs-card-head">
+              <div className="gs-card-head" style={{ alignItems: 'flex-start' }}>
                 <div>
-                  <h3>Data Quality &amp; SLA Compliance Trend</h3>
-                  <p>Quality Score (%) vs 95% SLA Target across recent ingestion cycles</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h3 style={{ margin: 0 }}>Data Quality &amp; SLA Compliance Status</h3>
+                    <span className="exec-chip exec-chip-good" style={{ fontSize: '10px' }}>Target: 95.0%</span>
+                  </div>
+                  <p style={{ marginTop: '3px' }}>
+                    {qualityChartType === 'bars'
+                      ? 'SLA-Colored Bars: เขียว (≥95% ผ่านเกณฑ์), เหลือง (90-94% เฝ้าระวัง), แดง (<90% หลุดเกณฑ์)'
+                      : 'Quality Score (%) vs 95% SLA Target across recent ingestion cycles'}
+                  </p>
                 </div>
-                <span className="exec-chip exec-chip-good">SLA: 95.0%</span>
+                {/* Visual Mode Switcher */}
+                <div style={{ display: 'inline-flex', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '2px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setQualityChartType('bars')}
+                    style={{
+                      background: qualityChartType === 'bars' ? 'var(--accent-purple)' : 'transparent',
+                      color: qualityChartType === 'bars' ? '#fff' : 'var(--text-muted)',
+                      border: 'none',
+                      borderRadius: '4px',
+                      padding: '2px 8px',
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    📊 SLA Bars (เขียว/แดง)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQualityChartType('area')}
+                    style={{
+                      background: qualityChartType === 'area' ? 'var(--accent-purple)' : 'transparent',
+                      color: qualityChartType === 'area' ? '#fff' : 'var(--text-muted)',
+                      border: 'none',
+                      borderRadius: '4px',
+                      padding: '2px 8px',
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🌊 Area Trend
+                  </button>
+                </div>
               </div>
-              <div style={{ width: '100%', height: 210 }}>
+
+              <div style={{ width: '100%', height: 200 }}>
                 <ResponsiveContainer>
-                  <ComposedChart data={qualityTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="qualityGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="var(--db-navy, #1B3139)" stopOpacity={0.4}/>
-                        <stop offset="95%" stopColor="var(--db-navy, #1B3139)" stopOpacity={0.0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-                    <XAxis dataKey="time" stroke="var(--text-muted)" fontSize={10} tickLine={false} />
-                    <YAxis domain={[75, 100]} stroke="var(--text-muted)" fontSize={10} tickLine={false} />
-                    <Tooltip
-                      contentStyle={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)', borderRadius: '8px', fontSize: '11px' }}
-                    />
-                    <Legend wrapperStyle={{ fontSize: '10px', paddingTop: '4px' }} />
-                    <ReferenceLine y={95} stroke="var(--accent-green)" strokeDasharray="4 4" label={{ value: 'Target 95%', fill: 'var(--accent-green)', fontSize: 10 }} />
-                    <Area type="monotone" dataKey="Overall" stroke="var(--accent-purple)" fillOpacity={1} fill="url(#qualityGradient)" strokeWidth={2} name="Overall Quality (%)" />
-                  </ComposedChart>
+                  {qualityChartType === 'bars' ? (
+                    <BarChart data={qualityTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+                      <XAxis dataKey="time" stroke="var(--text-muted)" fontSize={10} tickLine={false} />
+                      <YAxis domain={[70, 100]} stroke="var(--text-muted)" fontSize={10} tickLine={false} tickFormatter={(v) => `${v}%`} />
+                      <Tooltip
+                        content={({ active, payload, label }) => {
+                          if (active && payload && payload.length) {
+                            const val = payload[0].value;
+                            const status = val >= 95 ? 'Passed SLA (Healthy)' : val >= 90 ? 'Warning (SLA Borderline)' : 'SLA Breached (Critical Anomaly)';
+                            const color = val >= 95 ? '#10B981' : val >= 90 ? '#F59E0B' : '#EF4444';
+                            return (
+                              <div style={{ background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '8px', padding: '8px 12px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)', fontSize: '11px' }}>
+                                <div style={{ color: '#0F172A', fontWeight: 700, marginBottom: '2px' }}>รอบนำเข้า: {label}</div>
+                                <div style={{ color, fontWeight: 800 }}>คะแนนคุณภาพ: {val}%</div>
+                                <div style={{ fontSize: '10px', color: '#64748B', marginTop: '2px' }}>สถานะ: {status}</div>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <ReferenceLine y={95} stroke="#10B981" strokeDasharray="4 4" label={{ value: 'SLA Target 95%', fill: '#10B981', fontSize: 10, position: 'right' }} />
+                      <Bar dataKey="Overall" name="Quality Score (%)" radius={[4, 4, 0, 0]}>
+                        {qualityTrendData.map((entry, index) => {
+                          const val = entry.Overall;
+                          let barColor = '#10B981'; // Green
+                          if (val !== null && val < 90) {
+                            barColor = '#EF4444'; // Red
+                          } else if (val !== null && val < 95) {
+                            barColor = '#F59E0B'; // Amber
+                          }
+                          return <Cell key={`cell-${index}`} fill={barColor} />;
+                        })}
+                      </Bar>
+                    </BarChart>
+                  ) : (
+                    <ComposedChart data={qualityTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="qualityGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="var(--db-navy, #1B3139)" stopOpacity={0.4}/>
+                          <stop offset="95%" stopColor="var(--db-navy, #1B3139)" stopOpacity={0.0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+                      <XAxis dataKey="time" stroke="var(--text-muted)" fontSize={10} tickLine={false} />
+                      <YAxis domain={[75, 100]} stroke="var(--text-muted)" fontSize={10} tickLine={false} tickFormatter={(v) => `${v}%`} />
+                      <Tooltip
+                        contentStyle={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)', borderRadius: '8px', fontSize: '11px' }}
+                      />
+                      <Legend wrapperStyle={{ fontSize: '10px', paddingTop: '4px' }} />
+                      <ReferenceLine y={95} stroke="var(--accent-green)" strokeDasharray="4 4" label={{ value: 'Target 95%', fill: 'var(--accent-green)', fontSize: 10 }} />
+                      <Area type="monotone" dataKey="Overall" stroke="var(--accent-purple)" fillOpacity={1} fill="url(#qualityGradient)" strokeWidth={2} name="Overall Quality (%)" />
+                    </ComposedChart>
+                  )}
                 </ResponsiveContainer>
+              </div>
+
+              {/* Status Badges Legend */}
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '14px', marginTop: '6px', fontSize: '10px', color: 'var(--text-muted)' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#10B981' }} /> &ge;95% ผ่านเกณฑ์ SLA
+                </span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#F59E0B' }} /> 90-94% เฝ้าระวัง
+                </span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#EF4444' }} /> &lt;90% หลุดเกณฑ์ (SLA Breached)
+                </span>
               </div>
             </div>
 
