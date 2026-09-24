@@ -19,6 +19,8 @@ import {
 } from 'recharts';
 import { Link, useNavigate } from 'react-router-dom';
 import WorkflowJourneyBar from '../components/WorkflowJourneyBar';
+import EchartsDataLineage from '../components/EchartsDataLineage';
+import { useDashboardStore } from '../store/useDashboardStore';
 import "./Dashboard.css";
 
 const getQualityGrade = (score) => {
@@ -32,19 +34,25 @@ const getQualityGrade = (score) => {
 export default function Dashboard() {
   const navigate = useNavigate();
 
-  // 1. Executive View Modes (Section 3 & 29 of Spec)
-  // 'executive' | 'business' | 'quality' | 'technical'
-  const [viewMode, setViewMode] = useState('executive');
+  // 1. Executive View Modes & Filters (Zustand Client State Management)
+  const {
+    viewMode,
+    setViewMode,
+    timeRange,
+    setTimeRange,
+    selectedAreaFilter,
+    setSelectedAreaFilter,
+    selectedSeverityFilter,
+    setSelectedSeverityFilter,
+    selectedSourceFilter,
+    setSelectedSourceFilter
+  } = useDashboardStore();
 
-  // Filters (Section 19 of Spec)
-  const [timeRange, setTimeRange] = useState('24h'); // '24h' | '7d' | '30d'
-  const [selectedAreaFilter, setSelectedAreaFilter] = useState('All');
-  const [selectedSeverityFilter, setSelectedSeverityFilter] = useState('All');
   const [selectedBusinessArea, setSelectedBusinessArea] = useState(null);
+  const [lineageVisualMode, setLineageVisualMode] = useState('echarts'); // 'echarts' | 'linear'
 
   // Technical Cockpit States (Preserved)
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedSourceFilter, setSelectedSourceFilter] = useState('All');
   const [selectedRun, setSelectedRun] = useState(null);
   const [userSelectedRunId, setUserSelectedRunId] = useState(null);
   const [leftTab, setLeftTab] = useState('Ratio');
@@ -1251,69 +1259,118 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Lineage Map */}
-          <div className="gs-lineage-hero">
-            <div className="gs-lineage-header">
-              <h2>Medallion Flow Data Lineage Track</h2>
-              <span className="gs-lineage-route">Route: Bronze (HDFS) → Silver (Spark Engine) → Gold (Active/Quarantine)</span>
+          {/* Data Lineage & Network Graph: Apache ECharts vs Classic Linear */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '-8px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Medallion Data Lineage Visualizer
             </div>
-            {(() => {
-              const totalRecs = activeRun?.total_records || 0;
-              const quarRecs = activeRun?.quarantined_records || 0;
-              const hasError = activeRun && quarRecs > 0;
-              const hasClean = activeRun && (totalRecs - quarRecs > 0);
-              return (
-                <div className="gs-lineage-track" style={{ display: 'flex', alignItems: 'center', width: '100%', justifyContent: 'space-between' }}>
-                  <div className="gs-node active">
-                    <span className="gs-node-icon"><Icon name="download" /></span>
-                    <div className="gs-node-text">
-                      <strong>{activeRun ? activeRun.data_source || activeRun.table_name : 'Ingest Source'}</strong>
-                      <small>Bronze Layer</small>
-                      <span className="gs-node-stat">{totalRecs.toLocaleString()} rows</span>
-                    </div>
-                  </div>
-                  <div className="gs-connector active"><div className="gs-connector-line"></div><div className="gs-connector-arrow">→</div></div>
-
-                  <div className="gs-node active">
-                    <span className="gs-node-icon"><Icon name="settings" /></span>
-                    <div className="gs-node-text">
-                      <strong>Spark QA Engine</strong>
-                      <small>Quality Rules Audit</small>
-                    </div>
-                  </div>
-                  <div className="gs-connector active"><div className="gs-connector-line"></div><div className="gs-connector-arrow">→</div></div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <div className={`gs-node ${hasClean ? 'active' : ''}`}>
-                      <span className="gs-node-icon"><Icon name="check" /></span>
-                      <div className="gs-node-text">
-                        <strong>Active Store</strong>
-                        <small>Clean Delta Lake</small>
-                        <span className="gs-node-stat">{(totalRecs - quarRecs).toLocaleString()} rows</span>
-                      </div>
-                    </div>
-                    <div className={`gs-node ${hasError ? 'danger' : ''}`}>
-                      <span className="gs-node-icon"><Icon name="alert" /></span>
-                      <div className="gs-node-text">
-                        <strong>Quarantine Store</strong>
-                        <small>Bad Data Isolation</small>
-                        <span className="gs-node-stat">{quarRecs.toLocaleString()} rows</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="gs-connector active"><div className="gs-connector-line"></div><div className="gs-connector-arrow">→</div></div>
-                  <div className="gs-node active">
-                    <span className="gs-node-icon"><Icon name="chart" /></span>
-                    <div className="gs-node-text">
-                      <strong>Serving API</strong>
-                      <small>BI &amp; BI Cockpit</small>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
+            <div style={{ display: 'inline-flex', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '2px' }}>
+              <button
+                type="button"
+                onClick={() => setLineageVisualMode('echarts')}
+                style={{
+                  background: lineageVisualMode === 'echarts' ? 'var(--accent-purple)' : 'transparent',
+                  color: lineageVisualMode === 'echarts' ? '#fff' : 'var(--text-muted)',
+                  border: 'none',
+                  borderRadius: '4px',
+                  padding: '3px 10px',
+                  fontSize: '10.5px',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                ⚡ Apache ECharts (Heavy Data Canvas)
+              </button>
+              <button
+                type="button"
+                onClick={() => setLineageVisualMode('linear')}
+                style={{
+                  background: lineageVisualMode === 'linear' ? 'var(--accent-purple)' : 'transparent',
+                  color: lineageVisualMode === 'linear' ? '#fff' : 'var(--text-muted)',
+                  border: 'none',
+                  borderRadius: '4px',
+                  padding: '3px 10px',
+                  fontSize: '10.5px',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                Linear Track
+              </button>
+            </div>
           </div>
+
+          {lineageVisualMode === 'echarts' ? (
+            <EchartsDataLineage
+              totalRecords={activeRun?.total_records || wbTotal}
+              quarantinedRecords={activeRun?.quarantined_records || wbQuarantine}
+              tableName={activeRun?.table_name || wbDatasetName}
+              qualityScore={activeRun?.quality_score || wbScorePct}
+            />
+          ) : (
+            <div className="gs-lineage-hero">
+              <div className="gs-lineage-header">
+                <h2>Medallion Flow Data Lineage Track</h2>
+                <span className="gs-lineage-route">Route: Bronze (HDFS) → Silver (Spark Engine) → Gold (Active/Quarantine)</span>
+              </div>
+              {(() => {
+                const totalRecs = activeRun?.total_records || 0;
+                const quarRecs = activeRun?.quarantined_records || 0;
+                const hasError = activeRun && quarRecs > 0;
+                const hasClean = activeRun && (totalRecs - quarRecs > 0);
+                return (
+                  <div className="gs-lineage-track" style={{ display: 'flex', alignItems: 'center', width: '100%', justifyContent: 'space-between' }}>
+                    <div className="gs-node active">
+                      <span className="gs-node-icon"><Icon name="download" /></span>
+                      <div className="gs-node-text">
+                        <strong>{activeRun ? activeRun.data_source || activeRun.table_name : 'Ingest Source'}</strong>
+                        <small>Bronze Layer</small>
+                        <span className="gs-node-stat">{totalRecs.toLocaleString()} rows</span>
+                      </div>
+                    </div>
+                    <div className="gs-connector active"><div className="gs-connector-line"></div><div className="gs-connector-arrow">→</div></div>
+
+                    <div className="gs-node active">
+                      <span className="gs-node-icon"><Icon name="settings" /></span>
+                      <div className="gs-node-text">
+                        <strong>Spark QA Engine</strong>
+                        <small>Quality Rules Audit</small>
+                      </div>
+                    </div>
+                    <div className="gs-connector active"><div className="gs-connector-line"></div><div className="gs-connector-arrow">→</div></div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <div className={`gs-node ${hasClean ? 'active' : ''}`}>
+                        <span className="gs-node-icon"><Icon name="check" /></span>
+                        <div className="gs-node-text">
+                          <strong>Active Store</strong>
+                          <small>Clean Delta Lake</small>
+                          <span className="gs-node-stat">{(totalRecs - quarRecs).toLocaleString()} rows</span>
+                        </div>
+                      </div>
+                      <div className={`gs-node ${hasError ? 'danger' : ''}`}>
+                        <span className="gs-node-icon"><Icon name="alert" /></span>
+                        <div className="gs-node-text">
+                          <strong>Quarantine Store</strong>
+                          <small>Bad Data Isolation</small>
+                          <span className="gs-node-stat">{quarRecs.toLocaleString()} rows</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="gs-connector active"><div className="gs-connector-line"></div><div className="gs-connector-arrow">→</div></div>
+                    <div className="gs-node active">
+                      <span className="gs-node-icon"><Icon name="chart" /></span>
+                      <div className="gs-node-text">
+                        <strong>Serving API</strong>
+                        <small>BI &amp; BI Cockpit</small>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
 
           {/* Technical Cockpit Scorecard History & Actions */}
           <div className="gs-main">
