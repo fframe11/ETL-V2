@@ -1029,9 +1029,9 @@ export default function Dashboard() {
             </div>
 
             {/* Concrete Narrative Insight Callout */}
-            <div style={{ marginTop: '14px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderLeft: '3px solid var(--accent-purple)', borderRadius: '6px', padding: '10px 14px', fontSize: '11.5px', color: 'var(--text-main)', lineHeight: '1.55' }}>
-              <div style={{ fontWeight: 700, color: 'var(--accent-purple)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
-                <Icon name="sparkles" /> บทวิเคราะห์ผลกระทบรูปธรรมต่อห่วงโซ่อุปทานและการขาย (Supply Chain &amp; Revenue Reality)
+            <div style={{ marginTop: '14px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderLeft: '3px solid var(--accent-purple)', borderRadius: '6px', padding: '10px 14px', fontSize: '11px', color: 'var(--text-main)', lineHeight: '1.6' }}>
+              <div style={{ fontWeight: 700, color: 'var(--accent-purple)', marginBottom: '4px' }}>
+                บทวิเคราะห์ผลกระทบรูปธรรมต่อห่วงโซ่อุปทานและการขาย (Supply Chain &amp; Revenue Reality)
               </div>
               <div>{sellInOut.business_impact_narrative}</div>
             </div>
