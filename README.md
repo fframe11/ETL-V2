@@ -204,6 +204,13 @@ curl http://localhost:9200/_cat/indices?v
 - `ELASTICSEARCH_PORT` – Elasticsearch port (required)
 - `ELASTICSEARCH_URL` – Optional full URL override for Elasticsearch
 - `HDFS_URL` – HDFS connection string (default `hdfs://namenode:9000`)
+- `ADMIN_USERNAME` / `ADMIN_PASSWORD` – Backend-verified login credential for the UI (required — the API refuses to start without these)
+- `SESSION_SECRET_KEY` – Secret used to sign the login session cookie (required; generate with e.g. `python -c "import secrets; print(secrets.token_hex(32))"`)
+- `SESSION_COOKIE_SECURE` – Set to `true` only when this stack is served over HTTPS (default `false`, matching this project's default plain-HTTP nginx front door)
+- `ALERT_WEBHOOK_SECRET` – Shared secret Grafana (or any external caller) must send as the `X-Webhook-Secret` header to `POST /api/v1/system/alert`
+- `INGEST_SERVICE_KEY` – Shared secret n8n sends as the `X-Service-Key` header when calling the `/api/v1/pipeline/ingest/*` endpoints as the ingestion orchestrator
+- `RDBMS_ALLOWED_HOSTS` – Comma-separated allowlist of hosts `/ingest/rdbms` may connect to (unset = RDBMS ingestion disabled)
+- `API_INGEST_ALLOWED_HOSTS` – Optional comma-separated allowlist of hosts `/ingest/api` may fetch from (unset = any host allowed, matching the documented "enter any API URL" behavior; `data.go.th` is always allowed regardless)
 
 **Example `.env**`
 ```
@@ -213,6 +220,15 @@ ELASTICSEARCH_HOST=elasticsearch
 ELASTICSEARCH_PORT=9200
 # Optional: ELASTICSEARCH_URL=http://elastic:sdoqap_secure@elasticsearch:9200
 HDFS_URL=hdfs://namenode:9000
+
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=change-me-to-a-strong-password
+SESSION_SECRET_KEY=change-me-to-a-random-64-char-hex-string
+SESSION_COOKIE_SECURE=false
+ALERT_WEBHOOK_SECRET=change-me
+INGEST_SERVICE_KEY=change-me
+RDBMS_ALLOWED_HOSTS=postgres
+# Optional: API_INGEST_ALLOWED_HOSTS=data.go.th
 ```
 
 ## ไฟล์ที่ไม่ควร push ขึ้น Git
