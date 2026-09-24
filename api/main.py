@@ -36,7 +36,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -98,6 +98,13 @@ def get_elasticsearch_url():
     return f"http://{es_user}:{es_pass}@{es_host}:{es_port}"
 
 ELASTICSEARCH_URL = get_elasticsearch_url()
+
+if not os.getenv("ELASTICSEARCH_PASSWORD"):
+    logging.getLogger("sdoqap.startup").warning(
+        "ELASTICSEARCH_PASSWORD is not set — falling back to the default "
+        "credential documented in README.md. This default is public; set "
+        "ELASTICSEARCH_PASSWORD in .env before exposing this stack beyond localhost."
+    )
 
 # Global executor to avoid thread join blocks on request exit
 executor = ThreadPoolExecutor(max_workers=20)
