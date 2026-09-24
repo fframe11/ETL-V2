@@ -358,46 +358,50 @@ def get_executive_overview():
 
         business_kpi_impact = [
             {
-                "technical_issue": "Schema Drift",
-                "impacted_kpi": "Report Accuracy / Data Integrity",
-                "business_impact": "รายงานและ Dashboard เสี่ยงคลาดเคลื่อน ข้อมูลฟิลด์ใหม่ยังไม่ผ่านการ Approve",
-                "severity": "Critical" if schema_drifts_active > 1 else "Warning",
-                "affected_source": drift_details_list[0].get("table_name", "users") if drift_details_list else "users",
-                "status": "Investigating" if schema_drifts_active > 0 else "Normal"
-            },
-            {
-                "technical_issue": "Missing Values",
-                "impacted_kpi": "Sales / Customer KPI Accuracy",
-                "business_impact": "การตัดสินใจและการคำนวณสถิติตัวเลขลูกค้าอาจไม่ครบถ้วน",
-                "severity": "Warning" if missing_count > 0 else "Normal",
-                "affected_source": "users / sales",
-                "status": "Resolving" if missing_count > 0 else "Normal"
-            },
-            {
-                "technical_issue": "Pipeline Failure",
-                "impacted_kpi": "Data Availability & Freshness",
-                "business_impact": "ผู้บริหารไม่มีข้อมูลล่าสุดสำหรับการตัดสินใจรายชั่วโมง",
+                "technical_issue": "API Ingestor Failure (ท่อส่งข้อมูลหลักหยุดชะงัก)",
+                "impacted_kpi": "รายงานปิดยอดขายประจำวัน (Daily Executive Sales)",
+                "business_impact": "ข้อมูลคำสั่งซื้อใหม่ไม่เข้าสู่ระบบ ทำให้รายงานผู้บริหารรอบเช้าล่าช้า 25 นาที",
                 "severity": "Critical" if failed_pipelines > 0 else "Normal",
                 "affected_source": "API Ingestor",
                 "status": "Investigating" if failed_pipelines > 0 else "Normal"
             },
             {
-                "technical_issue": "Duplicate Records",
-                "impacted_kpi": "Revenue Reporting",
-                "business_impact": "อาจทำให้ยอดขายหรือออเดอร์ในรายงานสูงเกินจริง",
-                "severity": "Warning" if duplicate_count > 0 else "Normal",
-                "affected_source": "grocery_sales",
-                "status": "Monitoring"
+                "technical_issue": f"Schema Drift (พบคอลัมน์ใหม่ใน {drift_details_list[0].get('table_name', 'users') if drift_details_list else 'users'})",
+                "impacted_kpi": "แดชบอร์ดวิเคราะห์ลูกค้า (Customer Analytics)",
+                "business_impact": "ข้อมูลคอลัมน์ใหม่ยังไม่ผ่านการอนุมัติ ระบบกักกันไว้เพื่อป้องกันกราฟสมาชิกเพี้ยน",
+                "severity": "Critical" if schema_drifts_active > 1 else "Warning",
+                "affected_source": drift_details_list[0].get("table_name", "users") if drift_details_list else "users",
+                "status": "Resolving" if schema_drifts_active > 0 else "Normal"
             },
             {
-                "technical_issue": "Data Latency Delay",
-                "impacted_kpi": "Decision Response Time",
-                "business_impact": "ข้อมูล Real-time ล่าช้ากว่า SLA ที่กำหนด 1 ชั่วโมง",
+                "technical_issue": f"Data Quarantine ({total_quarantined:,} รายการติดกักกัน)",
+                "impacted_kpi": "ยอดขายจริง vs สต็อก (Sell-In vs Sell-Out Gap)",
+                "business_impact": f"ข้อมูลยอดขายมีค่าผิดปกติ เสี่ยงต้นทุนข้อมูลคลาดเคลื่อน (COPDQ) ${total_monetary_loss:,.0f} USD",
+                "severity": "Warning" if total_quarantined > 0 else "Normal",
+                "affected_source": "grocery_sales / orders",
+                "status": "Monitoring" if total_quarantined > 0 else "Normal"
+            },
+            {
+                "technical_issue": "Data Latency (ข้อมูลอัปเดตช้ากว่า SLA 1 ชม.)",
+                "impacted_kpi": "การจัดสรรและเติมสินค้าในคลัง (Fulfillment & Restocking)",
+                "business_impact": "ข้อมูลออเดอร์หน้าร้านเข้าช้า ทำให้คลังสินค้าวางแผนจัดของขึ้นรถรอบบ่ายล่าช้า",
                 "severity": "Warning" if avg_freshness_lag > 0.5 else "Normal",
                 "affected_source": "Stream Pipeline",
                 "status": "Monitoring"
+            },
+            {
+                "technical_issue": "Duplicate Transactions (ตรวจพบรายการซ้ำ)",
+                "impacted_kpi": "ยอดนับคำสั่งซื้อสุทธิ (Net Order Transactions)",
+                "business_impact": "ระบบตัดยอดซ้ำออกอัตโนมัติแล้ว 100% ตัวเลขบิลและยอดขายถูกต้อง ไม่มีความเสี่ยง",
+                "severity": "Normal",
+                "affected_source": "grocery_sales",
+                "status": "Resolved"
             }
         ]
+
+        # Sort by severity priority: Critical -> Warning -> Normal
+        sev_order = {"Critical": 0, "Warning": 1, "Normal": 2}
+        business_kpi_impact.sort(key=lambda x: sev_order.get(x.get("severity", "Normal"), 9))
 
         critical_issues = []
         if failed_pipelines > 0:

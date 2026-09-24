@@ -144,6 +144,10 @@ export default function Dashboard() {
 
   const bizAreas = execData.business_areas || [];
   const bizKpiImpactList = execData.business_kpi_impact || [];
+  const sortedBizKpiImpactList = useMemo(() => {
+    const sevOrder = { Critical: 0, Warning: 1, Normal: 2 };
+    return [...bizKpiImpactList].sort((a, b) => (sevOrder[a.severity] ?? 9) - (sevOrder[b.severity] ?? 9));
+  }, [bizKpiImpactList]);
   const criticalIssuesList = execData.critical_business_issues || [];
   const qualityBreakdown = execData.data_quality_breakdown || {
     missing_values_pct: 0,
@@ -688,29 +692,29 @@ export default function Dashboard() {
                 </button>
               </div>
               <div style={{ overflowX: 'auto' }}>
-                <table className="exec-table">
+                <table className="exec-table" style={{ fontSize: '11px' }}>
                   <thead>
                     <tr>
-                      <th>Technical Issue</th>
-                      <th>Impacted KPI</th>
-                      <th>Business Impact</th>
-                      <th>Severity</th>
-                      <th>Status</th>
+                      <th style={{ fontSize: '11px' }}>Technical Issue</th>
+                      <th style={{ fontSize: '11px' }}>Impacted Business KPI</th>
+                      <th style={{ fontSize: '11px' }}>Executive Business Impact</th>
+                      <th style={{ fontSize: '11px' }}>Severity</th>
+                      <th style={{ fontSize: '11px' }}>Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {bizKpiImpactList.map((item, idx) => (
+                    {sortedBizKpiImpactList.map((item, idx) => (
                       <tr key={idx}>
-                        <td style={{ fontWeight: 700, color: 'var(--accent-purple)' }}>{item.technical_issue}</td>
-                        <td style={{ fontWeight: 600 }}>{item.impacted_kpi}</td>
-                        <td style={{ color: 'var(--text-muted)', fontSize: '10.5px' }}>{item.business_impact}</td>
+                        <td style={{ fontWeight: 700, color: 'var(--accent-purple)', fontSize: '11px' }}>{item.technical_issue}</td>
+                        <td style={{ fontWeight: 600, fontSize: '11px' }}>{item.impacted_kpi}</td>
+                        <td style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{item.business_impact}</td>
                         <td>
-                          <span className={`exec-chip ${item.severity === 'Critical' ? 'exec-chip-crit' : item.severity === 'Warning' ? 'exec-chip-warn' : 'exec-chip-good'}`}>
+                          <span className={`exec-chip ${item.severity === 'Critical' ? 'exec-chip-crit' : item.severity === 'Warning' ? 'exec-chip-warn' : 'exec-chip-good'}`} style={{ fontSize: '11px' }}>
                             {item.severity}
                           </span>
                         </td>
                         <td>
-                          <span style={{ fontSize: '10px', color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>
                             {item.status}
                           </span>
                         </td>
