@@ -37,6 +37,7 @@ ui/node_modules/
 ui/dist/
 scripts/*.log
 *.log
+*.bak
 
 # OS files
 .DS_Store
