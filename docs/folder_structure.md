@@ -1,6 +1,6 @@
 # Project Folder Structure
 
-This document outlines the standard monorepo folder structure for the Adaptive Data Reliability & Lineage Platform (ADRLP).
+This document outlines the monorepo folder structure for SDOQAP (Scalable Data Observability and Quality Assurance Platform).
 
 ---
 
@@ -8,66 +8,58 @@ This document outlines the standard monorepo folder structure for the Adaptive D
 
 ```
 / (Project Root)
-├── .gitignore
-├── README.md
-├── docker-compose.yml              # Orchestrates Postgres, Airflow, API, Grafana
-├── Makefile                        # Shortcuts for starting, stopping, and migrating
-├── database/                       # Database initialization and DDL migrations
-│   ├── init.sql                    # Initial schema and tables creation
-│   └── migrations/                 # DDL migration scripts
-│       └── 001_create_metadata.sql
-├── airflow/                        # Airflow configuration and DAGs
-│   ├── Dockerfile
-│   ├── requirements.txt            # Airflow custom dependencies (e.g. Great Expectations, dbt-postgres)
-│   ├── airflow.cfg
-│   ├── dags/
-│   │   ├── common/                 # Shared python modules for helper functions
-│   │   │   ├── lineage.py
-│   │   │   └── data_quality.py
-│   │   ├── ingest_sources_dag.py   # Ingestion DAG
-│   │   └── run_etl_dag.py          # Transformation DAG
-│   └── plugins/
-├── dbt/                            # dbt transformation project
-│   ├── dbt_project.yml
-│   ├── profiles.yml                # Connection profile pointing to local Postgres
-│   ├── models/
-│   │   ├── staging/                # Staging layer: cast types and clean headers
-│   │   └── marts/                  # Marts layer: business-ready tables
-│   ├── tests/                      # dbt custom schema/data tests
-│   └── seeds/                      # Static reference files
+├── docker-compose.yml              # Orchestrates HDFS, Spark, Elasticsearch, n8n, API, UI, Grafana, Kafka, etc.
+├── docker-swarm-ha.yml             # HA deployment variant
+├── start_system.bat                # Brings up the full stack
+├── test_data_source.bat            # Menu-driven dataset/API ingestion test
+├── .env                            # Elasticsearch/HDFS credentials (gitignored)
 ├── api/                            # Serving Layer (FastAPI)
 │   ├── Dockerfile
 │   ├── requirements.txt
-│   ├── main.py                     # App entrypoint
-│   └── app/
-│       ├── core/                   # Config, DB connections, utilities
-│       ├── api/                    # API routers (v1/data, v1/lineage, v1/quality)
-│       ├── models/                 # SQLAlchemy database models
-│       ├── schemas/                # Pydantic validation schemas
-│       └── services/               # Lineage extraction logic & business logic
-├── quality/                        # Great Expectations Configuration
-│   ├── great_expectations.yml      # GE global configuration
-│   ├── expectations/               # Expectation Suites (JSON)
-│   │   ├── raw_source_expectations.json
-│   │   └── transformed_expectations.json
-│   └── checkpoints/                # GE Checkpoint definitions
-│       └── default_checkpoint.yml
-└── grafana/                        # Observability provisioning
-    ├── provisioning/
-    │   ├── datasources/
-    │   │   └── postgres.yaml       # Autoprovisioned database connection
-    │   └── dashboards/
-    │       ├── dashboards.yaml     # Autoprovisioned dashboard settings
-    │       └── adrlp_observability.json # Dashboard layout
+│   ├── main.py                     # App assembly, health checks, router registration
+│   ├── seed_es.py                  # Elasticsearch index seeding
+│   └── app/api/                    # Routers: lineage, pipeline, quality, schema,
+│                                    #   data_export, dynamic_rules, standardize,
+│                                    #   whitebox, analytics, gold, system, config
+├── spark/                          # Quality engine and rule/schema config
+│   ├── Dockerfile
+│   ├── spark_quality_engine.py     # Core quality check + quarantine logic
+│   ├── spark_gold_layer.py         # Pre-aggregated summary tables
+│   ├── dynamic_rules_engine.py     # Evaluates spark/rules_config.json
+│   ├── ai_rule_advisor.py          # Ollama-backed rule suggestions
+│   ├── schema_registry.json        # Per-table primary key/date column/schema spec
+│   ├── rules_config.json           # Per-table quality rules and thresholds
+│   ├── semantic_cleaner/           # Semantic data-cleaning module
+│   └── tests/                      # Integration tests (run_integration_test.py, etc.)
+├── ui/                              # React (Vite) frontend — the Central Portal
+│   └── src/
+│       ├── pages/                  # Dashboard, Ingestion, Pipeline, Schema,
+│       │                           #   RulesConfig, DataExport, Analytics, Metadata, ...
+│       ├── components/
+│       └── hooks/useApi.js
+├── n8n/                             # Ingestion workflow definition (n8n)
+├── grafana/provisioning/            # Grafana datasources + dashboards
+├── prometheus/                      # Prometheus scrape config
+├── nginx/                           # Reverse proxy in front of ui + api
+├── scripts/                         # Host/API-container-side operational scripts
+│   ├── dev/                        # activate_db, check_webhooks, inspect_db
+│   ├── maintenance/                # cleanup, install, run_phase (.bat)
+│   └── verify/                     # verify_pipeline.bat
+├── user_inputs/                     # Where users drop dataset/API test files
+│   ├── datasets/
+│   └── apis/
+├── dummy_data/                      # Sample data in multiple formats (csv/json/parquet/avro/xml)
+└── docs/                            # This directory
 ```
 
 ---
 
 ## 2. Directory Descriptions
 
-- **`/database`**: Contains raw SQL DDL and DML statements to initialize schema scopes (`raw`, `analytics`, `metadata`, `quarantine`) inside PostgreSQL.
-- **`/airflow`**: Runs isolated in Docker, mounting `./dags` to keep local sync. Contains the DAGs responsible for reading raw sources (APIs, files, external DBs) and loading them.
-- **`/dbt`**: House all dbt models. Triggered from Airflow using `DbtRunOperator` / BashCommands, writing clean transformed datasets into PostgreSQL `analytics` schema.
-- **`/quality`**: Configuration and JSON assets for Great Expectations. Enables assertion checks on `raw` and `transformed` tables.
-- **`/api`**: A FastAPI application. Serves cleaned data and operational metadata to downstream consumers.
-- **`/grafana`**: Automates visualization configuration to run out-of-the-box upon `docker compose up`.
+- **`/api`**: FastAPI serving layer. `main.py` only assembles the app (CORS, rate limiting, health checks, router registration); all domain logic lives in `app/api/*.py` routers, each with its own `APIRouter`.
+- **`/spark`**: Runs inside the `spark-master`/`spark-worker` containers (mounted at `/opt/spark-apps`). Owns quality scoring, schema drift detection, and config-driven rules. Note: this directory is *not* the same mount as `/scripts` — some utility scripts (e.g. `alert_router.py`, `reddit_stream.py`) are intentionally duplicated between `/scripts` and `/spark` because the two containers don't share a volume.
+- **`/ui`**: React dashboard, built and served behind `nginx`.
+- **`/n8n`**: Ingestion workflow definitions used by `test_data_source.bat`.
+- **`/grafana`, `/prometheus`**: Observability provisioning, auto-loaded on `docker compose up`.
+- **`/scripts`**: Operational scripts mounted read-only into the `api` container at `/app/scripts`.
+- **`/user_inputs`**: Drop zone for local CSV datasets and downloaded API responses (gitignored, except READMEs).
