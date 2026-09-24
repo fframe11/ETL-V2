@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useApi, postApi } from "../hooks/useApi";
 import WorkflowJourneyBar from "../components/WorkflowJourneyBar";
 import { Icon } from "../components/UiIcons";
+import ConfirmationModal from "../components/ConfirmationModal";
 import "./Schema.css";
 
 export default function Schema() {
@@ -15,6 +16,21 @@ export default function Schema() {
   const [dateColumnOverride, setDateColumnOverride] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [actionResult, setActionResult] = useState(null);
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalConfig, setModalConfig] = useState({ title: "", message: "", onConfirm: () => {} });
+
+  const triggerConfirm = (title, message, onConfirm) => {
+    setModalConfig({
+      title,
+      message,
+      onConfirm: () => {
+        onConfirm();
+        setModalOpen(false);
+      }
+    });
+    setModalOpen(true);
+  };
 
   // Schema Evolution Proposal Registration State
   const [simTable, setSimTable] = useState("student_course_scores");
@@ -132,9 +148,11 @@ export default function Schema() {
     if (!isoString) return "";
     try {
       const date = new Date(isoString);
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
       const hours = String(date.getHours()).padStart(2, '0');
       const minutes = String(date.getMinutes()).padStart(2, '0');
-      return `Detected at ${hours}:${minutes} GST`;
+      return `Detected ${day}/${month} at ${hours}:${minutes}`;
     } catch (e) {
       return "";
     }
@@ -183,8 +201,12 @@ export default function Schema() {
         </div>
       </div>
 
-      {/* Schema Evolution Registration Bar */}
-      <form onSubmit={handleCreateProposal} style={{ background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '10px', padding: '12px 16px', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'flex-end', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
+      {/* Schema Evolution Registration Bar (collapsed by default — this is a simulation/test tool, not the primary workflow) */}
+      <details style={{ background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '10px', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
+        <summary style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 700, color: '#475569', cursor: 'pointer', userSelect: 'none' }}>
+          + จำลองการเปลี่ยนแปลงโครงสร้างตาราง (Register Schema Change — Simulation Tool)
+        </summary>
+        <form onSubmit={handleCreateProposal} style={{ padding: '0 16px 16px 16px', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'flex-end' }}>
         <div style={{ minWidth: '170px', flex: 1 }}>
           <label style={{ display: 'block', fontSize: '10px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '3px' }}>
             1. ชื่อตาราง (Target Table):
@@ -253,7 +275,8 @@ export default function Schema() {
         >
           + บันทึกการเปลี่ยนแปลงโครงสร้างตาราง (Register Schema Change)
         </button>
-      </form>
+        </form>
+      </details>
 
       {actionResult && (
         <div 
@@ -315,7 +338,11 @@ export default function Schema() {
                 marginBottom: "8px"
               }}>
                 <button
-                  onClick={() => handleBulkAction("approve-all")}
+                  onClick={() => triggerConfirm(
+                    "Approve All Pending Proposals?",
+                    `This will approve all ${filteredProposals.length} pending schema evolution proposal(s) currently listed and apply their changes to the catalog immediately. This action cannot be undone.`,
+                    () => handleBulkAction("approve-all")
+                  )}
                   disabled={submitting}
                   style={{
                     flex: 1,
@@ -332,7 +359,11 @@ export default function Schema() {
                   {submitting ? "Processing..." : "Approve All"}
                 </button>
                 <button
-                  onClick={() => handleBulkAction("reject-all")}
+                  onClick={() => triggerConfirm(
+                    "Reject All Pending Proposals?",
+                    `This will reject and quarantine all ${filteredProposals.length} pending schema evolution proposal(s) currently listed. This action cannot be undone.`,
+                    () => handleBulkAction("reject-all")
+                  )}
                   disabled={submitting}
                   style={{
                     flex: 1,
@@ -360,6 +391,7 @@ export default function Schema() {
               ) : (
                 filteredProposals.map((p) => {
                   const isSelected = p.id === selectedId;
+                  const driftColumns = p.drift_details ? Object.keys(p.drift_details) : [];
                   return (
                     <div
                       key={p.id}
@@ -375,6 +407,11 @@ export default function Schema() {
                           SEV {p.severity_score || 1}
                         </span>
                       </div>
+                      {driftColumns.length > 0 && (
+                        <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          + {driftColumns.join(", ")}
+                        </div>
+                      )}
                       <div className="gs-proposal-meta">
                         <span>Run: {(p.run_id || '').slice(0, 10)}</span>
                         <span>{formatProposedTime(p.proposed_at || p.timestamp)}</span>
@@ -401,14 +438,22 @@ export default function Schema() {
                     <button
                       disabled={submitting}
                       className="gs-btn-approve"
-                      onClick={() => handleAction(selectedProposal.id, "approve")}
+                      onClick={() => triggerConfirm(
+                        "Approve Schema Evolution?",
+                        `Table: ${selectedProposal.table_name}\nThis will apply the detected drift mutations to the catalog and update the Delta table schema. This action cannot be undone.`,
+                        () => handleAction(selectedProposal.id, "approve")
+                      )}
                     >
                       {submitting ? "Processing..." : "Approve Evolution"}
                     </button>
                     <button
                       disabled={submitting}
                       className="gs-btn-reject"
-                      onClick={() => handleAction(selectedProposal.id, "reject")}
+                      onClick={() => triggerConfirm(
+                        "Reject & Quarantine Proposal?",
+                        `Table: ${selectedProposal.table_name}\nThis will reject the proposed schema change and quarantine the affected data. This action cannot be undone.`,
+                        () => handleAction(selectedProposal.id, "reject")
+                      )}
                     >
                       {submitting ? "Rejecting..." : "Reject & Quarantine"}
                     </button>
@@ -550,6 +595,14 @@ export default function Schema() {
           )}
         </div>
       </div>
+
+      <ConfirmationModal
+        isOpen={modalOpen}
+        title={modalConfig.title}
+        message={modalConfig.message}
+        onConfirm={modalConfig.onConfirm}
+        onCancel={() => setModalOpen(false)}
+      />
     </div>
   );
 }
