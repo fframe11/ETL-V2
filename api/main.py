@@ -7,17 +7,6 @@ from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
-from elasticsearch import Elasticsearch
-
-_original_Elasticsearch = Elasticsearch
-_global_es_client = None
-
-def Elasticsearch(*args, **kwargs):
-    global _global_es_client
-    if _global_es_client is None:
-        _global_es_client = _original_Elasticsearch(*args, **kwargs)
-    return _global_es_client
-
 from app.api.lineage import router as lineage_router
 from app.api.pipeline import router as pipeline_router
 from app.api.quality import router as quality_router
@@ -43,7 +32,7 @@ app.add_middleware(
 
 # Logging configuration – level can be set via LOG_LEVEL env var
 import logging
-from app.api.config import get_required_env
+from app.api.config import get_elasticsearch_url, get_es_client
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=log_level)
 
@@ -86,18 +75,6 @@ app.include_router(data_export_router)
 app.include_router(dynamic_rules_router)
 app.include_router(standardize_router)
 app.include_router(whitebox_router)
-
-def get_elasticsearch_url():
-    # Prefer full URL if provided via environment
-    es_url = os.getenv("ELASTICSEARCH_URL")
-    if es_url:
-        return es_url
-    # Otherwise construct from components, using defaults where appropriate
-    es_user = os.getenv("ELASTICSEARCH_USER", "elastic")
-    es_pass = os.getenv("ELASTICSEARCH_PASSWORD", "sdoqap_secure")
-    es_host = os.getenv("ELASTICSEARCH_HOST", "localhost")
-    es_port = os.getenv("ELASTICSEARCH_PORT", "9200")
-    return f"http://{es_user}:{es_pass}@{es_host}:{es_port}"
 
 ELASTICSEARCH_URL = get_elasticsearch_url()
 
@@ -172,7 +149,7 @@ def get_kpi_stats():
             detail="Elasticsearch service is offline. Real cluster statistics unavailable."
         )
 
-    es = Elasticsearch(ELASTICSEARCH_URL, request_timeout=1)
+    es = get_es_client()
     try:
         if not es.indices.exists(index="sdoqap_quality_runs"):
             return {
@@ -236,7 +213,7 @@ def get_kpi_stats():
 
 @app.get("/api/v1/executive/overview")
 def get_executive_overview():
-    es = Elasticsearch(ELASTICSEARCH_URL)
+    es = get_es_client()
     try:
         total_records = 0
         total_quarantined = 0
@@ -522,7 +499,7 @@ def get_executive_overview():
 
 @app.get("/api/v1/anomaly/sources")
 def get_anomaly_sources():
-    es = Elasticsearch(ELASTICSEARCH_URL)
+    es = get_es_client()
     timestamps = []
     now = datetime.now(timezone.utc)
     for i in range(12):
@@ -602,7 +579,7 @@ def get_anomaly_sources():
 
 @app.get("/api/v1/analytics/projection")
 def get_quality_projection(table_name: str = None):
-    es = Elasticsearch(ELASTICSEARCH_URL)
+    es = get_es_client()
     try:
         import math
         if es.indices.exists(index="sdoqap_quality_runs"):
@@ -742,7 +719,7 @@ def get_quality_projection(table_name: str = None):
 
 @app.get("/api/v1/analytics/clustering")
 def get_diagnostic_clustering():
-    es = Elasticsearch(ELASTICSEARCH_URL)
+    es = get_es_client()
     default_clusters = []
     try:
         if es.indices.exists(index="sdoqap_quality_runs"):
@@ -816,7 +793,7 @@ def get_diagnostic_clustering():
 
 @app.get("/api/v1/analytics/impact")
 def get_business_impact():
-    es = Elasticsearch(ELASTICSEARCH_URL)
+    es = get_es_client()
     try:
         total_quarantined = 0
         total_records = 1
@@ -902,7 +879,7 @@ def get_business_impact():
 
 @app.get("/api/v1/analytics/recommendations")
 def get_actionable_recommendations():
-    es = Elasticsearch(ELASTICSEARCH_URL)
+    es = get_es_client()
     recommendations = []
     try:
         if es.indices.exists(index="sdoqap_schema_drifts"):
@@ -969,7 +946,7 @@ def get_actionable_recommendations():
 @app.get("/api/v1/gold/daily-quality")
 def get_gold_daily_quality(days: int = 14):
     """Return daily quality summary per table from Gold Layer (last N days)."""
-    es = Elasticsearch(ELASTICSEARCH_URL)
+    es = get_es_client()
     default = []
     try:
         if not es.indices.exists(index="sdoqap_gold_daily_quality"):
@@ -992,7 +969,7 @@ def get_gold_daily_quality(days: int = 14):
 @app.get("/api/v1/gold/error-patterns")
 def get_gold_error_patterns(days: int = 14):
     """Return aggregated error pattern trends from Gold Layer (last N days)."""
-    es = Elasticsearch(ELASTICSEARCH_URL)
+    es = get_es_client()
     default = []
     try:
         if not es.indices.exists(index="sdoqap_gold_error_patterns"):
@@ -1026,7 +1003,7 @@ def get_gold_error_patterns(days: int = 14):
 @app.get("/api/v1/gold/financial-impact")
 def get_gold_financial_impact(days: int = 30):
     """Return daily and cumulative financial impact (COPDQ) from Gold Layer."""
-    es = Elasticsearch(ELASTICSEARCH_URL)
+    es = get_es_client()
     default_data = {
         "daily": [],
         "total_quarantined": 0,
@@ -1074,7 +1051,7 @@ def get_gold_financial_impact(days: int = 30):
 @app.get("/api/v1/gold/schema-drift-history")
 def get_gold_schema_drift_history(days: int = 30):
     """Return schema drift event history from Gold Layer."""
-    es = Elasticsearch(ELASTICSEARCH_URL)
+    es = get_es_client()
     try:
         if not es.indices.exists(index="sdoqap_gold_schema_drift"):
             return {"data": [], "total_drift_events": 0, "source": "no_gold_layer"}
@@ -1119,7 +1096,7 @@ def trigger_gold_rebuild():
 
 @app.get("/api/v1/performance/metrics")
 def get_performance_metrics():
-    es = Elasticsearch(ELASTICSEARCH_URL)
+    es = get_es_client()
     timestamps = []
     now = datetime.now(timezone.utc)
     for i in range(6):
@@ -1245,7 +1222,7 @@ def get_performance_metrics():
 
 @app.get("/api/v1/system/activity")
 def get_system_activity(limit: int = 15):
-    es = Elasticsearch(ELASTICSEARCH_URL)
+    es = get_es_client()
     events = []
 
     try:
@@ -1355,7 +1332,7 @@ class SettingsPayload(BaseModel):
 
 @app.get("/api/v1/system/settings")
 def get_system_settings():
-    es = Elasticsearch(ELASTICSEARCH_URL)
+    es = get_es_client()
     api_key = ""
     model = ""
     enabled = False
@@ -1392,7 +1369,7 @@ def get_system_settings():
 
 @app.post("/api/v1/system/settings")
 def update_system_settings(payload: SettingsPayload):
-    es = Elasticsearch(ELASTICSEARCH_URL)
+    es = get_es_client()
     existing_key = ""
     try:
         if es.indices.exists(index="sdoqap_settings"):
@@ -1494,7 +1471,7 @@ def trigger_alert_routing(payload: dict):
 
 @app.get("/api/v1/system/remediations")
 def get_upstream_remediations():
-    es = Elasticsearch(ELASTICSEARCH_URL)
+    es = get_es_client()
     try:
         if not es.indices.exists(index="sdoqap_upstream_remediations"):
             return {"tickets": []}
@@ -1514,7 +1491,7 @@ def get_upstream_remediations():
 
 @app.post("/api/v1/system/remediations/{ticket_id}/resolve")
 def resolve_upstream_remediation(ticket_id: str):
-    es = Elasticsearch(ELASTICSEARCH_URL)
+    es = get_es_client()
     try:
         if not es.indices.exists(index="sdoqap_upstream_remediations"):
             raise HTTPException(status_code=404, detail="Remediations index not found")
