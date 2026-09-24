@@ -499,20 +499,18 @@ export default function Dashboard() {
           <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '16px' }}>
             {/* Left: Data Quality & Freshness Trend (SLA-Colored Bar Chart by Default) */}
             <div className="gs-card">
-              <div className="gs-card-head" style={{ alignItems: 'flex-start' }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div className="gs-card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'nowrap' }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     <h3 style={{ margin: 0 }}>Data Quality &amp; SLA Compliance Status</h3>
-                    <span className="exec-chip exec-chip-good" style={{ fontSize: '10px' }}>Target: 95.0%</span>
+                    <span className="exec-chip exec-chip-good" style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>Target 95.0%</span>
                   </div>
-                  <p style={{ marginTop: '3px' }}>
-                    {qualityChartType === 'bars'
-                      ? 'SLA-Colored Bars: เขียว (≥95% ผ่านเกณฑ์), เหลือง (90-94% เฝ้าระวัง), แดง (<90% หลุดเกณฑ์)'
-                      : 'Quality Score (%) vs 95% SLA Target across recent ingestion cycles'}
+                  <p style={{ marginTop: '3px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                    Quality Score (%) vs 95% SLA Target across recent ingestion cycles
                   </p>
                 </div>
-                {/* Visual Mode Switcher */}
-                <div style={{ display: 'inline-flex', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '2px' }}>
+                {/* Visual Mode Switcher - Single row, no stepping/wrapping */}
+                <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, whiteSpace: 'nowrap', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '2px', gap: '2px' }}>
                   <button
                     type="button"
                     onClick={() => setQualityChartType('bars')}
@@ -521,13 +519,15 @@ export default function Dashboard() {
                       color: qualityChartType === 'bars' ? '#fff' : 'var(--text-muted)',
                       border: 'none',
                       borderRadius: '4px',
-                      padding: '2px 8px',
-                      fontSize: '10px',
+                      padding: '3px 10px',
+                      fontSize: '11px',
                       fontWeight: 700,
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                      lineHeight: '1.2'
                     }}
                   >
-                    SLA Bars (เขียว/แดง)
+                    SLA Bars
                   </button>
                   <button
                     type="button"
@@ -537,10 +537,12 @@ export default function Dashboard() {
                       color: qualityChartType === 'area' ? '#fff' : 'var(--text-muted)',
                       border: 'none',
                       borderRadius: '4px',
-                      padding: '2px 8px',
-                      fontSize: '10px',
+                      padding: '3px 10px',
+                      fontSize: '11px',
                       fontWeight: 700,
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                      lineHeight: '1.2'
                     }}
                   >
                     Area Trend
@@ -553,8 +555,8 @@ export default function Dashboard() {
                   {qualityChartType === 'bars' ? (
                     <BarChart data={qualityTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-                      <XAxis dataKey="time" stroke="var(--text-muted)" fontSize={10} tickLine={false} />
-                      <YAxis domain={[70, 100]} stroke="var(--text-muted)" fontSize={10} tickLine={false} tickFormatter={(v) => `${v}%`} />
+                      <XAxis dataKey="time" stroke="var(--text-muted)" fontSize={11} tickLine={false} />
+                      <YAxis domain={[70, 100]} stroke="var(--text-muted)" fontSize={11} tickLine={false} tickFormatter={(v) => `${v}%`} />
                       <Tooltip
                         content={({ active, payload, label }) => {
                           if (active && payload && payload.length) {
@@ -563,16 +565,16 @@ export default function Dashboard() {
                             const color = val >= 95 ? '#10B981' : val >= 90 ? '#F59E0B' : '#EF4444';
                             return (
                               <div style={{ background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '8px', padding: '8px 12px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)', fontSize: '11px' }}>
-                                <div style={{ color: '#0F172A', fontWeight: 700, marginBottom: '2px' }}>รอบนำเข้า: {label}</div>
-                                <div style={{ color, fontWeight: 800 }}>คะแนนคุณภาพ: {val}%</div>
-                                <div style={{ fontSize: '10px', color: '#64748B', marginTop: '2px' }}>สถานะ: {status}</div>
+                                <div style={{ color: '#0F172A', fontWeight: 700, marginBottom: '2px' }}>รอบนำเข้า {label}</div>
+                                <div style={{ color, fontWeight: 800 }}>คะแนนคุณภาพ {val}%</div>
+                                <div style={{ fontSize: '11px', color: '#64748B', marginTop: '2px' }}>สถานะ {status}</div>
                               </div>
                             );
                           }
                           return null;
                         }}
                       />
-                      <ReferenceLine y={95} stroke="#10B981" strokeDasharray="4 4" label={{ value: 'SLA Target 95%', fill: '#10B981', fontSize: 10, position: 'right' }} />
+                      <ReferenceLine y={95} stroke="#10B981" strokeDasharray="4 4" label={{ value: 'SLA Target 95%', fill: '#10B981', fontSize: 11, position: 'right' }} />
                       <Bar dataKey="Overall" name="Quality Score (%)" radius={[4, 4, 0, 0]}>
                         {qualityTrendData.map((entry, index) => {
                           const val = entry.Overall;
@@ -595,13 +597,13 @@ export default function Dashboard() {
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-                      <XAxis dataKey="time" stroke="var(--text-muted)" fontSize={10} tickLine={false} />
-                      <YAxis domain={[75, 100]} stroke="var(--text-muted)" fontSize={10} tickLine={false} tickFormatter={(v) => `${v}%`} />
+                      <XAxis dataKey="time" stroke="var(--text-muted)" fontSize={11} tickLine={false} />
+                      <YAxis domain={[75, 100]} stroke="var(--text-muted)" fontSize={11} tickLine={false} tickFormatter={(v) => `${v}%`} />
                       <Tooltip
                         contentStyle={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)', borderRadius: '8px', fontSize: '11px' }}
                       />
-                      <Legend wrapperStyle={{ fontSize: '10px', paddingTop: '4px' }} />
-                      <ReferenceLine y={95} stroke="var(--accent-green)" strokeDasharray="4 4" label={{ value: 'Target 95%', fill: 'var(--accent-green)', fontSize: 10 }} />
+                      <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '4px' }} />
+                      <ReferenceLine y={95} stroke="var(--accent-green)" strokeDasharray="4 4" label={{ value: 'Target 95%', fill: 'var(--accent-green)', fontSize: 11 }} />
                       <Area type="monotone" dataKey="Overall" stroke="var(--accent-purple)" fillOpacity={1} fill="url(#qualityGradient)" strokeWidth={2} name="Overall Quality (%)" />
                     </ComposedChart>
                   )}
@@ -609,14 +611,14 @@ export default function Dashboard() {
               </div>
 
               {/* Status Badges Legend */}
-              <div style={{ display: 'flex', justifyContent: 'center', gap: '14px', marginTop: '6px', fontSize: '10px', color: 'var(--text-muted)' }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '14px', marginTop: '6px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px' }}>
                   <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#10B981' }} /> &ge;95% ผ่านเกณฑ์ SLA
                 </span>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px' }}>
                   <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#F59E0B' }} /> 90-94% เฝ้าระวัง
                 </span>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px' }}>
                   <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#EF4444' }} /> &lt;90% หลุดเกณฑ์ (SLA Breached)
                 </span>
               </div>
