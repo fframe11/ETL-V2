@@ -408,112 +408,88 @@ export default function Dashboard() {
           ═══════════════════════════════════════════════════════════ */}
       {viewMode === 'executive' && (
         <>
-          {/* Level 1 & 2: 6 Executive KPI Cards (Section 5) */}
-          <div className="exec-kpi-grid">
-            {/* Card 1: Data Health */}
+          {/* ═══════════════════════════════════════════════════════════
+              ZONE 1: THE CORE 4 EXECUTIVE HERO KPI CARDS (BA Standard)
+              ═══════════════════════════════════════════════════════════ */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', marginBottom: '16px' }}>
+            {/* Card 1: Data Health Score */}
             <div className={`exec-kpi-card ${dataHealth.status === 'Good' ? 'kpi-good' : dataHealth.status === 'Warning' ? 'kpi-warn' : 'kpi-crit'}`}>
               <div className="exec-kpi-top">
                 <span className="exec-kpi-title">Data Health Score</span>
-                <span className={`exec-chip ${dataHealth.status === 'Good' ? 'exec-chip-good' : dataHealth.status === 'Warning' ? 'exec-chip-warn' : 'exec-chip-crit'}`}>
+                <span className={`exec-chip ${dataHealth.status === 'Good' ? 'exec-chip-good' : dataHealth.status === 'Warning' ? 'exec-chip-warn' : 'exec-chip-crit'}`} style={{ fontSize: '11px' }}>
                   {dataHealth.status}
                 </span>
               </div>
               <div className="exec-kpi-val">{dataHealth.score != null ? `${dataHealth.score}%` : '---'}</div>
-              <div className="exec-kpi-sub">
+              <div className="exec-kpi-sub" style={{ fontSize: '11px' }}>
                 {dataHealth.clean_records?.toLocaleString()} clean · {dataHealth.quarantined_records?.toLocaleString()} quarantined
               </div>
             </div>
 
-            {/* Card 2: Data Availability */}
+            {/* Card 2: Pipeline SLA Availability */}
             <div className={`exec-kpi-card ${dataAvailability.score >= 95 ? 'kpi-good' : 'kpi-warn'}`}>
               <div className="exec-kpi-top">
-                <span className="exec-kpi-title">Data Availability</span>
-                <span className={`exec-chip ${dataAvailability.score >= 95 ? 'exec-chip-good' : 'exec-chip-warn'}`}>
+                <span className="exec-kpi-title">Pipeline SLA Availability</span>
+                <span className={`exec-chip ${dataAvailability.score >= 95 ? 'exec-chip-good' : 'exec-chip-warn'}`} style={{ fontSize: '11px' }}>
                   {dataAvailability.score >= 95 ? 'HEALTHY' : 'DEGRADED'}
                 </span>
               </div>
               <div className="exec-kpi-val">{dataAvailability.score != null ? `${dataAvailability.score}%` : '---'}</div>
-              <div className="exec-kpi-sub">
-                {dataAvailability.total_pipelines - dataAvailability.failed_pipelines}/{dataAvailability.total_pipelines} Pipelines Active
+              <div className="exec-kpi-sub" style={{ fontSize: '11px' }}>
+                {dataAvailability.total_pipelines - dataAvailability.failed_pipelines}/{dataAvailability.total_pipelines} Active · Avg lag {dataFreshness.avg_lag_hours}h
               </div>
             </div>
 
-            {/* Card 3: Data Freshness */}
-            <div className={`exec-kpi-card ${dataFreshness.score >= 90 ? 'kpi-good' : 'kpi-warn'}`}>
-              <div className="exec-kpi-top">
-                <span className="exec-kpi-title">Data Freshness</span>
-                <span className={`exec-chip ${dataFreshness.score >= 90 ? 'exec-chip-good' : 'exec-chip-warn'}`}>
-                  {dataFreshness.score >= 90 ? 'ON-TIME' : 'DELAYED'}
-                </span>
-              </div>
-              <div className="exec-kpi-val">{dataFreshness.score != null ? `${dataFreshness.score}%` : '---'}</div>
-              <div className="exec-kpi-sub">
-                Avg lag: {dataFreshness.avg_lag_hours} hrs (SLA &lt; {dataFreshness.sla_threshold_hours}h)
-              </div>
-            </div>
-
-            {/* Card 4: Business Impact */}
+            {/* Card 3: Commercial Sell-In/Out Discrepancy Gap */}
             <div className="exec-kpi-card kpi-purple">
               <div className="exec-kpi-top">
-                <span className="exec-kpi-title">Business Impact</span>
-                <span className="exec-chip exec-chip-warn">
-                  {bizImpact.areas_affected_count} AREAS
+                <span className="exec-kpi-title">Sell-In / Out Volume Gap</span>
+                <span className="exec-chip exec-chip-warn" style={{ fontSize: '11px' }}>
+                  {sellInOut.summary.reconciliation_gap_volume.toLocaleString()} UNITS
                 </span>
               </div>
               <div className="exec-kpi-val" style={{ color: 'var(--accent-purple)' }}>
-                ${bizImpact.monetary_loss_usd?.toLocaleString()}
+                {sellInOut.summary.reconciliation_gap_volume.toLocaleString()} <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>units</span>
               </div>
-              <div className="exec-kpi-sub">
-                Est. COPDQ Loss · {bizImpact.areas_affected_count} Areas Impacted
-              </div>
-            </div>
-
-            {/* Card 5: Report Availability */}
-            <div className="exec-kpi-card kpi-blue">
-              <div className="exec-kpi-top">
-                <span className="exec-kpi-title">Report Availability</span>
-                <span className={`exec-chip ${(reportAvail.score || 0) >= 90 ? 'exec-chip-good' : 'exec-chip-warn'}`}>{reportAvail.score != null ? `${reportAvail.score}% OK` : 'N/A'}</span>
-              </div>
-              <div className="exec-kpi-val" style={{ color: '#3B82F6' }}>
-                {reportAvail.score != null ? `${reportAvail.score}%` : '---'}
-              </div>
-              <div className="exec-kpi-sub">
-                {reportAvail.available_reports} Ready · {reportAvail.delayed_reports} Delayed Report
+              <div className="exec-kpi-sub" style={{ fontSize: '11px' }}>
+                {sellInOut.summary.quarantined_data_gap_volume.toLocaleString()} quarantined · {sellInOut.summary.sales_accuracy_pct}% accuracy
               </div>
             </div>
 
-            {/* Card 6: Active Critical Issues */}
-            <div className={`exec-kpi-card ${activeCriticalCount > 0 ? 'kpi-crit' : 'kpi-good'}`}>
+            {/* Card 4: Financial COPDQ Risk */}
+            <div className={`exec-kpi-card ${bizImpact.monetary_loss_usd > 0 ? 'kpi-crit' : 'kpi-good'}`}>
               <div className="exec-kpi-top">
-                <span className="exec-kpi-title">Critical Issues</span>
-                <span className={`exec-chip ${activeCriticalCount > 0 ? 'exec-chip-crit' : 'exec-chip-good'}`}>
-                  {activeCriticalCount > 0 ? 'ACTION' : 'CLEAR'}
+                <span className="exec-kpi-title">Financial COPDQ Risk</span>
+                <span className={`exec-chip ${bizImpact.monetary_loss_usd > 0 ? 'exec-chip-crit' : 'exec-chip-good'}`} style={{ fontSize: '11px' }}>
+                  {bizImpact.monetary_loss_usd > 0 ? 'ACTION' : 'CLEAR'}
                 </span>
               </div>
-              <div className="exec-kpi-val" style={{ color: activeCriticalCount > 0 ? 'var(--accent-red)' : 'var(--accent-green)' }}>
-                {activeCriticalCount}
+              <div className="exec-kpi-val" style={{ color: bizImpact.monetary_loss_usd > 0 ? 'var(--accent-red)' : 'var(--accent-green)' }}>
+                ${bizImpact.monetary_loss_usd?.toLocaleString()} <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>USD</span>
               </div>
-              <div className="exec-kpi-sub">
-                Active business risks requiring attention
+              <div className="exec-kpi-sub" style={{ fontSize: '11px' }}>
+                Estimated revenue exposure from bad data
               </div>
             </div>
           </div>
 
-          {/* Level 3: Visualizations & 5-Questions Framework (Sections 6 & 25) */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '16px' }}>
-            {/* Left: Data Quality & Freshness Trend (SLA-Colored Bar Chart by Default) */}
-            <div className="gs-card">
-              <div className="gs-card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'nowrap' }}>
+          {/* ═══════════════════════════════════════════════════════════
+              ZONE 2: VISUAL EVIDENCE & COMMERCIAL REALITY (Twin Charts)
+              ═══════════════════════════════════════════════════════════ */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px', alignItems: 'stretch' }}>
+            {/* Left: Data Quality & SLA Compliance Status (SLA-Colored Bar Chart) */}
+            <div className="gs-card" style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '16px' }}>
+              <div className="gs-card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'nowrap', marginBottom: '8px' }}>
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <h3 style={{ margin: 0 }}>Data Quality &amp; SLA Compliance Status</h3>
+                    <h3 style={{ margin: 0, fontSize: '13px' }}>Data Quality &amp; SLA Compliance Status</h3>
                     <span className="exec-chip exec-chip-good" style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>Target 95.0%</span>
                   </div>
-                  <p style={{ marginTop: '3px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                  <p style={{ marginTop: '2px', fontSize: '11px', color: 'var(--text-muted)' }}>
                     Quality Score (%) vs 95% SLA Target across recent ingestion cycles
                   </p>
                 </div>
-                {/* Visual Mode Switcher - Single row, no stepping/wrapping */}
+                {/* Visual Mode Switcher */}
                 <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, whiteSpace: 'nowrap', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '2px', gap: '2px' }}>
                   <button
                     type="button"
@@ -554,7 +530,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div style={{ width: '100%', height: 200 }}>
+              <div style={{ width: '100%', height: 210 }}>
                 <ResponsiveContainer>
                   {qualityChartType === 'bars' ? (
                     <BarChart data={qualityTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
@@ -582,11 +558,11 @@ export default function Dashboard() {
                       <Bar dataKey="Overall" name="Quality Score (%)" radius={[4, 4, 0, 0]}>
                         {qualityTrendData.map((entry, index) => {
                           const val = entry.Overall;
-                          let barColor = '#10B981'; // Green
+                          let barColor = '#10B981';
                           if (val !== null && val < 90) {
-                            barColor = '#EF4444'; // Red
+                            barColor = '#EF4444';
                           } else if (val !== null && val < 95) {
-                            barColor = '#F59E0B'; // Amber
+                            barColor = '#F59E0B';
                           }
                           return <Cell key={`cell-${index}`} fill={barColor} />;
                         })}
@@ -603,9 +579,7 @@ export default function Dashboard() {
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
                       <XAxis dataKey="time" stroke="var(--text-muted)" fontSize={11} tickLine={false} />
                       <YAxis domain={[75, 100]} stroke="var(--text-muted)" fontSize={11} tickLine={false} tickFormatter={(v) => `${v}%`} />
-                      <Tooltip
-                        contentStyle={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)', borderRadius: '8px', fontSize: '11px' }}
-                      />
+                      <Tooltip contentStyle={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)', borderRadius: '8px', fontSize: '11px' }} />
                       <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '4px' }} />
                       <ReferenceLine y={95} stroke="var(--accent-green)" strokeDasharray="4 4" label={{ value: 'Target 95%', fill: 'var(--accent-green)', fontSize: 11 }} />
                       <Area type="monotone" dataKey="Overall" stroke="var(--accent-purple)" fillOpacity={1} fill="url(#qualityGradient)" strokeWidth={2} name="Overall Quality (%)" />
@@ -615,7 +589,7 @@ export default function Dashboard() {
               </div>
 
               {/* Status Badges Legend */}
-              <div style={{ display: 'flex', justifyContent: 'center', gap: '14px', marginTop: '6px', fontSize: '11px', color: 'var(--text-muted)' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '14px', marginTop: 'auto', paddingTop: '8px', fontSize: '11px', color: 'var(--text-muted)', borderTop: '1px solid var(--border-color)' }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px' }}>
                   <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#10B981' }} /> &ge;95% ผ่านเกณฑ์ SLA
                 </span>
@@ -628,70 +602,115 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Right: 5-Question Executive Decision Framework (Section 25) */}
-            <div className="exec-5w-card">
-              <div className="exec-5w-header">
+            {/* Right: Sell-In vs. Sell-Out Commercial Reality */}
+            <div className="gs-card" style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '16px' }}>
+              <div className="gs-card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'nowrap', marginBottom: '8px' }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <h3 style={{ margin: 0, fontSize: '13px' }}>Sell-In vs. Sell-Out Commercial Reality</h3>
+                    <span className="exec-chip exec-chip-warn" style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>Gap 12,350 Units</span>
+                    <span className="exec-chip exec-chip-crit" style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>Risk $18,544 USD</span>
+                  </div>
+                  <p style={{ marginTop: '2px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                    ยอดกระจายสินค้าเข้าช่องทางจัดจำหน่าย (Sell-In) vs ยอดขายจริงหน้าร้าน POS (Sell-Out)
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ width: '100%', height: 210 }}>
+                <ResponsiveContainer>
+                  <ComposedChart data={sellInOut.timeline} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+                    <XAxis dataKey="period" stroke="var(--text-muted)" fontSize={11} tickLine={false} />
+                    <YAxis yAxisId="left" stroke="var(--text-muted)" fontSize={11} tickLine={false} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
+                    <YAxis yAxisId="right" orientation="right" domain={[70, 100]} stroke="var(--text-muted)" fontSize={11} tickLine={false} tickFormatter={(v) => `${v}%`} />
+                    <Tooltip
+                      content={({ active, payload, label }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          return (
+                            <div style={{ background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '8px', padding: '8px 12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '11px' }}>
+                              <strong style={{ color: '#0F172A', display: 'block', marginBottom: '2px' }}>{label} ({data.status})</strong>
+                              <div style={{ color: '#1E3A8A' }}>● Sell-In: <strong>{data.sell_in?.toLocaleString()}</strong> units</div>
+                              <div style={{ color: '#10B981' }}>● Sell-Out: <strong>{data.sell_out?.toLocaleString()}</strong> units</div>
+                              <div style={{ color: '#EF4444' }}>● Quarantined Gap: <strong>{data.quarantined_gap?.toLocaleString()}</strong> units</div>
+                              <div style={{ color: '#8B5CF6', marginTop: '2px' }}>★ Quality Score: <strong>{data.quality_score}%</strong></div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '2px' }} />
+                    <ReferenceLine yAxisId="right" y={95} stroke="#10B981" strokeDasharray="3 3" />
+                    <Bar yAxisId="left" dataKey="sell_in" name="Sell-In" fill="#1E3A8A" radius={[3, 3, 0, 0]} />
+                    <Bar yAxisId="left" dataKey="sell_out" name="Sell-Out" fill="#10B981" radius={[3, 3, 0, 0]} />
+                    <Bar yAxisId="left" dataKey="quarantined_gap" name="Quarantine Gap" fill="#EF4444" radius={[3, 3, 0, 0]} />
+                    <Line yAxisId="right" type="monotone" dataKey="quality_score" name="Quality Score (%)" stroke="#8B5CF6" strokeWidth={2} dot={{ r: 3 }} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Concrete Narrative Insight Callout */}
+              <div style={{ marginTop: 'auto', paddingTop: '8px', borderTop: '1px solid var(--border-color)', fontSize: '11px', color: 'var(--text-main)', lineHeight: '1.5' }}>
+                <strong style={{ color: 'var(--accent-purple)' }}>บทวิเคราะห์ผลกระทบ: </strong>
+                <span>{sellInOut.business_impact_narrative}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* ═══════════════════════════════════════════════════════════
+              ZONE 3: STRATEGIC DECISION & IMPACT MATRIX (5W + Impact)
+              ═══════════════════════════════════════════════════════════ */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.35fr', gap: '16px', marginBottom: '16px', alignItems: 'stretch' }}>
+            {/* Left: 5-Question Executive Decision Framework */}
+            <div className="exec-5w-card" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <div className="exec-5w-header" style={{ marginBottom: '8px' }}>
                 <h3>
                   <span><Icon name="bolt" /></span> Executive 5-Question Framework
                 </h3>
                 <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>Instant Decision Support</span>
               </div>
-              <div className="exec-5w-list">
-                <div className="exec-5w-row what">
-                  <div className="exec-5w-tag what"><Icon name="target" /> WHAT?</div>
-                  <div className="exec-5w-text">{fiveQuestions.what}</div>
+              <div className="exec-5w-list" style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '6px' }}>
+                <div className="exec-5w-row what" style={{ padding: '6px 8px' }}>
+                  <div className="exec-5w-tag what" style={{ fontSize: '10px' }}><Icon name="target" /> WHAT?</div>
+                  <div className="exec-5w-text" style={{ fontSize: '11px' }}>{fiveQuestions.what}</div>
                 </div>
-                <div className="exec-5w-row why">
-                  <div className="exec-5w-tag why"><Icon name="search" /> WHY?</div>
-                  <div className="exec-5w-text">{fiveQuestions.why}</div>
+                <div className="exec-5w-row why" style={{ padding: '6px 8px' }}>
+                  <div className="exec-5w-tag why" style={{ fontSize: '10px' }}><Icon name="search" /> WHY?</div>
+                  <div className="exec-5w-text" style={{ fontSize: '11px' }}>{fiveQuestions.why}</div>
                 </div>
-                <div className="exec-5w-row impact">
-                  <div className="exec-5w-tag impact"><Icon name="alert" /> IMPACT?</div>
-                  <div className="exec-5w-text">{fiveQuestions.impact}</div>
+                <div className="exec-5w-row impact" style={{ padding: '6px 8px' }}>
+                  <div className="exec-5w-tag impact" style={{ fontSize: '10px' }}><Icon name="alert" /> IMPACT?</div>
+                  <div className="exec-5w-text" style={{ fontSize: '11px' }}>{fiveQuestions.impact}</div>
                 </div>
-                <div className="exec-5w-row howmuch">
-                  <div className="exec-5w-tag howmuch"><Icon name="chart" /> HOW MUCH?</div>
-                  <div className="exec-5w-text">{fiveQuestions.how_much}</div>
+                <div className="exec-5w-row howmuch" style={{ padding: '6px 8px' }}>
+                  <div className="exec-5w-tag howmuch" style={{ fontSize: '10px' }}><Icon name="chart" /> HOW MUCH?</div>
+                  <div className="exec-5w-text" style={{ fontSize: '11px' }}>{fiveQuestions.how_much}</div>
                 </div>
-                <div className="exec-5w-row action">
-                  <div className="exec-5w-tag action"><Icon name="bolt" /> ACTION?</div>
-                  <div className="exec-5w-text">{fiveQuestions.action}</div>
-                </div>
-                <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
-                  <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
-                    ต้องการดูผลกระทบรูปธรรมต่อการกระจายสินค้า?
-                  </span>
-                  <button
-                    type="button"
-                    className="exec-btn exec-btn-primary"
-                    style={{ fontSize: '10px', padding: '4px 10px', cursor: 'pointer' }}
-                    onClick={() => setViewMode('business')}
-                  >
-                    ดูกราฟ Sell-In vs Sell-Out Volume →
-                  </button>
+                <div className="exec-5w-row action" style={{ padding: '6px 8px' }}>
+                  <div className="exec-5w-tag action" style={{ fontSize: '10px' }}><Icon name="bolt" /> ACTION?</div>
+                  <div className="exec-5w-text" style={{ fontSize: '11px' }}>{fiveQuestions.action}</div>
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* Level 4: Business KPI Impact Matrix & Data Quality Breakdown (Sections 7 & 14) */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '16px' }}>
-            {/* Left: Business KPI Impact Matrix (Section 7) */}
-            <div className="exec-table-card">
-              <div className="gs-card-head">
+            {/* Right: Business KPI Impact Matrix (Sorted by Severity) */}
+            <div className="exec-table-card" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <div className="gs-card-head" style={{ marginBottom: '8px' }}>
                 <div>
-                  <h3>Business KPI Impact Matrix</h3>
-                  <p>Translating Technical Anomaly → KPI Degradation → Executive Business Impact</p>
+                  <h3 style={{ margin: 0, fontSize: '13px' }}>Business KPI Impact Matrix</h3>
+                  <p style={{ marginTop: '2px', fontSize: '11px' }}>Translating Technical Anomaly → KPI Degradation → Executive Business Impact</p>
                 </div>
                 <button
                   className="exec-btn"
                   onClick={() => setViewMode('business')}
-                  style={{ fontSize: '10px' }}
+                  style={{ fontSize: '11px' }}
                 >
                   View Details →
                 </button>
               </div>
-              <div style={{ overflowX: 'auto' }}>
+              <div style={{ overflowX: 'auto', flex: 1 }}>
                 <table className="exec-table" style={{ fontSize: '11px' }}>
                   <thead>
                     <tr>
@@ -724,21 +743,26 @@ export default function Dashboard() {
                 </table>
               </div>
             </div>
+          </div>
 
-            {/* Right: Data Quality Breakdown (Section 14) */}
-            <div className="gs-card">
-              <div className="gs-card-head">
+          {/* ═══════════════════════════════════════════════════════════
+              ZONE 4: ROOT CAUSE BREAKDOWN & CRITICAL OPERATIONAL ISSUES
+              ═══════════════════════════════════════════════════════════ */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '16px', alignItems: 'stretch' }}>
+            {/* Left: Data Quality Status Breakdown */}
+            <div className="gs-card" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <div className="gs-card-head" style={{ marginBottom: '8px' }}>
                 <div>
-                  <h3>Data Quality Status Breakdown</h3>
-                  <p>Root cause distribution of quarantined data anomalies</p>
+                  <h3 style={{ margin: 0, fontSize: '13px' }}>Data Quality Status Breakdown</h3>
+                  <p style={{ marginTop: '2px', fontSize: '11px' }}>Root cause distribution of quarantined data anomalies</p>
                 </div>
-                <span className="exec-chip exec-chip-warn">{qualityBreakdown.total_quarantined} Rows Quarantined</span>
+                <span className="exec-chip exec-chip-warn" style={{ fontSize: '11px' }}>{qualityBreakdown.total_quarantined} Rows Quarantined</span>
               </div>
-              <div className="exec-dim-grid">
+              <div className="exec-dim-grid" style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '8px' }}>
                 <div className="exec-dim-item">
                   <div className="exec-dim-top">
-                    <span className="exec-dim-name">Missing / Null Values</span>
-                    <span className="exec-dim-score">{qualityBreakdown.missing_values_pct}%</span>
+                    <span className="exec-dim-name" style={{ fontSize: '11px' }}>Missing / Null Values</span>
+                    <span className="exec-dim-score" style={{ fontSize: '11px' }}>{qualityBreakdown.missing_values_pct}%</span>
                   </div>
                   <div className="exec-dim-bar">
                     <div className="exec-dim-fill" style={{ width: `${Math.min(qualityBreakdown.missing_values_pct * 15, 100)}%`, background: 'var(--accent-yellow)' }} />
@@ -747,8 +771,8 @@ export default function Dashboard() {
 
                 <div className="exec-dim-item">
                   <div className="exec-dim-top">
-                    <span className="exec-dim-name">Duplicate Records</span>
-                    <span className="exec-dim-score">{qualityBreakdown.duplicate_records_pct}%</span>
+                    <span className="exec-dim-name" style={{ fontSize: '11px' }}>Duplicate Records</span>
+                    <span className="exec-dim-score" style={{ fontSize: '11px' }}>{qualityBreakdown.duplicate_records_pct}%</span>
                   </div>
                   <div className="exec-dim-bar">
                     <div className="exec-dim-fill" style={{ width: `${Math.min(qualityBreakdown.duplicate_records_pct * 30, 100)}%`, background: '#3B82F6' }} />
@@ -757,8 +781,8 @@ export default function Dashboard() {
 
                 <div className="exec-dim-item">
                   <div className="exec-dim-top">
-                    <span className="exec-dim-name">Invalid Data Types / Format</span>
-                    <span className="exec-dim-score">{qualityBreakdown.invalid_type_pct}%</span>
+                    <span className="exec-dim-name" style={{ fontSize: '11px' }}>Invalid Data Types / Format</span>
+                    <span className="exec-dim-score" style={{ fontSize: '11px' }}>{qualityBreakdown.invalid_type_pct}%</span>
                   </div>
                   <div className="exec-dim-bar">
                     <div className="exec-dim-fill" style={{ width: `${Math.min(qualityBreakdown.invalid_type_pct * 40, 100)}%`, background: 'var(--accent-red)' }} />
@@ -767,8 +791,8 @@ export default function Dashboard() {
 
                 <div className="exec-dim-item">
                   <div className="exec-dim-top">
-                    <span className="exec-dim-name">Schema Drift Events</span>
-                    <span className="exec-dim-score">{qualityBreakdown.schema_drift_count} Active</span>
+                    <span className="exec-dim-name" style={{ fontSize: '11px' }}>Schema Drift Events</span>
+                    <span className="exec-dim-score" style={{ fontSize: '11px' }}>{qualityBreakdown.schema_drift_count} Active</span>
                   </div>
                   <div className="exec-dim-bar">
                     <div className="exec-dim-fill" style={{ width: `${qualityBreakdown.schema_drift_count > 0 ? 80 : 0}%`, background: 'var(--accent-purple)' }} />
@@ -777,8 +801,8 @@ export default function Dashboard() {
 
                 <div className="exec-dim-item">
                   <div className="exec-dim-top">
-                    <span className="exec-dim-name">Clean &amp; Certified Records</span>
-                    <span className="exec-dim-score" style={{ color: 'var(--accent-green)' }}>{dataHealth.score}%</span>
+                    <span className="exec-dim-name" style={{ fontSize: '11px' }}>Clean &amp; Certified Records</span>
+                    <span className="exec-dim-score" style={{ color: 'var(--accent-green)', fontSize: '11px' }}>{dataHealth.score}%</span>
                   </div>
                   <div className="exec-dim-bar">
                     <div className="exec-dim-fill" style={{ width: `${dataHealth.score}%`, background: 'var(--accent-green)' }} />
@@ -786,74 +810,74 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* Level 5: Critical Business Issues (Section 8) */}
-          <div className="exec-table-card">
-            <div className="gs-card-head">
-              <div>
-                <h3>Critical Business Issues</h3>
-                <p>Prioritized operational incidents impacting enterprise KPIs and reporting deadlines</p>
+            {/* Right: Critical Business Issues (Section 8) */}
+            <div className="exec-table-card" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <div className="gs-card-head" style={{ marginBottom: '8px' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '13px' }}>Critical Business Issues</h3>
+                  <p style={{ marginTop: '2px', fontSize: '11px' }}>Prioritized operational incidents impacting enterprise KPIs and reporting deadlines</p>
+                </div>
+                <span className="exec-chip exec-chip-crit" style={{ fontSize: '11px' }}>{filteredCriticalIssues.length} Incidents</span>
               </div>
-              <span className="exec-chip exec-chip-crit">{filteredCriticalIssues.length} Incidents</span>
-            </div>
-            <div style={{ overflowX: 'auto' }}>
-              <table className="exec-table">
-                <thead>
-                  <tr>
-                    <th>Issue ID</th>
-                    <th>Incident Name</th>
-                    <th>Business Impact</th>
-                    <th>KPI Affected</th>
-                    <th>Severity</th>
-                    <th>Duration</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredCriticalIssues.map((issue) => (
-                    <tr key={issue.id}>
-                      <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--text-muted)' }}>{issue.id}</td>
-                      <td style={{ fontWeight: 700 }}>{issue.issue}</td>
-                      <td style={{ color: 'var(--text-main)', fontSize: '11px' }}>{issue.business_impact}</td>
-                      <td style={{ color: 'var(--accent-purple)', fontWeight: 600 }}>{issue.kpi_affected}</td>
-                      <td>
-                        <span className={`exec-chip ${issue.severity === 'Critical' ? 'exec-chip-crit' : 'exec-chip-warn'}`}>
-                          {issue.severity}
-                        </span>
-                      </td>
-                      <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{issue.duration}</td>
-                      <td>
-                        <span style={{ fontSize: '10px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{issue.status}</span>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          <button
-                            className="exec-btn"
-                            style={{ padding: '3px 8px', fontSize: '9.5px' }}
-                            onClick={() => {
-                              setSelectedSourceFilter(issue.dataset?.split(' ')[0] || 'All');
-                              setViewMode('technical');
-                            }}
-                          >
-                            Drill-down <Icon name="settings" />
-                          </button>
-                          {issue.issue?.includes('Schema Drift') && (
-                            <Link
-                              to="/schema"
-                              className="exec-btn exec-btn-primary"
-                              style={{ padding: '3px 8px', fontSize: '9.5px', textDecoration: 'none' }}
-                            >
-                              Review Drift <Icon name="globe" />
-                            </Link>
-                          )}
-                        </div>
-                      </td>
+              <div style={{ overflowX: 'auto', flex: 1 }}>
+                <table className="exec-table" style={{ fontSize: '11px' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ fontSize: '11px' }}>Issue ID</th>
+                      <th style={{ fontSize: '11px' }}>Incident Name</th>
+                      <th style={{ fontSize: '11px' }}>Business Impact</th>
+                      <th style={{ fontSize: '11px' }}>KPI Affected</th>
+                      <th style={{ fontSize: '11px' }}>Severity</th>
+                      <th style={{ fontSize: '11px' }}>Duration</th>
+                      <th style={{ fontSize: '11px' }}>Status</th>
+                      <th style={{ fontSize: '11px' }}>Action</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {filteredCriticalIssues.map((issue) => (
+                      <tr key={issue.id}>
+                        <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--text-muted)', fontSize: '11px' }}>{issue.id}</td>
+                        <td style={{ fontWeight: 700, fontSize: '11px' }}>{issue.issue}</td>
+                        <td style={{ color: 'var(--text-main)', fontSize: '11px' }}>{issue.business_impact}</td>
+                        <td style={{ color: 'var(--accent-purple)', fontWeight: 600, fontSize: '11px' }}>{issue.kpi_affected}</td>
+                        <td>
+                          <span className={`exec-chip ${issue.severity === 'Critical' ? 'exec-chip-crit' : 'exec-chip-warn'}`} style={{ fontSize: '11px' }}>
+                            {issue.severity}
+                          </span>
+                        </td>
+                        <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', fontSize: '11px' }}>{issue.duration}</td>
+                        <td>
+                          <span style={{ fontSize: '11px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{issue.status}</span>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <button
+                              className="exec-btn"
+                              style={{ padding: '3px 8px', fontSize: '10px' }}
+                              onClick={() => {
+                                setSelectedSourceFilter(issue.dataset?.split(' ')[0] || 'All');
+                                setViewMode('technical');
+                              }}
+                            >
+                              Drill-down <Icon name="settings" />
+                            </button>
+                            {issue.issue?.includes('Schema Drift') && (
+                              <Link
+                                to="/schema"
+                                className="exec-btn exec-btn-primary"
+                                style={{ padding: '3px 8px', fontSize: '10px', textDecoration: 'none' }}
+                              >
+                                Review Drift <Icon name="globe" />
+                              </Link>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </>
