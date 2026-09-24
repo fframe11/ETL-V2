@@ -527,7 +527,7 @@ export default function Dashboard() {
                       cursor: 'pointer'
                     }}
                   >
-                    📊 SLA Bars (เขียว/แดง)
+                    SLA Bars (เขียว/แดง)
                   </button>
                   <button
                     type="button"
@@ -543,7 +543,7 @@ export default function Dashboard() {
                       cursor: 'pointer'
                     }}
                   >
-                    🌊 Area Trend
+                    Area Trend
                   </button>
                 </div>
               </div>
@@ -1373,7 +1373,7 @@ export default function Dashboard() {
                   cursor: 'pointer'
                 }}
               >
-                ⚡ Apache ECharts (Heavy Data Canvas)
+                Apache ECharts (Heavy Data Canvas)
               </button>
               <button
                 type="button"
