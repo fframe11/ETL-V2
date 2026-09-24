@@ -21,8 +21,10 @@ from datetime import datetime, timezone
 
 import pandas as pd
 import numpy as np
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Body
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body
 from pydantic import BaseModel, Field
+
+from .auth import require_session
 
 logger = logging.getLogger(__name__)
 
@@ -247,7 +249,7 @@ def get_dataset_profile(dataset_name: str = "student_course_score"):
     return profile
 
 
-@router.post("/profile/upload")
+@router.post("/profile/upload", dependencies=[Depends(require_session)])
 async def profile_uploaded_file(file: UploadFile = File(...), dataset_name: str = Form("uploaded_dataset")):
     """
     Upload and profile an arbitrary CSV dataset directly.
@@ -479,7 +481,7 @@ def get_default_user_context():
     }
 
 
-@router.post("/recommend-rules")
+@router.post("/recommend-rules", dependencies=[Depends(require_session)])
 def recommend_rules(payload: Optional[UserContextPayload] = None):
     """
     Generate explainable Data Quality rules combining Data Profiling metrics + User Business Context.
@@ -509,7 +511,7 @@ def recommend_rules(payload: Optional[UserContextPayload] = None):
 # ---------------------------------------------------------------------------
 # 3. Execution & 3-Way Segregation Engine
 # ---------------------------------------------------------------------------
-@router.post("/execute")
+@router.post("/execute", dependencies=[Depends(require_session)])
 def execute_pipeline(payload: ExecuteRulesPayload):
     """
     Executes the Semi-Automated Transformation & 3-Way Segregation:
@@ -933,7 +935,7 @@ def preview_multi_tables():
     })
 
 
-@router.post("/multi-table/analyze")
+@router.post("/multi-table/analyze", dependencies=[Depends(require_session)])
 def analyze_multi_table_relationship(payload: Optional[MultiTableAnalyzePayload] = None):
     """
     Semi-Automated Relationship & Schema Reconciliation Analyzer:
@@ -1035,7 +1037,7 @@ def analyze_multi_table_relationship(payload: Optional[MultiTableAnalyzePayload]
     return cleaned_result
 
 
-@router.post("/multi-table/join")
+@router.post("/multi-table/join", dependencies=[Depends(require_session)])
 def execute_multi_table_join(payload: MultiTableJoinPayload):
     """
     Executes the Semi-Automated Multi-Table Join following User Confirmation:
@@ -1096,7 +1098,7 @@ def execute_multi_table_join(payload: MultiTableJoinPayload):
 # 7. One-Click Full Pipeline Orchestrator (Auto-Ready / Instant Demo Mode)
 # ---------------------------------------------------------------------------
 @router.get("/run-all")
-@router.post("/run-all")
+@router.post("/run-all", dependencies=[Depends(require_session)])
 def run_all_stages():
     """
     Executes the entire end-to-end semi-automated pipeline in one fast batch.
@@ -1358,7 +1360,7 @@ def get_workflow_state():
     return _recompute_interactive_state()
 
 
-@router.post("/state")
+@router.post("/state", dependencies=[Depends(require_session)])
 def update_workflow_state(payload: Dict[str, Any] = Body(default_factory=dict)):
     for k, v in payload.items():
         if k in _WORKFLOW_STATE:
@@ -1441,7 +1443,7 @@ def preview_zone_records(zone: str, limit: int = 20, search: str = "", error_typ
 from fastapi import UploadFile, File, Form
 import io
 
-@router.post("/upload-csv")
+@router.post("/upload-csv", dependencies=[Depends(require_session)])
 async def upload_csv_dataset(
     file: UploadFile = File(...),
     table_name: str = Form("student_course_scores")
@@ -1483,7 +1485,7 @@ async def upload_csv_dataset(
         })
 
 
-@router.post("/ingest-source")
+@router.post("/ingest-source", dependencies=[Depends(require_session)])
 def ingest_from_connector(payload: Dict[str, Any]):
     source_type = str(payload.get("source_type", "RDBMS")).upper()
     table_name = str(payload.get("table_name") or payload.get("topic") or "student_course_scores").strip()
@@ -1619,7 +1621,7 @@ def _build_dynamic_context_fallback(
 
 
 @router.get("/ai-context-explanations")
-@router.post("/ai-context-explanations")
+@router.post("/ai-context-explanations", dependencies=[Depends(require_session)])
 def generate_ai_context_explanations(force: bool = False):
     state = _recompute_interactive_state()
     dataset_name = str(state.get("dataset_name") or "student_course_scores")

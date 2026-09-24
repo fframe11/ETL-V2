@@ -38,6 +38,7 @@ ui/dist/
 scripts/*.log
 *.log
 *.bak
+spark/backups/
 
 # OS files
 .DS_Store

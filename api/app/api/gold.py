@@ -1,8 +1,9 @@
 import os
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from .config import get_es_client
+from .auth import require_session
 
 router = APIRouter(tags=["gold"])
 
@@ -144,7 +145,7 @@ def get_gold_schema_drift_history(days: int = 30):
         return {"data": [], "error": str(e), "source": "error"}
 
 @router.post("/api/v1/gold/rebuild")
-def trigger_gold_rebuild():
+def trigger_gold_rebuild(_user: str = Depends(require_session)):
     """Trigger an async Gold Layer rebuild by calling the Spark Trigger Daemon."""
     import requests, threading
     def run_gold():

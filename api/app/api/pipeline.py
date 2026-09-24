@@ -3,7 +3,7 @@ import time
 from datetime import datetime
 import requests
 from typing import Optional
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from elasticsearch import Elasticsearch
 
@@ -13,6 +13,7 @@ router = APIRouter(
 )
 
 from .config import get_elasticsearch_url, get_es_client
+from .auth import require_session, require_session_or_service_key
 
 
 def _allowlisted_hosts(env_var: str) -> list:
@@ -156,7 +157,7 @@ def get_pipeline_run_detail(run_id: str):
         raise HTTPException(status_code=500, detail=f"Elasticsearch query failed: {str(e)}")
 
 @router.post("/acknowledge/{run_id}")
-def acknowledge_run_drift(run_id: str):
+def acknowledge_run_drift(run_id: str, _user: str = Depends(require_session)):
     """
     Acknowledges the schema drift for a specific execution run. Stored in ES for persistence.
     """
@@ -177,7 +178,7 @@ def acknowledge_run_drift(run_id: str):
 
 
 @router.post("/retry/{run_id}")
-def retry_pipeline_run(run_id: str):
+def retry_pipeline_run(run_id: str, _user: str = Depends(require_session)):
     """
     Retries/reruns ingestion and audit pipeline for a table.
     """
@@ -314,7 +315,7 @@ def trigger_spark_job(table_name: str):
         return False
 
 @router.post("/ingest/csv")
-async def ingest_csv(table_name: str = Form(...), file: UploadFile = File(...)):
+async def ingest_csv(table_name: str = Form(...), file: UploadFile = File(...), _user: str = Depends(require_session_or_service_key)):
     """
     Ingests an uploaded CSV or Excel (.xlsx/.xls) file into HDFS raw store and triggers Spark quality check.
     """
@@ -345,7 +346,7 @@ async def ingest_csv(table_name: str = Form(...), file: UploadFile = File(...)):
     }
 
 @router.post("/ingest/api")
-async def ingest_api(payload: ApiIngestPayload):
+async def ingest_api(payload: ApiIngestPayload, _user: str = Depends(require_session_or_service_key)):
     """
     Downloads JSON data from an API, converts it to CSV, writes it to HDFS, and triggers Spark.
     """
@@ -529,7 +530,7 @@ async def ingest_api(payload: ApiIngestPayload):
     }
 
 @router.post("/ingest/reddit")
-def ingest_reddit(payload: RedditIngestPayload):
+def ingest_reddit(payload: RedditIngestPayload, _user: str = Depends(require_session)):
     """
     Triggers Reddit live streaming pipeline via the Spark Trigger Daemon.
     """
@@ -567,7 +568,7 @@ def ingest_reddit_status():
         raise HTTPException(status_code=500, detail=f"Failed to fetch streaming status: {str(e)}")
 
 @router.post("/ingest/reddit/stop")
-def ingest_reddit_stop():
+def ingest_reddit_stop(_user: str = Depends(require_session)):
     """
     Forcibly terminates the active Reddit streaming job.
     """
@@ -595,7 +596,7 @@ class RdbmsIngestPayload(BaseModel):
     query: str
 
 @router.post("/ingest/rdbms")
-async def ingest_rdbms(payload: RdbmsIngestPayload):
+async def ingest_rdbms(payload: RdbmsIngestPayload, _user: str = Depends(require_session_or_service_key)):
     """
     Connects to an RDBMS database, fetches results, converts to CSV, writes to HDFS, and triggers Spark.
     """

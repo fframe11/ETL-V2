@@ -6,12 +6,13 @@ Approved proposals update schema_registry.json. Rejected proposals are discarded
 import os
 import json
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException
-from elasticsearch import Elasticsearch
+from fastapi import APIRouter, Depends, HTTPException
+from elasticsearch import Elasticsearch, ConflictError
 
 router = APIRouter(prefix="/api/v1/schema", tags=["Schema Governance"])
 
 from .config import get_elasticsearch_url, get_es_client
+from .auth import require_session
 
 ELASTICSEARCH_URL = get_elasticsearch_url()
 def _resolve_schema_registry_path() -> str:
@@ -60,7 +61,7 @@ def list_proposals(status: str = "PENDING"):
 
 
 @router.post("/proposals/{proposal_id}/approve")
-def approve_proposal(proposal_id: str, primary_key: str = None, date_column: str = None):
+def approve_proposal(proposal_id: str, primary_key: str = None, date_column: str = None, _user: str = Depends(require_session)):
     """
     Approve a PENDING schema proposal.
     This writes the proposed schema into sdoqap_schema_registry in ES.
@@ -71,6 +72,8 @@ def approve_proposal(proposal_id: str, primary_key: str = None, date_column: str
     try:
         doc = es.get(index="sdoqap_schema_proposals", id=proposal_id)
         proposal = doc["_source"]
+        seq_no = doc["_seq_no"]
+        primary_term = doc["_primary_term"]
     except Exception:
         raise HTTPException(status_code=404, detail=f"Proposal '{proposal_id}' not found.")
 
@@ -159,11 +162,19 @@ def approve_proposal(proposal_id: str, primary_key: str = None, date_column: str
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update sdoqap_schema_registry in ES: {e}")
 
-    es.update(
-        index="sdoqap_schema_proposals",
-        id=proposal_id,
-        body={"doc": {"status": "APPROVED", "resolved_at": datetime.now(timezone.utc).isoformat()}}
-    )
+    try:
+        es.update(
+            index="sdoqap_schema_proposals",
+            id=proposal_id,
+            body={"doc": {"status": "APPROVED", "resolved_at": datetime.now(timezone.utc).isoformat()}},
+            if_seq_no=seq_no,
+            if_primary_term=primary_term
+        )
+    except ConflictError:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Proposal '{proposal_id}' was modified by another request (e.g. concurrently rejected). Reload and retry."
+        )
 
     return {
         "message": f"Schema proposal '{proposal_id}' APPROVED.",
@@ -173,22 +184,39 @@ def approve_proposal(proposal_id: str, primary_key: str = None, date_column: str
 
 
 @router.post("/proposals/{proposal_id}/reject")
-def reject_proposal(proposal_id: str):
+def reject_proposal(proposal_id: str, _user: str = Depends(require_session)):
     """
     Reject a PENDING schema proposal.
     The current registry in ES remains unchanged.
     """
     es = get_es()
     try:
-        es.get(index="sdoqap_schema_proposals", id=proposal_id)
+        doc = es.get(index="sdoqap_schema_proposals", id=proposal_id)
+        proposal = doc["_source"]
+        seq_no = doc["_seq_no"]
+        primary_term = doc["_primary_term"]
     except Exception:
         raise HTTPException(status_code=404, detail=f"Proposal '{proposal_id}' not found.")
 
-    es.update(
-        index="sdoqap_schema_proposals",
-        id=proposal_id,
-        body={"doc": {"status": "REJECTED", "resolved_at": datetime.now(timezone.utc).isoformat()}}
-    )
+    if proposal.get("status") != "PENDING":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Proposal is already '{proposal.get('status')}'. Only PENDING proposals can be rejected."
+        )
+
+    try:
+        es.update(
+            index="sdoqap_schema_proposals",
+            id=proposal_id,
+            body={"doc": {"status": "REJECTED", "resolved_at": datetime.now(timezone.utc).isoformat()}},
+            if_seq_no=seq_no,
+            if_primary_term=primary_term
+        )
+    except ConflictError:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Proposal '{proposal_id}' was modified by another request (e.g. concurrently approved). Reload and retry."
+        )
 
     return {
         "message": f"Schema proposal '{proposal_id}' REJECTED. sdoqap_schema_registry unchanged."
@@ -196,7 +224,7 @@ def reject_proposal(proposal_id: str):
 
 
 @router.post("/proposals/approve-all")
-def approve_all_proposals():
+def approve_all_proposals(_user: str = Depends(require_session)):
     """
     Approve all PENDING schema proposals in bulk.
     Updates the registry in ES and writes to schema_registry.json on disk.
@@ -316,7 +344,7 @@ def approve_all_proposals():
 
 
 @router.post("/proposals/reject-all")
-def reject_all_proposals():
+def reject_all_proposals(_user: str = Depends(require_session)):
     """
     Reject all PENDING schema proposals in bulk.
     The current registry remains unchanged.
@@ -357,7 +385,7 @@ def reject_all_proposals():
 
 @router.post("/proposals/create")
 @router.post("/proposals/simulate")
-def create_schema_proposal(payload: dict = None):
+def create_schema_proposal(payload: dict = None, _user: str = Depends(require_session)):
     """Register a new PENDING schema evolution proposal in Elasticsearch for governance review."""
     payload = payload or {}
     table_name = str(payload.get("table_name") or "student_course_scores").strip()

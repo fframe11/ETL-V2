@@ -11,7 +11,11 @@ export function useApi(endpoint, options = {}) {
   const fetchData = useCallback(async () => {
     if (!enabled) return;
     try {
-      const res = await fetch(`${API_BASE}${endpoint}`);
+      const res = await fetch(`${API_BASE}${endpoint}`, { credentials: "same-origin" });
+      if (res.status === 401 && window.location.pathname !== "/login") {
+        window.location.href = "/login";
+        return;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setData(json);
@@ -34,8 +38,8 @@ export function useApi(endpoint, options = {}) {
   return { data, loading, error, refetch: fetchData };
 }
 
-export async function postApi(endpoint, body = null) {
-  const options = { method: "POST" };
+export async function postApi(endpoint, body = null, method = "POST") {
+  const options = { method, credentials: "same-origin" };
   if (body) {
     options.headers = {
       "Content-Type": "application/json"
@@ -43,6 +47,9 @@ export async function postApi(endpoint, body = null) {
     options.body = JSON.stringify(body);
   }
   const res = await fetch(`${API_BASE}${endpoint}`, options);
+  if (res.status === 401 && window.location.pathname !== "/login") {
+    window.location.href = "/login";
+  }
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }

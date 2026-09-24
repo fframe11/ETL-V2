@@ -8,10 +8,11 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 import requests
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from .config import get_es_client
+from .auth import require_session, require_webhook_secret
 
 router = APIRouter(tags=["system"])
 
@@ -271,7 +272,7 @@ def get_system_activity(limit: int = 15):
         }]
 
 @router.post("/api/v1/system/cleanup")
-def trigger_system_cleanup():
+def trigger_system_cleanup(_user: str = Depends(require_session)):
     """Trigger the automated storage retention and cleanup script asynchronously."""
     def run_cleanup():
         try:
@@ -330,7 +331,7 @@ def get_system_settings():
     }
 
 @router.post("/api/v1/system/settings")
-def update_system_settings(payload: SettingsPayload):
+def update_system_settings(payload: SettingsPayload, _user: str = Depends(require_session)):
     es = get_es_client()
     existing_key = ""
     try:
@@ -389,7 +390,7 @@ def update_system_settings(payload: SettingsPayload):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save settings: {str(e)}")
 
-@router.post("/api/v1/system/alert")
+@router.post("/api/v1/system/alert", dependencies=[Depends(require_webhook_secret)])
 def trigger_alert_routing(payload: dict):
     """Accepts alert payload (e.g. from Grafana webhook) and routes it to Slack/LINE."""
     title = payload.get("title")
@@ -450,7 +451,7 @@ def get_upstream_remediations():
         raise HTTPException(status_code=500, detail=f"Failed to fetch remediations: {str(e)}")
 
 @router.post("/api/v1/system/remediations/{ticket_id}/resolve")
-def resolve_upstream_remediation(ticket_id: str):
+def resolve_upstream_remediation(ticket_id: str, _user: str = Depends(require_session)):
     es = get_es_client()
     try:
         if not es.indices.exists(index="sdoqap_upstream_remediations"):

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { useNavigate, useLocation, Link } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
+import { useAuth } from "../hooks/useAuth";
 import "./Login.css";
 
 export default function Login() {
@@ -9,24 +10,22 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const { login } = useAuth();
 
   const from = location.state?.from?.pathname || "/dashboard";
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
     setLoading(true);
-
-    setTimeout(() => {
-      if (username === "admin" && password === "admin") {
-        sessionStorage.setItem("sdoqap_admin_token", "session_active_token_sdoqap");
-        setLoading(false);
-        navigate(from, { replace: true });
-      } else {
-        setError("Invalid credentials. Verify your access details.");
-        setLoading(false);
-      }
-    }, 800);
+    try {
+      await login(username, password);
+      navigate(from, { replace: true });
+    } catch (err) {
+      setError(err.message || "Invalid credentials. Verify your access details.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -95,21 +94,6 @@ export default function Login() {
               <span>Login</span>
             )}
           </button>
-          <div style={{ marginTop: '14px', textAlign: 'center', fontSize: '12px', color: '#64748B' }}>
-            <span style={{ display: 'block', marginBottom: '8px' }}>Credentials: <strong>admin</strong> / <strong>admin</strong></span>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', alignItems: 'center' }}>
-              <button
-                type="button"
-                onClick={() => { setUsername("admin"); setPassword("admin"); }}
-                style={{ background: '#F1F5F9', border: '1px solid #CBD5E1', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', color: '#334155' }}
-              >
-                Auto-fill Admin
-              </button>
-              <Link to="/dashboard" style={{ color: '#2563EB', textDecoration: 'none', fontWeight: 600, fontSize: '12px' }}>
-                Go to Dashboard &rarr;
-              </Link>
-            </div>
-          </div>
         </form>
 
         <div className="gs-login-bottom-info">

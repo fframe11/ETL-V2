@@ -1,10 +1,11 @@
 import os
 import json
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Body
-from elasticsearch import Elasticsearch
+from fastapi import APIRouter, Depends, HTTPException, Body
+from elasticsearch import Elasticsearch, ConflictError
 from .config import get_elasticsearch_url, get_es_client
 from .dynamic_rules import _load_rules_config, _save_rules_config
+from .auth import require_session
 
 router = APIRouter(prefix="/api/v1/standardize", tags=["Standardization Governance"])
 
@@ -67,12 +68,14 @@ def _update_memory_registry(table_name: str, col_name: str, raw_val: str, approv
         raise HTTPException(status_code=500, detail=f"Failed to update rules configuration: {str(e)}")
 
 @router.post("/review-queue/{item_id}/approve")
-def approve_item(item_id: str):
+def approve_item(item_id: str, _user: str = Depends(require_session)):
     """Approve suggestion, adding it to the memory registry mapping."""
     es = get_es()
     try:
         doc = es.get(index="sdoqap_unmapped_terms", id=item_id)
         item = doc["_source"]
+        seq_no = doc["_seq_no"]
+        primary_term = doc["_primary_term"]
     except Exception:
         raise HTTPException(status_code=404, detail=f"Review item '{item_id}' not found.")
 
@@ -102,21 +105,28 @@ def approve_item(item_id: str):
         print(f"[API GOVERNANCE] Warning: failed to log mapping review: {e}")
 
     # Mark as APPROVED in review queue
-    es.update(
-        index="sdoqap_unmapped_terms",
-        id=item_id,
-        body={"doc": {"status": "APPROVED", "resolved_at": datetime.now(timezone.utc).isoformat()}}
-    )
+    try:
+        es.update(
+            index="sdoqap_unmapped_terms",
+            id=item_id,
+            body={"doc": {"status": "APPROVED", "resolved_at": datetime.now(timezone.utc).isoformat()}},
+            if_seq_no=seq_no,
+            if_primary_term=primary_term
+        )
+    except ConflictError:
+        raise HTTPException(status_code=409, detail=f"Review item '{item_id}' was modified by another request. Reload and retry.")
 
     return {"message": "Item approved and added to memory mapping.", "raw_value": raw_val, "category": suggested_cat}
 
 @router.post("/review-queue/{item_id}/override")
-def override_item(item_id: str, approved_category: str = Body(..., embed=True)):
+def override_item(item_id: str, approved_category: str = Body(..., embed=True), _user: str = Depends(require_session)):
     """Override suggestion with user custom category, adding it to the memory registry mapping."""
     es = get_es()
     try:
         doc = es.get(index="sdoqap_unmapped_terms", id=item_id)
         item = doc["_source"]
+        seq_no = doc["_seq_no"]
+        primary_term = doc["_primary_term"]
     except Exception:
         raise HTTPException(status_code=404, detail=f"Review item '{item_id}' not found.")
 
@@ -147,33 +157,49 @@ def override_item(item_id: str, approved_category: str = Body(..., embed=True)):
         print(f"[API GOVERNANCE] Warning: failed to log override feedback: {e}")
 
     # Mark as APPROVED in review queue
-    es.update(
-        index="sdoqap_unmapped_terms",
-        id=item_id,
-        body={"doc": {"status": "APPROVED", "resolved_at": datetime.now(timezone.utc).isoformat()}}
-    )
+    try:
+        es.update(
+            index="sdoqap_unmapped_terms",
+            id=item_id,
+            body={"doc": {"status": "APPROVED", "resolved_at": datetime.now(timezone.utc).isoformat()}},
+            if_seq_no=seq_no,
+            if_primary_term=primary_term
+        )
+    except ConflictError:
+        raise HTTPException(status_code=409, detail=f"Review item '{item_id}' was modified by another request. Reload and retry.")
 
     return {"message": "Item overridden and added to memory mapping.", "raw_value": raw_val, "category": approved_category}
 
 @router.post("/review-queue/{item_id}/reject")
-def reject_item(item_id: str):
+def reject_item(item_id: str, _user: str = Depends(require_session)):
     """Reject item, marking it rejected in review queue without modifying mapping config."""
     es = get_es()
     try:
-        es.get(index="sdoqap_unmapped_terms", id=item_id)
+        doc = es.get(index="sdoqap_unmapped_terms", id=item_id)
+        item = doc["_source"]
+        seq_no = doc["_seq_no"]
+        primary_term = doc["_primary_term"]
     except Exception:
         raise HTTPException(status_code=404, detail=f"Review item '{item_id}' not found.")
 
-    es.update(
-        index="sdoqap_unmapped_terms",
-        id=item_id,
-        body={"doc": {"status": "REJECTED", "resolved_at": datetime.now(timezone.utc).isoformat()}}
-    )
+    if item.get("status") != "PENDING_REVIEW":
+        raise HTTPException(status_code=400, detail="Item is already processed.")
+
+    try:
+        es.update(
+            index="sdoqap_unmapped_terms",
+            id=item_id,
+            body={"doc": {"status": "REJECTED", "resolved_at": datetime.now(timezone.utc).isoformat()}},
+            if_seq_no=seq_no,
+            if_primary_term=primary_term
+        )
+    except ConflictError:
+        raise HTTPException(status_code=409, detail=f"Review item '{item_id}' was modified by another request. Reload and retry.")
 
     return {"message": "Item rejected."}
 
 @router.post("/rollback")
-def rollback_rules_config():
+def rollback_rules_config(_user: str = Depends(require_session)):
     """Roll back the rules configuration to the previous version from backups folder."""
     try:
         from .dynamic_rules import _resolve_rules_path, _load_rules_config, _save_rules_config

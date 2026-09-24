@@ -15,6 +15,7 @@ from app.api.whitebox import router as whitebox_router
 from app.api.analytics import router as analytics_router
 from app.api.gold import router as gold_router
 from app.api.system import router as system_router
+from app.api.auth import router as auth_router
 
 app = FastAPI(
     title="SDOQAP Serving API",
@@ -78,6 +79,7 @@ app.include_router(whitebox_router)
 app.include_router(analytics_router)
 app.include_router(gold_router)
 app.include_router(system_router)
+app.include_router(auth_router)
 
 ELASTICSEARCH_URL = get_elasticsearch_url()
 

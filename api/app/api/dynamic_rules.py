@@ -23,10 +23,11 @@ import copy
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from elasticsearch import Elasticsearch
 
 from .config import get_elasticsearch_url, get_es_client
+from .auth import require_session
 
 logger = logging.getLogger(__name__)
 
@@ -359,8 +360,11 @@ def list_ai_proposals(table: Optional[str] = Query(None, description="Filter by 
     }
 
 
+_CRITICAL_CHECKS = {"null_primary_key", "duplicate_check"}
+
+
 @router.post("/ai-proposals/{proposal_id}/approve", summary="Approve an AI rule proposal")
-def approve_proposal(proposal_id: str) -> dict:
+def approve_proposal(proposal_id: str, _user: str = Depends(require_session)) -> dict:
     """Mark an AI proposal as ``APPROVED`` and merge its ``suggested_rules``
     into ``rules_config.json`` for the relevant table.
     """
@@ -463,15 +467,25 @@ def approve_proposal(proposal_id: str) -> dict:
                                 print(f"[GUARDRAIL VIOLATION] API rejected threshold change from {curr} to {val} on table '{target_table}'. Exceeds 10% allowed decrease (Limit: {max_reduction:.2f})")
                                 continue
 
+                    # 4. Root Cause Fix: a rule_path outside the threshold/tolerance
+                    # guardrails above (e.g. "null_primary_key.enabled") previously hit no
+                    # validation at all. Explicitly block AI-suggested disabling of a
+                    # critical-severity check — that decision requires a human editing
+                    # rules_config.json directly via the authenticated PUT endpoint, not an
+                    # AI proposal approval.
+                    if parts[-1] == "enabled" and val is False and any(chk in rule_path for chk in _CRITICAL_CHECKS):
+                        print(f"[GUARDRAIL VIOLATION] API rejected disabling critical check '{rule_path}' on table '{target_table}' via AI proposal.")
+                        continue
+
                     # Dotted path update
                     d = table_config
                     for part in parts[:-1]:
                         d = d.setdefault(part, {})
-                    
+
                     # 3. Check guardrails: Null tolerance cap at 0.30
                     if "tolerance" in parts[-1] and isinstance(val, (int, float)):
                         val = min(val, 0.30)
-                    
+
                     d[parts[-1]] = val
                     promoted_count += 1
 
@@ -507,14 +521,14 @@ def approve_proposal(proposal_id: str) -> dict:
 
 
 @router.post("/ai-proposals/reset", summary="Reset/Generate AI rule proposals")
-def reset_ai_proposals() -> dict:
+def reset_ai_proposals(_user: str = Depends(require_session)) -> dict:
     for p in _FALLBACK_AI_PROPOSALS:
         p["status"] = "PROPOSED"
     return {"status": "reset", "count": len(_FALLBACK_AI_PROPOSALS), "proposals": _FALLBACK_AI_PROPOSALS}
 
 
 @router.post("/ai-proposals/{proposal_id}/reject", summary="Reject an AI rule proposal")
-def reject_proposal(proposal_id: str) -> dict:
+def reject_proposal(proposal_id: str, _user: str = Depends(require_session)) -> dict:
     """Mark an AI proposal as ``REJECTED``.
 
     No changes are made to ``rules_config.json``.
@@ -600,8 +614,30 @@ def get_rules_for_table(table_name: str) -> dict:
     }
 
 
+def _validate_rules_body(body: Dict[str, Any]) -> None:
+    """Root Cause Fix: the direct rule-edit endpoint previously merged any caller-supplied
+    dict with zero validation — a threshold could be set to -50 or 500, silently weakening
+    or breaking the quality gate. Apply the same sanity bounds the AI-approval guardrails
+    already enforce (spark/rules_config.json's documented 0-100 percentage fields)."""
+    qst = body.get("quality_score_threshold")
+    if isinstance(qst, dict):
+        for key in ("base_value", "min_value"):
+            val = qst.get(key)
+            if isinstance(val, (int, float)) and not (0.0 <= val <= 100.0):
+                raise HTTPException(status_code=400, detail=f"quality_score_threshold.{key} must be between 0 and 100 (got {val}).")
+    freshness = body.get("freshness_threshold_hours")
+    if isinstance(freshness, dict):
+        val = freshness.get("base_value")
+        if isinstance(val, (int, float)) and val < 0:
+            raise HTTPException(status_code=400, detail=f"freshness_threshold_hours.base_value cannot be negative (got {val}).")
+    for check_name in _CRITICAL_CHECKS:
+        section = body.get(check_name)
+        if isinstance(section, dict) and section.get("enabled") is False:
+            logger.warning("Rule edit disables critical check '%s' for a table — allowed (authenticated direct edit), but flagged.", check_name)
+
+
 @router.put("/{table_name}", summary="Update rule overrides for a table")
-def update_rules_for_table(table_name: str, body: Dict[str, Any]) -> dict:
+def update_rules_for_table(table_name: str, body: Dict[str, Any], user: str = Depends(require_session)) -> dict:
     """Merge *body* into the table-specific section of ``rules_config.json``.
 
     This endpoint does **not** touch the ``_default`` block; it only
@@ -621,15 +657,32 @@ def update_rules_for_table(table_name: str, body: Dict[str, Any]) -> dict:
             detail="'_comment' is a reserved key.",
         )
 
+    _validate_rules_body(body)
+
     config = _load_rules_config()
 
     # Merge new values into the existing table section (create if absent)
     existing = config.get(table_name, {})
+    before_snapshot = copy.deepcopy(existing)
     existing.update(body)
     config[table_name] = existing
 
     _save_rules_config(config)
 
-    logger.info("Rules updated for table '%s': %s", table_name, body)
+    logger.info("Rules updated for table '%s' by '%s': %s", table_name, user, body)
+
+    # Root Cause Fix: persist a real audit trail (who/when/what changed), not just a
+    # transient log line, matching the same governance standard as schema drift approvals.
+    try:
+        es = _get_es()
+        es.index(index="sdoqap_rules_audit_log", document={
+            "table_name": table_name,
+            "changed_by": user,
+            "changed_at": datetime.now(timezone.utc).isoformat(),
+            "body_applied": body,
+            "before": before_snapshot,
+        })
+    except Exception as audit_err:
+        logger.warning("Failed to write rules audit log entry: %s", audit_err)
 
     return {"status": "updated", "table": table_name}

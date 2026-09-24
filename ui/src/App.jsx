@@ -13,15 +13,19 @@ import RulesConfig from "./pages/RulesConfig";
 import ConfigGuide from "./pages/ConfigGuide";
 import WhiteBoxPipeline from "./pages/WhiteBoxPipeline";
 import Login from "./pages/Login";
+import { useAuth } from "./hooks/useAuth";
 import "./App.css";
 
 function RequireAuth({ children }) {
-  const token = sessionStorage.getItem("sdoqap_admin_token");
+  const { isAuthenticated } = useAuth();
+  const location = useLocation();
 
-  if (!token) {
-    sessionStorage.setItem("sdoqap_admin_token", "sdoqap_active_session_token");
+  if (isAuthenticated === null) {
+    return <div style={{ padding: 48, textAlign: "center", color: "#64748B" }}>Checking session…</div>;
   }
-
+  if (!isAuthenticated) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
   return children;
 }
 
@@ -30,7 +34,7 @@ function AppContent({ isSidebarOpen, toggleSidebar }) {
   const [schemaCount, setSchemaCount] = useState(0);
   const [aiRulesCount, setAiRulesCount] = useState(0);
   const [isAlertDismissed, setIsAlertDismissed] = useState(false);
-  const isLoggedIn = !!sessionStorage.getItem("sdoqap_admin_token");
+  const { isAuthenticated } = useAuth();
 
   useEffect(() => {
     const mainEl = document.querySelector(".app-main-content");
@@ -39,8 +43,7 @@ function AppContent({ isSidebarOpen, toggleSidebar }) {
 
   useEffect(() => {
     const fetchCounts = async () => {
-      const token = sessionStorage.getItem("sdoqap_admin_token");
-      if (!token) return;
+      if (!isAuthenticated) return;
 
       try {
         const schemaRes = await fetch("/api/v1/schema/proposals");
@@ -67,7 +70,7 @@ function AppContent({ isSidebarOpen, toggleSidebar }) {
     fetchCounts();
     const interval = setInterval(fetchCounts, 10000);
     return () => clearInterval(interval);
-  }, [location.pathname]);
+  }, [location.pathname, isAuthenticated]);
   const isHome = location.pathname === "/";
   const isLogin = location.pathname === "/login";
 
@@ -114,7 +117,7 @@ function AppContent({ isSidebarOpen, toggleSidebar }) {
               <Route path="/rules config" element={<RequireAuth><RulesConfig /></RequireAuth>} />
               <Route path="/ingestion" element={<RequireAuth><Ingestion /></RequireAuth>} />
               <Route path="/export" element={<RequireAuth><DataExport /></RequireAuth>} />
-              <Route path="/whitebox" element={<WhiteBoxPipeline />} />
+              <Route path="/whitebox" element={<RequireAuth><WhiteBoxPipeline /></RequireAuth>} />
             </Routes>
           </ErrorBoundary>
         </main>

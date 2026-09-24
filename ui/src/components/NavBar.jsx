@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useApi } from "../hooks/useApi";
+import { useAuth } from "../hooks/useAuth";
 import "./NavBar.css";
 
 // --- SVG Icons ---
@@ -72,7 +73,8 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
   const location = useLocation();
   const navigate = useNavigate();
   
-  const isLoggedIn = !!sessionStorage.getItem("sdoqap_admin_token");
+  const { isAuthenticated, logout } = useAuth();
+  const isLoggedIn = !!isAuthenticated;
 
   // Notification badge states for pending governance items
   const [schemaCount, setSchemaCount] = useState(0);
@@ -85,8 +87,7 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
 
   useEffect(() => {
     const fetchCounts = async () => {
-      const token = sessionStorage.getItem("sdoqap_admin_token");
-      if (!token) return;
+      if (!isAuthenticated) return;
 
       try {
         const schemaRes = await fetch("/api/v1/schema/proposals");
@@ -113,10 +114,10 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
     fetchCounts();
     const interval = setInterval(fetchCounts, 10000);
     return () => clearInterval(interval);
-  }, [location.pathname]);
+  }, [location.pathname, isAuthenticated]);
 
-  const handleLogout = () => {
-    sessionStorage.removeItem("sdoqap_admin_token");
+  const handleLogout = async () => {
+    await logout();
     navigate("/login");
   };
 
