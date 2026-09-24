@@ -34,7 +34,7 @@ export default function ConfirmationModal({ isOpen, title, message, onConfirm, o
         <h3 style={{ color: "#0F172A", fontSize: "15px", fontWeight: 700, marginBottom: "8px", margin: 0 }}>
           {title}
         </h3>
-        <p style={{ color: "#64748B", fontSize: "12px", marginBottom: "20px", lineHeight: "1.5", marginTop: "4px" }}>
+        <p style={{ color: "#64748B", fontSize: "12px", marginBottom: "20px", lineHeight: "1.5", marginTop: "4px", whiteSpace: "pre-line", textAlign: "left" }}>
           {message}
         </p>
         <div style={{ display: "flex", gap: "10px", justifyContent: "center" }}>

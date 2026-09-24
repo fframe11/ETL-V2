@@ -531,6 +531,11 @@ export default function Schema() {
                     const t = selectedProposal?.resolved_at || selectedProposal?.proposed_at || selectedProposal?.timestamp;
                     return t ? new Date(t).toLocaleString() : "N/A";
                   })()}
+                  {selectedProposal?.resolved_by && (
+                    <div style={{ fontSize: "10px", fontWeight: 600, marginTop: "4px", textTransform: "none", opacity: 0.85 }}>
+                      by {selectedProposal.resolved_by}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

@@ -226,6 +226,7 @@ export default function RulesConfig() {
 
   // Fetch Table Config
   const [tableRules, setTableRules] = useState(null);
+  const [originalTableRules, setOriginalTableRules] = useState(null);
   const [rulesLoading, setRulesLoading] = useState(false);
   const [rulesError, setRulesError] = useState(null);
 
@@ -480,6 +481,9 @@ export default function RulesConfig() {
       if (res.ok) {
         const data = await res.json();
         setTableRules(data.effective_rules);
+        // Deep-clone snapshot of the as-fetched rules, kept untouched by edits, so the
+        // save confirmation can show a real before/after diff instead of a generic message.
+        setOriginalTableRules(JSON.parse(JSON.stringify(data.effective_rules)));
       } else {
         setRulesError("Failed to fetch rules config.");
       }
@@ -514,12 +518,37 @@ export default function RulesConfig() {
     }
   }, [selectedTable, activeTab]);
 
+  // Root Cause Fix: the confirmation dialog used to show a generic message regardless
+  // of what actually changed. Build a real before/after diff for the two thresholds
+  // validated server-side, so a reviewer can see e.g. "quality threshold 90% -> 60%"
+  // before confirming a change that weakens the quality gate.
+  const extractThresholdValue = (v) => (v && typeof v === "object" ? v.base_value : v);
+  const buildRulesDiffSummary = () => {
+    if (!originalTableRules || !tableRules) return null;
+    const lines = [];
+    const beforeScore = extractThresholdValue(originalTableRules.quality_score_threshold);
+    const afterScore = extractThresholdValue(tableRules.quality_score_threshold);
+    if (beforeScore !== afterScore) {
+      lines.push(`Base Target Score: ${beforeScore ?? "—"}% -> ${afterScore ?? "—"}%`);
+    }
+    const beforeDelay = extractThresholdValue(originalTableRules.freshness_threshold_hours);
+    const afterDelay = extractThresholdValue(tableRules.freshness_threshold_hours);
+    if (beforeDelay !== afterDelay) {
+      lines.push(`Max Allowed Delay: ${beforeDelay ?? "—"}h -> ${afterDelay ?? "—"}h`);
+    }
+    return lines;
+  };
+
   // Handle saving rules changes
   const handleSaveRules = (e) => {
     e.preventDefault();
+    const diffLines = buildRulesDiffSummary();
+    const diffText = diffLines && diffLines.length > 0
+      ? `\n\nChanges:\n${diffLines.join("\n")}`
+      : "";
     triggerConfirm(
       "Confirm Rules Update",
-      `Are you sure you want to update the quality parameters for table '${selectedTable}'? This will immediately affect all incoming ingestion pipelines.`,
+      `Are you sure you want to update the quality parameters for table '${selectedTable}'? This will immediately affect all incoming ingestion pipelines.${diffText}`,
       async () => {
         setSubmitting(true);
         setActionResult(null);
@@ -1029,7 +1058,7 @@ export default function RulesConfig() {
                     <div className="gs-editor-grid">
                       {/* Quality checks */}
                       <div className="gs-input-grp">
-                        <label>Quality Validation Mode</label>
+                        <label title="Strict: the target score below never changes. Adaptive: the system learns a new target from recent run history instead of using a fixed number.">Quality Validation Mode</label>
                         <select
                           value={typeof tableRules.quality_score_threshold === "object" ? tableRules.quality_score_threshold.mode : "strict"}
                           onChange={(e) => {
@@ -1051,12 +1080,21 @@ export default function RulesConfig() {
 
                       <div className="gs-input-grp">
                         <label>Base Target Score (%)</label>
+                        {/* Root Cause Fix: no client-side bounds meant a value like -50 or 500
+                            could be typed and only got rejected after clicking Save, by the
+                            server. min/max give immediate browser feedback; the clamp in
+                            onChange stops an obviously out-of-range value from being stored
+                            even before submit. The server-side check (0-100) stays as the
+                            authoritative guard regardless of what the client does. */}
                         <input
                           type="number"
                           step="0.1"
+                          min="0"
+                          max="100"
                           value={typeof tableRules.quality_score_threshold === "object" ? (tableRules.quality_score_threshold.base_value || 90.0) : tableRules.quality_score_threshold}
                           onChange={(e) => {
-                            const val = parseFloat(e.target.value) || 0.0;
+                            const parsed = parseFloat(e.target.value);
+                            const val = Number.isNaN(parsed) ? 0.0 : Math.min(100, Math.max(0, parsed));
                             if (typeof tableRules.quality_score_threshold === "object") {
                               updateNestedKey("quality_score_threshold", "base_value", val);
                             } else {
@@ -1070,7 +1108,7 @@ export default function RulesConfig() {
                     <div className="gs-editor-grid">
                       {/* Freshness */}
                       <div className="gs-input-grp">
-                        <label>Data Freshness Mode</label>
+                        <label title="How long data can go without updating before it's flagged as stale.">Data Freshness Mode</label>
                         <select
                           value={typeof tableRules.freshness_threshold_hours === "object" ? tableRules.freshness_threshold_hours.mode : "strict"}
                           onChange={(e) => {
@@ -1094,6 +1132,7 @@ export default function RulesConfig() {
                         <label>Max Allowed Delay (Hours)</label>
                         <input
                           type="number"
+                          min="0"
                           value={
                             typeof tableRules.freshness_threshold_hours === "object"
                               ? tableRules.freshness_threshold_hours.base_value !== null
@@ -1102,7 +1141,8 @@ export default function RulesConfig() {
                               : tableRules.freshness_threshold_hours || ""
                           }
                           onChange={(e) => {
-                            const val = e.target.value === "" ? null : parseInt(e.target.value);
+                            const parsed = e.target.value === "" ? null : parseInt(e.target.value);
+                            const val = parsed === null ? null : Math.max(0, parsed);
                             if (typeof tableRules.freshness_threshold_hours === "object") {
                               updateNestedKey("freshness_threshold_hours", "base_value", val);
                             } else {
@@ -1115,7 +1155,7 @@ export default function RulesConfig() {
 
                     <div className="gs-editor-grid">
                       <div className="gs-input-grp">
-                        <label>Null Checks Constraint Mode</label>
+                        <label title="How strictly missing (null) values are treated. Strict rejects any null; Adaptive allows a learned tolerance level.">Null Checks Constraint Mode</label>
                         <select
                           value={tableRules.null_checks?.mode || "adaptive"}
                           onChange={(e) => updateNestedKey("null_checks", "mode", e.target.value)}
@@ -1126,7 +1166,7 @@ export default function RulesConfig() {
                       </div>
 
                       <div className="gs-input-grp">
-                        <label>Outliers (IQR) Range Mode</label>
+                        <label title="IQR (Interquartile Range) is a statistical method to detect outliers — values far outside the typical range for this column get flagged automatically.">Outliers (IQR) Range Mode</label>
                         <select
                           value={tableRules.value_range?.mode || "auto"}
                           onChange={(e) => updateNestedKey("value_range", "mode", e.target.value)}

@@ -112,9 +112,6 @@ function AppContent({ isSidebarOpen, toggleSidebar }) {
               <Route path="/rules" element={<RequireAuth><RulesConfig /></RequireAuth>} />
               <Route path="/guide" element={<RequireAuth><ConfigGuide /></RequireAuth>} />
               <Route path="/guideline" element={<RequireAuth><ConfigGuide /></RequireAuth>} />
-              <Route path="/rules-config" element={<RequireAuth><RulesConfig /></RequireAuth>} />
-              <Route path="/rules_config" element={<RequireAuth><RulesConfig /></RequireAuth>} />
-              <Route path="/rules config" element={<RequireAuth><RulesConfig /></RequireAuth>} />
               <Route path="/ingestion" element={<RequireAuth><Ingestion /></RequireAuth>} />
               <Route path="/export" element={<RequireAuth><DataExport /></RequireAuth>} />
               <Route path="/whitebox" element={<RequireAuth><WhiteBoxPipeline /></RequireAuth>} />

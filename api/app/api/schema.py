@@ -61,7 +61,7 @@ def list_proposals(status: str = "PENDING"):
 
 
 @router.post("/proposals/{proposal_id}/approve")
-def approve_proposal(proposal_id: str, primary_key: str = None, date_column: str = None, _user: str = Depends(require_session)):
+def approve_proposal(proposal_id: str, primary_key: str = None, date_column: str = None, user: str = Depends(require_session)):
     """
     Approve a PENDING schema proposal.
     This writes the proposed schema into sdoqap_schema_registry in ES.
@@ -166,7 +166,7 @@ def approve_proposal(proposal_id: str, primary_key: str = None, date_column: str
         es.update(
             index="sdoqap_schema_proposals",
             id=proposal_id,
-            body={"doc": {"status": "APPROVED", "resolved_at": datetime.now(timezone.utc).isoformat()}},
+            body={"doc": {"status": "APPROVED", "resolved_at": datetime.now(timezone.utc).isoformat(), "resolved_by": user}},
             if_seq_no=seq_no,
             if_primary_term=primary_term
         )
@@ -184,7 +184,7 @@ def approve_proposal(proposal_id: str, primary_key: str = None, date_column: str
 
 
 @router.post("/proposals/{proposal_id}/reject")
-def reject_proposal(proposal_id: str, _user: str = Depends(require_session)):
+def reject_proposal(proposal_id: str, user: str = Depends(require_session)):
     """
     Reject a PENDING schema proposal.
     The current registry in ES remains unchanged.
@@ -208,7 +208,7 @@ def reject_proposal(proposal_id: str, _user: str = Depends(require_session)):
         es.update(
             index="sdoqap_schema_proposals",
             id=proposal_id,
-            body={"doc": {"status": "REJECTED", "resolved_at": datetime.now(timezone.utc).isoformat()}},
+            body={"doc": {"status": "REJECTED", "resolved_at": datetime.now(timezone.utc).isoformat(), "resolved_by": user}},
             if_seq_no=seq_no,
             if_primary_term=primary_term
         )
@@ -224,7 +224,7 @@ def reject_proposal(proposal_id: str, _user: str = Depends(require_session)):
 
 
 @router.post("/proposals/approve-all")
-def approve_all_proposals(_user: str = Depends(require_session)):
+def approve_all_proposals(user: str = Depends(require_session)):
     """
     Approve all PENDING schema proposals in bulk.
     Updates the registry in ES and writes to schema_registry.json on disk.
@@ -323,7 +323,7 @@ def approve_all_proposals(_user: str = Depends(require_session)):
             es.update(
                 index="sdoqap_schema_proposals",
                 id=proposal_id,
-                body={"doc": {"status": "APPROVED", "resolved_at": resolved_time}}
+                body={"doc": {"status": "APPROVED", "resolved_at": resolved_time, "resolved_by": user}}
             )
             approved_count += 1
 
@@ -344,7 +344,7 @@ def approve_all_proposals(_user: str = Depends(require_session)):
 
 
 @router.post("/proposals/reject-all")
-def reject_all_proposals(_user: str = Depends(require_session)):
+def reject_all_proposals(user: str = Depends(require_session)):
     """
     Reject all PENDING schema proposals in bulk.
     The current registry remains unchanged.
@@ -373,7 +373,7 @@ def reject_all_proposals(_user: str = Depends(require_session)):
             es.update(
                 index="sdoqap_schema_proposals",
                 id=proposal_id,
-                body={"doc": {"status": "REJECTED", "resolved_at": resolved_time}}
+                body={"doc": {"status": "REJECTED", "resolved_at": resolved_time, "resolved_by": user}}
             )
             rejected_count += 1
 

@@ -17,6 +17,8 @@ export default function DataExport() {
   const [matchedTotal, setMatchedTotal] = useState(null);
   const [zonePreviewData, setZonePreviewData] = useState(null);
   const [zonePreviewLoading, setZonePreviewLoading] = useState(false);
+  const [trustCheck, setTrustCheck] = useState(null);
+  const [copiedZone, setCopiedZone] = useState(null);
 
   const loadZonePreview = async (zone, limitOverride, searchOverride) => {
     const activeZone = zone || selectedExportZone;
@@ -45,11 +47,31 @@ export default function DataExport() {
     fetch("/api/v1/whitebox/state")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (d) setWbState(d);
+        if (d) {
+          setWbState(d);
+          // Root Cause Fix: BI/ML personas downloading this "certified" data had no way
+          // to see whether it's actually trust-checked by the real quality pipeline
+          // (backend already has this via /lineage/{table}/trust-check) before using it.
+          const dsName = d.dataset_name;
+          if (dsName) {
+            fetch(`/api/v1/lineage/${encodeURIComponent(dsName)}/trust-check`)
+              .then((r2) => (r2.ok ? r2.json() : null))
+              .then((tc) => { if (tc) setTrustCheck(tc); })
+              .catch(() => {});
+          }
+        }
       })
       .catch(() => {});
     loadZonePreview("CLEAN", 20, "");
   }, []);
+
+  const copyApiUrl = (zone) => {
+    const url = `${window.location.origin}/api/v1/whitebox/export-csv/${zone.toLowerCase()}`;
+    navigator.clipboard?.writeText(url).then(() => {
+      setCopiedZone(zone);
+      setTimeout(() => setCopiedZone(null), 2000);
+    }).catch(() => {});
+  };
 
   const wbMetrics = wbState?.metrics || {};
   const cleanCount = wbMetrics.clean_rows ?? 9400;
@@ -348,6 +370,23 @@ export default function DataExport() {
           </div>
         </div>
 
+        {/* Trust-Check status — tells BI/ML consumers whether this dataset is actually
+            certified by the production quality pipeline before they build on it. */}
+        {trustCheck && (
+          <div style={{
+            display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px",
+            padding: "8px 12px", borderRadius: "6px", fontSize: "12px", fontWeight: 600,
+            background: trustCheck.is_safe_to_consume ? "#ECFDF5" : "#FEF2F2",
+            border: `1px solid ${trustCheck.is_safe_to_consume ? "#A7F3D0" : "#FECACA"}`,
+            color: trustCheck.is_safe_to_consume ? "#047857" : "#B91C1C"
+          }}>
+            <Icon name={trustCheck.is_safe_to_consume ? "dot-green" : "dot-red"} />
+            {trustCheck.is_safe_to_consume
+              ? `Trust-Checked · Quality ${trustCheck.quality_score?.toFixed(1) ?? "?"}% (threshold ${trustCheck.quality_threshold}%)`
+              : `Not Trust-Checked: ${trustCheck.reason || "no verified quality run for this dataset in the production pipeline"}`}
+          </div>
+        )}
+
         {/* Full-Width Borderless Workspace Table (Exact match to Screenshot 2 Workspace Table) */}
         <div style={{ overflowX: "auto", marginBottom: "22px" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12.5px", textAlign: "left" }}>
@@ -369,6 +408,14 @@ export default function DataExport() {
                 <td style={{ padding: "10px", textAlign: "right" }}>
                   <button
                     type="button"
+                    onClick={() => copyApiUrl("CLEAN")}
+                    title="Copy the REST API URL for this dataset (for ML/BI pipelines to fetch programmatically instead of downloading a file)"
+                    style={{ padding: "4px 10px", borderRadius: "4px", fontSize: "11px", fontWeight: 600, background: "#FFFFFF", color: "#334155", border: "1px solid #CBD5E1", cursor: "pointer", marginRight: "6px" }}
+                  >
+                    {copiedZone === "CLEAN" ? "Copied!" : "Copy API URL"}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleZoneCSVDownload("CLEAN")}
                     style={{ padding: "4px 10px", borderRadius: "4px", fontSize: "11px", fontWeight: 600, background: "#2272B4", color: "#FFFFFF", border: "none", cursor: "pointer" }}
                   >
@@ -385,6 +432,14 @@ export default function DataExport() {
                 <td style={{ padding: "10px", textAlign: "right" }}>
                   <button
                     type="button"
+                    onClick={() => copyApiUrl("REVIEW")}
+                    title="Copy the REST API URL for this dataset"
+                    style={{ padding: "4px 10px", borderRadius: "4px", fontSize: "11px", fontWeight: 600, background: "#FFFFFF", color: "#334155", border: "1px solid #CBD5E1", cursor: "pointer", marginRight: "6px" }}
+                  >
+                    {copiedZone === "REVIEW" ? "Copied!" : "Copy API URL"}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleZoneCSVDownload("REVIEW")}
                     style={{ padding: "4px 10px", borderRadius: "4px", fontSize: "11px", fontWeight: 600, background: "#FFFFFF", color: "#0F172A", border: "1px solid #CBD5E1", cursor: "pointer" }}
                   >
@@ -399,6 +454,14 @@ export default function DataExport() {
                 <td style={{ padding: "10px", color: "#334155" }}>Quarantine Audit Log</td>
                 <td style={{ padding: "10px", fontWeight: 600, color: "#DC2626" }}>{quarantineCount.toLocaleString()} rows</td>
                 <td style={{ padding: "10px", textAlign: "right" }}>
+                  <button
+                    type="button"
+                    onClick={() => copyApiUrl("QUARANTINE")}
+                    title="Copy the REST API URL for this dataset"
+                    style={{ padding: "4px 10px", borderRadius: "4px", fontSize: "11px", fontWeight: 600, background: "#FFFFFF", color: "#334155", border: "1px solid #CBD5E1", cursor: "pointer", marginRight: "6px" }}
+                  >
+                    {copiedZone === "QUARANTINE" ? "Copied!" : "Copy API URL"}
+                  </button>
                   <button
                     type="button"
                     onClick={() => handleZoneCSVDownload("QUARANTINE")}

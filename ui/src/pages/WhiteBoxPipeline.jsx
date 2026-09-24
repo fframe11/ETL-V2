@@ -1203,7 +1203,7 @@ export default function WhiteBoxPipeline() {
                 <div className="wb-card bucket clean">
                   <div className="wb-bucket-header">
                     <span className="wb-bucket-icon"><Icon name="dot-green" /></span>
-                    <h3>Clean Data Asset</h3>
+                    <h3 title="Records that passed every quality check and are ready to use as-is.">Clean Data Asset</h3>
                   </div>
                   <div className="wb-bucket-count">{(executionResult.clean_rows ?? 0).toLocaleString()} rows</div>
                   <p>Meets all quality contracts. Directly ready for analytics and business utilization.</p>
@@ -1213,7 +1213,7 @@ export default function WhiteBoxPipeline() {
                 <div className="wb-card bucket review">
                   <div className="wb-bucket-header">
                     <span className="wb-bucket-icon"><Icon name="dot-yellow" /></span>
-                    <h3>Human Review Queue</h3>
+                    <h3 title="Statistical outliers that aren't clearly wrong — a person should check them before deciding to keep or drop.">Human Review Queue</h3>
                   </div>
                   <div className="wb-bucket-count">{(executionResult.review_rows ?? 0).toLocaleString()} rows</div>
                   <p>Study Hours Outliers isolated for domain expert appraisal rather than destructive auto-drop.</p>
@@ -1223,7 +1223,7 @@ export default function WhiteBoxPipeline() {
                 <div className="wb-card bucket quarantine">
                   <div className="wb-bucket-header">
                     <span className="wb-bucket-icon"><Icon name="dot-red" /></span>
-                    <h3>Quarantine Lake</h3>
+                    <h3 title="Records that clearly violate a quality rule (missing/out-of-range/duplicate) — held here instead of deleted, and routed back to the source system to fix.">Quarantine Lake</h3>
                   </div>
                   <div className="wb-bucket-count">{(executionResult.quarantine_rows ?? 0).toLocaleString()} rows</div>
                   <p>Missing scores, out-of-range grades (-10, 150), and duplicate composite keys quarantined.</p>

@@ -750,8 +750,8 @@ export default function Ingestion() {
                 <input type="text" value={rdbmsTable} onChange={(e) => setRdbmsTable(e.target.value)} placeholder="student_course_scores" style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12px", fontWeight: 700, background: "#FFFFFF" }} />
               </div>
               <div>
-                <button type="submit" style={{ width: "100%", padding: "9px 14px", background: "#1B3139", color: "#FFFFFF", border: "none", borderRadius: "6px", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}>
-                  ดึงข้อมูล RDBMS และรัน Auto-Profiling
+                <button type="submit" disabled={profilingLoading} style={{ width: "100%", padding: "9px 14px", background: "#1B3139", color: "#FFFFFF", border: "none", borderRadius: "6px", fontSize: "12px", fontWeight: 700, cursor: profilingLoading ? "wait" : "pointer", opacity: profilingLoading ? 0.6 : 1 }}>
+                  {profilingLoading ? "กำลังนำเข้าและวิเคราะห์..." : "ดึงข้อมูล RDBMS และรัน Auto-Profiling"}
                 </button>
               </div>
             </div>
@@ -786,8 +786,8 @@ export default function Ingestion() {
                 </div>
               </div>
               <div>
-                <button type="submit" style={{ width: "100%", padding: "9px 14px", background: "#1B3139", color: "#FFFFFF", border: "none", borderRadius: "6px", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}>
-                  ดึงข้อมูล API และรัน Auto-Profiling
+                <button type="submit" disabled={profilingLoading} style={{ width: "100%", padding: "9px 14px", background: "#1B3139", color: "#FFFFFF", border: "none", borderRadius: "6px", fontSize: "12px", fontWeight: 700, cursor: profilingLoading ? "wait" : "pointer", opacity: profilingLoading ? 0.6 : 1 }}>
+                  {profilingLoading ? "กำลังนำเข้าและวิเคราะห์..." : "ดึงข้อมูล API และรัน Auto-Profiling"}
                 </button>
               </div>
             </div>
@@ -817,8 +817,8 @@ export default function Ingestion() {
                 <input type="text" value={streamGroup} onChange={(e) => setStreamGroup(e.target.value)} placeholder="sdoqap-profiler-group" style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12px", background: "#FFFFFF" }} />
               </div>
               <div>
-                <button type="submit" style={{ width: "100%", padding: "9px 14px", background: "#1B3139", color: "#FFFFFF", border: "none", borderRadius: "6px", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}>
-                  รับข้อมูล Stream และรัน Auto-Profiling
+                <button type="submit" disabled={profilingLoading} style={{ width: "100%", padding: "9px 14px", background: "#1B3139", color: "#FFFFFF", border: "none", borderRadius: "6px", fontSize: "12px", fontWeight: 700, cursor: profilingLoading ? "wait" : "pointer", opacity: profilingLoading ? 0.6 : 1 }}>
+                  {profilingLoading ? "กำลังนำเข้าและวิเคราะห์..." : "รับข้อมูล Stream และรัน Auto-Profiling"}
                 </button>
               </div>
             </div>
