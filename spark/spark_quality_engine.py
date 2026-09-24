@@ -208,8 +208,11 @@ def acquire_lock(table_name: str, run_id: str, force: bool = False) -> bool:
                 return False
         return False
     except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as conn_err:
-        print(f"[LOCK] Elasticsearch is offline ({conn_err}). Bypassing lock as a fail-safe to prevent pipeline disruption.")
-        return True
+        # Root Cause Fix: a quality-assurance system must fail CLOSED when its coordination
+        # store is unreachable, not bypass mutual exclusion. Bypassing here was exactly the
+        # condition most likely to let two runs write to the same Delta table concurrently.
+        print(f"[LOCK] Elasticsearch is offline ({conn_err}). Aborting (fail-closed) — cannot safely coordinate concurrent runs.")
+        return False
     except Exception as e:
         print(f"[LOCK] Lock acquisition failed: {e}. Aborting (fail-safe).")
         return False
@@ -2394,11 +2397,22 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
                 .save(active_path)
             print("Delta Lake table created successfully.")
     except Exception as e:
-        print(f"Error during Delta write: {e}. Attempting direct fallback write.")
-        clean_df_for_upsert.write \
-            .format("delta") \
-            .mode("overwrite") \
-            .save(active_path)
+        # Root Cause Fix: a MERGE failure must never fall back to mode("overwrite") — that
+        # silently replaces the entire active table with just this run's batch, destroying
+        # all previously accumulated clean history. Fail the run closed instead: record it,
+        # release the lock, and exit non-zero. The raw source folder is left untouched (the
+        # cleanup step below only runs on the success path), so the run is safely retriable.
+        print(f"[CRITICAL] Delta MERGE failed for '{table_name}': {e}. Aborting run without touching active table.")
+        log_to_elasticsearch("sdoqap_pipeline_runs", {
+            "run_id": run_id,
+            "table_name": table_name,
+            "state": "failed",
+            "error_msg": f"Delta MERGE failed, active table left untouched: {str(e)}",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
+        release_lock(table_name)
+        spark.stop()
+        sys.exit(1)
     # ─── Delta Maintenance (Optimize & Vacuum for scale-ready Day-2 Operations) ───
     try:
         print("[DELTA MAINTENANCE] Running OPTIMIZE and ZORDER BY (row_hash)...")

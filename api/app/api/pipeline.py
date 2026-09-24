@@ -14,6 +14,52 @@ router = APIRouter(
 
 from .config import get_elasticsearch_url, get_es_client
 
+
+def _allowlisted_hosts(env_var: str) -> list:
+    raw = os.getenv(env_var, "")
+    return [h.strip().lower() for h in raw.split(",") if h.strip()]
+
+
+def validate_select_only(query: str):
+    """Root Cause Fix: /ingest/rdbms let callers run arbitrary SQL (including DDL/DML)
+    against any host they specified. Restrict to read-only SELECT statements only."""
+    stripped = query.strip()
+    if ";" in stripped.rstrip(";"):
+        raise HTTPException(status_code=400, detail="Multiple statements are not allowed in the query.")
+    first_token = stripped.split(None, 1)[0].upper() if stripped else ""
+    if first_token != "SELECT":
+        raise HTTPException(status_code=400, detail="Only SELECT queries are allowed for RDBMS ingestion.")
+
+
+def validate_rdbms_host(host: str):
+    allowed = _allowlisted_hosts("RDBMS_ALLOWED_HOSTS")
+    if not allowed:
+        raise HTTPException(
+            status_code=400,
+            detail="RDBMS ingestion is disabled: set RDBMS_ALLOWED_HOSTS in .env to a comma-separated allowlist of database hosts."
+        )
+    if host.strip().lower() not in allowed:
+        raise HTTPException(status_code=400, detail=f"Host '{host}' is not in the RDBMS_ALLOWED_HOSTS allowlist.")
+
+
+def validate_api_ingest_url(url: str):
+    from urllib.parse import urlparse
+    allowed = _allowlisted_hosts("API_INGEST_ALLOWED_HOSTS")
+    host = (urlparse(url).hostname or "").lower()
+    # data.go.th is a documented built-in integration (Smart Ingest resolver above already
+    # targets it exclusively for the multi-step resolution calls), so it's always permitted.
+    if host == "data.go.th" or host.endswith(".data.go.th"):
+        return
+    if not allowed:
+        import logging
+        logging.getLogger("sdoqap.startup").warning(
+            "API_INGEST_ALLOWED_HOSTS is not set — /ingest/api can fetch any URL (SSRF risk). "
+            "Set it in .env to a comma-separated allowlist of permitted hosts."
+        )
+        return
+    if host not in allowed:
+        raise HTTPException(status_code=400, detail=f"Host '{host}' is not in the API_INGEST_ALLOWED_HOSTS allowlist.")
+
 @router.get("")
 def list_pipeline_runs(page: int = 1, size: int = 50, limit: int = 50, paginated: bool = False):
     """
@@ -401,6 +447,7 @@ async def ingest_api(payload: ApiIngestPayload):
         except Exception as resolver_err:
             print(f"[SMART INGEST] Failed to resolve data.go.th package: {resolver_err}")
             
+    validate_api_ingest_url(resolved_url)
     try:
         api_res = requests.get(resolved_url, headers=req_headers, timeout=15)
         if api_res.status_code != 200:
@@ -555,56 +602,41 @@ async def ingest_rdbms(payload: RdbmsIngestPayload):
     table_name = payload.table_name
     db_type = payload.db_type.lower()
     records = []
-    
-    if db_type == "postgresql":
-        try:
-            import psycopg2
-            conn = psycopg2.connect(
-                host=payload.host,
-                port=payload.port,
-                user=payload.username,
-                password=payload.password,
-                database=payload.database,
-                connect_timeout=3
-            )
-            cursor = conn.cursor()
-            cursor.execute(payload.query)
-            colnames = [desc[0] for desc in cursor.description]
-            rows = cursor.fetchall()
-            for row in rows:
-                records.append(dict(zip(colnames, row)))
-            cursor.close()
-            conn.close()
-            print(f"[RDBMS INGEST] Successfully fetched {len(records)} rows from PostgreSQL")
-        except Exception as e:
-            print(f"[RDBMS INGEST] PostgreSQL fetch failed or driver missing: {e}. Falling back to generating simulated database rows...")
-            
-    # Fallback simulated data if connection fails or other databases are queried
-    if not records:
-        if "sales" in table_name.lower():
-            records = [
-                {"order_id": "ORD10001", "product": "Laptop", "quantity": 1, "price": 1200.0, "customer_id": "CUST901", "transaction_date": "2026-07-16"},
-                {"order_id": "ORD10002", "product": "Mouse", "quantity": 2, "price": 25.0, "customer_id": "CUST902", "transaction_date": "2026-07-16"},
-                {"order_id": "ORD10003", "product": "Keyboard", "quantity": 1, "price": 75.0, "customer_id": "CUST903", "transaction_date": "2026-07-16"},
-                {"order_id": "ORD10004", "product": "Monitor", "quantity": None, "price": 300.0, "customer_id": "CUST904", "transaction_date": "2026-07-16"}
-            ]
-        elif "user" in table_name.lower():
-            records = [
-                {"id": "U001", "name": "John Doe", "email": "john@example.com", "age": 28, "status": "active"},
-                {"id": "U002", "name": "Jane Smith", "email": "jane@example.com", "age": 34, "status": "active"},
-                {"id": "U003", "name": "Bob Johnson", "email": None, "age": 45, "status": "pending"}
-            ]
-        else:
-            records = [
-                {"id": 1, "name": "Item A", "value": 100.5, "status": "OK"},
-                {"id": 2, "name": "Item B", "value": 200.2, "status": "OK"},
-                {"id": 3, "name": "Item C", "value": None, "status": "ERROR"}
-            ]
-            
+
+    if db_type != "postgresql":
+        raise HTTPException(status_code=400, detail=f"Unsupported db_type '{db_type}'. Only 'postgresql' is currently supported.")
+
+    validate_select_only(payload.query)
+    validate_rdbms_host(payload.host)
+
+    try:
+        import psycopg2
+        conn = psycopg2.connect(
+            host=payload.host,
+            port=payload.port,
+            user=payload.username,
+            password=payload.password,
+            database=payload.database,
+            connect_timeout=3
+        )
+        cursor = conn.cursor()
+        cursor.execute(payload.query)
+        colnames = [desc[0] for desc in cursor.description]
+        rows = cursor.fetchall()
+        for row in rows:
+            records.append(dict(zip(colnames, row)))
+        cursor.close()
+        conn.close()
+        print(f"[RDBMS INGEST] Successfully fetched {len(records)} rows from PostgreSQL")
+    except Exception as e:
+        # Root Cause Fix: a failed DB connection/query must be reported as an error, never
+        # silently substituted with fabricated rows presented to the user as real data.
+        raise HTTPException(status_code=502, detail=f"PostgreSQL fetch failed: {str(e)}")
+
     import io
     import csv
     if not records:
-        raise HTTPException(status_code=400, detail="No database records found to ingest.")
+        raise HTTPException(status_code=400, detail="Query executed successfully but returned no rows to ingest.")
         
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=records[0].keys())
