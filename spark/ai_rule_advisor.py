@@ -939,7 +939,11 @@ Return ONLY valid JSON matching this schema:
                                    f"training samples. Tree depth={model.depth}. "
                                    f"Rules describe conditions under which records "
                                    f"are quarantined vs. passed.",
-                    "status": "SUCCESS",
+                    # Root Cause Fix: this was "SUCCESS", a status value the approval
+                    # queue (api/app/api/dynamic_rules.py, which filters on "PROPOSED")
+                    # never recognizes — induced-rule proposals were silently invisible
+                    # to human review regardless of any auto-promotion logic.
+                    "status": "PROPOSED",
                     "analysis_metadata": {
                         "method": "decision_tree_induction",
                         "auc": round(auc, 4),
@@ -1119,160 +1123,17 @@ Return ONLY valid JSON matching this schema:
         except Exception as e:
             print(f"[AI_ADVISOR] Failed to log remediation ticket to ES: {e}")
 
-    def promote_rules_to_config(self, table_name, suggested_rules):
-        """Auto-promote and merge rules directly into Elasticsearch sdoqap_rules_registry
-        and local rules_config.json.
-        Keeps a backup copy rules_config.json.bak for safety/rollback.
-        """
-        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rules_config.json")
-        backup_path = config_path + ".bak"
-        
-        # 1. Load active config for the table (try ES first, then local)
-        table_config = {}
-        config = {}
-        
-        # Try local first to get structure & default settings
-        if os.path.exists(config_path):
-            try:
-                with open(config_path, "r", encoding="utf-8") as f:
-                    config = json.load(f)
-                table_config = config.get(table_name, {})
-            except Exception as e:
-                print(f"[AUTO_PROMOTION] Failed to read local rules_config.json: {e}")
-
-        # Try fetching from ES to ensure we have the absolute latest centralized overrides
-        if self._base_url:
-            try:
-                url = f"{self._base_url}/sdoqap_rules_registry/_doc/{table_name}"
-                res = requests.get(url, auth=self._auth, timeout=3)
-                if res.status_code == 200:
-                    table_config = res.json().get("_source", {})
-                    print(f"[AUTO_PROMOTION] Loaded active rules override from Elasticsearch sdoqap_rules_registry.")
-            except Exception as e:
-                print(f"[AUTO_PROMOTION] Failed to read overrides from ES: {e}")
-
-        try:
-            promoted_count = 0
-            for rule in suggested_rules:
-                rule_path = rule.get("rule_path", "")
-                val = rule.get("value")
-                action = rule.get("action", "update")
-                condition = rule.get("condition")
-
-                # Handle normal override rules
-                if rule_path and val is not None:
-                    if action == "escalate":
-                        continue
-
-                    parts = rule_path.split(".")
-                    
-                    # ── Hard Guardrails Validation Layer (Task 3) ─────────────────────
-                    # 1. Quality threshold base floor at 70.0%
-                    if any(t in rule_path for t in ["quality_score_threshold", "base_value", "min_value"]) and isinstance(val, (int, float)):
-                        if val < 70.0:
-                            print(f"[GUARDRAIL VIOLATION] Rejected threshold change for '{rule_path}' = {val} on table '{table_name}'. Hard floor is 70.0%")
-                            continue
-                        
-                        # 2. Maximum deviation (decrease) cap of 10% from active configuration
-                        curr = table_config
-                        for part in parts:
-                            if isinstance(curr, dict) and part in curr:
-                                curr = curr[part]
-                            else:
-                                curr = None
-                                break
-                        
-                        if isinstance(curr, (int, float)) and curr > 0:
-                            max_reduction = curr * 0.90
-                            if val < max_reduction:
-                                print(f"[GUARDRAIL VIOLATION] Rejected threshold change from {curr} to {val} on table '{table_name}'. Exceeds maximum 10% allowed decrease (Limit: {max_reduction:.2f})")
-                                continue
-
-                    # Dotted path update
-                    d = table_config
-                    for part in parts[:-1]:
-                        d = d.setdefault(part, {})
-                    
-                    # 3. Check guardrails: Null tolerance cap at 0.30
-                    if "tolerance" in parts[-1] and isinstance(val, (int, float)):
-                        val = min(val, 0.30)
-                    
-                    d[parts[-1]] = val
-                    promoted_count += 1
-                    print(f"[AUTO_PROMOTION] Promoted override '{rule_path}' = {val} for table '{table_name}'")
-
-                # Handle induced tree rules
-                elif rule_path and condition:
-                    parts = rule_path.split(".")
-                    induced_sec = table_config.setdefault("induced", {})
-                    rule_name = parts[-1]
-                    induced_sec[rule_name] = {
-                        "condition": condition,
-                        "action": "quarantine",
-                        "origin": rule.get("origin", "decision_tree_induction"),
-                        "reason": rule.get("reason", "Auto-induced rule")
-                    }
-                    promoted_count += 1
-                    print(f"[AUTO_PROMOTION] Promoted induced rule '{rule_name}': {condition}")
-
-            if promoted_count > 0:
-                # 2. Write to Elasticsearch sdoqap_rules_registry
-                if self._base_url:
-                    try:
-                        url = f"{self._base_url}/sdoqap_rules_registry/_doc/{table_name}"
-                        headers = {"Content-Type": "application/json"}
-                        res = requests.put(url, headers=headers, auth=self._auth, json=table_config, timeout=5)
-                        if res.status_code in [200, 201]:
-                            print(f"[AUTO_PROMOTION] Successfully saved rules override to Elasticsearch sdoqap_rules_registry for '{table_name}'.")
-                            # Log audit entry to ES for rule version control
-                            audit_url = f"{self._base_url}/sdoqap_rules_audit_log/_doc"
-                            for rule in suggested_rules:
-                                audit_doc = {
-                                    "table_name": table_name,
-                                    "rule_path": rule.get("rule_path"),
-                                    "value": rule.get("value"),
-                                    "condition": rule.get("condition"),
-                                    "action": rule.get("action"),
-                                    "origin": rule.get("origin", "ai_advisor"),
-                                    "reason": rule.get("reason", "Auto-promotion"),
-                                    "timestamp": datetime.now(timezone.utc).isoformat()
-                                }
-                                requests.post(audit_url, headers=headers, auth=self._auth, json=audit_doc, timeout=3)
-                    except Exception as e:
-                        print(f"[AUTO_PROMOTION] Failed to save rules override/audit log to ES: {e}")
-
-                # 3. Update local config file as a persistent fallback cache with locking
-                if os.path.exists(config_path):
-                    import time
-                    lock_path = config_path + ".lock"
-                    acquired = False
-                    for _ in range(30):
-                        try:
-                            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-                            os.close(fd)
-                            acquired = True
-                            break
-                        except FileExistsError:
-                            time.sleep(0.1)
-                            
-                    try:
-                        config[table_name] = table_config
-                        with open(backup_path, "w", encoding="utf-8") as f:
-                            json.dump(config, f, indent=2)
-                        with open(config_path, "w", encoding="utf-8") as f:
-                            json.dump(config, f, indent=2)
-                        print(f"[AUTO_PROMOTION] Successfully updated local rules_config.json fallback cache. Backup saved.")
-                    finally:
-                        if acquired:
-                            try:
-                                os.remove(lock_path)
-                            except Exception:
-                                pass
-                return True
-
-        except Exception as e:
-            print(f"[AUTO_PROMOTION] Failed to promote rules to config: {e}")
-        return False
+    # Root Cause Fix: promote_rules_to_config() used to let spark_quality_engine.py
+    # write AI-suggested/induced rules straight into rules_config.json whenever a
+    # self-reported LLM confidence or a training-sample AUC crossed 0.90 — bypassing
+    # the human-approval governance gate entirely, and independently, its backup file
+    # was written from the already-mutated config (not a real pre-change snapshot) via
+    # a non-atomic in-place write. Both call sites now always log a PENDING proposal
+    # instead (log_proposal_to_es, below), and the one real approval path — a human
+    # clicking approve in api/app/api/dynamic_rules.py's /ai-proposals/{id}/approve —
+    # already merges rules with its own guardrails and persists via
+    # api/app/api/dynamic_rules.py's _save_rules_config(), which backs up the
+    # pre-mutation file correctly. This method had no remaining callers and is removed.
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

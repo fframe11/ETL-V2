@@ -549,6 +549,11 @@ def execute_pipeline(payload: ExecuteRulesPayload):
         lower_fence = q1 - mult * iqr
         upper_fence = q3 + mult * iqr
 
+    # Root Cause Fix: this rule (like composite_unique and auto_iqr below) must only run
+    # when a reviewer has actually accepted it — previously it ran unconditionally, so
+    # rejecting the rule at the Human Review gate had no effect on execution.
+    null_check_rule = next((r for r in accepted_rules if r.rule_type == "null_check" and r.field == "score"), None)
+
     # Range rule for score
     range_rule = next((r for r in accepted_rules if r.rule_type == "range_check" and r.field == "score"), None)
     min_score = range_rule.parameters.get("min", 0.0) if range_rule else 0.0
@@ -571,16 +576,16 @@ def execute_pipeline(payload: ExecuteRulesPayload):
             df.at[idx, "whitebox_rule_applied"] = "Composite Uniqueness (student_id + course + semester)"
             continue
 
-        # 2. Missing Score (Null Check)
-        if pd.isna(row.get("score")):
+        # 2. Missing Score (Null Check) — only enforced if the reviewer accepted this rule
+        if null_check_rule and pd.isna(row.get("score")):
             df.at[idx, "whitebox_status"] = "Quarantine"
             df.at[idx, "whitebox_error_type"] = "Missing Score"
             df.at[idx, "whitebox_rule_applied"] = "Strict Required (Null Tolerance = 0%)"
             continue
 
-        # 3. Invalid Score Range Check
+        # 3. Invalid Score Range Check — only enforced if the reviewer accepted this rule
         score_val = row.get("score")
-        if score_val < min_score or score_val > max_score:
+        if range_rule and not pd.isna(score_val) and (score_val < min_score or score_val > max_score):
             df.at[idx, "whitebox_status"] = "Quarantine"
             df.at[idx, "whitebox_error_type"] = "Invalid Score Range"
             df.at[idx, "whitebox_rule_applied"] = f"Known Domain Range [{int(min_score)}-{int(max_score)}]"

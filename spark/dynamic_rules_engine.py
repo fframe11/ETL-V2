@@ -405,23 +405,37 @@ def apply_adaptive_rules(rules_config, table_name, df, spark=None):
     }
 
     # ── 4a. Adaptive quality-score threshold ──────────────────────────────
+    # Root Cause Fix: rules_config.json nests the mode INSIDE
+    # quality_score_threshold ({"mode": "adaptive", "base_value": ..., ...}),
+    # not in a flat sibling "quality_score_threshold_mode" key. Reading the
+    # sibling key meant qst_mode was always "static" and this branch never
+    # ran for any table, even ones explicitly configured as "adaptive".
     qst = rules_config.get("quality_score_threshold")
-    qst_mode = rules_config.get("quality_score_threshold_mode", "static")
+    qst_mode = qst.get("mode", "static") if isinstance(qst, dict) else "static"
+    qst_base_value = qst.get("base_value") if isinstance(qst, dict) else qst
+    qst_min_value = qst.get("min_value", 70.0) if isinstance(qst, dict) else 70.0
+    qst_window = qst.get("adjustment_window_runs", 15) if isinstance(qst, dict) else 15
 
-    if qst_mode in ("adaptive", "auto") and qst is not None:
+    if qst_mode in ("adaptive", "auto") and qst_base_value is not None:
         try:
             adaptive_threshold = compute_adaptive_threshold(
-                table_name, base_value=qst,
+                table_name, base_value=qst_base_value, window=qst_window, min_value=qst_min_value,
             )
-            enhanced["quality_score_threshold"] = adaptive_threshold
+            # Preserve the dict shape callers expect (resolve_rule_value reads .base_value),
+            # while exposing the freshly-computed adaptive number as the effective value.
+            enhanced["quality_score_threshold"] = {
+                **qst,
+                "base_value": adaptive_threshold,
+                "_static_base_value": qst_base_value,
+            }
             dynamic_log["computed_rules"]["quality_score_threshold"] = {
-                "base": qst,
+                "base": qst_base_value,
                 "adaptive": adaptive_threshold,
                 "mode": qst_mode,
             }
         except Exception as e:
             print(f"[DYNAMIC_RULES] Adaptive threshold computation failed: {e}. "
-                  f"Keeping static value={qst}.")
+                  f"Keeping static value={qst_base_value}.")
 
     # ── 4b. Adaptive null checks ──────────────────────────────────────────
     null_checks = rules_config.get("null_checks", {})

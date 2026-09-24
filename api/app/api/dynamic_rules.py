@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from elasticsearch import Elasticsearch
+from elasticsearch import Elasticsearch, ConflictError
 
 from .config import get_elasticsearch_url, get_es_client
 from .auth import require_session
@@ -392,6 +392,8 @@ def approve_proposal(proposal_id: str, _user: str = Depends(require_session)) ->
 
     source = doc.get("_source", {})
     current_status = source.get("status", "")
+    seq_no = doc.get("_seq_no")
+    primary_term = doc.get("_primary_term")
 
     if current_status != "PROPOSED":
         raise HTTPException(
@@ -410,6 +412,13 @@ def approve_proposal(proposal_id: str, _user: str = Depends(require_session)) ->
                     "approved_at": datetime.now(timezone.utc).isoformat(),
                 }
             },
+            if_seq_no=seq_no,
+            if_primary_term=primary_term,
+        )
+    except ConflictError:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Proposal '{proposal_id}' was modified by another request. Reload and retry.",
         )
     except Exception as exc:
         raise HTTPException(
@@ -557,6 +566,8 @@ def reject_proposal(proposal_id: str, _user: str = Depends(require_session)) -> 
 
     source = doc.get("_source", {})
     current_status = source.get("status", "")
+    seq_no = doc.get("_seq_no")
+    primary_term = doc.get("_primary_term")
 
     if current_status != "PROPOSED":
         raise HTTPException(
@@ -574,6 +585,13 @@ def reject_proposal(proposal_id: str, _user: str = Depends(require_session)) -> 
                     "rejected_at": datetime.now(timezone.utc).isoformat(),
                 }
             },
+            if_seq_no=seq_no,
+            if_primary_term=primary_term,
+        )
+    except ConflictError:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Proposal '{proposal_id}' was modified by another request. Reload and retry.",
         )
     except Exception as exc:
         raise HTTPException(

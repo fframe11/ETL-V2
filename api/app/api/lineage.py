@@ -325,7 +325,11 @@ def get_table_trust_check(table_name: str):
             with open(config_path, "r") as f:
                 rules = json.load(f)
             table_rules = rules.get(table_name, {})
-            quality_threshold = table_rules.get("quality_score_threshold", rules.get("_default", {}).get("quality_score_threshold", 90.0))
+            raw_threshold = table_rules.get("quality_score_threshold", rules.get("_default", {}).get("quality_score_threshold", 90.0))
+            # Root Cause Fix: quality_score_threshold is a nested dict in the current
+            # rules_config.json format ({"mode": ..., "base_value": ...}), not a flat
+            # number — comparing quality_score >= a dict below would raise TypeError.
+            quality_threshold = raw_threshold.get("base_value", 90.0) if isinstance(raw_threshold, dict) else raw_threshold
         except Exception as e:
             print(f"[TRUST CHECK] Error loading rules_config.json: {e}")
 
@@ -357,6 +361,12 @@ def get_table_trust_check(table_name: str):
 
     # 3. Query Elasticsearch for any PENDING schema proposals for this table
     pending_proposals_count = 0
+    # Root Cause Fix: this used to fail open — if the query below errored, the count
+    # silently stayed 0 and is_safe_to_consume could return true while pending drift
+    # actually existed but was never checked. Track whether the check itself succeeded
+    # and fail closed (unsafe) if it didn't, matching the missing-quality-run behavior
+    # above (which already correctly returns HALT_INGEST rather than assuming safety).
+    proposals_check_ok = False
     if es.indices.exists(index="sdoqap_schema_proposals"):
         try:
             res = es.search(
@@ -374,18 +384,21 @@ def get_table_trust_check(table_name: str):
                 }
             )
             pending_proposals_count = res.get("hits", {}).get("total", {}).get("value", 0)
+            proposals_check_ok = True
         except Exception as e:
             print(f"[TRUST CHECK] Error querying schema proposals: {e}")
+    else:
+        proposals_check_ok = True  # index genuinely doesn't exist yet — 0 proposals is correct, not unknown
 
     # 4. Evaluate Safety Conditions
     quality_score = latest_run.get("quality_score", 0.0)
     has_pending_drift = pending_proposals_count > 0
-    
-    is_safe = (quality_score >= quality_threshold) and not has_pending_drift
-    
+
+    is_safe = (quality_score >= quality_threshold) and not has_pending_drift and proposals_check_ok
+
     reason = "Table meets all quality and schema parameters."
     recommendation = "SAFE"
-    
+
     if not is_safe:
         reasons = []
         if quality_score < quality_threshold:
@@ -395,6 +408,9 @@ def get_table_trust_check(table_name: str):
             reasons.append(f"There are {pending_proposals_count} PENDING schema drift proposal(s) awaiting approval.")
             if recommendation != "HALT_INGEST":
                 recommendation = "WARNING_SUSPECT"
+        if not proposals_check_ok:
+            reasons.append("Could not verify schema drift status (Elasticsearch query failed) — treating as unsafe until this can be confirmed.")
+            recommendation = "HALT_INGEST"
         reason = " ".join(reasons)
 
     return {

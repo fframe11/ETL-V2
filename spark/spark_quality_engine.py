@@ -1713,9 +1713,17 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
     
     # Try to apply dynamic adaptive rules (Layer 2: Statistical Engine)
     # Falls back gracefully to base values if dynamic_rules_engine is unavailable
+    #
+    # Note: the raw DataFrame isn't loaded yet at this point in the run, so only the
+    # quality_score_threshold branch (which queries ES history, not the DataFrame) is
+    # active here — that's the field every table's rules_config.json actually sets to
+    # "adaptive" mode. null_checks tolerance-learning has no consumer anywhere else in
+    # this file (unlike value_range, which is computed independently further down at
+    # the point value_range_profile is built) — it remains unimplemented; treat
+    # rules_config.json's null_checks.mode as informational until that's built.
     try:
         from dynamic_rules_engine import apply_adaptive_rules
-        rules = apply_adaptive_rules(rules, table_name, df=None, spark=None)
+        rules = apply_adaptive_rules(rules, table_name, df=None, spark=spark)
         print(f"[DYNAMIC RULES] Adaptive rules applied for '{table_name}'")
     except ImportError:
         print(f"[DYNAMIC RULES] dynamic_rules_engine not available, using base config")
@@ -2689,12 +2697,16 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
                     
                     min_confidence = ai_config.get("confidence_threshold", 0.7)
                     if analysis and analysis.get("confidence", 0) >= min_confidence:
-                        # Auto-promote if confidence is extremely high (e.g. >= 0.90)
-                        if analysis.get("confidence", 0) >= 0.90:
-                            print(f"[DYNAMIC ENGINE] Auto-promoting analysis rules (confidence={analysis['confidence']})")
-                            analysis["status"] = "APPROVED"
-                            advisor.promote_rules_to_config(table_name, analysis.get("suggested_rules", []))
-                        
+                        # Root Cause Fix: this used to auto-write suggested rules straight
+                        # into rules_config.json whenever the LLM's own self-reported
+                        # confidence was >= 0.90 — nothing independently verified that
+                        # number, so a hijacked or simply overconfident model response
+                        # could bypass the human-approval governance gate documented in
+                        # README.md's "Schema Approval Gate" section entirely. Every
+                        # AI-suggested rule change now always goes through the same
+                        # PENDING proposal + human approve/reject path as everything else
+                        # (api/app/api/dynamic_rules.py's /ai-proposals/{id}/approve,
+                        # which enforces its own independent guardrails).
                         advisor.log_proposal_to_es(table_name, run_id, analysis)
                         method = analysis.get("analysis_metadata", {}).get("method", "unknown")
                         print(f"[DYNAMIC ENGINE] Analysis complete ({method}). Root cause: {analysis.get('root_cause', 'N/A')}")
@@ -2731,13 +2743,12 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
                                 n_induced = len(induction_result.get("induced_rules", []))
                                 if n_induced > 0:
                                     auc = induction_result.get("model_accuracy", 0)
-                                    if auc >= 0.90:
-                                        print(f"[DYNAMIC ENGINE] Auto-promoting induced rules (AUC={auc:.4f})")
-                                        # Set status as APPROVED inside each rule
-                                        for r in induction_result.get("induced_rules", []):
-                                            r["status"] = "APPROVED"
-                                        advisor.promote_rules_to_config(table_name, induction_result.get("induced_rules", []))
-                                    print(f"[DYNAMIC ENGINE] Decision Tree induced {n_induced} rules (AUC={auc:.4f})")
+                                    # Root Cause Fix: same governance gap as the LLM path above —
+                                    # a high AUC on this run's small quarantine sample doesn't
+                                    # guarantee the induced rule generalizes; it must go through
+                                    # human approval like every other rule change, not write
+                                    # straight to rules_config.json.
+                                    print(f"[DYNAMIC ENGINE] Decision Tree induced {n_induced} rules (AUC={auc:.4f}) — logged as a pending proposal for review.")
                                     remediation_logs.append(f"decision_tree_induced_{n_induced}_rules_auc_{auc:.2f}")
                         except Exception as dt_err:
                             print(f"[DYNAMIC ENGINE] Decision Tree induction failed (non-fatal): {dt_err}")

@@ -288,18 +288,24 @@ Synthesize a list of declarative remediation rules (DSL) in JSON format to fix t
 
 ## Instructions:
 1. Identify the pattern of error in the sample.
-2. CRITICAL: If the column "ยอดขายรวม" is null or has missing values, DO NOT use "type": "fillna" with a null value. Instead, you MUST use "type": "calculate" with "expression": "จำนวน * ราคาต่อหน่วย" and "condition": "ยอดขายรวม IS NULL".
+2. If a numeric column is null but can be derived from other columns in this same
+   sample (e.g. a total that equals quantity * unit price), prefer a "calculate" rule
+   over "fillna" for that column.
 3. CRITICAL: Never generate "fillna" rules with a null/None value. All fillna rules must use concrete non-null default values.
-4. Return ONLY a valid JSON object containing the remediation rules under the key "remediation_rules". Do NOT wrap the JSON in markdown code blocks. No preamble.
+4. For EACH rule, include a "confidence" field from 0.0 to 1.0 reflecting how certain
+   you are the rule correctly fixes the pattern, based only on the evidence in the
+   sample (not general assumptions). Rules you are unsure about should score lower.
+5. Return ONLY a valid JSON object containing the remediation rules under the key "remediation_rules". Do NOT wrap the JSON in markdown code blocks. No preamble.
 
 ## Expected JSON Output Format:
 {{
   "remediation_rules": [
     {{
-      "column": "ยอดขายรวม",
+      "column": "total_amount",
       "type": "calculate",
-      "expression": "จำนวน * ราคาต่อหน่วย",
-      "condition": "ยอดขายรวม IS NULL"
+      "expression": "quantity * unit_price",
+      "condition": "total_amount IS NULL",
+      "confidence": 0.85
     }}
   ]
 }}
@@ -321,10 +327,31 @@ Synthesize a list of declarative remediation rules (DSL) in JSON format to fix t
         if not res or not isinstance(res, dict) or "remediation_rules" not in res:
             print(f"[REMEDIATION] Failed to synthesize DSL rules for category '{category}'.")
             return None
-            
-        rules = res["remediation_rules"]
-        print(f"[REMEDIATION] Synthesized DSL rules for category '{category}':\n{json.dumps(rules, indent=2)}")
-        return rules
+
+        raw_rules = res["remediation_rules"]
+        print(f"[REMEDIATION] Synthesized DSL rules for category '{category}':\n{json.dumps(raw_rules, indent=2)}")
+
+        # Root Cause Fix: self.min_confidence was set but never enforced — every
+        # LLM-synthesized rule was applied regardless of the model's own stated
+        # certainty. Reject (don't silently apply) any rule below the configured
+        # REMEDIATION_CONFIDENCE floor; a rule with no confidence field at all is
+        # treated as unverified (0.0) rather than assumed safe.
+        accepted = []
+        for rule in raw_rules:
+            confidence = rule.get("confidence", 0.0)
+            try:
+                confidence = float(confidence)
+            except (TypeError, ValueError):
+                confidence = 0.0
+            if confidence >= self.min_confidence:
+                accepted.append(rule)
+            else:
+                print(f"[REMEDIATION] Rejected low-confidence rule for '{category}' "
+                      f"(confidence={confidence} < min={self.min_confidence}): {rule}")
+
+        if not accepted:
+            return None
+        return accepted
 
     def read_quarantine_data(self):
         print(f"[REMEDIATION] Reading quarantine data for {self.table_name}")
@@ -458,8 +485,12 @@ Synthesize a list of declarative remediation rules (DSL) in JSON format to fix t
         if all_synthesized_rules:
             # Save to rule registries (ES and local JSON)
             save_remediation_rules(self.table_name, all_synthesized_rules)
-            
-        stats["confidence_avg"] = 0.90 if stats["fixed"] > 0 else 0.0
+
+        # Root Cause Fix: this was hardcoded to 0.90 whenever anything was "fixed",
+        # regardless of what the model actually reported. Use the real average of the
+        # confidence values on the rules that were actually accepted and applied.
+        rule_confidences = [float(r.get("confidence", 0.0)) for r in all_synthesized_rules if "confidence" in r]
+        stats["confidence_avg"] = round(sum(rule_confidences) / len(rule_confidences), 3) if rule_confidences else 0.0
         stats["duration_seconds"] = round(time.time() - start_time, 2)
         
         self._log_to_es(stats)

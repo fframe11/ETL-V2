@@ -328,7 +328,14 @@ def build_gold_financial_impact():
         return
 
     # Group by date
-    daily = defaultdict(lambda: {"quarantined": 0, "tables": defaultdict(int)})
+    # Root Cause Fix: spark_quality_engine.py already computes a real, data-driven
+    # quarantined_financial_value per run (summing the table's actual financial column
+    # for quarantined rows). This gold aggregation previously discarded that and
+    # re-derived cost as quarantined_records * $11 flat — a generic industry-benchmark
+    # estimate that can be wildly wrong for high- or low-value tables. Use the real
+    # value when a run has it; fall back to the flat estimate only for older runs
+    # written before that field existed, and record which mode was used.
+    daily = defaultdict(lambda: {"quarantined": 0, "tables": defaultdict(int), "real_cost": 0.0, "estimated_cost": 0.0, "used_real_value": False})
 
     for hit in hits:
         src = hit.get("_source", {})
@@ -336,8 +343,14 @@ def build_gold_financial_impact():
         date_key = ts[:10] if ts else "unknown"
         table = src.get("table_name", "unknown")
         q = src.get("quarantined_records", 0)
+        real_value = src.get("quarantined_financial_value")
         daily[date_key]["quarantined"] += q
         daily[date_key]["tables"][table] += q
+        if real_value:
+            daily[date_key]["real_cost"] += float(real_value)
+            daily[date_key]["used_real_value"] = True
+        else:
+            daily[date_key]["estimated_cost"] += q * COST_PER_QUARANTINED_RECORD_USD
 
     now_iso = datetime.now(timezone.utc).isoformat()
     cumulative = 0.0
@@ -346,7 +359,7 @@ def build_gold_financial_impact():
     for date_key in sorted_dates:
         d = daily[date_key]
         q_records = d["quarantined"]
-        daily_cost = round(q_records * COST_PER_QUARANTINED_RECORD_USD, 2)
+        daily_cost = round(d["real_cost"] + d["estimated_cost"], 2)
         cumulative += daily_cost
         most_impacted = max(d["tables"], key=d["tables"].get) if d["tables"] else "none"
 
@@ -355,6 +368,7 @@ def build_gold_financial_impact():
             "date": date_key,
             "total_quarantined_records": q_records,
             "estimated_cost_usd": daily_cost,
+            "cost_source": "real_financial_value" if d["used_real_value"] and d["estimated_cost"] == 0 else ("mixed" if d["used_real_value"] else "flat_estimate"),
             "cumulative_cost_usd": round(cumulative, 2),
             "most_impacted_table": most_impacted,
             "computed_at": now_iso
