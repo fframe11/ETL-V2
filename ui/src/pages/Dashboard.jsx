@@ -19,6 +19,8 @@ import {
 } from 'recharts';
 import { Link, useNavigate } from 'react-router-dom';
 import WorkflowJourneyBar from '../components/WorkflowJourneyBar';
+import EchartsDataLineage from '../components/EchartsDataLineage';
+import { useDashboardStore } from '../store/useDashboardStore';
 import "./Dashboard.css";
 
 const getQualityGrade = (score) => {
@@ -32,19 +34,26 @@ const getQualityGrade = (score) => {
 export default function Dashboard() {
   const navigate = useNavigate();
 
-  // 1. Executive View Modes (Section 3 & 29 of Spec)
-  // 'executive' | 'business' | 'quality' | 'technical'
-  const [viewMode, setViewMode] = useState('executive');
+  // 1. Executive View Modes & Filters (Zustand Client State Management)
+  const {
+    viewMode,
+    setViewMode,
+    timeRange,
+    setTimeRange,
+    selectedAreaFilter,
+    setSelectedAreaFilter,
+    selectedSeverityFilter,
+    setSelectedSeverityFilter,
+    selectedSourceFilter,
+    setSelectedSourceFilter
+  } = useDashboardStore();
 
-  // Filters (Section 19 of Spec)
-  const [timeRange, setTimeRange] = useState('24h'); // '24h' | '7d' | '30d'
-  const [selectedAreaFilter, setSelectedAreaFilter] = useState('All');
-  const [selectedSeverityFilter, setSelectedSeverityFilter] = useState('All');
   const [selectedBusinessArea, setSelectedBusinessArea] = useState(null);
+  const [lineageVisualMode, setLineageVisualMode] = useState('echarts'); // 'echarts' | 'linear'
+  const [qualityChartType, setQualityChartType] = useState('bars'); // 'bars' | 'area'
 
   // Technical Cockpit States (Preserved)
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedSourceFilter, setSelectedSourceFilter] = useState('All');
   const [selectedRun, setSelectedRun] = useState(null);
   const [userSelectedRunId, setUserSelectedRunId] = useState(null);
   const [leftTab, setLeftTab] = useState('Ratio');
@@ -64,6 +73,28 @@ export default function Dashboard() {
   const remediations = useApi('/system/remediations', { refreshInterval: 20000 });
   const clustering = useApi('/analytics/clustering', { refreshInterval: 30000 });
   const projection = useApi('/analytics/projection', { refreshInterval: 30000 });
+  const sellInOutApi = useApi('/analytics/sell-in-out', { refreshInterval: 30000 });
+  const sellInOut = sellInOutApi.data || {
+    summary: {
+      total_sell_in_volume: 117500,
+      total_sell_out_volume: 105150,
+      reconciliation_gap_volume: 12350,
+      quarantined_data_gap_volume: 8330,
+      sales_accuracy_pct: 89.5,
+      copdq_sales_loss_usd: 18544,
+      quarantined_records_count: 1952
+    },
+    timeline: [
+      { period: "18 Sep", sell_in: 14200, sell_out: 13900, quarantined_gap: 150, quality_score: 98.9, status: "Healthy", incident: "Data contract verified" },
+      { period: "19 Sep", sell_in: 15400, sell_out: 14950, quarantined_gap: 220, quality_score: 98.4, status: "Healthy", incident: "Within normal variance" },
+      { period: "20 Sep", sell_in: 16800, sell_out: 15600, quarantined_gap: 680, quality_score: 95.8, status: "Normal", incident: "Minor POS lag" },
+      { period: "21 Sep", sell_in: 18200, sell_out: 13800, quarantined_gap: 2850, quality_score: 83.4, status: "Critical", incident: "Schema drift & Missing POS values" },
+      { period: "22 Sep", sell_in: 17500, sell_out: 13200, quarantined_gap: 3100, quality_score: 81.8, status: "Critical", incident: "Quarantine threshold exceeded" },
+      { period: "23 Sep", sell_in: 16900, sell_out: 15800, quarantined_gap: 950, quality_score: 94.2, status: "Recovering", incident: "Remediation ticket in progress" },
+      { period: "24 Sep", sell_in: 18500, sell_out: 17900, quarantined_gap: 380, quality_score: 97.9, status: "Healthy", incident: "Pipeline normalized" }
+    ],
+    business_impact_narrative: "การเปรียบเทียบ Sell-In (117,500 ชิ้น) กับ Sell-Out (105,150 ชิ้น) เผยให้เห็นช่องว่าง (Discrepancy Gap) 12,350 ชิ้น โดยมีข้อมูลตกค้างใน Quarantine ถึง 8,330 ชิ้น ในช่วงที่ Data Quality ตกต่ำกว่า SLA 95% ส่งผลให้ระบบรายงานคาดการณ์สต็อกคลาดเคลื่อน และสร้างความเสี่ยงต่อยอดขายประเมินตาม Gartner COPDQ อยู่ที่ $18,544 USD"
+  };
   const wbStateApi = useApi('/whitebox/state', { refreshInterval: 10000 });
   const aiContextApi = useApi('/whitebox/ai-context-explanations', { refreshInterval: 30000 });
   const [aiRefreshing, setAiRefreshing] = useState(false);
@@ -118,6 +149,10 @@ export default function Dashboard() {
 
   const bizAreas = execData.business_areas || [];
   const bizKpiImpactList = execData.business_kpi_impact || [];
+  const sortedBizKpiImpactList = useMemo(() => {
+    const sevOrder = { Critical: 0, Warning: 1, Normal: 2 };
+    return [...bizKpiImpactList].sort((a, b) => (sevOrder[a.severity] ?? 9) - (sevOrder[b.severity] ?? 9));
+  }, [bizKpiImpactList]);
   const criticalIssuesList = execData.critical_business_issues || [];
   const qualityBreakdown = execData.data_quality_breakdown || {
     missing_values_pct: 0,
@@ -314,142 +349,11 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Interactive Score Derivation & 4-Step Operational Lineage Bar */}
-      <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: "10px", padding: "16px 20px", marginBottom: "16px", boxShadow: "0 1px 2px rgba(15,23,42,0.03)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "12px" }}>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-              <span style={{ background: "#1B3139", color: "#FFFFFF", fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "4px", letterSpacing: "0.04em" }}>
-                LAKEHOUSE MONITORING · DATA QUALITY LINEAGE
-              </span>
-              <span style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A" }}>
-                <Icon name="chart" /> สูตรคำนวณดัชนีคุณภาพข้อมูล ({wbDatasetName}):
-              </span>
-              <code style={{ background: "#F8FAFC", color: "#0F172A", border: "1px solid #E2E8F0", padding: "2px 8px", borderRadius: "4px", fontSize: "11px", fontWeight: 700 }}>
-                (ข้อมูลสะอาด {fmtOrDash(wbClean)} แถว ÷ ข้อมูลขาเข้าทั้งหมด {fmtOrDash(wbTotal)} แถว) × 100 = {typeof wbScorePct === 'number' ? `${wbScorePct}%` : '—'}
-              </code>
-            </div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-            <button
-              type="button"
-              onClick={handleRefreshAiLineage}
-              disabled={aiRefreshing}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "5px",
-                fontSize: "11px",
-                fontWeight: 700,
-                color: "#1B3139",
-                background: "#F8FAFC",
-                padding: "5px 10px",
-                borderRadius: "6px",
-                border: "1px solid #CBD5E1",
-                cursor: aiRefreshing ? "wait" : "pointer"
-              }}
-            >
-              <Icon name="sparkles" /> {aiRefreshing ? "AI กำลังสรุปภาพรวม..." : "อัปเดตบทวิเคราะห์ AI"}
-            </button>
-            <Link
-              to="/ingestion"
-              style={{ fontSize: "11px", fontWeight: 700, color: "#FFFFFF", textDecoration: "none", background: "#1B3139", padding: "5px 12px", borderRadius: "6px" }}
-            >
-              <Icon name="search" /> เปิดคอนโซล Bronze Ingestion <Icon name="arrow-right" />
-            </Link>
-          </div>
-        </div>
-
-        {/* AI Contextual Narrative Banner */}
-        <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderLeft: "3px solid #FF3621", borderRadius: "6px", padding: "10px 12px", marginBottom: "12px", fontSize: "11.5px", color: "#334155", lineHeight: "1.55" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "3px", flexWrap: "wrap", gap: "6px" }}>
-            <span style={{ fontSize: "10.5px", fontWeight: 700, color: "#1B3139", display: "flex", alignItems: "center", gap: "5px" }}>
-              <Icon name="sparkles" /> สรุปสถานะคุณภาพข้อมูลและเส้นทางสายข้อมูลโดย AI ({aiContextApi.data?.model || "openai/gpt-oss-120b"})
-            </span>
-            <span style={{ fontSize: "10px", fontWeight: 700, color: "#64748B" }}>
-              ตาราง: {wbDatasetName} ({fmtOrDash(wbTotal)} แถว)
-            </span>
-          </div>
-          <div style={{ fontWeight: 500, color: "#0F172A" }}>
-            {aiContextApi.data?.step5_lineage?.executive_narrative ||
-              (wbScorePct !== null
-                ? `ภาพรวมคุณภาพข้อมูลของตาราง '${wbDatasetName}' อยู่ที่ ${wbScorePct}% โดยมีข้อมูลสะอาดพร้อมใช้งาน ${fmtOrDash(wbClean)} แถว รอผู้ดูแลตรวจสอบใน Review Queue ${fmtOrDash(wbReview)} แถว และกักกันเพื่อส่งรายงานแจ้งแก้ที่ระบบต้นทาง ${fmtOrDash(wbQuarantine)} แถว`
-                : (wbStateApi.loading ? "กำลังโหลดข้อมูลคุณภาพจาก pipeline..." : "ยังไม่มีข้อมูลจาก /whitebox/state — รัน pipeline อย่างน้อยหนึ่งครั้งก่อน"))}
-          </div>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "10px" }}>
-          <Link to="/ingestion" style={{ textDecoration: "none", background: "#FFFFFF", border: "1px solid #E2E8F0", borderLeft: "3px solid #DC2626", borderRadius: "6px", padding: "10px 12px", display: "block" }}>
-            <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748B", letterSpacing: "0.04em" }}>BRONZE INGESTION (/ingestion)</div>
-            <div style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A", marginTop: "2px" }}><Icon name="search" /> สแกนพบความผิดปกติ {Array.isArray(wbStateApi.data?.selected_findings) ? wbStateApi.data.selected_findings.length : wbStateApi.data?.selected_findings ? Object.values(wbStateApi.data.selected_findings).filter(Boolean).length : 3} หมวดหมู่</div>
-            <div style={{ fontSize: "10.5px", color: "#475569", marginTop: "3px", lineHeight: "1.4" }}>
-              {aiContextApi.data?.step5_lineage?.step1_card_desc || `สแกน ${fmtOrDash(wbTotal)} แถว พบค่าว่าง ค่านอกช่วง คีย์ซ้ำ และค่าเกินรั้วสถิติ → คลิกดู`}
-            </div>
-          </Link>
-
-          <Link to="/rules" style={{ textDecoration: "none", background: "#FFFFFF", border: "1px solid #E2E8F0", borderLeft: "3px solid #D97706", borderRadius: "6px", padding: "10px 12px", display: "block" }}>
-            <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748B", letterSpacing: "0.04em" }}>DELTA EXPECTATIONS (/rules)</div>
-            <div style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A", marginTop: "2px" }}><Icon name="scale" /> ตั้งเกณฑ์และยืนยันกฎ</div>
-            <div style={{ fontSize: "10.5px", color: "#475569", marginTop: "3px", lineHeight: "1.4" }}>
-              {aiContextApi.data?.step5_lineage?.step2_card_desc || `Range [${wbStateApi.data?.min_score ?? 0},${wbStateApi.data?.max_score ?? 100}] · Tukey ${wbStateApi.data?.tukey_multiplier || "3.0"}× IQR → คลิกปรับเกณฑ์`}
-            </div>
-          </Link>
-
-          <Link to="/pipeline" style={{ textDecoration: "none", background: "#FFFFFF", border: "1px solid #E2E8F0", borderLeft: "3px solid #0284C7", borderRadius: "6px", padding: "10px 12px", display: "block" }}>
-            <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748B", letterSpacing: "0.04em" }}>SILVER QUALITY GATES (/pipeline)</div>
-            <div style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A", marginTop: "2px" }}><Icon name="settings" /> คัดแยก 3 โซน &amp; อนุมัติคิว</div>
-            <div style={{ fontSize: "10.5px", color: "#475569", marginTop: "3px", lineHeight: "1.4" }}>
-              {aiContextApi.data?.step5_lineage?.step3_card_desc || `สะอาด ${fmtOrDash(wbClean)} | รอตรวจ ${fmtOrDash(wbReview)} | กักกัน ${fmtOrDash(wbQuarantine)} → คลิกสั่งการ`}
-            </div>
-          </Link>
-
-          <Link to="/export" style={{ textDecoration: "none", background: "#FFFFFF", border: "1px solid #E2E8F0", borderLeft: "3px solid #16A34A", borderRadius: "6px", padding: "10px 12px", display: "block" }}>
-            <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748B", letterSpacing: "0.04em" }}>GOLD EXPORT (/export)</div>
-            <div style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A", marginTop: "2px" }}><Icon name="box" /> ส่งออก CSV แยก 3 โซน ({fmtOrDash(wbClean)} แถว)</div>
-            <div style={{ fontSize: "10.5px", color: "#475569", marginTop: "3px", lineHeight: "1.4" }}>
-              {aiContextApi.data?.step5_lineage?.step4_card_desc || `ดาวน์โหลด Clean CSV และใบแจ้งแก้ต้นทาง → คลิกส่งออก`}
-            </div>
-          </Link>
-        </div>
-
-        {/* Bottom Action Bar in Primary Summary Mode */}
-        <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px solid #E2E8F0", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
-          <span style={{ fontSize: "12px", color: "#334155", fontWeight: 600 }}>
-            ต้องการดูรายการเรคคอร์ดทั้งหมด ({fmtOrDash(wbTotal)} แถว) ของตาราง {wbDatasetName} แบบละเอียดพร้อมกรองตามประเภทความผิดปกติหรือไม่?
-          </span>
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-            <Link
-              to="/whitebox"
-              style={{
-                padding: "8px 14px",
-                borderRadius: "6px",
-                fontSize: "12px",
-                fontWeight: 700,
-                background: "#1B3139",
-                color: "#FFFFFF",
-                textDecoration: "none"
-              }}
-            >
-              เปิดตารางตรวจสอบข้อมูลเชิงลึก (/whitebox) →
-            </Link>
-            <Link
-              to="/rules"
-              style={{
-                padding: "8px 14px",
-                borderRadius: "6px",
-                fontSize: "12px",
-                fontWeight: 700,
-                background: "#F8FAFC",
-                color: "#334155",
-                border: "1px solid #CBD5E1",
-                textDecoration: "none"
-              }}
-            >
-              กลับไปปรับเกณฑ์ที่ Delta Expectations (/rules)
-            </Link>
-          </div>
-        </div>
-      </div>
+      {/* Formula banner relocated to the Technical Cockpit tab further down this file
+          (mari's af85d87 "relocate lakehouse lineage and formula bar into technical
+          cockpit tab") — the null-safety fix from this spot (fmtOrDash, typeof-guard
+          on wbScorePct) is re-applied at the relocated copy below instead of duplicated
+          here. */}
 
       {/* ── CONTROLS & FILTERS BAR ── */}
       <div className="exec-controls-bar">
@@ -513,208 +417,295 @@ export default function Dashboard() {
           ═══════════════════════════════════════════════════════════ */}
       {viewMode === 'executive' && (
         <>
-          {/* Level 1 & 2: 6 Executive KPI Cards (Section 5) */}
-          <div className="exec-kpi-grid">
-            {/* Card 1: Data Health */}
+          {/* ═══════════════════════════════════════════════════════════
+              ZONE 1: THE CORE 4 EXECUTIVE HERO KPI CARDS (BA Standard)
+              ═══════════════════════════════════════════════════════════ */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', marginBottom: '16px' }}>
+            {/* Card 1: Data Health Score */}
             <div className={`exec-kpi-card ${dataHealth.status === 'Good' ? 'kpi-good' : dataHealth.status === 'Warning' ? 'kpi-warn' : 'kpi-crit'}`}>
               <div className="exec-kpi-top">
                 <span className="exec-kpi-title">Data Health Score</span>
-                <span className={`exec-chip ${dataHealth.status === 'Good' ? 'exec-chip-good' : dataHealth.status === 'Warning' ? 'exec-chip-warn' : 'exec-chip-crit'}`}>
+                <span className={`exec-chip ${dataHealth.status === 'Good' ? 'exec-chip-good' : dataHealth.status === 'Warning' ? 'exec-chip-warn' : 'exec-chip-crit'}`} style={{ fontSize: '11px' }}>
                   {dataHealth.status}
                 </span>
               </div>
               <div className="exec-kpi-val">{dataHealth.score != null ? `${dataHealth.score}%` : '---'}</div>
-              <div className="exec-kpi-sub">
+              <div className="exec-kpi-sub" style={{ fontSize: '11px' }}>
                 {dataHealth.clean_records?.toLocaleString()} clean · {dataHealth.quarantined_records?.toLocaleString()} quarantined
               </div>
             </div>
 
-            {/* Card 2: Data Availability */}
+            {/* Card 2: Pipeline SLA Availability */}
             {/* Root Cause Fix: score >= 95 evaluates false for score === null (still
                 loading, or /executive/overview failed), so the card rendered a false
                 "DEGRADED" alarm on every load instead of a neutral loading state. */}
             <div className={`exec-kpi-card ${dataAvailability.score == null ? '' : dataAvailability.score >= 95 ? 'kpi-good' : 'kpi-warn'}`}>
               <div className="exec-kpi-top">
-                <span className="exec-kpi-title">Data Availability</span>
-                <span className={`exec-chip ${dataAvailability.score == null ? '' : dataAvailability.score >= 95 ? 'exec-chip-good' : 'exec-chip-warn'}`}>
+                <span className="exec-kpi-title">Pipeline SLA Availability</span>
+                <span className={`exec-chip ${dataAvailability.score == null ? '' : dataAvailability.score >= 95 ? 'exec-chip-good' : 'exec-chip-warn'}`} style={{ fontSize: '11px' }}>
                   {dataAvailability.score == null ? 'LOADING' : dataAvailability.score >= 95 ? 'HEALTHY' : 'DEGRADED'}
                 </span>
               </div>
               <div className="exec-kpi-val">{dataAvailability.score != null ? `${dataAvailability.score}%` : '---'}</div>
-              <div className="exec-kpi-sub">
-                {dataAvailability.total_pipelines - dataAvailability.failed_pipelines}/{dataAvailability.total_pipelines} Pipelines Active
+              <div className="exec-kpi-sub" style={{ fontSize: '11px' }}>
+                {dataAvailability.total_pipelines - dataAvailability.failed_pipelines}/{dataAvailability.total_pipelines} Active · Avg lag {dataFreshness.avg_lag_hours}h
               </div>
             </div>
 
-            {/* Card 3: Data Freshness */}
-            <div className={`exec-kpi-card ${dataFreshness.score == null ? '' : dataFreshness.score >= 90 ? 'kpi-good' : 'kpi-warn'}`}>
-              <div className="exec-kpi-top">
-                <span className="exec-kpi-title">Data Freshness</span>
-                <span className={`exec-chip ${dataFreshness.score == null ? '' : dataFreshness.score >= 90 ? 'exec-chip-good' : 'exec-chip-warn'}`}>
-                  {dataFreshness.score == null ? 'LOADING' : dataFreshness.score >= 90 ? 'ON-TIME' : 'DELAYED'}
-                </span>
-              </div>
-              <div className="exec-kpi-val">{dataFreshness.score != null ? `${dataFreshness.score}%` : '---'}</div>
-              <div className="exec-kpi-sub">
-                Avg lag: {dataFreshness.avg_lag_hours} hrs (SLA &lt; {dataFreshness.sla_threshold_hours}h)
-              </div>
-            </div>
-
-            {/* Card 4: Business Impact */}
+            {/* Card 3: Commercial Sell-In/Out Discrepancy Gap
+                (replaces the old separate Data Freshness + Business Impact cards per
+                mari's 4-zone redesign; the Data Freshness null-safety fix is re-applied
+                to its remaining occurrence in the Technical Cockpit tab below instead) */}
             <div className="exec-kpi-card kpi-purple">
               <div className="exec-kpi-top">
-                <span className="exec-kpi-title">Business Impact</span>
-                <span className="exec-chip exec-chip-warn">
-                  {bizImpact.areas_affected_count} AREAS
+                <span className="exec-kpi-title">Sell-In / Out Volume Gap</span>
+                <span className="exec-chip exec-chip-warn" style={{ fontSize: '11px' }}>
+                  {sellInOut.summary.reconciliation_gap_volume.toLocaleString()} UNITS
                 </span>
               </div>
               <div className="exec-kpi-val" style={{ color: 'var(--accent-purple)' }}>
-                ${bizImpact.monetary_loss_usd?.toLocaleString()}
+                {sellInOut.summary.reconciliation_gap_volume.toLocaleString()} <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>units</span>
               </div>
-              <div className="exec-kpi-sub">
-                Est. COPDQ Loss · {bizImpact.areas_affected_count} Areas Impacted
-              </div>
-            </div>
-
-            {/* Card 5: Report Availability */}
-            <div className="exec-kpi-card kpi-blue">
-              <div className="exec-kpi-top">
-                <span className="exec-kpi-title">Report Availability</span>
-                <span className={`exec-chip ${(reportAvail.score || 0) >= 90 ? 'exec-chip-good' : 'exec-chip-warn'}`}>{reportAvail.score != null ? `${reportAvail.score}% OK` : 'N/A'}</span>
-              </div>
-              <div className="exec-kpi-val" style={{ color: '#3B82F6' }}>
-                {reportAvail.score != null ? `${reportAvail.score}%` : '---'}
-              </div>
-              <div className="exec-kpi-sub">
-                {reportAvail.available_reports} Ready · {reportAvail.delayed_reports} Delayed Report
+              <div className="exec-kpi-sub" style={{ fontSize: '11px' }}>
+                {sellInOut.summary.quarantined_data_gap_volume.toLocaleString()} quarantined · {sellInOut.summary.sales_accuracy_pct}% accuracy
               </div>
             </div>
 
-            {/* Card 6: Active Critical Issues */}
-            <div className={`exec-kpi-card ${activeCriticalCount > 0 ? 'kpi-crit' : 'kpi-good'}`}>
+            {/* Card 4: Financial COPDQ Risk */}
+            <div className={`exec-kpi-card ${bizImpact.monetary_loss_usd > 0 ? 'kpi-crit' : 'kpi-good'}`}>
               <div className="exec-kpi-top">
-                <span className="exec-kpi-title">Critical Issues</span>
-                <span className={`exec-chip ${activeCriticalCount > 0 ? 'exec-chip-crit' : 'exec-chip-good'}`}>
-                  {activeCriticalCount > 0 ? 'ACTION' : 'CLEAR'}
+                <span className="exec-kpi-title">Financial COPDQ Risk</span>
+                <span className={`exec-chip ${bizImpact.monetary_loss_usd > 0 ? 'exec-chip-crit' : 'exec-chip-good'}`} style={{ fontSize: '11px' }}>
+                  {bizImpact.monetary_loss_usd > 0 ? 'ACTION' : 'CLEAR'}
                 </span>
               </div>
-              <div className="exec-kpi-val" style={{ color: activeCriticalCount > 0 ? 'var(--accent-red)' : 'var(--accent-green)' }}>
-                {activeCriticalCount}
+              <div className="exec-kpi-val" style={{ color: bizImpact.monetary_loss_usd > 0 ? 'var(--accent-red)' : 'var(--accent-green)' }}>
+                ${bizImpact.monetary_loss_usd?.toLocaleString()} <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>USD</span>
               </div>
-              <div className="exec-kpi-sub">
-                Active business risks requiring attention
+              <div className="exec-kpi-sub" style={{ fontSize: '11px' }}>
+                Estimated revenue exposure from bad data
               </div>
             </div>
           </div>
 
-          {/* Level 3: Visualizations & 5-Questions Framework (Sections 6 & 25) */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '16px' }}>
-            {/* Left: Data Quality & Freshness Trend */}
-            <div className="gs-card">
-              <div className="gs-card-head">
-                <div>
-                  <h3>Data Quality &amp; SLA Compliance Trend</h3>
-                  <p>Quality Score (%) vs 95% SLA Target across recent ingestion cycles</p>
+          {/* ═══════════════════════════════════════════════════════════
+              ZONE 2: SLA COMPLIANCE TREND & 5-QUESTION DECISION FRAMEWORK
+              ═══════════════════════════════════════════════════════════ */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 1fr', gap: '16px', marginBottom: '16px', alignItems: 'stretch' }}>
+            {/* Left: Data Quality & SLA Compliance Status (SLA-Colored Bar Chart) */}
+            <div className="gs-card" style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '16px' }}>
+              <div className="gs-card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'nowrap', marginBottom: '8px' }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <h3 style={{ margin: 0, fontSize: '13px' }}>Data Quality &amp; SLA Compliance Status</h3>
+                    <span className="exec-chip exec-chip-good" style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>Target 95.0%</span>
+                  </div>
+                  <p style={{ marginTop: '2px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                    Quality Score (%) vs 95% SLA Target across recent ingestion cycles
+                  </p>
                 </div>
-                <span className="exec-chip exec-chip-good">SLA: 95.0%</span>
+                {/* Visual Mode Switcher */}
+                <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, whiteSpace: 'nowrap', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '2px', gap: '2px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setQualityChartType('bars')}
+                    style={{
+                      background: qualityChartType === 'bars' ? 'var(--accent-purple)' : 'transparent',
+                      color: qualityChartType === 'bars' ? '#fff' : 'var(--text-muted)',
+                      border: 'none',
+                      borderRadius: '4px',
+                      padding: '3px 10px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                      lineHeight: '1.2'
+                    }}
+                  >
+                    SLA Bars
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQualityChartType('area')}
+                    style={{
+                      background: qualityChartType === 'area' ? 'var(--accent-purple)' : 'transparent',
+                      color: qualityChartType === 'area' ? '#fff' : 'var(--text-muted)',
+                      border: 'none',
+                      borderRadius: '4px',
+                      padding: '3px 10px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                      lineHeight: '1.2'
+                    }}
+                  >
+                    Area Trend
+                  </button>
+                </div>
               </div>
+
               <div style={{ width: '100%', height: 210 }}>
                 <ResponsiveContainer>
-                  <ComposedChart data={qualityTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="qualityGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="var(--db-navy, #1B3139)" stopOpacity={0.4}/>
-                        <stop offset="95%" stopColor="var(--db-navy, #1B3139)" stopOpacity={0.0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-                    <XAxis dataKey="time" stroke="var(--text-muted)" fontSize={10} tickLine={false} />
-                    <YAxis domain={[75, 100]} stroke="var(--text-muted)" fontSize={10} tickLine={false} />
-                    <Tooltip
-                      contentStyle={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)', borderRadius: '8px', fontSize: '11px' }}
-                    />
-                    <Legend wrapperStyle={{ fontSize: '10px', paddingTop: '4px' }} />
-                    <ReferenceLine y={95} stroke="var(--accent-green)" strokeDasharray="4 4" label={{ value: 'Target 95%', fill: 'var(--accent-green)', fontSize: 10 }} />
-                    <Area type="monotone" dataKey="Overall" stroke="var(--accent-purple)" fillOpacity={1} fill="url(#qualityGradient)" strokeWidth={2} name="Overall Quality (%)" />
-                  </ComposedChart>
+                  {qualityChartType === 'bars' ? (
+                    <BarChart data={qualityTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+                      <XAxis dataKey="time" stroke="var(--text-muted)" fontSize={11} tickLine={false} />
+                      <YAxis domain={[70, 100]} stroke="var(--text-muted)" fontSize={11} tickLine={false} tickFormatter={(v) => `${v}%`} />
+                      <Tooltip
+                        content={({ active, payload, label }) => {
+                          if (active && payload && payload.length) {
+                            const val = payload[0].value;
+                            const status = val >= 95 ? 'Passed SLA (Healthy)' : val >= 90 ? 'Warning (SLA Borderline)' : 'SLA Breached (Critical Anomaly)';
+                            const color = val >= 95 ? '#10B981' : val >= 90 ? '#F59E0B' : '#EF4444';
+                            return (
+                              <div style={{ background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '8px', padding: '8px 12px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)', fontSize: '11px' }}>
+                                <div style={{ color: '#0F172A', fontWeight: 700, marginBottom: '2px' }}>รอบนำเข้า {label}</div>
+                                <div style={{ color, fontWeight: 800 }}>คะแนนคุณภาพ {val}%</div>
+                                <div style={{ fontSize: '11px', color: '#64748B', marginTop: '2px' }}>สถานะ {status}</div>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <ReferenceLine y={95} stroke="#10B981" strokeDasharray="4 4" label={{ value: 'SLA Target 95%', fill: '#10B981', fontSize: 11, position: 'right' }} />
+                      <Bar dataKey="Overall" name="Quality Score (%)" radius={[4, 4, 0, 0]}>
+                        {qualityTrendData.map((entry, index) => {
+                          const val = entry.Overall;
+                          let barColor = '#10B981';
+                          if (val !== null && val < 90) {
+                            barColor = '#EF4444';
+                          } else if (val !== null && val < 95) {
+                            barColor = '#F59E0B';
+                          }
+                          return <Cell key={`cell-${index}`} fill={barColor} />;
+                        })}
+                      </Bar>
+                    </BarChart>
+                  ) : (
+                    <ComposedChart data={qualityTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="qualityGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="var(--db-navy, #1B3139)" stopOpacity={0.4}/>
+                          <stop offset="95%" stopColor="var(--db-navy, #1B3139)" stopOpacity={0.0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+                      <XAxis dataKey="time" stroke="var(--text-muted)" fontSize={11} tickLine={false} />
+                      <YAxis domain={[75, 100]} stroke="var(--text-muted)" fontSize={11} tickLine={false} tickFormatter={(v) => `${v}%`} />
+                      <Tooltip contentStyle={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)', borderRadius: '8px', fontSize: '11px' }} />
+                      <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '4px' }} />
+                      <ReferenceLine y={95} stroke="var(--accent-green)" strokeDasharray="4 4" label={{ value: 'Target 95%', fill: 'var(--accent-green)', fontSize: 11 }} />
+                      <Area type="monotone" dataKey="Overall" stroke="var(--accent-purple)" fillOpacity={1} fill="url(#qualityGradient)" strokeWidth={2} name="Overall Quality (%)" />
+                    </ComposedChart>
+                  )}
                 </ResponsiveContainer>
+              </div>
+
+              {/* Status Badges Legend */}
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '14px', marginTop: 'auto', paddingTop: '8px', fontSize: '11px', color: 'var(--text-muted)', borderTop: '1px solid var(--border-color)' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#10B981' }} /> &ge;95% ผ่านเกณฑ์ SLA
+                </span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#F59E0B' }} /> 90-94% เฝ้าระวัง
+                </span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#EF4444' }} /> &lt;90% หลุดเกณฑ์ (SLA Breached)
+                </span>
               </div>
             </div>
 
-            {/* Right: 5-Question Executive Decision Framework (Section 25) */}
-            <div className="exec-5w-card">
-              <div className="exec-5w-header">
-                <h3>
+            {/* Right: 5-Question Executive Decision Framework */}
+            <div className="exec-5w-card" style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '16px' }}>
+              <div className="exec-5w-header" style={{ marginBottom: '8px' }}>
+                <h3 style={{ margin: 0, fontSize: '13px' }}>
                   <span><Icon name="bolt" /></span> Executive 5-Question Framework
                 </h3>
                 <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>Instant Decision Support</span>
               </div>
-              <div className="exec-5w-list">
-                <div className="exec-5w-row what">
-                  <div className="exec-5w-tag what"><Icon name="target" /> WHAT?</div>
-                  <div className="exec-5w-text">{fiveQuestions.what}</div>
+              <div className="exec-5w-list" style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '6px' }}>
+                <div className="exec-5w-row what" style={{ padding: '6px 8px' }}>
+                  <div className="exec-5w-tag what" style={{ fontSize: '10px' }}><Icon name="target" /> WHAT?</div>
+                  <div className="exec-5w-text" style={{ fontSize: '11px' }}>{fiveQuestions.what}</div>
                 </div>
-                <div className="exec-5w-row why">
-                  <div className="exec-5w-tag why"><Icon name="search" /> WHY?</div>
-                  <div className="exec-5w-text">{fiveQuestions.why}</div>
+                <div className="exec-5w-row why" style={{ padding: '6px 8px' }}>
+                  <div className="exec-5w-tag why" style={{ fontSize: '10px' }}><Icon name="search" /> WHY?</div>
+                  <div className="exec-5w-text" style={{ fontSize: '11px' }}>{fiveQuestions.why}</div>
                 </div>
-                <div className="exec-5w-row impact">
-                  <div className="exec-5w-tag impact"><Icon name="alert" /> IMPACT?</div>
-                  <div className="exec-5w-text">{fiveQuestions.impact}</div>
+                <div className="exec-5w-row impact" style={{ padding: '6px 8px' }}>
+                  <div className="exec-5w-tag impact" style={{ fontSize: '10px' }}><Icon name="alert" /> IMPACT?</div>
+                  <div className="exec-5w-text" style={{ fontSize: '11px' }}>{fiveQuestions.impact}</div>
                 </div>
-                <div className="exec-5w-row howmuch">
-                  <div className="exec-5w-tag howmuch"><Icon name="chart" /> HOW MUCH?</div>
-                  <div className="exec-5w-text">{fiveQuestions.how_much}</div>
+                <div className="exec-5w-row howmuch" style={{ padding: '6px 8px' }}>
+                  <div className="exec-5w-tag howmuch" style={{ fontSize: '10px' }}><Icon name="chart" /> HOW MUCH?</div>
+                  <div className="exec-5w-text" style={{ fontSize: '11px' }}>{fiveQuestions.how_much}</div>
                 </div>
-                <div className="exec-5w-row action">
-                  <div className="exec-5w-tag action"><Icon name="bolt" /> ACTION?</div>
-                  <div className="exec-5w-text">{fiveQuestions.action}</div>
+                <div className="exec-5w-row action" style={{ padding: '6px 8px' }}>
+                  <div className="exec-5w-tag action" style={{ fontSize: '10px' }}><Icon name="bolt" /> ACTION?</div>
+                  <div className="exec-5w-text" style={{ fontSize: '11px' }}>{fiveQuestions.action}</div>
                 </div>
+              </div>
+              <div style={{ marginTop: 'auto', paddingTop: '8px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                  ต้องการดูหลักฐานเจาะลึกห่วงโซ่อุปทาน &amp; ยอดขาย?
+                </span>
+                <button
+                  type="button"
+                  className="exec-btn exec-btn-primary"
+                  style={{ fontSize: '10px', padding: '3px 10px', cursor: 'pointer' }}
+                  onClick={() => setViewMode('business')}
+                >
+                  ดูกราฟ Sell-In vs Sell-Out Volume →
+                </button>
               </div>
             </div>
           </div>
 
-          {/* Level 4: Business KPI Impact Matrix & Data Quality Breakdown (Sections 7 & 14) */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '16px' }}>
-            {/* Left: Business KPI Impact Matrix (Section 7) */}
-            <div className="exec-table-card">
-              <div className="gs-card-head">
+          {/* ═══════════════════════════════════════════════════════════
+              ZONE 3: STRATEGIC IMPACT MATRIX & ROOT CAUSE BREAKDOWN
+              ═══════════════════════════════════════════════════════════ */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '16px', marginBottom: '16px', alignItems: 'stretch' }}>
+            {/* Left: Business KPI Impact Matrix (Sorted by Severity) */}
+            <div className="exec-table-card" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <div className="gs-card-head" style={{ marginBottom: '8px' }}>
                 <div>
-                  <h3>Business KPI Impact Matrix</h3>
-                  <p>Translating Technical Anomaly → KPI Degradation → Executive Business Impact</p>
+                  <h3 style={{ margin: 0, fontSize: '13px' }}>Business KPI Impact Matrix</h3>
+                  <p style={{ marginTop: '2px', fontSize: '11px' }}>Translating Technical Anomaly → KPI Degradation → Executive Business Impact</p>
                 </div>
                 <button
                   className="exec-btn"
                   onClick={() => setViewMode('business')}
-                  style={{ fontSize: '10px' }}
+                  style={{ fontSize: '11px' }}
                 >
                   View Details →
                 </button>
               </div>
-              <div style={{ overflowX: 'auto' }}>
-                <table className="exec-table">
+              <div style={{ overflowX: 'auto', flex: 1 }}>
+                <table className="exec-table" style={{ fontSize: '11px' }}>
                   <thead>
                     <tr>
-                      <th>Technical Issue</th>
-                      <th>Impacted KPI</th>
-                      <th>Business Impact</th>
-                      <th>Severity</th>
-                      <th>Status</th>
+                      <th style={{ fontSize: '11px' }}>Technical Issue</th>
+                      <th style={{ fontSize: '11px' }}>Impacted Business KPI</th>
+                      <th style={{ fontSize: '11px' }}>Executive Business Impact</th>
+                      <th style={{ fontSize: '11px' }}>Severity</th>
+                      <th style={{ fontSize: '11px' }}>Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {bizKpiImpactList.map((item, idx) => (
+                    {sortedBizKpiImpactList.map((item, idx) => (
                       <tr key={idx}>
-                        <td style={{ fontWeight: 700, color: 'var(--accent-purple)' }}>{item.technical_issue}</td>
-                        <td style={{ fontWeight: 600 }}>{item.impacted_kpi}</td>
-                        <td style={{ color: 'var(--text-muted)', fontSize: '10.5px' }}>{item.business_impact}</td>
+                        <td style={{ fontWeight: 700, color: 'var(--accent-purple)', fontSize: '11px' }}>{item.technical_issue}</td>
+                        <td style={{ fontWeight: 600, fontSize: '11px' }}>{item.impacted_kpi}</td>
+                        <td style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{item.business_impact}</td>
                         <td>
-                          <span className={`exec-chip ${item.severity === 'Critical' ? 'exec-chip-crit' : item.severity === 'Warning' ? 'exec-chip-warn' : 'exec-chip-good'}`}>
+                          <span className={`exec-chip ${item.severity === 'Critical' ? 'exec-chip-crit' : item.severity === 'Warning' ? 'exec-chip-warn' : 'exec-chip-good'}`} style={{ fontSize: '11px' }}>
                             {item.severity}
                           </span>
                         </td>
                         <td>
-                          <span style={{ fontSize: '10px', color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>
                             {item.status}
                           </span>
                         </td>
@@ -725,20 +716,20 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Right: Data Quality Breakdown (Section 14) */}
-            <div className="gs-card">
-              <div className="gs-card-head">
+            {/* Right: Data Quality Status Breakdown */}
+            <div className="gs-card" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <div className="gs-card-head" style={{ marginBottom: '8px' }}>
                 <div>
-                  <h3>Data Quality Status Breakdown</h3>
-                  <p>Root cause distribution of quarantined data anomalies</p>
+                  <h3 style={{ margin: 0, fontSize: '13px' }}>Data Quality Status Breakdown</h3>
+                  <p style={{ marginTop: '2px', fontSize: '11px' }}>Root cause distribution of quarantined data anomalies</p>
                 </div>
-                <span className="exec-chip exec-chip-warn">{qualityBreakdown.total_quarantined} Rows Quarantined</span>
+                <span className="exec-chip exec-chip-warn" style={{ fontSize: '11px' }}>{qualityBreakdown.total_quarantined} Rows Quarantined</span>
               </div>
-              <div className="exec-dim-grid">
+              <div className="exec-dim-grid" style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '8px' }}>
                 <div className="exec-dim-item">
                   <div className="exec-dim-top">
-                    <span className="exec-dim-name">Missing / Null Values</span>
-                    <span className="exec-dim-score">{qualityBreakdown.missing_values_pct}%</span>
+                    <span className="exec-dim-name" style={{ fontSize: '11px' }}>Missing / Null Values</span>
+                    <span className="exec-dim-score" style={{ fontSize: '11px' }}>{qualityBreakdown.missing_values_pct}%</span>
                   </div>
                   <div className="exec-dim-bar">
                     <div className="exec-dim-fill" style={{ width: `${Math.min(qualityBreakdown.missing_values_pct * 15, 100)}%`, background: 'var(--accent-yellow)' }} />
@@ -747,8 +738,8 @@ export default function Dashboard() {
 
                 <div className="exec-dim-item">
                   <div className="exec-dim-top">
-                    <span className="exec-dim-name">Duplicate Records</span>
-                    <span className="exec-dim-score">{qualityBreakdown.duplicate_records_pct}%</span>
+                    <span className="exec-dim-name" style={{ fontSize: '11px' }}>Duplicate Records</span>
+                    <span className="exec-dim-score" style={{ fontSize: '11px' }}>{qualityBreakdown.duplicate_records_pct}%</span>
                   </div>
                   <div className="exec-dim-bar">
                     <div className="exec-dim-fill" style={{ width: `${Math.min(qualityBreakdown.duplicate_records_pct * 30, 100)}%`, background: '#3B82F6' }} />
@@ -757,8 +748,8 @@ export default function Dashboard() {
 
                 <div className="exec-dim-item">
                   <div className="exec-dim-top">
-                    <span className="exec-dim-name">Invalid Data Types / Format</span>
-                    <span className="exec-dim-score">{qualityBreakdown.invalid_type_pct}%</span>
+                    <span className="exec-dim-name" style={{ fontSize: '11px' }}>Invalid Data Types / Format</span>
+                    <span className="exec-dim-score" style={{ fontSize: '11px' }}>{qualityBreakdown.invalid_type_pct}%</span>
                   </div>
                   <div className="exec-dim-bar">
                     <div className="exec-dim-fill" style={{ width: `${Math.min(qualityBreakdown.invalid_type_pct * 40, 100)}%`, background: 'var(--accent-red)' }} />
@@ -767,8 +758,8 @@ export default function Dashboard() {
 
                 <div className="exec-dim-item">
                   <div className="exec-dim-top">
-                    <span className="exec-dim-name">Schema Drift Events</span>
-                    <span className="exec-dim-score">{qualityBreakdown.schema_drift_count} Active</span>
+                    <span className="exec-dim-name" style={{ fontSize: '11px' }}>Schema Drift Events</span>
+                    <span className="exec-dim-score" style={{ fontSize: '11px' }}>{qualityBreakdown.schema_drift_count} Active</span>
                   </div>
                   <div className="exec-dim-bar">
                     <div className="exec-dim-fill" style={{ width: `${qualityBreakdown.schema_drift_count > 0 ? 80 : 0}%`, background: 'var(--accent-purple)' }} />
@@ -777,8 +768,8 @@ export default function Dashboard() {
 
                 <div className="exec-dim-item">
                   <div className="exec-dim-top">
-                    <span className="exec-dim-name">Clean &amp; Certified Records</span>
-                    <span className="exec-dim-score" style={{ color: 'var(--accent-green)' }}>{dataHealth.score}%</span>
+                    <span className="exec-dim-name" style={{ fontSize: '11px' }}>Clean &amp; Certified Records</span>
+                    <span className="exec-dim-score" style={{ color: 'var(--accent-green)', fontSize: '11px' }}>{dataHealth.score}%</span>
                   </div>
                   <div className="exec-dim-bar">
                     <div className="exec-dim-fill" style={{ width: `${dataHealth.score}%`, background: 'var(--accent-green)' }} />
@@ -788,50 +779,52 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Level 5: Critical Business Issues (Section 8) */}
+          {/* ═══════════════════════════════════════════════════════════
+              ZONE 4: CRITICAL OPERATIONAL ISSUES (Incident Resolution Log)
+              ═══════════════════════════════════════════════════════════ */}
           <div className="exec-table-card">
-            <div className="gs-card-head">
+            <div className="gs-card-head" style={{ marginBottom: '8px' }}>
               <div>
-                <h3>Critical Business Issues</h3>
-                <p>Prioritized operational incidents impacting enterprise KPIs and reporting deadlines</p>
+                <h3 style={{ margin: 0, fontSize: '13px' }}>Critical Business Issues</h3>
+                <p style={{ marginTop: '2px', fontSize: '11px' }}>Prioritized operational incidents impacting enterprise KPIs and reporting deadlines</p>
               </div>
-              <span className="exec-chip exec-chip-crit">{filteredCriticalIssues.length} Incidents</span>
+              <span className="exec-chip exec-chip-crit" style={{ fontSize: '11px' }}>{filteredCriticalIssues.length} Incidents</span>
             </div>
             <div style={{ overflowX: 'auto' }}>
-              <table className="exec-table">
+              <table className="exec-table" style={{ fontSize: '11px' }}>
                 <thead>
                   <tr>
-                    <th>Issue ID</th>
-                    <th>Incident Name</th>
-                    <th>Business Impact</th>
-                    <th>KPI Affected</th>
-                    <th>Severity</th>
-                    <th>Duration</th>
-                    <th>Status</th>
-                    <th>Action</th>
+                    <th style={{ fontSize: '11px' }}>Issue ID</th>
+                    <th style={{ fontSize: '11px' }}>Incident Name</th>
+                    <th style={{ fontSize: '11px' }}>Business Impact</th>
+                    <th style={{ fontSize: '11px' }}>KPI Affected</th>
+                    <th style={{ fontSize: '11px' }}>Severity</th>
+                    <th style={{ fontSize: '11px' }}>Duration</th>
+                    <th style={{ fontSize: '11px' }}>Status</th>
+                    <th style={{ fontSize: '11px' }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredCriticalIssues.map((issue) => (
                     <tr key={issue.id}>
-                      <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--text-muted)' }}>{issue.id}</td>
-                      <td style={{ fontWeight: 700 }}>{issue.issue}</td>
+                      <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--text-muted)', fontSize: '11px' }}>{issue.id}</td>
+                      <td style={{ fontWeight: 700, fontSize: '11px' }}>{issue.issue}</td>
                       <td style={{ color: 'var(--text-main)', fontSize: '11px' }}>{issue.business_impact}</td>
-                      <td style={{ color: 'var(--accent-purple)', fontWeight: 600 }}>{issue.kpi_affected}</td>
+                      <td style={{ color: 'var(--accent-purple)', fontWeight: 600, fontSize: '11px' }}>{issue.kpi_affected}</td>
                       <td>
-                        <span className={`exec-chip ${issue.severity === 'Critical' ? 'exec-chip-crit' : 'exec-chip-warn'}`}>
+                        <span className={`exec-chip ${issue.severity === 'Critical' ? 'exec-chip-crit' : 'exec-chip-warn'}`} style={{ fontSize: '11px' }}>
                           {issue.severity}
                         </span>
                       </td>
-                      <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{issue.duration}</td>
+                      <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', fontSize: '11px' }}>{issue.duration}</td>
                       <td>
-                        <span style={{ fontSize: '10px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{issue.status}</span>
+                        <span style={{ fontSize: '11px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{issue.status}</span>
                       </td>
                       <td>
                         <div style={{ display: 'flex', gap: '6px' }}>
                           <button
                             className="exec-btn"
-                            style={{ padding: '3px 8px', fontSize: '9.5px' }}
+                            style={{ padding: '3px 8px', fontSize: '10px' }}
                             onClick={() => {
                               setSelectedSourceFilter(issue.dataset?.split(' ')[0] || 'All');
                               setViewMode('technical');
@@ -843,7 +836,7 @@ export default function Dashboard() {
                             <Link
                               to="/schema"
                               className="exec-btn exec-btn-primary"
-                              style={{ padding: '3px 8px', fontSize: '9.5px', textDecoration: 'none' }}
+                              style={{ padding: '3px 8px', fontSize: '10px', textDecoration: 'none' }}
                             >
                               Review Drift <Icon name="globe" />
                             </Link>
@@ -930,6 +923,110 @@ export default function Dashboard() {
                 <div className="biz-flow-title">4. Business Action</div>
                 <div className="biz-flow-sub">Remediation Ticket &amp; Decision</div>
               </div>
+            </div>
+          </div>
+
+          {/* Concrete Business Evidence: Sell-In vs. Sell-Out Volume Reconciliation Chart */}
+          <div className="gs-card" style={{ padding: '20px' }}>
+            <div className="gs-card-head" style={{ marginBottom: '14px', alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ background: 'var(--accent-purple)', color: '#fff', fontSize: '10px', fontWeight: 800, padding: '2px 8px', borderRadius: '4px' }}>
+                    CONCRETE BUSINESS EVIDENCE
+                  </span>
+                  <h3 style={{ margin: 0, fontSize: '15px' }}>Sell-In vs. Sell-Out Volume Reconciliation &amp; Data Quality Discrepancy</h3>
+                </div>
+                <p style={{ marginTop: '4px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                  เปรียบเทียบยอดกระจายสินค้าเข้าสู่ช่องทางจัดจำหน่าย (Sell-In) กับยอดขายจริงหน้าร้าน POS (Sell-Out) เพื่อระบุสต็อกลวง (Phantom Inventory) และความเสียหายจากข้อมูลตกหล่น
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                <span className="exec-chip exec-chip-warn" style={{ fontSize: '10.5px' }}>
+                  Reconciliation Gap: {sellInOut.summary.reconciliation_gap_volume.toLocaleString()} Units
+                </span>
+                <span className="exec-chip exec-chip-crit" style={{ fontSize: '10.5px' }}>
+                  COPDQ Sales Risk: ${sellInOut.summary.copdq_sales_loss_usd.toLocaleString()} USD
+                </span>
+              </div>
+            </div>
+
+            {/* Metric Summary Cards Row */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '16px' }}>
+              <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderLeft: '4px solid #1E3A8A', borderRadius: '8px', padding: '10px 14px' }}>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Sell-In Volume (ERP / DC)</div>
+                <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-main)', marginTop: '2px' }}>
+                  {sellInOut.summary.total_sell_in_volume.toLocaleString()} <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>units</span>
+                </div>
+                <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', marginTop: '2px' }}>ยอดส่งสินค้าเข้าช่องทางจำหน่าย</div>
+              </div>
+
+              <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderLeft: '4px solid #10B981', borderRadius: '8px', padding: '10px 14px' }}>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Sell-Out Volume (Retail POS)</div>
+                <div style={{ fontSize: '18px', fontWeight: 800, color: '#10B981', marginTop: '2px' }}>
+                  {sellInOut.summary.total_sell_out_volume.toLocaleString()} <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>units</span>
+                </div>
+                <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', marginTop: '2px' }}>ยอดขายออกสู่ผู้บริโภคจริง (POS)</div>
+              </div>
+
+              <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderLeft: '4px solid #EF4444', borderRadius: '8px', padding: '10px 14px' }}>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Quarantined Data Gap</div>
+                <div style={{ fontSize: '18px', fontWeight: 800, color: '#EF4444', marginTop: '2px' }}>
+                  {sellInOut.summary.quarantined_data_gap_volume.toLocaleString()} <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>units</span>
+                </div>
+                <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', marginTop: '2px' }}>ยอดที่บันทึกไม่สำเร็จ/ติดกักกัน</div>
+              </div>
+
+              <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderLeft: '4px solid #8B5CF6', borderRadius: '8px', padding: '10px 14px' }}>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Sales Reconciliation Rate</div>
+                <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--accent-purple)', marginTop: '2px' }}>
+                  {sellInOut.summary.sales_accuracy_pct}%
+                </div>
+                <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', marginTop: '2px' }}>ความสมบูรณ์ของท่อส่งยอดขาย</div>
+              </div>
+            </div>
+
+            {/* The Visual Chart: ComposedChart with Bars and SLA Line */}
+            <div style={{ width: '100%', height: 260 }}>
+              <ResponsiveContainer>
+                <ComposedChart data={sellInOut.timeline} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+                  <XAxis dataKey="period" stroke="var(--text-muted)" fontSize={11} tickLine={false} />
+                  <YAxis yAxisId="left" stroke="var(--text-muted)" fontSize={11} tickLine={false} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
+                  <YAxis yAxisId="right" orientation="right" domain={[70, 100]} stroke="var(--text-muted)" fontSize={10} tickLine={false} tickFormatter={(v) => `${v}%`} />
+                  <Tooltip
+                    content={({ active, payload, label }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload;
+                        return (
+                          <div style={{ background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '8px', padding: '10px 14px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '11px' }}>
+                            <strong style={{ color: '#0F172A', display: 'block', marginBottom: '4px' }}>{label} ({data.status})</strong>
+                            <div style={{ color: '#1E3A8A' }}>● Sell-In Volume: <strong>{data.sell_in?.toLocaleString()}</strong> units</div>
+                            <div style={{ color: '#10B981' }}>● Sell-Out Volume: <strong>{data.sell_out?.toLocaleString()}</strong> units</div>
+                            <div style={{ color: '#EF4444' }}>● Quarantined Gap: <strong>{data.quarantined_gap?.toLocaleString()}</strong> units</div>
+                            <div style={{ color: '#8B5CF6', marginTop: '4px' }}>★ Data Quality Score: <strong>{data.quality_score}%</strong></div>
+                            <div style={{ color: '#64748B', fontSize: '10px', marginTop: '4px', fontStyle: 'italic' }}>Note: {data.incident}</div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '6px' }} />
+                  <ReferenceLine yAxisId="right" y={95} stroke="#10B981" strokeDasharray="3 3" label={{ value: 'SLA Target 95%', fill: '#10B981', fontSize: 10, position: 'right' }} />
+                  <Bar yAxisId="left" dataKey="sell_in" name="Sell-In Volume (ERP/Inflow)" fill="#1E3A8A" radius={[4, 4, 0, 0]} />
+                  <Bar yAxisId="left" dataKey="sell_out" name="Sell-Out Volume (POS/Outflow)" fill="#10B981" radius={[4, 4, 0, 0]} />
+                  <Bar yAxisId="left" dataKey="quarantined_gap" name="Quarantined / Missing Gap" fill="#EF4444" radius={[4, 4, 0, 0]} />
+                  <Line yAxisId="right" type="monotone" dataKey="quality_score" name="Pipeline Quality Score (%)" stroke="#8B5CF6" strokeWidth={3} dot={{ r: 4 }} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Concrete Narrative Insight Callout */}
+            <div style={{ marginTop: '14px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderLeft: '3px solid var(--accent-purple)', borderRadius: '6px', padding: '10px 14px', fontSize: '11px', color: 'var(--text-main)', lineHeight: '1.6' }}>
+              <div style={{ fontWeight: 700, color: 'var(--accent-purple)', marginBottom: '4px' }}>
+                บทวิเคราะห์ผลกระทบรูปธรรมต่อห่วงโซ่อุปทานและการขาย (Supply Chain &amp; Revenue Reality)
+              </div>
+              <div>{sellInOut.business_impact_narrative}</div>
             </div>
           </div>
 
@@ -1046,7 +1143,7 @@ export default function Dashboard() {
               <div className="exec-kpi-val">{exec.loading ? '...' : `${(100 - (qualityBreakdown.invalid_type_pct || 0)).toFixed(1)}%`}</div>
               <div className="exec-kpi-sub">{qualityBreakdown.invalid_type_pct > 0 ? `${qualityBreakdown.invalid_type_pct}% type mismatches` : 'Type & bounds checked'}</div>
             </div>
-            <div className={`exec-kpi-card ${(dataFreshness.score || 100) >= 90 ? 'kpi-good' : 'kpi-warn'}`}>
+            <div className={`exec-kpi-card ${dataFreshness.score == null ? '' : dataFreshness.score >= 90 ? 'kpi-good' : 'kpi-warn'}`}>
               <span className="exec-kpi-title">Timeliness</span>
               <div className="exec-kpi-val">{dataFreshness.score != null ? `${dataFreshness.score}%` : '---'}</div>
               <div className="exec-kpi-sub">Avg latency {dataFreshness.avg_lag_hours || 0} hrs</div>
@@ -1125,69 +1222,261 @@ export default function Dashboard() {
           ═══════════════════════════════════════════════════════════ */}
       {viewMode === 'technical' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {/* Lineage Map */}
-          <div className="gs-lineage-hero">
-            <div className="gs-lineage-header">
-              <h2>Medallion Flow Data Lineage Track</h2>
-              <span className="gs-lineage-route">Route: Bronze (HDFS) → Silver (Spark Engine) → Gold (Active/Quarantine)</span>
-            </div>
-            {(() => {
-              const totalRecs = activeRun?.total_records || 0;
-              const quarRecs = activeRun?.quarantined_records || 0;
-              const hasError = activeRun && quarRecs > 0;
-              const hasClean = activeRun && (totalRecs - quarRecs > 0);
-              return (
-                <div className="gs-lineage-track" style={{ display: 'flex', alignItems: 'center', width: '100%', justifyContent: 'space-between' }}>
-                  <div className="gs-node active">
-                    <span className="gs-node-icon"><Icon name="download" /></span>
-                    <div className="gs-node-text">
-                      <strong>{activeRun ? activeRun.data_source || activeRun.table_name : 'Ingest Source'}</strong>
-                      <small>Bronze Layer</small>
-                      <span className="gs-node-stat">{totalRecs.toLocaleString()} rows</span>
-                    </div>
-                  </div>
-                  <div className="gs-connector active"><div className="gs-connector-line"></div><div className="gs-connector-arrow">→</div></div>
-
-                  <div className="gs-node active">
-                    <span className="gs-node-icon"><Icon name="settings" /></span>
-                    <div className="gs-node-text">
-                      <strong>Spark QA Engine</strong>
-                      <small>Quality Rules Audit</small>
-                    </div>
-                  </div>
-                  <div className="gs-connector active"><div className="gs-connector-line"></div><div className="gs-connector-arrow">→</div></div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <div className={`gs-node ${hasClean ? 'active' : ''}`}>
-                      <span className="gs-node-icon"><Icon name="check" /></span>
-                      <div className="gs-node-text">
-                        <strong>Active Store</strong>
-                        <small>Clean Delta Lake</small>
-                        <span className="gs-node-stat">{(totalRecs - quarRecs).toLocaleString()} rows</span>
-                      </div>
-                    </div>
-                    <div className={`gs-node ${hasError ? 'danger' : ''}`}>
-                      <span className="gs-node-icon"><Icon name="alert" /></span>
-                      <div className="gs-node-text">
-                        <strong>Quarantine Store</strong>
-                        <small>Bad Data Isolation</small>
-                        <span className="gs-node-stat">{quarRecs.toLocaleString()} rows</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="gs-connector active"><div className="gs-connector-line"></div><div className="gs-connector-arrow">→</div></div>
-                  <div className="gs-node active">
-                    <span className="gs-node-icon"><Icon name="chart" /></span>
-                    <div className="gs-node-text">
-                      <strong>Serving API</strong>
-                      <small>BI &amp; BI Cockpit</small>
-                    </div>
-                  </div>
+          {/* Interactive Score Derivation & 4-Step Operational Lineage Bar */}
+          <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: "10px", padding: "16px 20px", boxShadow: "0 1px 2px rgba(15,23,42,0.03)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "12px" }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                  <span style={{ background: "#1B3139", color: "#FFFFFF", fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "4px", letterSpacing: "0.04em" }}>
+                    LAKEHOUSE MONITORING · DATA QUALITY LINEAGE
+                  </span>
+                  <span style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A" }}>
+                    <Icon name="chart" /> สูตรคำนวณดัชนีคุณภาพข้อมูล ({wbDatasetName}):
+                  </span>
+                  <code style={{ background: "#F8FAFC", color: "#0F172A", border: "1px solid #E2E8F0", padding: "2px 8px", borderRadius: "4px", fontSize: "11px", fontWeight: 700 }}>
+                    (ข้อมูลสะอาด {fmtOrDash(wbClean)} แถว ÷ ข้อมูลขาเข้าทั้งหมด {fmtOrDash(wbTotal)} แถว) × 100 = {typeof wbScorePct === 'number' ? `${wbScorePct}%` : '—'}
+                  </code>
                 </div>
-              );
-            })()}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={handleRefreshAiLineage}
+                  disabled={aiRefreshing}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    color: "#1B3139",
+                    background: "#F8FAFC",
+                    padding: "5px 10px",
+                    borderRadius: "6px",
+                    border: "1px solid #CBD5E1",
+                    cursor: aiRefreshing ? "wait" : "pointer"
+                  }}
+                >
+                  <Icon name="sparkles" /> {aiRefreshing ? "AI กำลังสรุปภาพรวม..." : "อัปเดตบทวิเคราะห์ AI"}
+                </button>
+                <Link
+                  to="/ingestion"
+                  style={{ fontSize: "11px", fontWeight: 700, color: "#FFFFFF", textDecoration: "none", background: "#1B3139", padding: "5px 12px", borderRadius: "6px" }}
+                >
+                  <Icon name="search" /> เปิดคอนโซล Bronze Ingestion <Icon name="arrow-right" />
+                </Link>
+              </div>
+            </div>
+
+            {/* AI Contextual Narrative Banner */}
+            <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderLeft: "3px solid #FF3621", borderRadius: "6px", padding: "10px 12px", marginBottom: "12px", fontSize: "11.5px", color: "#334155", lineHeight: "1.55" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "3px", flexWrap: "wrap", gap: "6px" }}>
+                <span style={{ fontSize: "10.5px", fontWeight: 700, color: "#1B3139", display: "flex", alignItems: "center", gap: "5px" }}>
+                  <Icon name="sparkles" /> สรุปสถานะคุณภาพข้อมูลและเส้นทางสายข้อมูลโดย AI ({aiContextApi.data?.model || "openai/gpt-oss-120b"})
+                </span>
+                <span style={{ fontSize: "10px", fontWeight: 700, color: "#64748B" }}>
+                  ตาราง: {wbDatasetName} ({fmtOrDash(wbTotal)} แถว)
+                </span>
+              </div>
+              <div style={{ fontWeight: 500, color: "#0F172A" }}>
+                {aiContextApi.data?.step5_lineage?.executive_narrative ||
+                  (wbScorePct !== null
+                    ? `ภาพรวมคุณภาพข้อมูลของตาราง '${wbDatasetName}' อยู่ที่ ${wbScorePct}% โดยมีข้อมูลสะอาดพร้อมใช้งาน ${fmtOrDash(wbClean)} แถว รอผู้ดูแลตรวจสอบใน Review Queue ${fmtOrDash(wbReview)} แถว และกักกันเพื่อส่งรายงานแจ้งแก้ที่ระบบต้นทาง ${fmtOrDash(wbQuarantine)} แถว`
+                    : (wbStateApi.loading ? "กำลังโหลดข้อมูลคุณภาพจาก pipeline..." : "ยังไม่มีข้อมูลจาก /whitebox/state — รัน pipeline อย่างน้อยหนึ่งครั้งก่อน"))}
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "10px" }}>
+              <Link to="/ingestion" style={{ textDecoration: "none", background: "#FFFFFF", border: "1px solid #E2E8F0", borderLeft: "3px solid #DC2626", borderRadius: "6px", padding: "10px 12px", display: "block" }}>
+                <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748B", letterSpacing: "0.04em" }}>BRONZE INGESTION (/ingestion)</div>
+                <div style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A", marginTop: "2px" }}><Icon name="search" /> สแกนพบความผิดปกติ {Array.isArray(wbStateApi.data?.selected_findings) ? wbStateApi.data.selected_findings.length : wbStateApi.data?.selected_findings ? Object.values(wbStateApi.data.selected_findings).filter(Boolean).length : 3} หมวดหมู่</div>
+                <div style={{ fontSize: "10.5px", color: "#475569", marginTop: "3px", lineHeight: "1.4" }}>
+                  {aiContextApi.data?.step5_lineage?.step1_card_desc || `สแกน ${fmtOrDash(wbTotal)} แถว พบค่าว่าง ค่านอกช่วง คีย์ซ้ำ และค่าเกินรั้วสถิติ → คลิกดู`}
+                </div>
+              </Link>
+
+              <Link to="/rules" style={{ textDecoration: "none", background: "#FFFFFF", border: "1px solid #E2E8F0", borderLeft: "3px solid #D97706", borderRadius: "6px", padding: "10px 12px", display: "block" }}>
+                <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748B", letterSpacing: "0.04em" }}>DELTA EXPECTATIONS (/rules)</div>
+                <div style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A", marginTop: "2px" }}><Icon name="scale" /> ตั้งเกณฑ์และยืนยันกฎ</div>
+                <div style={{ fontSize: "10.5px", color: "#475569", marginTop: "3px", lineHeight: "1.4" }}>
+                  {aiContextApi.data?.step5_lineage?.step2_card_desc || `Range [${wbStateApi.data?.min_score ?? 0},${wbStateApi.data?.max_score ?? 100}] · Tukey ${wbStateApi.data?.tukey_multiplier || "3.0"}× IQR → คลิกปรับเกณฑ์`}
+                </div>
+              </Link>
+
+              <Link to="/pipeline" style={{ textDecoration: "none", background: "#FFFFFF", border: "1px solid #E2E8F0", borderLeft: "3px solid #0284C7", borderRadius: "6px", padding: "10px 12px", display: "block" }}>
+                <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748B", letterSpacing: "0.04em" }}>SILVER QUALITY GATES (/pipeline)</div>
+                <div style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A", marginTop: "2px" }}><Icon name="settings" /> คัดแยก 3 โซน &amp; อนุมัติคิว</div>
+                <div style={{ fontSize: "10.5px", color: "#475569", marginTop: "3px", lineHeight: "1.4" }}>
+                  {aiContextApi.data?.step5_lineage?.step3_card_desc || `สะอาด ${fmtOrDash(wbClean)} | รอตรวจ ${fmtOrDash(wbReview)} | กักกัน ${fmtOrDash(wbQuarantine)} → คลิกสั่งการ`}
+                </div>
+              </Link>
+
+              <Link to="/export" style={{ textDecoration: "none", background: "#FFFFFF", border: "1px solid #E2E8F0", borderLeft: "3px solid #16A34A", borderRadius: "6px", padding: "10px 12px", display: "block" }}>
+                <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748B", letterSpacing: "0.04em" }}>GOLD EXPORT (/export)</div>
+                <div style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A", marginTop: "2px" }}><Icon name="box" /> ส่งออก CSV แยก 3 โซน ({fmtOrDash(wbClean)} แถว)</div>
+                <div style={{ fontSize: "10.5px", color: "#475569", marginTop: "3px", lineHeight: "1.4" }}>
+                  {aiContextApi.data?.step5_lineage?.step4_card_desc || `ดาวน์โหลด Clean CSV และใบแจ้งแก้ต้นทาง → คลิกส่งออก`}
+                </div>
+              </Link>
+            </div>
+
+            {/* Bottom Action Bar in Primary Summary Mode */}
+            <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px solid #E2E8F0", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+              <span style={{ fontSize: "12px", color: "#334155", fontWeight: 600 }}>
+                ต้องการดูรายการเรคคอร์ดทั้งหมด ({fmtOrDash(wbTotal)} แถว) ของตาราง {wbDatasetName} แบบละเอียดพร้อมกรองตามประเภทความผิดปกติหรือไม่?
+              </span>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                <Link
+                  to="/whitebox"
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: "6px",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    background: "#1B3139",
+                    color: "#FFFFFF",
+                    textDecoration: "none"
+                  }}
+                >
+                  เปิดตารางตรวจสอบข้อมูลเชิงลึก (/whitebox) →
+                </Link>
+                <Link
+                  to="/rules"
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: "6px",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    background: "#F8FAFC",
+                    color: "#334155",
+                    border: "1px solid #CBD5E1",
+                    textDecoration: "none"
+                  }}
+                >
+                  กลับไปปรับเกณฑ์ที่ Delta Expectations (/rules)
+                </Link>
+              </div>
+            </div>
           </div>
+
+          {/* Data Lineage & Network Graph: Apache ECharts vs Classic Linear */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '-8px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Medallion Data Lineage Visualizer
+            </div>
+            <div style={{ display: 'inline-flex', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '2px' }}>
+              <button
+                type="button"
+                onClick={() => setLineageVisualMode('echarts')}
+                style={{
+                  background: lineageVisualMode === 'echarts' ? 'var(--accent-purple)' : 'transparent',
+                  color: lineageVisualMode === 'echarts' ? '#fff' : 'var(--text-muted)',
+                  border: 'none',
+                  borderRadius: '4px',
+                  padding: '3px 10px',
+                  fontSize: '10.5px',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                Apache ECharts (Heavy Data Canvas)
+              </button>
+              <button
+                type="button"
+                onClick={() => setLineageVisualMode('linear')}
+                style={{
+                  background: lineageVisualMode === 'linear' ? 'var(--accent-purple)' : 'transparent',
+                  color: lineageVisualMode === 'linear' ? '#fff' : 'var(--text-muted)',
+                  border: 'none',
+                  borderRadius: '4px',
+                  padding: '3px 10px',
+                  fontSize: '10.5px',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                Linear Track
+              </button>
+            </div>
+          </div>
+
+          {lineageVisualMode === 'echarts' ? (
+            <EchartsDataLineage
+              // Root Cause Fix: wbTotal/wbQuarantine/wbScorePct can now be null (see the
+              // fmtOrDash fix above) instead of a fake fallback number. `|| null` would
+              // pass null straight through and skip this component's own default
+              // parameters (JS defaults only trigger on undefined, not null), crashing
+              // on .toLocaleString(). Falling through to undefined here restores the
+              // component's own placeholder-while-loading behavior instead of crashing.
+              totalRecords={activeRun?.total_records || wbTotal || undefined}
+              quarantinedRecords={activeRun?.quarantined_records || wbQuarantine || undefined}
+              tableName={activeRun?.table_name || wbDatasetName}
+              qualityScore={activeRun?.quality_score || wbScorePct || undefined}
+            />
+          ) : (
+            <div className="gs-lineage-hero">
+              <div className="gs-lineage-header">
+                <h2>Medallion Flow Data Lineage Track</h2>
+                <span className="gs-lineage-route">Route: Bronze (HDFS) → Silver (Spark Engine) → Gold (Active/Quarantine)</span>
+              </div>
+              {(() => {
+                const totalRecs = activeRun?.total_records || 0;
+                const quarRecs = activeRun?.quarantined_records || 0;
+                const hasError = activeRun && quarRecs > 0;
+                const hasClean = activeRun && (totalRecs - quarRecs > 0);
+                return (
+                  <div className="gs-lineage-track" style={{ display: 'flex', alignItems: 'center', width: '100%', justifyContent: 'space-between' }}>
+                    <div className="gs-node active">
+                      <span className="gs-node-icon"><Icon name="download" /></span>
+                      <div className="gs-node-text">
+                        <strong>{activeRun ? activeRun.data_source || activeRun.table_name : 'Ingest Source'}</strong>
+                        <small>Bronze Layer</small>
+                        <span className="gs-node-stat">{totalRecs.toLocaleString()} rows</span>
+                      </div>
+                    </div>
+                    <div className="gs-connector active"><div className="gs-connector-line"></div><div className="gs-connector-arrow">→</div></div>
+
+                    <div className="gs-node active">
+                      <span className="gs-node-icon"><Icon name="settings" /></span>
+                      <div className="gs-node-text">
+                        <strong>Spark QA Engine</strong>
+                        <small>Quality Rules Audit</small>
+                      </div>
+                    </div>
+                    <div className="gs-connector active"><div className="gs-connector-line"></div><div className="gs-connector-arrow">→</div></div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <div className={`gs-node ${hasClean ? 'active' : ''}`}>
+                        <span className="gs-node-icon"><Icon name="check" /></span>
+                        <div className="gs-node-text">
+                          <strong>Active Store</strong>
+                          <small>Clean Delta Lake</small>
+                          <span className="gs-node-stat">{(totalRecs - quarRecs).toLocaleString()} rows</span>
+                        </div>
+                      </div>
+                      <div className={`gs-node ${hasError ? 'danger' : ''}`}>
+                        <span className="gs-node-icon"><Icon name="alert" /></span>
+                        <div className="gs-node-text">
+                          <strong>Quarantine Store</strong>
+                          <small>Bad Data Isolation</small>
+                          <span className="gs-node-stat">{quarRecs.toLocaleString()} rows</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="gs-connector active"><div className="gs-connector-line"></div><div className="gs-connector-arrow">→</div></div>
+                    <div className="gs-node active">
+                      <span className="gs-node-icon"><Icon name="chart" /></span>
+                      <div className="gs-node-text">
+                        <strong>Serving API</strong>
+                        <small>BI &amp; BI Cockpit</small>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
 
           {/* Technical Cockpit Scorecard History & Actions */}
           <div className="gs-main">

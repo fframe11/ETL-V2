@@ -191,6 +191,11 @@ export function Icon({ name, size = 14, color = "currentColor", style = {} }) {
           <circle cx="12" cy="7" r="4" />
         </>
       )}
+      {name === "sparkles" && (
+        <>
+          <path d="M12 3l1.912 5.813a2 2 0 0 0 1.275 1.275L21 12l-5.813 1.912a2 2 0 0 0-1.275 1.275L12 21l-1.912-5.813a2 2 0 0 0-1.275-1.275L3 12l5.813-1.912a2 2 0 0 0 1.275-1.275L12 3z" />
+        </>
+      )}
     </svg>
   );
 }
