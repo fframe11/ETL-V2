@@ -309,140 +309,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Interactive Score Derivation & 4-Step Operational Lineage Bar */}
-      <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: "10px", padding: "16px 20px", marginBottom: "16px", boxShadow: "0 1px 2px rgba(15,23,42,0.03)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "12px" }}>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-              <span style={{ background: "#1B3139", color: "#FFFFFF", fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "4px", letterSpacing: "0.04em" }}>
-                LAKEHOUSE MONITORING · DATA QUALITY LINEAGE
-              </span>
-              <span style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A" }}>
-                <Icon name="chart" /> สูตรคำนวณดัชนีคุณภาพข้อมูล ({wbDatasetName}):
-              </span>
-              <code style={{ background: "#F8FAFC", color: "#0F172A", border: "1px solid #E2E8F0", padding: "2px 8px", borderRadius: "4px", fontSize: "11px", fontWeight: 700 }}>
-                (ข้อมูลสะอาด {wbClean.toLocaleString()} แถว ÷ ข้อมูลขาเข้าทั้งหมด {wbTotal.toLocaleString()} แถว) × 100 = {wbScorePct}%
-              </code>
-            </div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-            <button
-              type="button"
-              onClick={handleRefreshAiLineage}
-              disabled={aiRefreshing}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "5px",
-                fontSize: "11px",
-                fontWeight: 700,
-                color: "#1B3139",
-                background: "#F8FAFC",
-                padding: "5px 10px",
-                borderRadius: "6px",
-                border: "1px solid #CBD5E1",
-                cursor: aiRefreshing ? "wait" : "pointer"
-              }}
-            >
-              <Icon name="sparkles" /> {aiRefreshing ? "AI กำลังสรุปภาพรวม..." : "อัปเดตบทวิเคราะห์ AI"}
-            </button>
-            <Link
-              to="/ingestion"
-              style={{ fontSize: "11px", fontWeight: 700, color: "#FFFFFF", textDecoration: "none", background: "#1B3139", padding: "5px 12px", borderRadius: "6px" }}
-            >
-              <Icon name="search" /> เปิดคอนโซล Bronze Ingestion <Icon name="arrow-right" />
-            </Link>
-          </div>
-        </div>
 
-        {/* AI Contextual Narrative Banner */}
-        <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderLeft: "3px solid #FF3621", borderRadius: "6px", padding: "10px 12px", marginBottom: "12px", fontSize: "11.5px", color: "#334155", lineHeight: "1.55" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "3px", flexWrap: "wrap", gap: "6px" }}>
-            <span style={{ fontSize: "10.5px", fontWeight: 700, color: "#1B3139", display: "flex", alignItems: "center", gap: "5px" }}>
-              <Icon name="sparkles" /> สรุปสถานะคุณภาพข้อมูลและเส้นทางสายข้อมูลโดย AI ({aiContextApi.data?.model || "openai/gpt-oss-120b"})
-            </span>
-            <span style={{ fontSize: "10px", fontWeight: 700, color: "#64748B" }}>
-              ตาราง: {wbDatasetName} ({wbTotal.toLocaleString()} แถว)
-            </span>
-          </div>
-          <div style={{ fontWeight: 500, color: "#0F172A" }}>
-            {aiContextApi.data?.step5_lineage?.executive_narrative ||
-              `ภาพรวมคุณภาพข้อมูลของตาราง '${wbDatasetName}' อยู่ที่ ${wbScorePct}% โดยมีข้อมูลสะอาดพร้อมใช้งาน ${wbClean.toLocaleString()} แถว รอผู้ดูแลตรวจสอบใน Review Queue ${wbReview.toLocaleString()} แถว และกักกันเพื่อส่งรายงานแจ้งแก้ที่ระบบต้นทาง ${wbQuarantine.toLocaleString()} แถว`}
-          </div>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "10px" }}>
-          <Link to="/ingestion" style={{ textDecoration: "none", background: "#FFFFFF", border: "1px solid #E2E8F0", borderLeft: "3px solid #DC2626", borderRadius: "6px", padding: "10px 12px", display: "block" }}>
-            <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748B", letterSpacing: "0.04em" }}>BRONZE INGESTION (/ingestion)</div>
-            <div style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A", marginTop: "2px" }}><Icon name="search" /> สแกนพบความผิดปกติ {Array.isArray(wbStateApi.data?.selected_findings) ? wbStateApi.data.selected_findings.length : wbStateApi.data?.selected_findings ? Object.values(wbStateApi.data.selected_findings).filter(Boolean).length : 3} หมวดหมู่</div>
-            <div style={{ fontSize: "10.5px", color: "#475569", marginTop: "3px", lineHeight: "1.4" }}>
-              {aiContextApi.data?.step5_lineage?.step1_card_desc || `สแกน ${wbTotal.toLocaleString()} แถว พบค่าว่าง ค่านอกช่วง คีย์ซ้ำ และค่าเกินรั้วสถิติ → คลิกดู`}
-            </div>
-          </Link>
-
-          <Link to="/rules" style={{ textDecoration: "none", background: "#FFFFFF", border: "1px solid #E2E8F0", borderLeft: "3px solid #D97706", borderRadius: "6px", padding: "10px 12px", display: "block" }}>
-            <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748B", letterSpacing: "0.04em" }}>DELTA EXPECTATIONS (/rules)</div>
-            <div style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A", marginTop: "2px" }}><Icon name="scale" /> ตั้งเกณฑ์และยืนยันกฎ</div>
-            <div style={{ fontSize: "10.5px", color: "#475569", marginTop: "3px", lineHeight: "1.4" }}>
-              {aiContextApi.data?.step5_lineage?.step2_card_desc || `Range [${wbStateApi.data?.min_score ?? 0},${wbStateApi.data?.max_score ?? 100}] · Tukey ${wbStateApi.data?.tukey_multiplier || "3.0"}× IQR → คลิกปรับเกณฑ์`}
-            </div>
-          </Link>
-
-          <Link to="/pipeline" style={{ textDecoration: "none", background: "#FFFFFF", border: "1px solid #E2E8F0", borderLeft: "3px solid #0284C7", borderRadius: "6px", padding: "10px 12px", display: "block" }}>
-            <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748B", letterSpacing: "0.04em" }}>SILVER QUALITY GATES (/pipeline)</div>
-            <div style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A", marginTop: "2px" }}><Icon name="settings" /> คัดแยก 3 โซน &amp; อนุมัติคิว</div>
-            <div style={{ fontSize: "10.5px", color: "#475569", marginTop: "3px", lineHeight: "1.4" }}>
-              {aiContextApi.data?.step5_lineage?.step3_card_desc || `สะอาด ${wbClean.toLocaleString()} | รอตรวจ ${wbReview.toLocaleString()} | กักกัน ${wbQuarantine.toLocaleString()} → คลิกสั่งการ`}
-            </div>
-          </Link>
-
-          <Link to="/export" style={{ textDecoration: "none", background: "#FFFFFF", border: "1px solid #E2E8F0", borderLeft: "3px solid #16A34A", borderRadius: "6px", padding: "10px 12px", display: "block" }}>
-            <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748B", letterSpacing: "0.04em" }}>GOLD EXPORT (/export)</div>
-            <div style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A", marginTop: "2px" }}><Icon name="box" /> ส่งออก CSV แยก 3 โซน ({wbClean.toLocaleString()} แถว)</div>
-            <div style={{ fontSize: "10.5px", color: "#475569", marginTop: "3px", lineHeight: "1.4" }}>
-              {aiContextApi.data?.step5_lineage?.step4_card_desc || `ดาวน์โหลด Clean CSV และใบแจ้งแก้ต้นทาง → คลิกส่งออก`}
-            </div>
-          </Link>
-        </div>
-
-        {/* Bottom Action Bar in Primary Summary Mode */}
-        <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px solid #E2E8F0", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
-          <span style={{ fontSize: "12px", color: "#334155", fontWeight: 600 }}>
-            ต้องการดูรายการเรคคอร์ดทั้งหมด ({wbTotal.toLocaleString()} แถว) ของตาราง {wbDatasetName} แบบละเอียดพร้อมกรองตามประเภทความผิดปกติหรือไม่?
-          </span>
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-            <Link
-              to="/whitebox"
-              style={{
-                padding: "8px 14px",
-                borderRadius: "6px",
-                fontSize: "12px",
-                fontWeight: 700,
-                background: "#1B3139",
-                color: "#FFFFFF",
-                textDecoration: "none"
-              }}
-            >
-              เปิดตารางตรวจสอบข้อมูลเชิงลึก (/whitebox) →
-            </Link>
-            <Link
-              to="/rules"
-              style={{
-                padding: "8px 14px",
-                borderRadius: "6px",
-                fontSize: "12px",
-                fontWeight: 700,
-                background: "#F8FAFC",
-                color: "#334155",
-                border: "1px solid #CBD5E1",
-                textDecoration: "none"
-              }}
-            >
-              กลับไปปรับเกณฑ์ที่ Delta Expectations (/rules)
-            </Link>
-          </div>
-        </div>
-      </div>
 
       {/* ── CONTROLS & FILTERS BAR ── */}
       <div className="exec-controls-bar">
@@ -1110,6 +977,141 @@ export default function Dashboard() {
           ═══════════════════════════════════════════════════════════ */}
       {viewMode === 'technical' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* Interactive Score Derivation & 4-Step Operational Lineage Bar */}
+          <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: "10px", padding: "16px 20px", boxShadow: "0 1px 2px rgba(15,23,42,0.03)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "12px" }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                  <span style={{ background: "#1B3139", color: "#FFFFFF", fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "4px", letterSpacing: "0.04em" }}>
+                    LAKEHOUSE MONITORING · DATA QUALITY LINEAGE
+                  </span>
+                  <span style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A" }}>
+                    <Icon name="chart" /> สูตรคำนวณดัชนีคุณภาพข้อมูล ({wbDatasetName}):
+                  </span>
+                  <code style={{ background: "#F8FAFC", color: "#0F172A", border: "1px solid #E2E8F0", padding: "2px 8px", borderRadius: "4px", fontSize: "11px", fontWeight: 700 }}>
+                    (ข้อมูลสะอาด {wbClean.toLocaleString()} แถว ÷ ข้อมูลขาเข้าทั้งหมด {wbTotal.toLocaleString()} แถว) × 100 = {wbScorePct}%
+                  </code>
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={handleRefreshAiLineage}
+                  disabled={aiRefreshing}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    color: "#1B3139",
+                    background: "#F8FAFC",
+                    padding: "5px 10px",
+                    borderRadius: "6px",
+                    border: "1px solid #CBD5E1",
+                    cursor: aiRefreshing ? "wait" : "pointer"
+                  }}
+                >
+                  <Icon name="sparkles" /> {aiRefreshing ? "AI กำลังสรุปภาพรวม..." : "อัปเดตบทวิเคราะห์ AI"}
+                </button>
+                <Link
+                  to="/ingestion"
+                  style={{ fontSize: "11px", fontWeight: 700, color: "#FFFFFF", textDecoration: "none", background: "#1B3139", padding: "5px 12px", borderRadius: "6px" }}
+                >
+                  <Icon name="search" /> เปิดคอนโซล Bronze Ingestion <Icon name="arrow-right" />
+                </Link>
+              </div>
+            </div>
+
+            {/* AI Contextual Narrative Banner */}
+            <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderLeft: "3px solid #FF3621", borderRadius: "6px", padding: "10px 12px", marginBottom: "12px", fontSize: "11.5px", color: "#334155", lineHeight: "1.55" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "3px", flexWrap: "wrap", gap: "6px" }}>
+                <span style={{ fontSize: "10.5px", fontWeight: 700, color: "#1B3139", display: "flex", alignItems: "center", gap: "5px" }}>
+                  <Icon name="sparkles" /> สรุปสถานะคุณภาพข้อมูลและเส้นทางสายข้อมูลโดย AI ({aiContextApi.data?.model || "openai/gpt-oss-120b"})
+                </span>
+                <span style={{ fontSize: "10px", fontWeight: 700, color: "#64748B" }}>
+                  ตาราง: {wbDatasetName} ({wbTotal.toLocaleString()} แถว)
+                </span>
+              </div>
+              <div style={{ fontWeight: 500, color: "#0F172A" }}>
+                {aiContextApi.data?.step5_lineage?.executive_narrative ||
+                  `ภาพรวมคุณภาพข้อมูลของตาราง '${wbDatasetName}' อยู่ที่ ${wbScorePct}% โดยมีข้อมูลสะอาดพร้อมใช้งาน ${wbClean.toLocaleString()} แถว รอผู้ดูแลตรวจสอบใน Review Queue ${wbReview.toLocaleString()} แถว และกักกันเพื่อส่งรายงานแจ้งแก้ที่ระบบต้นทาง ${wbQuarantine.toLocaleString()} แถว`}
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "10px" }}>
+              <Link to="/ingestion" style={{ textDecoration: "none", background: "#FFFFFF", border: "1px solid #E2E8F0", borderLeft: "3px solid #DC2626", borderRadius: "6px", padding: "10px 12px", display: "block" }}>
+                <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748B", letterSpacing: "0.04em" }}>BRONZE INGESTION (/ingestion)</div>
+                <div style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A", marginTop: "2px" }}><Icon name="search" /> สแกนพบความผิดปกติ {Array.isArray(wbStateApi.data?.selected_findings) ? wbStateApi.data.selected_findings.length : wbStateApi.data?.selected_findings ? Object.values(wbStateApi.data.selected_findings).filter(Boolean).length : 3} หมวดหมู่</div>
+                <div style={{ fontSize: "10.5px", color: "#475569", marginTop: "3px", lineHeight: "1.4" }}>
+                  {aiContextApi.data?.step5_lineage?.step1_card_desc || `สแกน ${wbTotal.toLocaleString()} แถว พบค่าว่าง ค่านอกช่วง คีย์ซ้ำ และค่าเกินรั้วสถิติ → คลิกดู`}
+                </div>
+              </Link>
+
+              <Link to="/rules" style={{ textDecoration: "none", background: "#FFFFFF", border: "1px solid #E2E8F0", borderLeft: "3px solid #D97706", borderRadius: "6px", padding: "10px 12px", display: "block" }}>
+                <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748B", letterSpacing: "0.04em" }}>DELTA EXPECTATIONS (/rules)</div>
+                <div style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A", marginTop: "2px" }}><Icon name="scale" /> ตั้งเกณฑ์และยืนยันกฎ</div>
+                <div style={{ fontSize: "10.5px", color: "#475569", marginTop: "3px", lineHeight: "1.4" }}>
+                  {aiContextApi.data?.step5_lineage?.step2_card_desc || `Range [${wbStateApi.data?.min_score ?? 0},${wbStateApi.data?.max_score ?? 100}] · Tukey ${wbStateApi.data?.tukey_multiplier || "3.0"}× IQR → คลิกปรับเกณฑ์`}
+                </div>
+              </Link>
+
+              <Link to="/pipeline" style={{ textDecoration: "none", background: "#FFFFFF", border: "1px solid #E2E8F0", borderLeft: "3px solid #0284C7", borderRadius: "6px", padding: "10px 12px", display: "block" }}>
+                <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748B", letterSpacing: "0.04em" }}>SILVER QUALITY GATES (/pipeline)</div>
+                <div style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A", marginTop: "2px" }}><Icon name="settings" /> คัดแยก 3 โซน &amp; อนุมัติคิว</div>
+                <div style={{ fontSize: "10.5px", color: "#475569", marginTop: "3px", lineHeight: "1.4" }}>
+                  {aiContextApi.data?.step5_lineage?.step3_card_desc || `สะอาด ${wbClean.toLocaleString()} | รอตรวจ ${wbReview.toLocaleString()} | กักกัน ${wbQuarantine.toLocaleString()} → คลิกสั่งการ`}
+                </div>
+              </Link>
+
+              <Link to="/export" style={{ textDecoration: "none", background: "#FFFFFF", border: "1px solid #E2E8F0", borderLeft: "3px solid #16A34A", borderRadius: "6px", padding: "10px 12px", display: "block" }}>
+                <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748B", letterSpacing: "0.04em" }}>GOLD EXPORT (/export)</div>
+                <div style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A", marginTop: "2px" }}><Icon name="box" /> ส่งออก CSV แยก 3 โซน ({wbClean.toLocaleString()} แถว)</div>
+                <div style={{ fontSize: "10.5px", color: "#475569", marginTop: "3px", lineHeight: "1.4" }}>
+                  {aiContextApi.data?.step5_lineage?.step4_card_desc || `ดาวน์โหลด Clean CSV และใบแจ้งแก้ต้นทาง → คลิกส่งออก`}
+                </div>
+              </Link>
+            </div>
+
+            {/* Bottom Action Bar in Primary Summary Mode */}
+            <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px solid #E2E8F0", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+              <span style={{ fontSize: "12px", color: "#334155", fontWeight: 600 }}>
+                ต้องการดูรายการเรคคอร์ดทั้งหมด ({wbTotal.toLocaleString()} แถว) ของตาราง {wbDatasetName} แบบละเอียดพร้อมกรองตามประเภทความผิดปกติหรือไม่?
+              </span>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                <Link
+                  to="/whitebox"
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: "6px",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    background: "#1B3139",
+                    color: "#FFFFFF",
+                    textDecoration: "none"
+                  }}
+                >
+                  เปิดตารางตรวจสอบข้อมูลเชิงลึก (/whitebox) →
+                </Link>
+                <Link
+                  to="/rules"
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: "6px",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    background: "#F8FAFC",
+                    color: "#334155",
+                    border: "1px solid #CBD5E1",
+                    textDecoration: "none"
+                  }}
+                >
+                  กลับไปปรับเกณฑ์ที่ Delta Expectations (/rules)
+                </Link>
+              </div>
+            </div>
+          </div>
+
           {/* Lineage Map */}
           <div className="gs-lineage-hero">
             <div className="gs-lineage-header">
