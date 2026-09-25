@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { PageHeader, LearnMore } from '../components/ui';
+import { PAGES, WORKFLOW_STEPS } from '../config/pages';
 import './RulesConfig.css';
+import './ConfigGuide.css';
 
 // --- Enterprise SVG Icons ---
 const Icons = {
@@ -97,163 +100,29 @@ export default function ConfigGuide() {
       <div style={{ maxWidth: '1080px', margin: '24px auto 60px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
 
-        {/* === ENTERPRISE HEADER === */}
-        <div className="gs-guide-card" style={{ 
-          background: '#1B3139', 
-          color: '#ffffff', 
-          padding: '24px 28px',
-          border: '1px solid #101E24',
-          boxShadow: '0 4px 16px rgba(16, 30, 36, 0.15)',
-          borderRadius: '10px'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-            <span style={{ 
-              display: 'inline-flex', 
-              alignItems: 'center', 
-              justifyContent: 'center', 
-              width: '32px', 
-              height: '32px', 
-              borderRadius: '8px', 
-              background: 'rgba(255, 54, 33, 0.2)',
-              color: '#FF8F80'
-            }}>
-              <Icons.BookOpen />
-            </span>
-            <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: '#FF8F80', background: 'rgba(255, 54, 33, 0.12)', padding: '2px 8px', borderRadius: '4px' }}>
-              LAKEHOUSE RUNBOOK · WORKFLOW & ARCHITECTURE
-            </span>
-          </div>
+        <PageHeader pageKey="guide" />
 
-          <h1 style={{ fontSize: '22px', fontWeight: 800, margin: 0, color: '#ffffff', letterSpacing: '-0.02em' }}>
-            Lakehouse Architecture & System Runbook
-          </h1>
-          <p style={{ fontSize: '13px', margin: '8px 0 0', color: 'rgba(241, 245, 249, 0.9)', lineHeight: 1.6 }}>
-            คู่มือการปฏิบัติงานตามขั้นตอน Medallion Architecture (Bronze Ingestion ➔ Delta Expectations ➔ Silver Segregation ➔ Gold Certified)
-          </p>
+        <LearnMore summary="หลักการ: แก้ปัญหาที่ต้นน้ำ">
+          ระบบสแกนสถิติข้อมูลให้ก่อน แสดงหลักฐานความผิดปกติ แล้วให้คุณเป็นผู้ยืนยันกฎ ข้อมูลเสียถูกแจ้งกลับไปแก้ที่ระบบต้นทาง
+        </LearnMore>
 
-          <div style={{ 
-            marginTop: '16px', 
-            padding: '12px 16px', 
-            background: 'rgba(16, 30, 36, 0.5)', 
-            borderRadius: '8px', 
-            fontSize: '12px', 
-            lineHeight: 1.6, 
-            borderLeft: '3px solid #FF3621',
-            color: '#F1F5F9'
-          }}>
-            <strong style={{ color: '#ffffff' }}>หลักการวิศวกรรมข้อมูล: แก้ปัญหาที่ต้นน้ำ (Upstream-First Remediation)</strong>
-            <div style={{ marginTop: '4px', fontSize: '11.5px', color: '#CBD5E1' }}>
-              ผู้ใช้ไม่ต้องเดาค่าพารามิเตอร์เอง — ระบบทำการสแกนสถิติข้อมูล (Automated Data Profiling) จากตารางข้อมูลขาเข้าทั้งหมด แสดงหลักฐานความผิดปกติให้เห็นอย่างโปร่งใส แล้วจึงให้ผู้ดูแลระบบกำหนดกฎและส่งรายงานกลับไปแก้ที่ระบบต้นทาง
-            </div>
-          </div>
-        </div>
-
-        {/* === MEDALLION PIPELINE QUICK LAUNCHER === */}
-        <div className="gs-guide-card" style={{ padding: '20px 24px', background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
-            <div>
-              <span style={{ background: '#1B3139', color: '#FFFFFF', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', letterSpacing: '0.05em' }}>
-                MEDALLION PIPELINE · WORKSPACE RUNBOOK
-              </span>
-              <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#0F172A', margin: '4px 0 0' }}>
-                สถาปัตยกรรมและคอนโซลการประมวลผลข้อมูล (Medallion Pipeline Modules)
-              </h2>
-            </div>
-            <Link
-              to="/ingestion"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '9px 16px',
-                background: '#1B3139',
-                color: '#FFFFFF',
-                borderRadius: '6px',
-                fontSize: '12px',
-                fontWeight: 700,
-                textDecoration: 'none'
-              }}
-            >
-              <span>เปิดคอนโซล Bronze Ingestion</span>
+        <div className="gs-guide-steps">
+          {WORKFLOW_STEPS.map((p) => (
+            <Link key={p.key} to={p.path} className="gs-guide-step">
+              <span className="gs-guide-step-num">ขั้นที่ {p.step}</span>
+              <strong>{p.label}</strong>
+              <span>{p.subtitle}</span>
             </Link>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
-            {[
-              {
-                step: 'BRONZE INGESTION',
-                title: 'Bronze Ingestion & Discovery',
-                path: '/ingestion',
-                desc: 'เชื่อมต่อแหล่งข้อมูล (Files, Database, REST API, Event Stream) พร้อมระบบ Automated Schema Profiling ตรวจหาค่าผิดปกติและโครงสร้างข้อมูล',
-                color: '#DC2626',
-                bg: '#FFFFFF',
-                border: '#E2E8F0'
-              },
-              {
-                step: 'DELTA EXPECTATIONS',
-                title: 'Delta Expectations & Constraints',
-                path: '/rules',
-                desc: 'กำหนดข้อกำหนดคุณภาพข้อมูลเชิงธุรกิจ (Value Ranges, Null Policies, Composite Key Uniqueness, Adaptive Tukey Fences) เพื่อบังคับใช้ใน Pipeline',
-                color: '#D97706',
-                bg: '#FFFFFF',
-                border: '#E2E8F0'
-              },
-              {
-                step: 'SILVER PIPELINE',
-                title: 'Silver Quality Gates & Routing',
-                path: '/pipeline',
-                desc: 'ประมวลผลข้อมูลผ่านด่านคัดกรองคุณภาพอัตโนมัติ (Domain Range, Uniqueness, Outlier Detection) พร้อมฟังก์ชัน Human-in-the-Loop สำหรับตรวจสอบและกักกัน',
-                color: '#0284C7',
-                bg: '#FFFFFF',
-                border: '#E2E8F0'
-              },
-              {
-                step: 'GOLD EXPORT',
-                title: 'Gold Certified Deliverables',
-                path: '/export',
-                desc: 'ส่งออกชุดข้อมูลระดับ Gold Certified พร้อมตรวจสอบเปรียบเทียบก่อน-หลัง (Clean Dataset, Review Queue, Quarantine Root-Cause Audit Log)',
-                color: '#16A34A',
-                bg: '#FFFFFF',
-                border: '#E2E8F0'
-              }
-            ].map((item) => (
-              <div key={item.step} style={{ background: item.bg, border: `1px solid ${item.border}`, borderTop: `3px solid ${item.color}`, borderRadius: '8px', padding: '14px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                    <span style={{ background: '#F8FAFC', color: '#0F172A', border: '1px solid #CBD5E1', fontSize: '10px', fontWeight: 700, padding: '2px 7px', borderRadius: '4px' }}>{item.step}</span>
-                    <code style={{ fontSize: '10px', color: '#64748B' }}>{item.path}</code>
-                  </div>
-                  <div style={{ fontWeight: 700, fontSize: '13.5px', color: '#0F172A', marginBottom: '6px' }}>{item.title}</div>
-                  <p style={{ fontSize: '11.5px', color: '#475569', lineHeight: 1.5, margin: '0 0 12px' }}>{item.desc}</p>
-                </div>
-                <Link
-                  to={item.path}
-                  style={{
-                    display: 'inline-block',
-                    textAlign: 'center',
-                    padding: '7px 10px',
-                    background: '#1B3139',
-                    color: '#FFFFFF',
-                    borderRadius: '6px',
-                    fontSize: '11px',
-                    fontWeight: 700,
-                    textDecoration: 'none'
-                  }}
-                >
-                  เปิดคอนโซล {item.title}
-                </Link>
-              </div>
-            ))}
-          </div>
+          ))}
         </div>
 
         {/* === SECTION SELECTOR TABS === */}
         <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
           {[
-            { id: 'parameters', label: 'Parameter Tuning Guide (การปรับพารามิเตอร์)', icon: <Icons.Sliders /> },
-            { id: 'navigation', label: 'Platform Modules Guide (คู่มือการใช้งานหน้าต่างๆ)', icon: <Icons.Compass /> },
-            { id: 'lifecycle', label: 'End-to-End Architecture (วงจรข้อมูลต้นน้ำ-ปลายน้ำ)', icon: <Icons.Layers /> },
-            { id: 'casestudy', label: 'Reference Case Study (กรณีศึกษามาตรฐาน)', icon: <Icons.ShieldCheck /> }
+            { id: 'parameters', label: 'พารามิเตอร์', icon: <Icons.Sliders /> },
+            { id: 'navigation', label: 'แต่ละหน้า', icon: <Icons.Compass /> },
+            { id: 'lifecycle', label: 'สถาปัตยกรรม', icon: <Icons.Layers /> },
+            { id: 'casestudy', label: 'กรณีศึกษา', icon: <Icons.ShieldCheck /> }
           ].map(tab => (
             <button
               key={tab.id}
@@ -288,12 +157,9 @@ export default function ConfigGuide() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '2px solid var(--border-color)', paddingBottom: '10px' }}>
                 <Icons.Sliders />
                 <h2 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
-                  Data Quality Rule Parameters Specification
+                  พารามิเตอร์ของกฎ
                 </h2>
               </div>
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6, margin: '0 0 16px' }}>
-                พารามิเตอร์แต่ละตัวถูกออกแบบมาเพื่อควบคุมเกณฑ์ความสมบูรณ์ ความถูกต้อง และความน่าเชื่อถือของข้อมูลใน Apache Spark Engine รายละเอียดการคำนวณและข้อแนะนำในการกำหนดค่ามีดังต่อไปนี้:
-              </p>
 
               {/* 1. Target Quality Score */}
               <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
@@ -304,14 +170,12 @@ export default function ConfigGuide() {
                   </div>
                   <span className="gs-badge" style={{ background: 'rgba(108,71,255,0.1)', color: 'var(--accent-purple)' }}>Circuit Breaker</span>
                 </div>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '0 0 8px' }}>กำหนดคะแนนชี้วัดขั้นต่ำของชุดข้อมูล หากคะแนนของแบตช์ต่ำกว่าเกณฑ์ ระบบจะทำการกักกันทันที</p>
+                <LearnMore summary="รายละเอียดและค่าแนะนำ">
                 <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', marginBottom: '12px' }}>
                   <tbody>
                     <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <td style={{ padding: '8px 0', width: '25%', fontWeight: 600, color: 'var(--text-muted)' }}>วัตถุประสงค์</td>
-                      <td style={{ padding: '8px 0', color: 'var(--text-secondary)' }}>กำหนดคะแนนชี้วัดขั้นต่ำของชุดข้อมูล (Overall Health Score 0–100%) หากคะแนนของแบตช์ต่ำกว่าเกณฑ์ ระบบจะทำการกักกัน (Quarantine) ทันที</td>
-                    </tr>
-                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <td style={{ padding: '8px 0', fontWeight: 600, color: 'var(--text-muted)' }}>พารามิเตอร์ย่อย</td>
+                      <td style={{ padding: '8px 0', width: '25%', fontWeight: 600, color: 'var(--text-muted)' }}>พารามิเตอร์ย่อย</td>
                       <td style={{ padding: '8px 0', color: 'var(--text-secondary)' }}>
                         <code className="gs-mono">base_value</code> (คะแนนเป้าหมาย เช่น 90.0), <code className="gs-mono">min_value</code> (ขอบเขตต่ำสุดที่ยอมรับได้ เช่น 70.0), <code className="gs-mono">adjustment_window_runs</code> (จำนวนรอบที่ใช้คำนวณค่าเฉลี่ย เช่น 15)
                       </td>
@@ -324,10 +188,11 @@ export default function ConfigGuide() {
                 </table>
                 <div style={{ background: 'var(--bg-primary)', padding: '10px 14px', borderRadius: '6px', fontSize: '11px', color: 'var(--text-muted)' }}>
                   <strong>เกณฑ์แนะนำตามการใช้งาน:</strong>
-                  <span style={{ marginLeft: '8px', color: 'var(--accent-green)' }}>95.0% - 100.0%</span> สำหรับรายงานการเงินและคะแนนประเมินอย่างเป็นทางการ | 
-                  <span style={{ marginLeft: '8px', color: 'var(--accent-blue)' }}>90.0% - 94.9%</span> สำหรับการประมวลผลทางธุรกิจทั่วไป | 
+                  <span style={{ marginLeft: '8px', color: 'var(--accent-green)' }}>95.0% - 100.0%</span> สำหรับรายงานการเงินและคะแนนประเมินอย่างเป็นทางการ |
+                  <span style={{ marginLeft: '8px', color: 'var(--accent-blue)' }}>90.0% - 94.9%</span> สำหรับการประมวลผลทางธุรกิจทั่วไป |
                   <span style={{ marginLeft: '8px', color: 'var(--accent-yellow)' }}>80.0% - 89.9%</span> สำหรับข้อมูลสถิติ/การสำรวจเบื้องต้น
                 </div>
+                </LearnMore>
               </div>
 
               {/* 2. Primary Key & Null Checks */}
@@ -339,16 +204,14 @@ export default function ConfigGuide() {
                   </div>
                   <span className="gs-badge" style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--accent-red)' }}>Integrity Guard</span>
                 </div>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '0 0 8px' }}>ตรวจสอบการขาดหายไปของข้อมูล ป้องกันการนำข้อมูลไม่สมบูรณ์เข้าสู่คลังข้อมูลกลาง</p>
+                <LearnMore summary="รายละเอียดและค่าแนะนำ">
                 <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', marginBottom: '12px' }}>
                   <tbody>
                     <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <td style={{ padding: '8px 0', width: '25%', fontWeight: 600, color: 'var(--text-muted)' }}>วัตถุประสงค์</td>
-                      <td style={{ padding: '8px 0', color: 'var(--text-secondary)' }}>ตรวจสอบการขาดหายไปของข้อมูล (Missing Values) ป้องกันการนำข้อมูลไม่สมบูรณ์เข้าสู่คลังข้อมูลกลาง</td>
-                    </tr>
-                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <td style={{ padding: '8px 0', fontWeight: 600, color: 'var(--text-muted)' }}>พารามิเตอร์ย่อย</td>
+                      <td style={{ padding: '8px 0', width: '25%', fontWeight: 600, color: 'var(--text-muted)' }}>พารามิเตอร์ย่อย</td>
                       <td style={{ padding: '8px 0', color: 'var(--text-secondary)' }}>
-                        <code className="gs-mono">null_primary_key: strict</code> (ห้ามว่าง 0% เด็ดขาด), <code className="gs-mono">default_tolerance</code> (อัตราค่าว่างทั่วไป เช่น 0.05 หรือ 5%), <code className="gs-mono">column_overrides</code> (กำหนดข้อยกเว้นเฉพาะคอลัมน์)
+                        <code className="gs-mono">null_primary_key: strict</code> (ห้ามว่าง 0% เด็ดขาด), <code className="gs-mono">default_tolerance</code>, <code className="gs-mono">column_overrides</code>
                       </td>
                     </tr>
                     <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
@@ -360,6 +223,7 @@ export default function ConfigGuide() {
                 <div style={{ background: 'var(--bg-primary)', padding: '10px 14px', borderRadius: '6px', fontSize: '11px', color: 'var(--text-muted)' }}>
                   <strong>ข้อกำหนดมาตรฐาน:</strong> คอลัมน์ระบุตัวตน (Identifier เช่น <code className="gs-mono">student_id</code>, <code className="gs-mono">transaction_id</code>) ต้องกำหนดเป็น <strong style={{ color: 'var(--accent-red)' }}>Strict 0% Null</strong> เสมอ ส่วนคอลัมน์ประกอบสามารถกำหนด Tolerance ได้ตามสัญญาข้อมูล (Data Contract)
                 </div>
+                </LearnMore>
               </div>
 
               {/* 3. Value Range & Outlier IQR */}
@@ -371,16 +235,14 @@ export default function ConfigGuide() {
                   </div>
                   <span className="gs-badge" style={{ background: 'rgba(59,130,246,0.1)', color: 'var(--accent-blue)' }}>Statistical Boundary</span>
                 </div>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '0 0 8px' }}>ตรวจจับค่าผิดปกติทางสถิติและค่าที่อยู่นอกขอบเขตเกณฑ์ทางธุรกิจ</p>
+                <LearnMore summary="รายละเอียดและค่าแนะนำ">
                 <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', marginBottom: '12px' }}>
                   <tbody>
                     <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <td style={{ padding: '8px 0', width: '25%', fontWeight: 600, color: 'var(--text-muted)' }}>วัตถุประสงค์</td>
-                      <td style={{ padding: '8px 0', color: 'var(--text-secondary)' }}>ตรวจจับค่าผิดปกติทางสถิติ (Anomalies) และค่าที่อยู่นอกขอบเขตเกณฑ์ทางธุรกิจ (Out of Boundary)</td>
-                    </tr>
-                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <td style={{ padding: '8px 0', fontWeight: 600, color: 'var(--text-muted)' }}>พารามิเตอร์ย่อย</td>
+                      <td style={{ padding: '8px 0', width: '25%', fontWeight: 600, color: 'var(--text-muted)' }}>พารามิเตอร์ย่อย</td>
                       <td style={{ padding: '8px 0', color: 'var(--text-secondary)' }}>
-                        <code className="gs-mono">mode: auto/manual</code>, <code className="gs-mono">method: iqr</code>, <code className="gs-mono">iqr_multiplier</code> (1.5, 2.0, 2.5, 3.0), <code className="gs-mono">column_overrides</code>
+                        <code className="gs-mono">mode: auto/manual</code>, <code className="gs-mono">method: iqr</code>, <code className="gs-mono">iqr_multiplier</code> (1.5, 2.0, 2.5, 3.0)
                       </td>
                     </tr>
                     <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
@@ -393,18 +255,19 @@ export default function ConfigGuide() {
                 </table>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
                   <div style={{ padding: '8px 12px', background: 'var(--bg-primary)', borderRadius: '6px', fontSize: '11px', borderLeft: '2px solid var(--accent-green)' }}>
-                    <strong>1.5× Multiplier (Standard)</strong><br />
-                    <span style={{ color: 'var(--text-muted)' }}>กรองตามมาตรฐานสถิติทั่วไป เหมาะกับข้อมูลที่มีการกระจายตัวแบบปกติ (Normal Distribution)</span>
+                    <strong>1.5× (Standard)</strong><br />
+                    <span style={{ color: 'var(--text-muted)' }}>ข้อมูลกระจายตัวแบบปกติ</span>
                   </div>
                   <div style={{ padding: '8px 12px', background: 'var(--bg-primary)', borderRadius: '6px', fontSize: '11px', borderLeft: '2px solid var(--accent-blue)' }}>
-                    <strong>2.0× – 2.5× (Tolerant)</strong><br />
-                    <span style={{ color: 'var(--text-muted)' }}>เพิ่มความยืดหยุ่น เหมาะกับตัวแปรที่มีความผันผวนสูง เช่น ชั่วโมงการเรียน หรือยอดขายช่วงแคมเปญ</span>
+                    <strong>2.0–2.5× (Tolerant)</strong><br />
+                    <span style={{ color: 'var(--text-muted)' }}>ตัวแปรผันผวนสูง</span>
                   </div>
                   <div style={{ padding: '8px 12px', background: 'var(--bg-primary)', borderRadius: '6px', fontSize: '11px', borderLeft: '2px solid var(--accent-red)' }}>
-                    <strong>3.0× (Extreme Filter)</strong><br />
-                    <span style={{ color: 'var(--text-muted)' }}>ดักจับเฉพาะกรณีข้อผิดพลาดร้ายแรงของระบบ เช่น ตัวเลขทะลักหรือความผิดพลาดของฮาร์ดแวร์</span>
+                    <strong>3.0× (Extreme)</strong><br />
+                    <span style={{ color: 'var(--text-muted)' }}>ดักจับข้อผิดพลาดร้ายแรง</span>
                   </div>
                 </div>
+                </LearnMore>
               </div>
 
               {/* 4. Freshness SLA */}
@@ -416,14 +279,12 @@ export default function ConfigGuide() {
                   </div>
                   <span className="gs-badge" style={{ background: 'rgba(245,158,11,0.1)', color: 'var(--accent-yellow)' }}>SLA Compliance</span>
                 </div>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '0 0 8px' }}>ตรวจสอบความสดใหม่ของข้อมูล โดยเทียบเวลาประมวลผลปัจจุบันกับ Event Timestamp ล่าสุด</p>
+                <LearnMore summary="รายละเอียดและค่าแนะนำ">
                 <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', marginBottom: '12px' }}>
                   <tbody>
                     <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <td style={{ padding: '8px 0', width: '25%', fontWeight: 600, color: 'var(--text-muted)' }}>วัตถุประสงค์</td>
-                      <td style={{ padding: '8px 0', color: 'var(--text-secondary)' }}>ตรวจสอบความสดใหม่ของข้อมูล โดยคำนวณผลต่างระหว่างเวลาประมวลผลปัจจุบัน (Ingestion Time) กับ Event Timestamp ล่าสุดของข้อมูล</td>
-                    </tr>
-                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <td style={{ padding: '8px 0', fontWeight: 600, color: 'var(--text-muted)' }}>พารามิเตอร์ย่อย</td>
+                      <td style={{ padding: '8px 0', width: '25%', fontWeight: 600, color: 'var(--text-muted)' }}>พารามิเตอร์ย่อย</td>
                       <td style={{ padding: '8px 0', color: 'var(--text-secondary)' }}>
                         <code className="gs-mono">base_value</code> (จำนวนชั่วโมงสูงสุดที่รับได้), <code className="gs-mono">mode: adaptive/strict</code>, <code className="gs-mono">learn_from_history</code>
                       </td>
@@ -432,10 +293,11 @@ export default function ConfigGuide() {
                 </table>
                 <div style={{ background: 'var(--bg-primary)', padding: '10px 14px', borderRadius: '6px', fontSize: '11px', color: 'var(--text-muted)' }}>
                   <strong>แนวทาง SLA รายรูปแบบข้อมูล:</strong>
-                  <span style={{ marginLeft: '8px', color: 'var(--accent-blue)' }}>≤ 1–2 ชม.</span> สำหรับ Real-time / Streaming (Kafka) | 
-                  <span style={{ marginLeft: '8px', color: 'var(--accent-purple)' }}>≤ 24 ชม.</span> สำหรับ Daily Batch ETL | 
-                  <span style={{ marginLeft: '8px', color: 'var(--accent-muted)' }}>≤ 168 ชม. (7 วัน)</span> สำหรับ Weekly Analytical Reporting
+                  <span style={{ marginLeft: '8px', color: 'var(--accent-blue)' }}>≤ 1–2 ชม.</span> Real-time |
+                  <span style={{ marginLeft: '8px', color: 'var(--accent-purple)' }}>≤ 24 ชม.</span> Daily Batch |
+                  <span style={{ marginLeft: '8px', color: 'var(--accent-muted)' }}>≤ 168 ชม.</span> Weekly
                 </div>
+                </LearnMore>
               </div>
 
               {/* 5. AI Remediation Engine */}
@@ -447,29 +309,28 @@ export default function ConfigGuide() {
                   </div>
                   <span className="gs-badge" style={{ background: 'rgba(16,185,129,0.1)', color: 'var(--accent-green)' }}>Intelligent Automation</span>
                 </div>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '0 0 8px' }}>วิเคราะห์แพทเทิร์นของข้อมูลที่มีปัญหาใน Quarantine และนำเสนอวิธีทำความสะอาดพร้อมคำสั่งแก้ไขอัตโนมัติ</p>
+                <LearnMore summary="รายละเอียดและค่าแนะนำ">
                 <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', marginBottom: '12px' }}>
                   <tbody>
                     <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <td style={{ padding: '8px 0', width: '25%', fontWeight: 600, color: 'var(--text-muted)' }}>วัตถุประสงค์</td>
-                      <td style={{ padding: '8px 0', color: 'var(--text-secondary)' }}>วิเคราะห์แพทเทิร์นของข้อมูลที่มีปัญหาใน Quarantine และนำเสนอข้อเสนอแนะในการทำความสะอาด (Remediation Proposal) พร้อมคำสั่งแก้ไขอัตโนมัติ</td>
-                    </tr>
-                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <td style={{ padding: '8px 0', fontWeight: 600, color: 'var(--text-muted)' }}>พารามิเตอร์ย่อย</td>
+                      <td style={{ padding: '8px 0', width: '25%', fontWeight: 600, color: 'var(--text-muted)' }}>พารามิเตอร์ย่อย</td>
                       <td style={{ padding: '8px 0', color: 'var(--text-secondary)' }}>
-                        <code className="gs-mono">enabled: true/false</code>, <code className="gs-mono">trigger: on_anomaly</code>, <code className="gs-mono">model: llama-3.3-70b-versatile</code>, <code className="gs-mono">confidence_threshold: 0.70</code>, <code className="gs-mono">max_rows_to_analyze: 50</code>
+                        <code className="gs-mono">enabled: true/false</code>, <code className="gs-mono">trigger: on_anomaly</code>, <code className="gs-mono">confidence_threshold: 0.70</code>
                       </td>
                     </tr>
                     <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
                       <td style={{ padding: '8px 0', fontWeight: 600, color: 'var(--text-muted)' }}>ประเภทการซ่อมแซม</td>
                       <td style={{ padding: '8px 0', color: 'var(--text-secondary)' }}>
-                        <strong style={{ color: 'var(--accent-blue)' }}>fillna</strong> (การแทนที่ค่าว่างด้วยค่าคงที่หรือมัธยฐาน) และ <strong style={{ color: 'var(--accent-purple)' }}>calculate</strong> (การคำนวณอนุมานค่าจากคอลัมน์ที่มีความสัมพันธ์กัน เช่น คำนวณคะแนนจากชั่วโมงเรียน)
+                        <strong style={{ color: 'var(--accent-blue)' }}>fillna</strong> (แทนที่ค่าว่าง) และ <strong style={{ color: 'var(--accent-purple)' }}>calculate</strong> (คำนวณอนุมานจากคอลัมน์ที่สัมพันธ์กัน)
                       </td>
                     </tr>
                   </tbody>
                 </table>
                 <div style={{ background: 'var(--bg-primary)', padding: '10px 14px', borderRadius: '6px', fontSize: '11px', color: 'var(--text-muted)' }}>
-                  <strong>นโยบายความปลอดภัย:</strong> ข้อเสนอจาก AI ทุกรายการจะไม่อนุญาตให้แก้ไขข้อมูลโดยพลการจนกว่าผู้ดูแลระบบจะกด Approve ในหน้า Rules Config เพื่อให้เป็นไปตามหลักการ Human-in-the-loop Governance
+                  <strong>นโยบายความปลอดภัย:</strong> ข้อเสนอจาก AI ทุกรายการต้องรอผู้ดูแลระบบกด Approve ในหน้า Expectations & Alerts ก่อนเสมอ
                 </div>
+                </LearnMore>
               </div>
 
             </div>
@@ -485,128 +346,18 @@ export default function ConfigGuide() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '2px solid var(--border-color)', paddingBottom: '10px' }}>
                 <Icons.Compass />
                 <h2 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
-                  Platform Modules & User Workflow Manual
+                  แต่ละหน้าทำอะไร
                 </h2>
               </div>
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6, margin: '0 0 16px' }}>
-                ระบบ SDOQAP ประกอบด้วย 8 โมดูลหลักที่เชื่อมโยงกันอย่างเป็นระบบ เพื่อให้การกำกับดูแลข้อมูลเป็นไปตามมาตรฐานวิศวกรรมข้อมูลแบบครบวงจร:
-              </p>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-
-                {/* 1. Home */}
-                <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                    <span style={{ color: 'var(--accent-blue)' }}><Icons.Activity /></span>
-                    <h3 style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>1. Home Overview (/)</h3>
-                  </div>
-                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                    ศูนย์กลางภาพรวมของแพลตฟอร์ม แสดงสถานะความพร้อมของคลัสเตอร์บริการ (Service Topology) เช่น HDFS, Spark, Kafka, Elasticsearch, PostgreSQL และแถบแจ้งเตือนระดับระบบ
-                  </div>
-                  <div style={{ marginTop: '10px', fontSize: '11px', color: 'var(--accent-purple)', fontWeight: 600 }}>
-                    หน้าที่หลัก: ตรวจสอบความสมบูรณ์ของโครงสร้างพื้นฐานก่อนเริ่มรันงาน
-                  </div>
-                </div>
-
-                {/* 2. Dashboard */}
-                <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                    <span style={{ color: 'var(--accent-purple)' }}><Icons.Sliders /></span>
-                    <h3 style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>2. Quality Dashboard (/dashboard)</h3>
-                  </div>
-                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                    แดชบอร์ดหลักสำหรับผู้บริหารและวิศวกรข้อมูล แสดงค่า Data Quality Score รวม, จำนวนเรคคอร์ดที่ประมวลผลสำเร็จ, อัตราข้อมูลกักกัน (Quarantine Rate) และดัชนีชี้วัด SLA แบบ Real-time
-                  </div>
-                  <div style={{ marginTop: '10px', fontSize: '11px', color: 'var(--accent-purple)', fontWeight: 600 }}>
-                    หน้าที่หลัก: ติดตามผลการประมวลผลและแนวโน้มคุณภาพข้อมูลประจำวัน
-                  </div>
-                </div>
-
-                {/* 3. Ingestion */}
-                <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                    <span style={{ color: 'var(--accent-green)' }}><Icons.UploadCloud /></span>
-                    <h3 style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>3. Ingestion & Quarantine (/ingestion)</h3>
-                  </div>
-                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                    ส่วนจัดการการนำเข้าข้อมูลจาก 3 ช่องทาง (Batch CSV Upload, REST API Endpoint, Kafka Streaming) และเป็นที่ตั้งของ Quarantine Viewer สำหรับตรวจสอบเรคคอร์ดที่มีข้อผิดพลาดพร้อมเหตุผลระบุชัดเจน
-                  </div>
-                  <div style={{ marginTop: '10px', fontSize: '11px', color: 'var(--accent-green)', fontWeight: 600 }}>
-                    หน้าที่หลัก: นำเข้าไฟล์ข้อมูลใหม่และตรวจสอบสาเหตุที่ข้อมูลถูกกักกัน
-                  </div>
-                </div>
-
-                {/* 4. Schema Drift */}
-                <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                    <span style={{ color: 'var(--accent-yellow)' }}><Icons.AlertTriangle /></span>
-                    <h3 style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>4. Schema Drift Hub (/schema)</h3>
-                  </div>
-                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                    ระบบดักจับการเปลี่ยนแปลงโครงสร้างข้อมูลต้นทาง (Schema Evolution) เช่น การเพิ่มคอลัมน์ใหม่ หรือการเปลี่ยน Data Type โดยมีระบบคัดกรองให้เลือก Accept เพื่อรับฟิลด์ใหม่ หรือ Reject เพื่อตัดทิ้ง
-                  </div>
-                  <div style={{ marginTop: '10px', fontSize: '11px', color: 'var(--accent-yellow)', fontWeight: 600 }}>
-                    หน้าที่หลัก: ควบคุมการกลายพันธุ์ของ Schema เพื่อป้องกัน Pipeline พังทลาย
-                  </div>
-                </div>
-
-                {/* 5. Rules Config */}
-                <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                    <span style={{ color: 'var(--accent-purple)' }}><Icons.Sliders /></span>
-                    <h3 style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>5. Rules Configuration (/rules)</h3>
-                  </div>
-                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                    ศูนย์กลางการตั้งค่ากฎเกณฑ์คุณภาพข้อมูล สามารถเลือก Preset ตามประเภทธุรกิจ (University, Retail, IoT), ปรับจูนพารามิเตอร์แบบ Visual, ตรวจสอบข้อเสนอ AI Rules และบันทึกคำสั่งตรงเข้า Spark Config
-                  </div>
-                  <div style={{ marginTop: '10px', fontSize: '11px', color: 'var(--accent-purple)', fontWeight: 600 }}>
-                    หน้าที่หลัก: กำหนดเกณฑ์คุณภาพ ปรับพารามิเตอร์ และอนุมัติกฎจาก AI
-                  </div>
-                </div>
-
-                {/* 6. Pipeline */}
-                <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                    <span style={{ color: 'var(--accent-blue)' }}><Icons.Cpu /></span>
-                    <h3 style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>6. Pipeline Orchestration (/pipeline)</h3>
-                  </div>
-                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                    หน้าควบคุมการรัน Spark Processing Job สามารถสั่ง Trigger แบตช์ด้วยตนเอง ดูสถานะความคืบหน้ารายสเต็ป (Ingestion → Drift Check → Quality Audit → Warehouse Load) และเปิดดู Log เชิงลึก
-                  </div>
-                  <div style={{ marginTop: '10px', fontSize: '11px', color: 'var(--accent-blue)', fontWeight: 600 }}>
-                    หน้าที่หลัก: สั่งรันไปป์ไลน์ ตรวจสอบ Execution DAG และแก้ไขข้อผิดพลาด
-                  </div>
-                </div>
-
-                {/* 7. Analytics */}
-                <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                    <span style={{ color: 'var(--accent-green)' }}><Icons.Database /></span>
-                    <h3 style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>7. Analytics & Profiling (/analytics)</h3>
-                  </div>
-                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                    เครื่องมือวิเคราะห์เชิงลึก แสดงสถิติการกระจายตัวของคอลัมน์ (Null Rate, Min, Max, Mean, Outliers Count), กราฟสัดส่วน Error Type และประวัติความเปลี่ยนแปลงของข้อมูลย้อนหลัง
-                  </div>
-                  <div style={{ marginTop: '10px', fontSize: '11px', color: 'var(--accent-green)', fontWeight: 600 }}>
-                    หน้าที่หลัก: สำรวจเนื้อข้อมูลเพื่อนำมาตั้งค่าพารามิเตอร์ใน Rules Config
-                  </div>
-                </div>
-
-                {/* 8. Data Export */}
-                <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                    <span style={{ color: 'var(--accent-purple)' }}><Icons.DownloadCloud /></span>
-                    <h3 style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>8. Export Hub (/export)</h3>
-                  </div>
-                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                    จุดส่งมอบข้อมูลที่ผ่านการตรวจสอบคุณภาพแล้ว (Cleaned Data) ไปยังปลายทางต่างๆ เช่น PostgreSQL สำหรับระบบแอปพลิเคชัน, Elasticsearch สำหรับ Kibana BI, หรือดาวน์โหลดเป็นไฟล์ CSV/Excel
-                  </div>
-                  <div style={{ marginTop: '10px', fontSize: '11px', color: 'var(--accent-purple)', fontWeight: 600 }}>
-                    หน้าที่หลัก: นำข้อมูลสะอาดส่งออกไปยังระบบปลายทาง
-                  </div>
-                </div>
-
-              </div>
+              <ul className="gs-guide-pages">
+                {PAGES.filter((p) => p.key !== 'home').map((p) => (
+                  <li key={p.key}>
+                    <Link to={p.path}><strong>{p.label}</strong></Link>
+                    <span>{p.subtitle}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
         )}
@@ -670,10 +421,12 @@ export default function ConfigGuide() {
                       </div>
                       <span className="gs-badge" style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}>{phase.badge}</span>
                     </div>
-                    <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6, margin: '0 0 8px' }}>{phase.desc}</p>
-                    <div style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', background: 'var(--bg-primary)', padding: '6px 10px', borderRadius: '6px' }}>
-                      {phase.tech}
-                    </div>
+                    <LearnMore summary="รายละเอียด">
+                      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6, margin: '0 0 8px' }}>{phase.desc}</p>
+                      <div style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', background: 'var(--bg-primary)', padding: '6px 10px', borderRadius: '6px' }}>
+                        {phase.tech}
+                      </div>
+                    </LearnMore>
                   </div>
                 ))}
               </div>

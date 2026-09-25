@@ -8,8 +8,8 @@
   "guide": {
     "baseline_chars": 5335,
     "ratio": 0.4,
-    "max_chars": 5335,
-    "enforce_single_language": false
+    "max_chars": 2134,
+    "enforce_single_language": true
   },
   "ingestion": {
     "baseline_chars": 2203,

@@ -1,0 +1,9 @@
+.gs-guide-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 16px 0; }
+.gs-guide-step { display: flex; flex-direction: column; gap: 4px; padding: 14px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); color: var(--text-main); text-decoration: none; }
+.gs-guide-step:hover { border-color: var(--accent-blue); }
+.gs-guide-step-num { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+.gs-guide-step span:last-child { font-size: 12px; color: var(--text-muted); }
+
+.gs-guide-pages { list-style: none; padding: 0; display: grid; gap: 8px; }
+.gs-guide-pages li { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 6px; }
+.gs-guide-pages span { font-size: 12px; color: var(--text-muted); }
