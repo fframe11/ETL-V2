@@ -2,7 +2,10 @@ import React, { useState } from "react";
 import { useApi, postApi } from "../hooks/useApi";
 import { Icon } from "../components/UiIcons";
 import ConfirmationModal from "../components/ConfirmationModal";
+import { PageHeader, LearnMore } from "../components/ui";
 import "./Schema.css";
+
+const STATUS_LABELS = { PENDING: "รออนุมัติ", APPROVED: "อนุมัติแล้ว", REJECTED: "ปฏิเสธ" };
 
 export default function Schema() {
   const [workspaceMode, setWorkspaceMode] = useState("primary");
@@ -189,26 +192,17 @@ export default function Schema() {
   return (
     <div className="gs-schema">
 
-      {/* 1. Page Header */}
-      <div className="gs-page-header">
-        <div>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(255, 54, 33, 0.08)", color: "#FF3621", border: "1px solid rgba(255, 54, 33, 0.25)", borderRadius: "4px", padding: "2px 8px", fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em", marginBottom: "6px" }}>
-            UNITY CATALOG · DATA ASSETS & SCHEMA GOVERNANCE
-          </div>
-          <h1 className="gs-page-title">Unity Catalog <span style={{ color: "#1B3139" }}>& Schema Registry</span></h1>
-          <p className="gs-page-desc">จัดการและควบคุมวิวัฒนาการโครงสร้างตาราง (Schema Evolution), คีย์หลัก และ Partitioning ในระบบแคตตาล็อกกลาง</p>
-        </div>
-      </div>
+      <PageHeader pageKey="schema" />
 
       {/* Schema Evolution Registration Bar (collapsed by default — this is a simulation/test tool, not the primary workflow) */}
       <details style={{ background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '10px', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
         <summary style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 700, color: '#475569', cursor: 'pointer', userSelect: 'none' }}>
-          + จำลองการเปลี่ยนแปลงโครงสร้างตาราง (Register Schema Change — Simulation Tool)
+          จำลองการเปลี่ยน Schema (สำหรับทดสอบ)
         </summary>
         <form onSubmit={handleCreateProposal} style={{ padding: '0 16px 16px 16px', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'flex-end' }}>
         <div style={{ minWidth: '170px', flex: 1 }}>
           <label style={{ display: 'block', fontSize: '10px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '3px' }}>
-            1. ชื่อตาราง (Target Table):
+            ตาราง
           </label>
           <input
             type="text"
@@ -220,7 +214,7 @@ export default function Schema() {
         </div>
         <div style={{ minWidth: '170px', flex: 1 }}>
           <label style={{ display: 'block', fontSize: '10px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '3px' }}>
-            2. คอลัมน์ที่เปลี่ยน/เพิ่มใหม่ (Column Name):
+            คอลัมน์
           </label>
           <input
             type="text"
@@ -232,7 +226,7 @@ export default function Schema() {
         </div>
         <div style={{ minWidth: '140px' }}>
           <label style={{ display: 'block', fontSize: '10px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '3px' }}>
-            3. ชนิดข้อมูล (Data Type):
+            ชนิดข้อมูล
           </label>
           <select
             value={simType}
@@ -247,15 +241,15 @@ export default function Schema() {
         </div>
         <div style={{ minWidth: '150px' }}>
           <label style={{ display: 'block', fontSize: '10px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '3px' }}>
-            4. ประเภทความเปลี่ยนแปลง (Drift Type):
+            ประเภท
           </label>
           <select
             value={simDriftType}
             onChange={(e) => setSimDriftType(e.target.value)}
             style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '12px', fontWeight: 700, color: '#0F172A', background: '#FFFFFF' }}
           >
-            <option value="new_column">NEW COLUMN (เพิ่มคอลัมน์ใหม่)</option>
-            <option value="type_mismatch">TYPE MISMATCH (ชนิดข้อมูลเปลี่ยน)</option>
+            <option value="new_column">เพิ่มคอลัมน์</option>
+            <option value="type_mismatch">ชนิดข้อมูลเปลี่ยน</option>
           </select>
         </div>
         <button
@@ -272,7 +266,7 @@ export default function Schema() {
             cursor: submitting ? 'not-allowed' : 'pointer'
           }}
         >
-          + บันทึกการเปลี่ยนแปลงโครงสร้างตาราง (Register Schema Change)
+          บันทึก
         </button>
         </form>
       </details>
@@ -306,7 +300,7 @@ export default function Schema() {
                 setActionResult(null);
               }}
             >
-              {tab}
+              {STATUS_LABELS[tab]}
             </button>
           ))}
         </div>
@@ -316,7 +310,7 @@ export default function Schema() {
             type="text"
             value={searchTable}
             onChange={(e) => setSearchTable(e.target.value)}
-            placeholder="ค้นหาชื่อตาราง เช่น products, orders, users..."
+            placeholder="ค้นหาตาราง"
             style={{ width: '100%', padding: '6px 12px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '12px', background: '#FFFFFF', color: '#0F172A' }}
           />
         </div>
@@ -327,7 +321,7 @@ export default function Schema() {
         {/* Left Column: Proposals List */}
         <div className="gs-schema-list">
           <div className="gs-scard">
-            <h3>{statusFilter} Proposals ({filteredProposals.length})</h3>
+            <h3>{filteredProposals.length} รายการ</h3>
             {statusFilter === "PENDING" && filteredProposals.length > 0 && (
               <div style={{
                 display: "flex",
@@ -338,8 +332,8 @@ export default function Schema() {
               }}>
                 <button
                   onClick={() => triggerConfirm(
-                    "Approve All Pending Proposals?",
-                    `This will approve all ${filteredProposals.length} pending schema evolution proposal(s) currently listed and apply their changes to the catalog immediately. This action cannot be undone.`,
+                    "อนุมัติทั้งหมด?",
+                    `อนุมัติ ${filteredProposals.length} รายการและอัปเดต Schema ทันที ย้อนกลับไม่ได้`,
                     () => handleBulkAction("approve-all")
                   )}
                   disabled={submitting}
@@ -355,12 +349,12 @@ export default function Schema() {
                     cursor: submitting ? "not-allowed" : "pointer"
                   }}
                 >
-                  {submitting ? "Processing..." : "Approve All"}
+                  {submitting ? "กำลังดำเนินการ..." : "อนุมัติทั้งหมด"}
                 </button>
                 <button
                   onClick={() => triggerConfirm(
-                    "Reject All Pending Proposals?",
-                    `This will reject and quarantine all ${filteredProposals.length} pending schema evolution proposal(s) currently listed. This action cannot be undone.`,
+                    "ปฏิเสธทั้งหมด?",
+                    `ปฏิเสธ ${filteredProposals.length} รายการ ย้อนกลับไม่ได้`,
                     () => handleBulkAction("reject-all")
                   )}
                   disabled={submitting}
@@ -376,17 +370,17 @@ export default function Schema() {
                     cursor: submitting ? "not-allowed" : "pointer"
                   }}
                 >
-                  {submitting ? "Processing..." : "Reject All"}
+                  {submitting ? "กำลังดำเนินการ..." : "ปฏิเสธทั้งหมด"}
                 </button>
               </div>
             )}
             <div className="gs-proposals">
               {proposals.loading ? (
-                <div className="gs-empty">Loading proposals...</div>
+                <div className="gs-empty">กำลังโหลด...</div>
               ) : proposals.error ? (
-                <div className="gs-empty" style={{ color: 'var(--accent-red)' }}>Failed to load proposals</div>
+                <div className="gs-empty" style={{ color: 'var(--accent-red)' }}>โหลดรายการไม่สำเร็จ</div>
               ) : filteredProposals.length === 0 ? (
-                <div className="gs-empty">No {statusFilter.toLowerCase()} proposals found</div>
+                <div className="gs-empty">ไม่มีรายการ</div>
               ) : (
                 filteredProposals.map((p) => {
                   const isSelected = p.id === selectedId;
@@ -429,8 +423,8 @@ export default function Schema() {
             <div className="gs-scard gs-workspace-card">
               <div className="gs-workspace-header">
                 <div>
-                  <h2>Table Evolution Workspace: {selectedProposal.table_name}</h2>
-                  <span>Run UUID: {selectedProposal.run_id}</span>
+                  <h2>{selectedProposal.table_name}</h2>
+                  <span>Run {selectedProposal.run_id}</span>
                 </div>
                 {statusFilter === "PENDING" && (
                   <div className="gs-actions">
@@ -438,30 +432,30 @@ export default function Schema() {
                       disabled={submitting}
                       className="gs-btn-approve"
                       onClick={() => triggerConfirm(
-                        "Approve Schema Evolution?",
-                        `Table: ${selectedProposal.table_name}\nThis will apply the detected drift mutations to the catalog and update the Delta table schema. This action cannot be undone.`,
+                        "อนุมัติการเปลี่ยน Schema?",
+                        `ตาราง ${selectedProposal.table_name} จะถูกอัปเดตทันที ย้อนกลับไม่ได้`,
                         () => handleAction(selectedProposal.id, "approve")
                       )}
                     >
-                      {submitting ? "Processing..." : "Approve Evolution"}
+                      {submitting ? "กำลังดำเนินการ..." : "อนุมัติ"}
                     </button>
                     <button
                       disabled={submitting}
                       className="gs-btn-reject"
                       onClick={() => triggerConfirm(
-                        "Reject & Quarantine Proposal?",
-                        `Table: ${selectedProposal.table_name}\nThis will reject the proposed schema change and quarantine the affected data. This action cannot be undone.`,
+                        "ปฏิเสธการเปลี่ยน Schema?",
+                        `ตาราง ${selectedProposal.table_name} ข้อมูลที่เกี่ยวข้องจะถูกกักกัน ย้อนกลับไม่ได้`,
                         () => handleAction(selectedProposal.id, "reject")
                       )}
                     >
-                      {submitting ? "Rejecting..." : "Reject & Quarantine"}
+                      {submitting ? "กำลังปฏิเสธ..." : "ปฏิเสธ"}
                     </button>
                   </div>
                 )}
               </div>
 
               <div className="gs-drift-details-section">
-                <h4 style={{ fontSize: '12px', fontWeight: 800, marginBottom: '8px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Detected Drift Mutations</h4>
+                <h4 style={{ fontSize: '12px', fontWeight: 800, marginBottom: '8px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>สิ่งที่เปลี่ยน</h4>
                 <div className="gs-drift-lines">
                   {getModificationLines(selectedProposal).map((line, i) => (
                     <div key={i} className="gs-drift-line">
@@ -476,10 +470,7 @@ export default function Schema() {
               </div>
 
               {/* JSON code viewer with line numbers */}
-              <div style={{ marginBottom: '16px' }}>
-                <h4 style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-muted)", marginBottom: "6px", textTransform: "uppercase" }}>
-                  Proposed Delta Schema JSON
-                </h4>
+              <LearnMore summary="ดู Schema ที่เสนอ (JSON)">
                 {(() => {
                   const jsonString = JSON.stringify(selectedProposal.proposed_schema || {}, null, 2);
                   const lines = jsonString.split("\n");
@@ -525,17 +516,16 @@ export default function Schema() {
                     </div>
                   );
                 })()}
-              </div>
+              </LearnMore>
 
               {/* Approval Override inputs */}
               {statusFilter === "PENDING" && (
                 <div className="gs-governance-config">
-                  <h4 style={{ fontSize: '11.5px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-main)' }}>Approval Override Parameters</h4>
-                  <p className="gs-sub-desc">Define delta table constraints and active partition columns</p>
-                  
+                  <h4 style={{ fontSize: '11.5px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-main)' }}>ตั้งค่าก่อนอนุมัติ</h4>
+
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <div className="gs-input-grp">
-                      <label style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Primary Key Column</label>
+                      <label style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Primary Key</label>
                       <input
                         type="text"
                         placeholder="e.g. user_id"
@@ -544,7 +534,7 @@ export default function Schema() {
                       />
                     </div>
                     <div className="gs-input-grp">
-                      <label style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Partition Date Column</label>
+                      <label style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Partition Date</label>
                       <input
                         type="text"
                         placeholder="e.g. created_date"
@@ -589,7 +579,7 @@ export default function Schema() {
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                 <path d="M2 10h20" />
               </svg>
-              <p>Select a schema proposal from the left pane to analyze structural drift mutations and configure overrides.</p>
+              <p>เลือกรายการทางซ้ายเพื่อดูรายละเอียด</p>
             </div>
           )}
         </div>

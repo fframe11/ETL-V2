@@ -38,8 +38,8 @@
   "schema": {
     "baseline_chars": 448,
     "ratio": 0.7,
-    "max_chars": 448,
-    "enforce_single_language": false
+    "max_chars": 313,
+    "enforce_single_language": true
   },
   "whitebox": {
     "baseline_chars": 2310,
