@@ -14,8 +14,8 @@
   "ingestion": {
     "baseline_chars": 2203,
     "ratio": 0.55,
-    "max_chars": 2203,
-    "enforce_single_language": false
+    "max_chars": 1211,
+    "enforce_single_language": true
   },
   "rules": {
     "baseline_chars": 1562,

@@ -1,8 +1,8 @@
 import { Icon } from '../components/UiIcons';
 import React, { useState, useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
 import { postApi } from "../hooks/useApi";
 import TileCard from "../components/ui/TileCard";
+import { PageHeader, LearnMore, NextStepLink } from "../components/ui";
 import "./Ingestion.css";
 
 export default function Ingestion() {
@@ -182,7 +182,7 @@ export default function Ingestion() {
       if (res.ok) {
         const d = await res.json();
         if (d.profile) setProfilingData(d.profile);
-        setQuickUploadNotice(`เชื่อมต่อแหล่งข้อมูล [${sourceType}] ตาราง '${cleanTbl}' (${(d.rows_ingested || 10100).toLocaleString()} แถว) และอัปเดตผลวิเคราะห์ System Auto-Profiling เรียบร้อยแล้ว`);
+        setQuickUploadNotice(`เชื่อมต่อแหล่งข้อมูล [${sourceType}] ตาราง '${cleanTbl}' (${(d.rows_ingested ?? 0).toLocaleString()} แถว) และอัปเดตผลวิเคราะห์ System Auto-Profiling เรียบร้อยแล้ว`);
         fetchAiContext(true);
       }
     } catch (err) {
@@ -557,96 +557,41 @@ export default function Ingestion() {
 
   return (
     <div className="gs-ingestion">
-      {/* 1. Page Header (Databricks Single-Title Header) */}
-      <div className="gs-page-header" style={{ marginBottom: "12px" }}>
-        <div>
-          <h1 className="gs-page-title" style={{ fontSize: "22px", fontWeight: 600, color: "#0F172A", margin: 0 }}>Add Data</h1>
-          <div style={{ fontSize: "13px", color: "#64748B", marginTop: "4px" }}>
-            Create or ingest tables into <code>bronze_lakehouse_table</code> from files, databases, APIs, or streams.
-          </div>
-        </div>
-      </div>
+      <PageHeader pageKey="ingestion" />
 
-      {/* Databricks Single-Row Search & Segmented Filter Toolbar */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px", marginBottom: "16px", paddingBottom: "12px", borderBottom: "1px solid #E2E8F0" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "#FFFFFF", border: "1px solid #CBD5E1", borderRadius: "6px", padding: "5px 10px", width: "220px" }}>
-            <Icon name="search" size={13} style={{ color: "#64748B" }} />
-            <span style={{ fontSize: "12px", color: "#94A3B8" }}>Search data sources...</span>
-          </div>
-          {[
-            { id: "csv", label: "File Upload" },
-            { id: "rdbms", label: "Database (JDBC)" },
-            { id: "api", label: "REST Webhook" },
-            { id: "stream", label: "Kafka Stream" }
-          ].map((tab) => {
-            const isAct = activeSourceTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveSourceTab(tab.id)}
-                style={{
-                  background: isAct ? "#0F172A" : "#FFFFFF",
-                  color: isAct ? "#FFFFFF" : "#475569",
-                  border: isAct ? "1px solid #0F172A" : "1px solid #CBD5E1",
-                  borderRadius: "6px",
-                  padding: "5px 12px",
-                  fontSize: "12px",
-                  fontWeight: 500,
-                  cursor: "pointer"
-                }}
-              >
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
-        <div style={{ fontSize: "12px", color: "#64748B" }}>
-          Active: <strong style={{ color: "#0F172A" }}>{activeSourceSummary}</strong>
-        </div>
+      {/* Source picker */}
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "16px", paddingBottom: "12px", borderBottom: "1px solid #E2E8F0" }}>
+        {[
+          { id: "csv", label: "ไฟล์" },
+          { id: "rdbms", label: "ฐานข้อมูล" },
+          { id: "api", label: "API" },
+          { id: "stream", label: "Stream" }
+        ].map((tab) => {
+          const isAct = activeSourceTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveSourceTab(tab.id)}
+              style={{
+                background: isAct ? "#0F172A" : "#FFFFFF",
+                color: isAct ? "#FFFFFF" : "#475569",
+                border: isAct ? "1px solid #0F172A" : "1px solid #CBD5E1",
+                borderRadius: "6px",
+                padding: "5px 12px",
+                fontSize: "12px",
+                fontWeight: 500,
+                cursor: "pointer"
+              }}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* PART 1: UNIFIED SOURCE CONNECTOR FORM */}
       <div className="gs-icard" style={{ minHeight: "auto", background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: "8px", padding: "16px 20px", marginBottom: "16px" }}>
-        <div style={{ display: "none" }}>
-          {[
-            { id: "csv", icon: "folder", title: "File Upload", sub: "CSV, Excel, Parquet" }
-          ].map((tab) => {
-            const isAct = activeSourceTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveSourceTab(tab.id)}
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "flex-start",
-                  gap: "2px",
-                  padding: "10px 14px",
-                  borderRadius: "6px",
-                  border: isAct ? "1px solid #CBD5E1" : "1px solid transparent",
-                  borderTop: isAct ? "3px solid #FF3621" : "3px solid transparent",
-                  background: isAct ? "#FFFFFF" : "transparent",
-                  color: isAct ? "#0F172A" : "#475569",
-                  cursor: "pointer",
-                  textAlign: "left",
-                  boxShadow: isAct ? "0 1px 3px rgba(15,23,42,0.06)" : "none",
-                  transition: "all 0.15s ease"
-                }}
-              >
-                <div style={{ fontSize: "12.5px", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px" }}>
-                  <Icon name={tab.icon} /> {tab.title}
-                </div>
-                <div style={{ fontSize: "10.5px", color: isAct ? "#FF3621" : "#64748B", fontWeight: 600 }}>
-                  {tab.sub}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-
         {/* Active Source Tab Content */}
         {activeSourceTab === "csv" && (
           <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: "8px", padding: "16px" }}>
@@ -837,10 +782,10 @@ export default function Ingestion() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
           <div>
             <h3 style={{ margin: 0, fontSize: "16px", color: "#0F172A", fontWeight: 800 }}>
-              <Icon name="search" /> Automated Schema &amp; Quality Profile
+              <Icon name="search" /> ผลสำรวจข้อมูล
             </h3>
             <div style={{ fontSize: "12.5px", color: "#64748B", marginTop: "4px" }}>
-              Table: <code>{primaryDatasetName}</code> · {totalIngestedRows.toLocaleString()} rows ({distinctRows.toLocaleString()} distinct, 8 columns) · <span style={{ color: "#DC2626", fontWeight: 600 }}>Anomalies detected: 705 rows (3 categories)</span>
+              Table: <code>{primaryDatasetName}</code> · {totalIngestedRows.toLocaleString()} rows ({distinctRows.toLocaleString()} distinct)
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
@@ -863,7 +808,7 @@ export default function Ingestion() {
               }}
             >
               <Icon name="sparkles" />
-              <span>{aiContextLoading ? "Analyzing..." : "Generate AI Summary"}</span>
+              <span>{aiContextLoading ? "กำลังสรุป..." : "สรุปด้วย AI"}</span>
             </button>
             <button
               type="button"
@@ -883,50 +828,28 @@ export default function Ingestion() {
                 cursor: profilingLoading ? "wait" : "pointer"
               }}
             >
-              <span>{profilingLoading ? "Scanning..." : "Re-scan Profile"}</span>
+              <span>{profilingLoading ? "กำลังสแกน..." : "สแกนใหม่"}</span>
             </button>
-            <Link
-              to="/rules"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "8px",
-                padding: "8px 16px",
-                background: "#1B3139",
-                color: "#FFFFFF",
-                borderRadius: "6px",
-                fontSize: "12px",
-                fontWeight: 700,
-                textDecoration: "none"
-              }}
-            >
-              <span>Configure Delta Expectations ({["range", "duplicate", "outlier"].filter((k) => selectedFindings[k]).length}/3 Selected) <Icon name="arrow-right" /></span>
-            </Link>
+            <NextStepLink from="ingestion" />
           </div>
         </div>
 
         {/* Databricks-style AI Contextual Summary Banner */}
-        <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderLeft: "4px solid #1B3139", borderRadius: "8px", padding: "12px 16px", marginBottom: "14px", display: "flex", flexDirection: "column", gap: "4px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
-            <span style={{ fontSize: "11px", fontWeight: 800, color: "#0F172A", display: "flex", alignItems: "center", gap: "6px", letterSpacing: "0.03em" }}>
-              <Icon name="sparkles" /> AI ASSISTANT · DATA PROFILE SUMMARY ({primaryDatasetName})
-            </span>
-            <span style={{ fontSize: "10.5px", fontWeight: 700, color: "#475569", background: "#E2E8F0", padding: "2px 8px", borderRadius: "4px" }}>
-              Model: {aiContext?.model || "openai/gpt-oss-120b"}
-            </span>
+        <LearnMore summary="สรุปจาก AI">
+          <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderLeft: "4px solid #1B3139", borderRadius: "8px", padding: "12px 16px", marginBottom: "14px", display: "flex", flexDirection: "column", gap: "4px" }}>
+            <div style={{ fontSize: "12px", color: "#334155", lineHeight: "1.6", fontWeight: 500 }}>
+              {aiContext?.step1_findings?.overview_summary ||
+                `จากการสแกนโครงสร้างและค่าสถิติของตาราง '${primaryDatasetName}' (${totalIngestedRows.toLocaleString()} แถว) พบรายการที่ต้องกำหนดเกณฑ์ควบคุมคุณภาพ 3 หมวดหมู่หลักก่อนนำไปประมวลผลต่อ`}
+            </div>
           </div>
-          <div style={{ fontSize: "12px", color: "#334155", lineHeight: "1.6", fontWeight: 500 }}>
-            {aiContext?.step1_findings?.overview_summary ||
-              `จากการสแกนโครงสร้างและค่าสถิติของตาราง '${primaryDatasetName}' (${totalIngestedRows.toLocaleString()} แถว) พบรายการที่ต้องกำหนดเกณฑ์ควบคุมคุณภาพ 3 หมวดหมู่หลักก่อนนำไปประมวลผลต่อ`}
-          </div>
-        </div>
+        </LearnMore>
 
         {/* Unified Live Record Filter Bar */}
         <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: "8px", padding: "12px 14px", marginBottom: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
             <div style={{ flex: 1, minWidth: "280px" }}>
               <label style={{ display: "block", fontSize: "10.5px", fontWeight: 800, color: "#475569", textTransform: "uppercase", marginBottom: "4px" }}>
-                Record Explorer · ค้นหาและตรวจสอบเรคคอร์ดในตาราง ({primaryDatasetName}):
+                ค้นหาเรคคอร์ด
               </label>
               <input
                 type="text"
@@ -977,11 +900,11 @@ export default function Ingestion() {
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px", gap: "8px" }}>
                   <div>
-                    <span style={{ fontSize: "10px", color: "#64748B", fontWeight: 800, letterSpacing: "0.04em" }}>PROFILE METRIC 01 · COLUMN: score</span>
-                    <h4 style={{ margin: "2px 0 0", color: "#0F172A", fontSize: "13.5px", fontWeight: 800 }}>1. ขอบเขตค่าและอัตราค่าว่าง (Range & Completeness)</h4>
+                    <span style={{ fontSize: "10px", color: "#64748B", fontWeight: 800, letterSpacing: "0.04em" }}>score</span>
+                    <h4 style={{ margin: "2px 0 0", color: "#0F172A", fontSize: "13.5px", fontWeight: 800 }}>ค่าว่างและช่วงค่า</h4>
                   </div>
                   <span style={{ background: "#FEF2F2", color: "#B91C1C", border: "1px solid #FECACA", fontSize: "10.5px", fontWeight: 800, padding: "2px 8px", borderRadius: "4px", whiteSpace: "nowrap" }}>
-                    505 rows flagged
+                    — flagged
                   </span>
                 </div>
 
@@ -996,15 +919,16 @@ export default function Ingestion() {
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}>
                     <span>Out-of-Bounds Rows:</span>
-                    <strong style={{ color: "#0F172A" }}>200 rows</strong>
+                    <strong style={{ color: "#0F172A" }}>—</strong>
                   </div>
                 </div>
 
-                <div style={{ background: "#F8FAFC", borderLeft: "3px solid #475569", padding: "8px 10px", borderRadius: "4px", marginBottom: "10px", fontSize: "11px", color: "#334155", lineHeight: "1.55" }}>
-                  <strong style={{ color: "#0F172A" }}><Icon name="sparkles" /> บริบทข้อมูล (AI Context):</strong>{" "}
-                  {aiContext?.step1_findings?.finding1_explanation ||
-                    "คอลัมน์ score มีทั้งค่าว่างและค่าที่อยู่นอกช่วงปกติ (-10 ถึง 150) หากปล่อยผ่านจะทำให้การคำนวณค่าเฉลี่ยของชุดข้อมูลคลาดเคลื่อน"}
-                </div>
+                <LearnMore summary="บริบทข้อมูล">
+                  <div style={{ background: "#F8FAFC", borderLeft: "3px solid #475569", padding: "8px 10px", borderRadius: "4px", marginBottom: "10px", fontSize: "11px", color: "#334155", lineHeight: "1.55" }}>
+                    {aiContext?.step1_findings?.finding1_explanation ||
+                      "คอลัมน์ score มีทั้งค่าว่างและค่าที่อยู่นอกช่วงปกติ (-10 ถึง 150) หากปล่อยผ่านจะทำให้การคำนวณค่าเฉลี่ยของชุดข้อมูลคลาดเคลื่อน"}
+                  </div>
+                </LearnMore>
 
                 {expandedFinding === "range" && (
                   <div style={{ background: "#F8FAFC", border: "1px solid #CBD5E1", borderRadius: "6px", padding: "8px", marginBottom: "10px", fontSize: "10px", fontFamily: "var(--font-mono)", color: "#1E293B" }}>
@@ -1040,8 +964,8 @@ export default function Ingestion() {
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px", gap: "8px" }}>
                   <div>
-                    <span style={{ fontSize: "10px", color: "#64748B", fontWeight: 800, letterSpacing: "0.04em" }}>PROFILE METRIC 02 · COMPOSITE KEY</span>
-                    <h4 style={{ margin: "2px 0 0", color: "#0F172A", fontSize: "13.5px", fontWeight: 800 }}>2. ความไม่ซ้ำของคีย์หลัก (Primary Key Uniqueness)</h4>
+                    <span style={{ fontSize: "10px", color: "#64748B", fontWeight: 800, letterSpacing: "0.04em" }}>คีย์รวม</span>
+                    <h4 style={{ margin: "2px 0 0", color: "#0F172A", fontSize: "13.5px", fontWeight: 800 }}>คีย์ซ้ำ</h4>
                   </div>
                   <span style={{ background: "#FFFBEB", color: "#B45309", border: "1px solid #FDE68A", fontSize: "10.5px", fontWeight: 800, padding: "2px 8px", borderRadius: "4px", whiteSpace: "nowrap" }}>
                     {profilingData?.duplicate_analysis?.duplicate_rows_detected ?? 100} duplicates
@@ -1059,15 +983,16 @@ export default function Ingestion() {
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}>
                     <span>Duplicate Records:</span>
-                    <strong style={{ color: "#0F172A" }}>{profilingData?.duplicate_analysis?.duplicate_rows_detected ?? 100} rows (0.99%)</strong>
+                    <strong style={{ color: "#0F172A" }}>{profilingData?.duplicate_analysis?.duplicate_rows_detected ?? "—"} rows</strong>
                   </div>
                 </div>
 
-                <div style={{ background: "#F8FAFC", borderLeft: "3px solid #475569", padding: "8px 10px", borderRadius: "4px", marginBottom: "10px", fontSize: "11px", color: "#334155", lineHeight: "1.55" }}>
-                  <strong style={{ color: "#0F172A" }}><Icon name="sparkles" /> บริบทข้อมูล (AI Context):</strong>{" "}
-                  {aiContext?.step1_findings?.finding2_explanation ||
-                    "พบเรคคอร์ดที่มีรหัสประจำตัว รายวิชา และภาคการศึกษาซ้ำกันเกิน 1 ครั้ง ซึ่งเกิดจากการส่งข้อมูลซ้ำจากระบบต้นทางและต้องแยกออกเพื่อป้องกันการนับยอดซ้ำ"}
-                </div>
+                <LearnMore summary="บริบทข้อมูล">
+                  <div style={{ background: "#F8FAFC", borderLeft: "3px solid #475569", padding: "8px 10px", borderRadius: "4px", marginBottom: "10px", fontSize: "11px", color: "#334155", lineHeight: "1.55" }}>
+                    {aiContext?.step1_findings?.finding2_explanation ||
+                      "พบเรคคอร์ดที่มีรหัสประจำตัว รายวิชา และภาคการศึกษาซ้ำกันเกิน 1 ครั้ง ซึ่งเกิดจากการส่งข้อมูลซ้ำจากระบบต้นทางและต้องแยกออกเพื่อป้องกันการนับยอดซ้ำ"}
+                  </div>
+                </LearnMore>
 
                 {expandedFinding === "dup" && (
                   <div style={{ background: "#F8FAFC", border: "1px solid #CBD5E1", borderRadius: "6px", padding: "8px", marginBottom: "10px", fontSize: "10px", fontFamily: "var(--font-mono)", color: "#1E293B" }}>
@@ -1103,34 +1028,35 @@ export default function Ingestion() {
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px", gap: "8px" }}>
                   <div>
-                    <span style={{ fontSize: "10px", color: "#64748B", fontWeight: 800, letterSpacing: "0.04em" }}>PROFILE METRIC 03 · COLUMN: study_hours</span>
-                    <h4 style={{ margin: "2px 0 0", color: "#0F172A", fontSize: "13.5px", fontWeight: 800 }}>3. การกระจายตัวและค่าผิดปกติ (Distribution & IQR)</h4>
+                    <span style={{ fontSize: "10px", color: "#64748B", fontWeight: 800, letterSpacing: "0.04em" }}>study_hours</span>
+                    <h4 style={{ margin: "2px 0 0", color: "#0F172A", fontSize: "13.5px", fontWeight: 800 }}>ค่าผิดปกติ</h4>
                   </div>
                   <span style={{ background: "#F0F9FF", color: "#0369A1", border: "1px solid #BAE6FD", fontSize: "10.5px", fontWeight: 800, padding: "2px 8px", borderRadius: "4px", whiteSpace: "nowrap" }}>
-                    100 – 154 outliers
+                    — outliers
                   </span>
                 </div>
 
                 <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: "6px", padding: "10px 12px", marginBottom: "10px", fontSize: "11.5px", color: "#334155" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: "1px solid #E2E8F0" }}>
-                    <span>Quartiles (Q1 / Q3 / IQR):</span>
+                    <span>Q1 / Q3 / IQR:</span>
                     <strong style={{ color: "#0F172A" }}>Q1={(profilingData?.columns_profile || profilingData?.column_profiles)?.study_hours?.q1 ?? 4.0} · Q3={(profilingData?.columns_profile || profilingData?.column_profiles)?.study_hours?.q3 ?? 6.0} · IQR={(profilingData?.columns_profile || profilingData?.column_profiles)?.study_hours?.iqr ?? 2.0}</strong>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: "1px solid #E2E8F0" }}>
                     <span>Inner Fence (<code>1.5× IQR &gt; 9.0</code>):</span>
-                    <strong style={{ color: "#0F172A" }}>154 rows</strong>
+                    <strong style={{ color: "#0F172A" }}>—</strong>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}>
                     <span>Outer Fence (<code>3.0× IQR &gt; 12.0</code>):</span>
-                    <strong style={{ color: "#0F172A" }}>100 rows (Max 45.0)</strong>
+                    <strong style={{ color: "#0F172A" }}>—</strong>
                   </div>
                 </div>
 
-                <div style={{ background: "#F8FAFC", borderLeft: "3px solid #475569", padding: "8px 10px", borderRadius: "4px", marginBottom: "10px", fontSize: "11px", color: "#334155", lineHeight: "1.55" }}>
-                  <strong style={{ color: "#0F172A" }}><Icon name="sparkles" /> บริบทข้อมูล (AI Context):</strong>{" "}
-                  {aiContext?.step1_findings?.finding3_explanation ||
-                    "ค่าในคอลัมน์ study_hours ที่สูงเกินรั้วสถิติ (IQR) ควรคัดแยกเข้าคิวตรวจสอบ (Review Queue) เพื่อให้ผู้รับผิดชอบพิจารณาแทนการตัดทิ้งอัตโนมัติ"}
-                </div>
+                <LearnMore summary="บริบทข้อมูล">
+                  <div style={{ background: "#F8FAFC", borderLeft: "3px solid #475569", padding: "8px 10px", borderRadius: "4px", marginBottom: "10px", fontSize: "11px", color: "#334155", lineHeight: "1.55" }}>
+                    {aiContext?.step1_findings?.finding3_explanation ||
+                      "ค่าในคอลัมน์ study_hours ที่สูงเกินรั้วสถิติควรคัดแยกเข้าคิวตรวจสอบ เพื่อให้ผู้รับผิดชอบพิจารณาแทนการตัดทิ้งอัตโนมัติ"}
+                  </div>
+                </LearnMore>
 
                 {expandedFinding === "outlier" && (
                   <div style={{ background: "#F8FAFC", border: "1px solid #CBD5E1", borderRadius: "6px", padding: "8px", marginBottom: "10px", fontSize: "10px", fontFamily: "var(--font-mono)", color: "#1E293B" }}>
