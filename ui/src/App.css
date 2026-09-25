@@ -79,9 +79,6 @@ body {
   position: relative;
   overflow: hidden;
 }
-.app-layout.layout-with-banner {
-  height: calc(100vh - 38px);
-}
 .app-layout.layout-full-height {
   height: 100vh;
 }
@@ -94,9 +91,6 @@ body {
   display: block !important;
   position: relative;
   scroll-behavior: auto;
-}
-.layout-with-banner .app-main-content {
-  height: calc(100vh - 38px);
 }
 .layout-full-height .app-main-content {
   height: 100vh;
@@ -135,54 +129,6 @@ body {
 .gs-dcard {
   height: auto !important;
   overflow: visible !important;
-}
-
-/* ── LAKEHOUSE WORKSPACE TOP BANNER ── */
-.top-banner {
-  background: var(--db-navy-dark);
-  color: #FFFFFF;
-  font-family: var(--font-sans);
-  font-size: 11.5px;
-  font-weight: 600;
-  height: 38px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1001;
-  position: relative;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-}
-.top-banner span {
-  display: inline-flex;
-  align-items: center;
-}
-.top-banner::before {
-  content: '';
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  background-color: var(--db-emerald);
-  border-radius: 50%;
-  margin-right: 10px;
-  box-shadow: 0 0 8px var(--db-emerald);
-  animation: pulseLive 2s infinite ease-in-out;
-}
-@keyframes pulseLive {
-  0%, 100% { transform: scale(0.9); opacity: 0.6; box-shadow: 0 0 6px rgba(0, 169, 114, 0.4); }
-  50% { transform: scale(1.15); opacity: 1; box-shadow: 0 0 12px rgba(0, 169, 114, 0.8); }
-}
-.banner-badge {
-  background: rgba(255, 54, 33, 0.18);
-  color: #FF8F80;
-  border: 1px solid rgba(255, 54, 33, 0.4);
-  padding: 1px 7px;
-  border-radius: 20px;
-  font-size: 10px;
-  font-weight: 700;
-  margin: 0 6px;
-  font-family: var(--font-mono);
 }
 
 /* Global scrollbars mapping */

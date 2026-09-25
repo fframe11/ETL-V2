@@ -71,7 +71,6 @@ function AppContent({ isSidebarOpen, toggleSidebar }) {
     const interval = setInterval(fetchCounts, 10000);
     return () => clearInterval(interval);
   }, [location.pathname, isAuthenticated]);
-  const isHome = location.pathname === "/";
   const isLogin = location.pathname === "/login";
 
   if (isLogin) {
@@ -87,15 +86,8 @@ function AppContent({ isSidebarOpen, toggleSidebar }) {
   return (
     <>
       <div className="app-bg" />
-      
-      {/* Top Black Banner (Only rendered on Home page) */}
-      {isHome && (
-        <div className="top-banner">
-          <span>SDOQAP Platform <span className="banner-badge">v2.0</span> is now live</span>
-        </div>
-      )}
 
-      <div className={`app-layout ${isSidebarOpen ? "sidebar-visible" : "sidebar-hidden"} ${isHome ? "layout-with-banner" : "layout-full-height"}`}>
+      <div className={`app-layout ${isSidebarOpen ? "sidebar-visible" : "sidebar-hidden"} layout-full-height`}>
         <NavBar
           isOpen={isSidebarOpen}
           toggleSidebar={toggleSidebar}

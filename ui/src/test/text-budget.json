@@ -2,8 +2,8 @@
   "home": {
     "baseline_chars": 2673,
     "ratio": 0.45,
-    "max_chars": 2673,
-    "enforce_single_language": false
+    "max_chars": 1202,
+    "enforce_single_language": true
   },
   "guide": {
     "baseline_chars": 5335,
