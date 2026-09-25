@@ -2,7 +2,7 @@ import { Icon } from '../components/UiIcons';
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../hooks/useApi";
-import TileCard from "../components/ui/TileCard";
+import { PageHeader } from "../components/ui";
 import "./DataExport.css";
 
 export default function DataExport() {
@@ -277,97 +277,25 @@ export default function DataExport() {
 
   return (
     <div className="gs-export">
-      {/* 1. Page Header */}
-      <div className="gs-page-header">
-        <div>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(255, 54, 33, 0.08)", color: "#FF3621", border: "1px solid rgba(255, 54, 33, 0.25)", borderRadius: "4px", padding: "2px 8px", fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em", marginBottom: "6px" }}>
-            GOLD LAYER · CERTIFIED DATA EXPORT & AUDIT REPORT
-          </div>
-          <h1 className="gs-page-title">Gold Certified <span style={{ color: "#1B3139" }}>& Data Export</span></h1>
-          <p className="gs-page-desc">ส่งออกชุดข้อมูลระดับ Gold Certified พร้อมเปรียบเทียบคุณภาพและรายงานสรุปสำหรับระบบปลายทาง</p>
-        </div>
-      </div>
+      <PageHeader pageKey="export" actions={<Link to="/dashboard" className="ui-btn ui-btn-secondary">ดู Dashboard</Link>} />
 
       {/* Interactive 3-Zone Export & Quality Deliverables Console */}
       <div style={{ background: "#FFFFFF", border: "1px solid #CBD5E1", borderRadius: "12px", padding: "20px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)", marginBottom: "16px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "14px", flexWrap: "wrap", gap: "12px" }}>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px", flexWrap: "wrap" }}>
-              <span style={{ background: "#1B3139", color: "#FFFFFF", fontSize: "10px", fontWeight: 800, padding: "2px 8px", borderRadius: "4px", letterSpacing: "0.05em" }}>
-                GOLD CERTIFIED · LAKEHOUSE DELIVERABLES
-              </span>
-              <span style={{ background: "#DCFCE7", color: "#15803D", fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "4px" }}>
-                <Icon name="check" /> ผ่านการคัดกรองจาก Pipeline แล้ว ({(wbState?.metrics?.total_rows ?? 10100).toLocaleString()} แถว)
-              </span>
-            </div>
-            <h3 style={{ margin: 0, fontSize: "16px", color: "#0F172A", fontWeight: 800 }}>
-              <Icon name="box" /> ส่งออกชุดข้อมูลและรายงานการคัดแยก (Lakehouse Export & Deliverables Console)
-            </h3>
-            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "6px" }}>
-              <span style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", color: "#166534", fontSize: "11px", fontWeight: 600, padding: "2px 8px", borderRadius: "4px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                <Icon name="dot-green" /> Gold: Analytics &amp; BI
-              </span>
-              <span style={{ background: "#FFFBEB", border: "1px solid #FDE68A", color: "#92400E", fontSize: "11px", fontWeight: 600, padding: "2px 8px", borderRadius: "4px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                <Icon name="dot-yellow" /> Review: Expert Queue
-              </span>
-              <span style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#991B1B", fontSize: "11px", fontWeight: 600, padding: "2px 8px", borderRadius: "4px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                <Icon name="dot-red" /> Quarantine: Upstream Root-Cause
-              </span>
-            </div>
-          </div>
-          <Link
-            to="/dashboard"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "8px",
-              padding: "9px 16px",
-              background: "#2563EB",
-              color: "#FFFFFF",
-              borderRadius: "6px",
-              fontSize: "12px",
-              fontWeight: 700,
-              textDecoration: "none",
-              boxShadow: "0 1px 2px rgba(37,99,235,0.2)"
-            }}
-          >
-            <span>ดูภาพรวมความน่าเชื่อถือที่ Trust Dashboard <Icon name="arrow-right" /></span>
-          </Link>
+        <div style={{ marginBottom: "14px" }}>
+          <span style={{ background: "#DCFCE7", color: "#15803D", fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "4px" }}>
+            <Icon name="check" /> ผ่านการคัดกรองแล้ว {typeof wbState?.metrics?.total_rows === "number" ? wbState.metrics.total_rows.toLocaleString() : "—"} แถว
+          </span>
         </div>
 
-        {/* Databricks Workspace Filter Toolbar (Matches Screenshot 2 Workspace View) */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", marginBottom: "14px", flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "#FFFFFF", border: "1px solid #CBD5E1", borderRadius: "4px", padding: "5px 10px", width: "240px" }}>
-              <span style={{ color: "#64748B", fontSize: "12px" }}><Icon name="search" /></span>
-              <span style={{ fontSize: "12px", color: "#94A3B8" }}>Search</span>
-            </div>
-            <button type="button" style={{ padding: "5px 10px", borderRadius: "4px", fontSize: "12px", border: "1px solid #CBD5E1", background: "#FFFFFF", color: "#334155", cursor: "pointer" }}>
-              Type ▾
-            </button>
-            <button type="button" style={{ padding: "5px 10px", borderRadius: "4px", fontSize: "12px", border: "1px solid #CBD5E1", background: "#FFFFFF", color: "#334155", cursor: "pointer" }}>
-              Owner ▾
-            </button>
-            <button type="button" style={{ padding: "5px 10px", borderRadius: "4px", fontSize: "12px", border: "1px solid #CBD5E1", background: "#FFFFFF", color: "#334155", cursor: "pointer" }}>
-              Last modified ▾
-            </button>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <button
-              type="button"
-              onClick={() => handleZoneCSVDownload("CLEAN")}
-              style={{ padding: "5px 12px", borderRadius: "4px", fontSize: "12px", fontWeight: 600, border: "1px solid #CBD5E1", background: "#FFFFFF", color: "#0F172A", cursor: "pointer" }}
-            >
-              Share
-            </button>
-            <button
-              type="button"
-              onClick={() => handleZoneCSVDownload("CLEAN")}
-              style={{ padding: "5px 12px", borderRadius: "4px", fontSize: "12px", fontWeight: 600, border: "none", background: "#2272B4", color: "#FFFFFF", cursor: "pointer" }}
-            >
-              Export CSV ▾
-            </button>
-          </div>
+        {/* Workspace Filter Toolbar */}
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "14px", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => handleZoneCSVDownload("CLEAN")}
+            style={{ padding: "5px 12px", borderRadius: "4px", fontSize: "12px", fontWeight: 600, border: "none", background: "#2272B4", color: "#FFFFFF", cursor: "pointer" }}
+          >
+            ดาวน์โหลด Clean CSV
+          </button>
         </div>
 
         {/* Trust-Check status — tells BI/ML consumers whether this dataset is actually
@@ -382,8 +310,8 @@ export default function DataExport() {
           }}>
             <Icon name={trustCheck.is_safe_to_consume ? "dot-green" : "dot-red"} />
             {trustCheck.is_safe_to_consume
-              ? `Trust-Checked · Quality ${trustCheck.quality_score?.toFixed(1) ?? "?"}% (threshold ${trustCheck.quality_threshold}%)`
-              : `Not Trust-Checked: ${trustCheck.reason || "no verified quality run for this dataset in the production pipeline"}`}
+              ? `ผ่านเกณฑ์คุณภาพ ${trustCheck.quality_score?.toFixed(1) ?? "—"}% (เกณฑ์ ${trustCheck.quality_threshold}%)`
+              : `ยังไม่ผ่านการตรวจคุณภาพ: ${trustCheck.reason || "ไม่พบผลการรันที่ตรวจแล้ว"}`}
           </div>
         )}
 
@@ -392,10 +320,10 @@ export default function DataExport() {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12.5px", textAlign: "left" }}>
             <thead>
               <tr style={{ borderBottom: "1px solid #CBD5E1", color: "#475569", fontSize: "11.5px" }}>
-                <th style={{ padding: "8px 10px", fontWeight: 600 }}>Name ↑</th>
-                <th style={{ padding: "8px 10px", fontWeight: 600 }}>Type</th>
-                <th style={{ padding: "8px 10px", fontWeight: 600 }}>Rows</th>
-                <th style={{ padding: "8px 10px", fontWeight: 600, textAlign: "right" }}>Actions</th>
+                <th style={{ padding: "8px 10px", fontWeight: 600 }}>ไฟล์</th>
+                <th style={{ padding: "8px 10px", fontWeight: 600 }}>ประเภท</th>
+                <th style={{ padding: "8px 10px", fontWeight: 600 }}>แถว</th>
+                <th style={{ padding: "8px 10px", fontWeight: 600, textAlign: "right" }}>จัดการ</th>
               </tr>
             </thead>
             <tbody>
@@ -403,23 +331,26 @@ export default function DataExport() {
                 <td style={{ padding: "10px", color: "#2272B4", fontWeight: 600, cursor: "pointer" }} onClick={() => loadZonePreview("CLEAN")}>
                   <Icon name="table" /> certified_gold_clean.csv
                 </td>
-                <td style={{ padding: "10px", color: "#334155" }}>Gold Certified Table</td>
+                <td style={{ padding: "10px", color: "#334155" }}>Clean</td>
                 <td style={{ padding: "10px", fontWeight: 600, color: "#15803D" }}>{cleanCount.toLocaleString()} rows</td>
                 <td style={{ padding: "10px", textAlign: "right" }}>
+                  <button type="button" className="ui-btn-link" onClick={() => loadZonePreview("CLEAN")} style={{ marginRight: "10px" }}>
+                    ดูตัวอย่าง
+                  </button>
                   <button
                     type="button"
                     onClick={() => copyApiUrl("CLEAN")}
                     title="Copy the REST API URL for this dataset (for ML/BI pipelines to fetch programmatically instead of downloading a file)"
                     style={{ padding: "4px 10px", borderRadius: "4px", fontSize: "11px", fontWeight: 600, background: "#FFFFFF", color: "#334155", border: "1px solid #CBD5E1", cursor: "pointer", marginRight: "6px" }}
                   >
-                    {copiedZone === "CLEAN" ? "Copied!" : "Copy API URL"}
+                    {copiedZone === "CLEAN" ? "คัดลอกแล้ว" : "คัดลอก API URL"}
                   </button>
                   <button
                     type="button"
                     onClick={() => handleZoneCSVDownload("CLEAN")}
                     style={{ padding: "4px 10px", borderRadius: "4px", fontSize: "11px", fontWeight: 600, background: "#2272B4", color: "#FFFFFF", border: "none", cursor: "pointer" }}
                   >
-                    {zoneDownloaded.CLEAN ? "Downloaded" : "Download CSV"}
+                    {zoneDownloaded.CLEAN ? "ดาวน์โหลดแล้ว" : "ดาวน์โหลด"}
                   </button>
                 </td>
               </tr>
@@ -427,23 +358,26 @@ export default function DataExport() {
                 <td style={{ padding: "10px", color: "#2272B4", fontWeight: 600, cursor: "pointer" }} onClick={() => loadZonePreview("REVIEW")}>
                   <Icon name="search" /> human_review_outliers.csv
                 </td>
-                <td style={{ padding: "10px", color: "#334155" }}>Steward Review Queue</td>
+                <td style={{ padding: "10px", color: "#334155" }}>Review</td>
                 <td style={{ padding: "10px", fontWeight: 600, color: "#D97706" }}>{reviewCount.toLocaleString()} rows</td>
                 <td style={{ padding: "10px", textAlign: "right" }}>
+                  <button type="button" className="ui-btn-link" onClick={() => loadZonePreview("REVIEW")} style={{ marginRight: "10px" }}>
+                    ดูตัวอย่าง
+                  </button>
                   <button
                     type="button"
                     onClick={() => copyApiUrl("REVIEW")}
                     title="Copy the REST API URL for this dataset"
                     style={{ padding: "4px 10px", borderRadius: "4px", fontSize: "11px", fontWeight: 600, background: "#FFFFFF", color: "#334155", border: "1px solid #CBD5E1", cursor: "pointer", marginRight: "6px" }}
                   >
-                    {copiedZone === "REVIEW" ? "Copied!" : "Copy API URL"}
+                    {copiedZone === "REVIEW" ? "คัดลอกแล้ว" : "คัดลอก API URL"}
                   </button>
                   <button
                     type="button"
                     onClick={() => handleZoneCSVDownload("REVIEW")}
                     style={{ padding: "4px 10px", borderRadius: "4px", fontSize: "11px", fontWeight: 600, background: "#FFFFFF", color: "#0F172A", border: "1px solid #CBD5E1", cursor: "pointer" }}
                   >
-                    {zoneDownloaded.REVIEW ? "Downloaded" : "Download CSV"}
+                    {zoneDownloaded.REVIEW ? "ดาวน์โหลดแล้ว" : "ดาวน์โหลด"}
                   </button>
                 </td>
               </tr>
@@ -451,121 +385,31 @@ export default function DataExport() {
                 <td style={{ padding: "10px", color: "#2272B4", fontWeight: 600, cursor: "pointer" }} onClick={() => loadZonePreview("QUARANTINE")}>
                   <Icon name="alert" /> quarantine_root_cause_audit.csv
                 </td>
-                <td style={{ padding: "10px", color: "#334155" }}>Quarantine Audit Log</td>
+                <td style={{ padding: "10px", color: "#334155" }}>Quarantine</td>
                 <td style={{ padding: "10px", fontWeight: 600, color: "#DC2626" }}>{quarantineCount.toLocaleString()} rows</td>
                 <td style={{ padding: "10px", textAlign: "right" }}>
+                  <button type="button" className="ui-btn-link" onClick={() => loadZonePreview("QUARANTINE")} style={{ marginRight: "10px" }}>
+                    ดูตัวอย่าง
+                  </button>
                   <button
                     type="button"
                     onClick={() => copyApiUrl("QUARANTINE")}
                     title="Copy the REST API URL for this dataset"
                     style={{ padding: "4px 10px", borderRadius: "4px", fontSize: "11px", fontWeight: 600, background: "#FFFFFF", color: "#334155", border: "1px solid #CBD5E1", cursor: "pointer", marginRight: "6px" }}
                   >
-                    {copiedZone === "QUARANTINE" ? "Copied!" : "Copy API URL"}
+                    {copiedZone === "QUARANTINE" ? "คัดลอกแล้ว" : "คัดลอก API URL"}
                   </button>
                   <button
                     type="button"
                     onClick={() => handleZoneCSVDownload("QUARANTINE")}
                     style={{ padding: "4px 10px", borderRadius: "4px", fontSize: "11px", fontWeight: 600, background: "#FFFFFF", color: "#DC2626", border: "1px solid #FECACA", cursor: "pointer" }}
                   >
-                    {zoneDownloaded.QUARANTINE ? "Downloaded" : "Download CSV"}
+                    {zoneDownloaded.QUARANTINE ? "ดาวน์โหลดแล้ว" : "ดาวน์โหลด"}
                   </button>
                 </td>
               </tr>
             </tbody>
           </table>
-        </div>
-
-        {/* 3 Databricks Tile Cards — Exact 3-Element Card Anatomy from Databricks Learn UI */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: "14px" }}>
-          {/* Zone 1: Clean Data CSV */}
-          <TileCard
-            category="Gold Layer · BI & ML Ready"
-            title={`Certified Gold Dataset (${cleanCount.toLocaleString()} แถว)`}
-            subtitle={`score ∈ [${wbState?.min_score ?? 0}, ${wbState?.max_score ?? 100}] · Null 0% · Unique 100%`}
-            percent={100}
-            gradient="linear-gradient(135deg, #059669 0%, #34D399 100%)"
-            iconName="check"
-            selected={selectedExportZone === "CLEAN"}
-            onClick={() => loadZonePreview("CLEAN")}
-            footerSlot={
-              <div style={{ display: "flex", gap: "6px" }}>
-                <button
-                  type="button"
-                  onClick={() => loadZonePreview("CLEAN")}
-                  style={{ padding: "5px 10px", borderRadius: "4px", fontSize: "11px", fontWeight: 600, background: "#FFFFFF", color: "#0F172A", border: "1px solid #CBD5E1", cursor: "pointer" }}
-                >
-                  แสดงรายการข้อมูล
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleZoneCSVDownload("CLEAN")}
-                  style={{ flex: 1, padding: "5px 10px", borderRadius: "4px", fontSize: "11px", fontWeight: 600, background: "#1B3139", color: "#FFFFFF", border: "none", cursor: "pointer" }}
-                >
-                  {zoneDownloaded.CLEAN ? `ดาวน์โหลดแล้ว (${zoneDownloaded.CLEAN})` : `ดาวน์โหลด Gold CSV`}
-                </button>
-              </div>
-            }
-          />
-
-          {/* Zone 2: Human Review Queue CSV */}
-          <TileCard
-            category="Data Steward · Outlier Review"
-            title={`Human Review Queue (${reviewCount.toLocaleString()} แถว)`}
-            subtitle={`study_hours > Q3 + ${wbState?.tukey_multiplier || "3.0"}× IQR`}
-            percent={Math.max(1, Math.round((reviewCount / 10100) * 100))}
-            gradient="linear-gradient(135deg, #D97706 0%, #FBBF24 100%)"
-            iconName="search"
-            selected={selectedExportZone === "REVIEW"}
-            onClick={() => loadZonePreview("REVIEW")}
-            footerSlot={
-              <div style={{ display: "flex", gap: "6px" }}>
-                <button
-                  type="button"
-                  onClick={() => loadZonePreview("REVIEW")}
-                  style={{ padding: "5px 10px", borderRadius: "4px", fontSize: "11px", fontWeight: 600, background: "#FFFFFF", color: "#0F172A", border: "1px solid #CBD5E1", cursor: "pointer" }}
-                >
-                  แสดงรายการข้อมูล
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleZoneCSVDownload("REVIEW")}
-                  style={{ flex: 1, padding: "5px 10px", borderRadius: "4px", fontSize: "11px", fontWeight: 600, background: "#2272B4", color: "#FFFFFF", border: "none", cursor: "pointer" }}
-                >
-                  {zoneDownloaded.REVIEW ? `ดาวน์โหลดแล้ว (${zoneDownloaded.REVIEW})` : `ดาวน์โหลด Review CSV`}
-                </button>
-              </div>
-            }
-          />
-
-          {/* Zone 3: Quarantine Root-Cause Log CSV */}
-          <TileCard
-            category="Upstream Governance · Diagnostic Log"
-            title={`Quarantine Audit Log (${quarantineCount.toLocaleString()} แถว)`}
-            subtitle={`Null ${wbMetrics.missing_score_count ?? 300} · Range ${wbMetrics.invalid_range_count ?? 200} · Dup ${wbMetrics.gate2_quarantined ?? 100}`}
-            percent={Math.round((quarantineCount / 10100) * 100)}
-            gradient="linear-gradient(135deg, #DC2626 0%, #F87171 100%)"
-            iconName="alert"
-            selected={selectedExportZone === "QUARANTINE"}
-            onClick={() => loadZonePreview("QUARANTINE")}
-            footerSlot={
-              <div style={{ display: "flex", gap: "6px" }}>
-                <button
-                  type="button"
-                  onClick={() => loadZonePreview("QUARANTINE")}
-                  style={{ padding: "5px 10px", borderRadius: "4px", fontSize: "11px", fontWeight: 600, background: "#FFFFFF", color: "#0F172A", border: "1px solid #CBD5E1", cursor: "pointer" }}
-                >
-                  แสดงรายการข้อมูล
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleZoneCSVDownload("QUARANTINE")}
-                  style={{ flex: 1, padding: "5px 10px", borderRadius: "4px", fontSize: "11px", fontWeight: 600, background: "#DC2626", color: "#FFFFFF", border: "none", cursor: "pointer" }}
-                >
-                  {zoneDownloaded.QUARANTINE ? `ดาวน์โหลดแล้ว (${zoneDownloaded.QUARANTINE})` : `ดาวน์โหลด Quarantine CSV`}
-                </button>
-              </div>
-            }
-          />
         </div>
 
         {/* Interactive Search, Row Limit & Custom Filename Input Bar */}
@@ -585,7 +429,7 @@ export default function DataExport() {
             />
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "#334155" }}>
-            <span style={{ fontWeight: 700 }}>จำนวนแถวที่แสดง:</span>
+            <span style={{ fontWeight: 700 }}>แสดง:</span>
             <input
               type="number"
               min="1"
@@ -602,7 +446,7 @@ export default function DataExport() {
             />
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "#334155" }}>
-            <span style={{ fontWeight: 700 }}>ชื่อไฟล์ CSV:</span>
+            <span style={{ fontWeight: 700 }}>ชื่อไฟล์:</span>
             <input
               type="text"
               value={customFilename}
@@ -622,11 +466,8 @@ export default function DataExport() {
         <div style={{ marginTop: "14px", border: "1px solid #E2E8F0", borderRadius: "8px", overflow: "hidden", background: "#FFFFFF" }}>
           <div style={{ padding: "10px 14px", background: "#F1F5F9", borderBottom: "1px solid #E2E8F0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <strong style={{ fontSize: "12px", color: "#0F172A" }}>
-              <Icon name="list" /> ตารางตัวอย่างข้อมูลปลายทาง: <code>{selectedExportZone === "CLEAN" ? "GOLD CERTIFIED" : selectedExportZone === "REVIEW" ? "REVIEW QUEUE" : "QUARANTINE STORE"}</code> ({zonePreviewData?.rows?.length || 0} แถวที่แสดง)
+              <Icon name="list" /> ตัวอย่าง {selectedExportZone}
             </strong>
-            <span style={{ fontSize: "11px", color: "#475569" }}>
-              ไฟล์ปลายทาง: <code>{(customFilename || "student_course_scores").trim()}_{selectedExportZone.toLowerCase()}.csv</code>
-            </span>
           </div>
           <div className="gs-preview-wrap" style={{ maxHeight: "360px", overflowY: "auto" }}>
             {zonePreviewLoading ? (
@@ -662,21 +503,21 @@ export default function DataExport() {
       {/* Cluster Tables & Gold BI Deliverables */}
       <details style={{ marginTop: "16px", background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: "10px", padding: "14px", marginBottom: "20px" }}>
         <summary style={{ cursor: "pointer", fontSize: "12px", fontWeight: 700, color: "#475569" }}>
-          <Icon name="database" /> ส่งออกตารางเพิ่มเติมจากคลัสเตอร์ (Cluster Tables &amp; Gold BI Reports) ▼
+          <Icon name="database" /> ส่งออกตารางอื่น
         </summary>
         <div style={{ marginTop: "14px" }}>
       <div className="gs-export-tabs" style={{ alignSelf: 'flex-start' }}>
-        <button 
+        <button
           className={`gs-export-btn ${activeTab === "datasets" ? "active" : ""}`}
           onClick={() => { setActiveTab("datasets"); setPreviewData(null); }}
         >
-          Pipeline Datasets (HDFS)
+          ตาราง Pipeline
         </button>
-        <button 
+        <button
           className={`gs-export-btn ${activeTab === "gold" ? "active" : ""}`}
           onClick={() => { setActiveTab("gold"); setPreviewData(null); }}
         >
-          Gold BI Reports (Elasticsearch)
+          รายงาน Gold
         </button>
       </div>
 

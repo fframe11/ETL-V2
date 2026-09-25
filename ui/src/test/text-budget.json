@@ -32,8 +32,8 @@
   "export": {
     "baseline_chars": 1447,
     "ratio": 0.5,
-    "max_chars": 1447,
-    "enforce_single_language": false
+    "max_chars": 723,
+    "enforce_single_language": true
   },
   "schema": {
     "baseline_chars": 448,
