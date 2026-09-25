@@ -44,8 +44,8 @@
   "whitebox": {
     "baseline_chars": 2310,
     "ratio": 0.45,
-    "max_chars": 2310,
-    "enforce_single_language": false
+    "max_chars": 1039,
+    "enforce_single_language": true
   },
   "analytics": {
     "baseline_chars": 1007,

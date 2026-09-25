@@ -1,5 +1,6 @@
 import { Icon } from '../components/UiIcons';
 import React, { useState, useEffect } from "react";
+import { PageHeader, InfoHint, LearnMore } from "../components/ui";
 import "./WhiteBoxPipeline.css";
 
 export default function WhiteBoxPipeline() {
@@ -284,79 +285,33 @@ export default function WhiteBoxPipeline() {
     }
   };
 
-  const summary = profileData?.summary || {};
-
   return (
     <div className="wb-container">
-      {/* Page Header */}
-      <div className="wb-header">
-        <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(255, 54, 33, 0.08)", color: "#FF3621", border: "1px solid rgba(255, 54, 33, 0.25)", borderRadius: "4px", padding: "2px 8px", fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em", marginBottom: "6px" }}>
-          ENGINE ARCHITECTURE · WHITE-BOX DATA AUDIT
-        </div>
-        <h1>
-          White-Box Data Engine <span>(Audit & Lineage)</span>
-        </h1>
-        <p>
-          ระบบเปิดเผยกระบวนการตัดสินใจทุกขั้นตอน — ตั้งแต่ Profiling, การวิเคราะห์, การเสนอกฎ จนถึงการคัดแยก 3 ทาง — ผู้ใช้เห็นเหตุผลทางสถิติและยืนยันก่อนระบบดำเนินการ
-        </p>
-      </div>
+      <PageHeader
+        pageKey="whitebox"
+        actions={
+          <button type="button" className="ui-btn ui-btn-primary" onClick={runFullPipeline} disabled={autoRunning}>
+            {autoRunning ? "กำลังรัน..." : "รันทุกขั้นอัตโนมัติ"}
+          </button>
+        }
+      />
 
-      {/* Executive Onboarding Hero */}
-      <div className="wb-onboarding-hero">
-        <div className="wb-onboarding-header">
-          <div className="wb-onboarding-title-group">
-            <span className="wb-badge success"><Icon name="bolt" /> แนะนำการใช้งานเบื้องต้น (QUICK START GUIDE)</span>
-            <h2>หน้านี้คืออะไร และทำงานอย่างไร?</h2>
-          </div>
-          <div className="wb-onboarding-stats-badge">
-            ชุดข้อมูลที่กำลังประมวลผล: <strong>{(summary?.total_rows ?? 10100).toLocaleString()} รายการ</strong>
-          </div>
-        </div>
-
-        <div className="wb-onboarding-grid">
-          <div className="wb-onboarding-col">
-            <div className="wb-onboarding-icon"><Icon name="target" /></div>
-            <h4>1. เป้าหมายของระบบ (Objective)</h4>
-            <p>
-              ตรวจสอบค่าสถิติของข้อมูลต้นทาง กำหนดเกณฑ์ตามบริบทธุรกิจ คัดแยกข้อมูล 3 ทาง (ข้อมูลสะอาด / รอผู้เชี่ยวชาญตรวจสอบ / กักกันพร้อมสาเหตุ) และเปรียบเทียบผลลัพธ์ระดับเรคคอร์ด
-            </p>
-          </div>
-
-          <div className="wb-onboarding-col">
-            <div className="wb-onboarding-icon"><Icon name="scale" /></div>
-            <h4>2. คัดแยกข้อมูล 3 ทาง (3-Way Segregation)</h4>
-            <p>
-              ข้อมูลไม่ได้มีแค่ "ดี" หรือ "ลบทิ้ง" แต่ถูกจัดเป็น 3 กลุ่ม: <strong>ข้อมูลสะอาด (Clean)</strong> ใช้งานต่อทันที, <strong>ส่งมนุษย์ตรวจ (Human Review)</strong> ป้องกัน False Positive, และ <strong>กักกัน (Quarantine)</strong> เพื่อส่งแก้ที่ต้นตอ
-            </p>
-          </div>
-
-          <div className="wb-onboarding-col">
-            <div className="wb-onboarding-icon"><Icon name="bolt" /></div>
-            <h4>3. วิธีการใช้งาน (How to Use)</h4>
-            <p>
-              ระบบได้ทำการรันประมวลผลข้อมูลล่วงหน้าให้พร้อมใช้งานทันที คุณสามารถ<strong>กดเลือกดู Stage 0 ถึง 5</strong> ด้านล่าง หรือใช้ปุ่ม <strong>[ขั้นตอนถัดไป <Icon name="arrow-right" />]</strong> ที่ท้ายแต่ละหน้าเพื่อดูเรื่องราวทีละขั้นตอน
-            </p>
-          </div>
-        </div>
-      </div>
+      <LearnMore summary="หน้านี้ทำอะไร">
+        <ol>
+          <li>ระบบสำรวจข้อมูลและเสนอกฎพร้อมเหตุผล</li>
+          <li>คุณตรวจเหตุผลและยืนยันกฎ</li>
+          <li>ระบบคัดแยกเป็น Clean, Review, Quarantine โดยไม่ลบข้อมูลทิ้ง</li>
+        </ol>
+      </LearnMore>
 
       {/* Action Toolbar */}
-      <div style={{ marginBottom: "1.2rem", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
-        <button
-          className="wb-btn-primary"
-          onClick={runFullPipeline}
-          disabled={autoRunning}
-          style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", padding: "8px 16px", borderRadius: "6px", background: "#059669", color: "#FFF", border: "none", cursor: "pointer", fontWeight: 600 }}
-        >
-          <span>{autoRunning ? " กำลังประมวลผล Pipeline ทั้งระบบ..." : " รันประมวลผลทั้งระบบ (One-Click Auto Ready)"}</span>
-        </button>
-
+      <div style={{ marginBottom: "1.2rem", marginTop: "1rem", display: "flex", justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
         <button
           className="wb-btn-secondary"
           onClick={() => setShowArchitectureMatrix(!showArchitectureMatrix)}
           style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", padding: "6px 14px", borderRadius: "6px" }}
         >
-          <span>{showArchitectureMatrix ? "▲ ซ่อนผังโครงสร้างสถาปัตยกรรม" : "▼ ดูโครงสร้างบทบาท: ผู้ใช้ (User) vs. ระบบอัตโนมัติ (System)"}</span>
+          <span>{showArchitectureMatrix ? "ซ่อน" : "ใครทำอะไร: ผู้ใช้ กับ ระบบ"}</span>
         </button>
       </div>
 
@@ -364,11 +319,10 @@ export default function WhiteBoxPipeline() {
         <div className="wb-card" style={{ marginBottom: "1.5rem", borderLeft: "4px solid #2563EB", background: "#F8FAFC" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
             <h3 style={{ margin: 0, fontSize: "15px", color: "#0F172A" }}>
-              <Icon name="building" /> System Architecture: User Responsibility vs. System Automation
+              <Icon name="building" /> ผู้ใช้ทำอะไร ระบบทำอะไร
             </h3>
-            <span className="wb-badge">TRANSPARENT DECISION ARCHITECTURE</span>
           </div>
-          
+
           <div className="wb-grid-2" style={{ gap: "16px" }}>
             {/* USER COLUMN */}
             <div style={{ background: "#FFFFFF", padding: "14px", borderRadius: "8px", border: "1px solid #E2E8F0" }}>
@@ -391,10 +345,10 @@ export default function WhiteBoxPipeline() {
               </div>
               <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px", color: "#334155", lineHeight: "1.7" }}>
                 <li><strong>1. Empirical Profiling:</strong> คำนวณ Null Rate, Min/Max, Duplicates, Q1, Q3, IQR (Stage 1)</li>
-                <li><strong>2. Schema & Relationship:</strong> ตรวจวัด Candidate Key Overlap (99.8%) และรูปแบบวันที่ (Stage 0)</li>
+                <li><strong>2. Schema & Relationship:</strong> ตรวจวัด Candidate Key Overlap และรูปแบบวันที่ (Stage 0)</li>
                 <li><strong>3. Decision Tree Logic:</strong> เลือก Range Check (เมื่อรู้ขอบเขต) หรือ Auto IQR (เมื่อไม่รู้ขอบเขต)</li>
-                <li><strong>4. 3-Way Segregation:</strong> แยก Clean (9,400) / Review (100) / Quarantine (600) ไม่ลบข้อมูลสุ่มสี่สุ่มห้า</li>
-                <li><strong>5. Benchmark & Validation:</strong> คำนวณ Recall (100%), Precision และตรวจสอบ Ground Truth (Stage 5)</li>
+                <li><strong>4. 3-Way Segregation:</strong> แยก Clean / Review / Quarantine ไม่ลบข้อมูลสุ่มสี่สุ่มห้า</li>
+                <li><strong>5. Benchmark & Validation:</strong> คำนวณ Recall, Precision และตรวจสอบ Ground Truth (Stage 5)</li>
               </ul>
             </div>
           </div>
@@ -420,7 +374,6 @@ export default function WhiteBoxPipeline() {
           <span className="wb-step-num">0</span>
           <div className="wb-step-btn-content">
             <span className="wb-step-btn-title"><Icon name="arrow-right" /> เชื่อมโยงตาราง</span>
-            <span className="wb-step-btn-sub">Multi-Table Join</span>
           </div>
         </button>
 
@@ -431,7 +384,6 @@ export default function WhiteBoxPipeline() {
           <span className="wb-step-num">1</span>
           <div className="wb-step-btn-content">
             <span className="wb-step-btn-title"><Icon name="list" /> สถิติข้อมูลดิบ</span>
-            <span className="wb-step-btn-sub">Data Profiling</span>
           </div>
         </button>
 
@@ -442,7 +394,6 @@ export default function WhiteBoxPipeline() {
           <span className="wb-step-num">2</span>
           <div className="wb-step-btn-content">
             <span className="wb-step-btn-title"><Icon name="target" /> บริบทธุรกิจ</span>
-            <span className="wb-step-btn-sub">Business Context</span>
           </div>
         </button>
 
@@ -453,7 +404,6 @@ export default function WhiteBoxPipeline() {
           <span className="wb-step-num">3</span>
           <div className="wb-step-btn-content">
             <span className="wb-step-btn-title"><Icon name="bolt" /> กฎที่ระบบเสนอ</span>
-            <span className="wb-step-btn-sub">Explainable Rules</span>
           </div>
         </button>
 
@@ -464,7 +414,6 @@ export default function WhiteBoxPipeline() {
           <span className="wb-step-num">4</span>
           <div className="wb-step-btn-content">
             <span className="wb-step-btn-title"><Icon name="scale" /> คัดแยก 3 ทาง</span>
-            <span className="wb-step-btn-sub">3-Way Segregation</span>
           </div>
         </button>
 
@@ -478,8 +427,7 @@ export default function WhiteBoxPipeline() {
         >
           <span className="wb-step-num">5</span>
           <div className="wb-step-btn-content">
-            <span className="wb-step-btn-title"><Icon name="check" /> ตรวจสอบมาตรฐาน SLA</span>
-            <span className="wb-step-btn-sub">SLA Audit & Insights</span>
+            <span className="wb-step-btn-title"><Icon name="check" /> ตรวจผลและใช้งาน</span>
           </div>
         </button>
       </div>
@@ -487,19 +435,9 @@ export default function WhiteBoxPipeline() {
       {/* STEP 0: MULTI-TABLE RELATIONSHIP & SCHEMA MAPPING */}
       {activeStep === 0 && (
         <div className="wb-panel">
-          <div className="wb-stage-purpose-box">
-            <div className="wb-stage-purpose-icon"><Icon name="arrow-right" /></div>
-            <div className="wb-stage-purpose-text">
-              <strong>การผสานความสัมพันธ์ระหว่างตาราง (Schema Reconciliation):</strong> วิเคราะห์ความเข้ากันได้ของโครงสร้างข้อมูล 2 ตาราง (<code>student_demographics</code> และ <code>student_course_scores</code>) ตรวจจับความแตกต่างของชื่อคอลัมน์ และตรวจสอบอัตราการจับคู่ของคีย์หลัก (Key Overlap 99.8%) ก่อนอนุมัติการรวมตาราง
-            </div>
-          </div>
-
           <div className="wb-panel-header">
             <div>
-              <h2>Stage 0: Multi-Table Relationship & Schema Reconciliation</h2>
-              <p>
-                Analyze schema relationships across production tables, reconcile key formatting differences, and verify join integrity before execution.
-              </p>
+              <h2>0 · เชื่อมโยงตาราง<InfoHint text="ตรวจความสัมพันธ์ของตารางและรูปแบบคีย์ก่อนรวมข้อมูล" /></h2>
             </div>
             <button className="wb-btn-secondary" onClick={fetchMultiTableData} disabled={multiTableLoading}>
               {multiTableLoading ? "Analyzing..." : "Re-Analyze Tables"}
@@ -663,20 +601,19 @@ export default function WhiteBoxPipeline() {
                 </div>
 
                 {/* Entity vs Attribute Distinction (Defense Note) */}
-                <div style={{ marginTop: "12px", padding: "12px", background: "#F1F5F9", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12px", color: "#334155" }}>
-                  <div style={{ fontWeight: 700, color: "#1E293B", marginBottom: "4px" }}>
-                    <Icon name="bolt" /> การเชื่อมโยงและความสัมพันธ์ข้อมูล (Entity vs. Attribute vs. Value):
+                <LearnMore summary="ทำไมไม่รวมทุกคอลัมน์">
+                  <div style={{ marginTop: "12px", padding: "12px", background: "#F1F5F9", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12px", color: "#334155" }}>
+                    <div>
+                      กรณีโครงสร้างตารางต่างกัน (เช่น การเงิน/บุคคล/ตำแหน่ง) ระบบแยกแยะตามหลักการเชิงสัมพันธ์:
+                      <br />
+                      • <strong>Entity (ตัวตนบุคคล):</strong> <code>student_id: 65001</code> / <code>studentId</code> เป็นแกนตัวตนหลัก
+                      <br />
+                      • <strong>Attribute (คุณลักษณะ):</strong> <code>faculty: Engineering</code>, <code>enrollment_date</code>
+                      <br />
+                      • ระบบไม่เดาจับคู่ตามอำเภอใจ แต่ตรวจวัด <strong>Key Overlap ({multiTableAnalysis.candidate_relationship?.match_rate_pct}%)</strong> แล้วเสนอแนะให้<strong>ผู้ใช้ตรวจสอบและกดยืนยัน (User Confirm)</strong> ก่อนเสมอ
+                    </div>
                   </div>
-                  <div>
-                    กรณีโครงสร้างตารางต่างกัน (เช่น การเงิน/บุคคล/ตำแหน่ง) ระบบแยกแยะตามหลักการเชิงสัมพันธ์:
-                    <br />
-                    • <strong>Entity (ตัวตนบุคคล):</strong> <code>student_id: 65001</code> / <code>studentId</code> เป็นแกนตัวตนหลัก
-                    <br />
-                    • <strong>Attribute (คุณลักษณะ):</strong> <code>faculty: Engineering</code>, <code>enrollment_date</code>
-                    <br />
-                    • ระบบไม่เดาจับคู่ตามอำเภอใจ แต่ตรวจวัด <strong>Key Overlap ({multiTableAnalysis.candidate_relationship?.match_rate_pct}%)</strong> แล้วเสนอแนะให้<strong>ผู้ใช้ตรวจสอบและกดยืนยัน (User Confirm)</strong> ก่อนเสมอ
-                  </div>
-                </div>
+                </LearnMore>
 
                 {/* Join Confirmation Action */}
                 <div className="wb-actions">
@@ -713,7 +650,7 @@ export default function WhiteBoxPipeline() {
           <div className="wb-wizard-nav">
             <div></div>
             <button className="wb-btn-primary wb-nav-btn" onClick={() => setActiveStep(1)}>
-              ขั้นตอนถัดไป: Stage 1 สำรวจสถิติข้อมูลดิบ (Data Profiling) <Icon name="arrow-right" />
+              ขั้นตอนถัดไป: Stage 1 สำรวจสถิติข้อมูลดิบ <Icon name="arrow-right" />
             </button>
           </div>
         </div>
@@ -731,8 +668,7 @@ export default function WhiteBoxPipeline() {
 
           <div className="wb-panel-header">
             <div>
-              <h2>Stage 1: Ingestion Data Profiling</h2>
-              <p>Observe what the system detects from raw data before any transformation rules are applied.</p>
+              <h2>1 · สถิติข้อมูลดิบ<InfoHint text="สิ่งที่ระบบพบในข้อมูลดิบก่อนใช้กฎใดๆ" /></h2>
             </div>
             <button className="wb-btn-secondary" onClick={fetchProfile} disabled={profileLoading}>
               {profileLoading ? "Profiling..." : "Refresh Profiling"}
@@ -835,7 +771,7 @@ export default function WhiteBoxPipeline() {
                   ⬅ ย้อนกลับ: Stage 0 เชื่อมโยงตาราง
                 </button>
                 <button className="wb-btn-primary wb-nav-btn" onClick={() => setActiveStep(2)}>
-                  ขั้นตอนถัดไป: Stage 2 กำหนดบริบทธุรกิจ (Business Context) <Icon name="arrow-right" />
+                  ขั้นตอนถัดไป: Stage 2 กำหนดบริบทธุรกิจ <Icon name="arrow-right" />
                 </button>
               </div>
             </>
@@ -857,10 +793,7 @@ export default function WhiteBoxPipeline() {
 
           <div className="wb-panel-header">
             <div>
-              <h2>Stage 2: User Business Context</h2>
-              <p>
-                The system cannot know business semantics alone. Provide business intent so rules can be recommended with explainability.
-              </p>
+              <h2>2 · บริบทธุรกิจ<InfoHint text="ระบบไม่รู้ความหมายทางธุรกิจเอง ข้อมูลส่วนนี้ช่วยให้กฎที่เสนออธิบายได้" /></h2>
             </div>
           </div>
 
@@ -1032,7 +965,7 @@ export default function WhiteBoxPipeline() {
               ⬅ ย้อนกลับ: Stage 1 สถิติข้อมูลดิบ
             </button>
             <button className="wb-btn-primary wb-nav-btn" onClick={handleGenerateRules} disabled={recsLoading}>
-              {recsLoading ? "กำลังสร้างกฎเกณฑ์..." : "ขั้นตอนถัดไป: Stage 3 กฎเกณฑ์ที่ระบบเสนอ (Explainable Rules) ->"}
+              {recsLoading ? "กำลังสร้างกฎเกณฑ์..." : "ขั้นตอนถัดไป: Stage 3 กฎเกณฑ์ที่ระบบเสนอ ->"}
             </button>
           </div>
         </div>
@@ -1050,10 +983,7 @@ export default function WhiteBoxPipeline() {
 
           <div className="wb-panel-header">
             <div>
-              <h2>Stage 3: Explainable Rule Recommendations</h2>
-              <p>
-                Explainable Governance: Every recommended rule explicitly presents its reasoning (<strong>Why?</strong>) and empirical evidence.
-              </p>
+              <h2>3 · กฎที่ระบบเสนอ<InfoHint text="ทุกกฎแสดงเหตุผลและหลักฐานทางสถิติ" /></h2>
             </div>
           </div>
 
@@ -1166,7 +1096,7 @@ export default function WhiteBoxPipeline() {
               ⬅ ย้อนกลับ: Stage 2 กำหนดบริบทธุรกิจ
             </button>
             <button className="wb-btn-primary wb-nav-btn" onClick={handleExecute} disabled={executing}>
-              {executing ? "กำลังประมวลผลคัดแยก..." : "ขั้นตอนถัดไป: Stage 4 ดำเนินการคัดแยก 3 ทาง (3-Way Segregation) ->"}
+              {executing ? "กำลังประมวลผลคัดแยก..." : "ขั้นตอนถัดไป: Stage 4 ดำเนินการคัดแยก 3 ทาง ->"}
             </button>
           </div>
         </div>
@@ -1175,20 +1105,9 @@ export default function WhiteBoxPipeline() {
       {/* STEP 4: 3-WAY SEGREGATION */}
       {activeStep === 4 && (
         <div className="wb-panel">
-          {/* Stage 4 Purpose Callout */}
-          <div className="wb-stage-purpose-box">
-            <div className="wb-stage-purpose-icon"><Icon name="scale" /></div>
-            <div className="wb-stage-purpose-text">
-              <strong>ทำไมต้องมี Stage 4?</strong> นำกฎที่ได้รับอนุมัติไปประมวลผล และแยกข้อมูลออกเป็น 3 ทาง: <Icon name="dot-green" /> <strong>ข้อมูลสะอาด (Clean Asset)</strong> พร้อมนำไปวิเคราะห์ต่อ, <Icon name="dot-yellow" /> <strong>รอคนตรวจ (Human Review)</strong> ป้องกันการลบข้อมูลที่เบี่ยงเบนทางสถิติโดยไม่จำเป็น, และ <Icon name="dot-red" /> <strong>กักกัน (Quarantine Lake)</strong> เพื่อระบุความผิดพลาดและส่งกลับไปแก้ที่ต้นตอ (Upstream Remediation)
-            </div>
-          </div>
-
           <div className="wb-panel-header">
             <div>
-              <h2>Stage 4: Transformation & 3-Way Data Segregation</h2>
-              <p>
-                Adhering to Upstream-First Remediation: Genuine records are cleaned, anomalies routed to human review, and defects quarantined.
-              </p>
+              <h2>4 · คัดแยก 3 ทาง<InfoHint text="ข้อมูลดีไป Clean ค่าผิดปกติไป Review ข้อมูลเสียไป Quarantine" /></h2>
             </div>
             <button className="wb-btn-secondary" onClick={handleExecute} disabled={executing}>
               Re-Run Transformation
@@ -1277,7 +1196,7 @@ export default function WhiteBoxPipeline() {
                     fetchDownstream();
                   }}
                 >
-                  ขั้นตอนถัดไป: Stage 5 วัดผล Benchmark & สถิติผลการเรียน <Icon name="arrow-right" />
+                  ขั้นตอนถัดไป: Stage 5 วัดผล Benchmark <Icon name="arrow-right" />
                 </button>
               </div>
             </>
@@ -1299,10 +1218,7 @@ export default function WhiteBoxPipeline() {
 
           <div className="wb-panel-header">
             <div>
-              <h2>Stage 5: Data Quality SLA Verification & Downstream Analytics</h2>
-              <p>
-                Production SLA Audit: Verifying 100% record accounting across Clean, Review, and Quarantine zones alongside certified downstream analytics.
-              </p>
+              <h2>5 · ตรวจผลและใช้งาน<InfoHint text="ตรวจว่าทุกแถวถูกนับครบทั้ง 3 โซน และนำข้อมูล Clean ไปวิเคราะห์ต่อ" /></h2>
             </div>
             <button className="wb-btn-secondary" onClick={fetchBenchmark} disabled={benchmarkLoading}>
               {benchmarkLoading ? "Verifying..." : "Re-verify SLA Metrics"}
