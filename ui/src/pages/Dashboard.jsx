@@ -460,14 +460,14 @@ export default function Dashboard() {
               <div className="exec-kpi-top">
                 <span className="exec-kpi-title">Sell-In / Out Volume Gap</span>
                 <span className="exec-chip exec-chip-warn" style={{ fontSize: '11px' }}>
-                  {sellInOut.summary.reconciliation_gap_volume.toLocaleString()} UNITS
+                  {sellInOut.summary?.reconciliation_gap_volume?.toLocaleString()} UNITS
                 </span>
               </div>
               <div className="exec-kpi-val" style={{ color: 'var(--accent-purple)' }}>
-                {sellInOut.summary.reconciliation_gap_volume.toLocaleString()} <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>units</span>
+                {sellInOut.summary?.reconciliation_gap_volume?.toLocaleString()} <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>units</span>
               </div>
               <div className="exec-kpi-sub" style={{ fontSize: '11px' }}>
-                {sellInOut.summary.quarantined_data_gap_volume.toLocaleString()} quarantined · {sellInOut.summary.sales_accuracy_pct}% accuracy
+                {sellInOut.summary?.quarantined_data_gap_volume?.toLocaleString()} quarantined · {sellInOut.summary?.sales_accuracy_pct}% accuracy
               </div>
             </div>
 
@@ -942,10 +942,10 @@ export default function Dashboard() {
               </div>
               <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                 <span className="exec-chip exec-chip-warn" style={{ fontSize: '10.5px' }}>
-                  Reconciliation Gap: {sellInOut.summary.reconciliation_gap_volume.toLocaleString()} Units
+                  Reconciliation Gap: {sellInOut.summary?.reconciliation_gap_volume?.toLocaleString()} Units
                 </span>
                 <span className="exec-chip exec-chip-crit" style={{ fontSize: '10.5px' }}>
-                  COPDQ Sales Risk: ${sellInOut.summary.copdq_sales_loss_usd.toLocaleString()} USD
+                  COPDQ Sales Risk: ${sellInOut.summary?.copdq_sales_loss_usd?.toLocaleString()} USD
                 </span>
               </div>
             </div>
@@ -955,7 +955,7 @@ export default function Dashboard() {
               <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderLeft: '4px solid #1E3A8A', borderRadius: '8px', padding: '10px 14px' }}>
                 <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Sell-In Volume (ERP / DC)</div>
                 <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-main)', marginTop: '2px' }}>
-                  {sellInOut.summary.total_sell_in_volume.toLocaleString()} <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>units</span>
+                  {sellInOut.summary?.total_sell_in_volume?.toLocaleString()} <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>units</span>
                 </div>
                 <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', marginTop: '2px' }}>ยอดส่งสินค้าเข้าช่องทางจำหน่าย</div>
               </div>
@@ -963,7 +963,7 @@ export default function Dashboard() {
               <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderLeft: '4px solid #10B981', borderRadius: '8px', padding: '10px 14px' }}>
                 <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Sell-Out Volume (Retail POS)</div>
                 <div style={{ fontSize: '18px', fontWeight: 800, color: '#10B981', marginTop: '2px' }}>
-                  {sellInOut.summary.total_sell_out_volume.toLocaleString()} <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>units</span>
+                  {sellInOut.summary?.total_sell_out_volume?.toLocaleString()} <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>units</span>
                 </div>
                 <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', marginTop: '2px' }}>ยอดขายออกสู่ผู้บริโภคจริง (POS)</div>
               </div>
@@ -971,7 +971,7 @@ export default function Dashboard() {
               <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderLeft: '4px solid #EF4444', borderRadius: '8px', padding: '10px 14px' }}>
                 <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Quarantined Data Gap</div>
                 <div style={{ fontSize: '18px', fontWeight: 800, color: '#EF4444', marginTop: '2px' }}>
-                  {sellInOut.summary.quarantined_data_gap_volume.toLocaleString()} <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>units</span>
+                  {sellInOut.summary?.quarantined_data_gap_volume?.toLocaleString()} <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>units</span>
                 </div>
                 <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', marginTop: '2px' }}>ยอดที่บันทึกไม่สำเร็จ/ติดกักกัน</div>
               </div>
@@ -979,7 +979,7 @@ export default function Dashboard() {
               <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderLeft: '4px solid #8B5CF6', borderRadius: '8px', padding: '10px 14px' }}>
                 <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Sales Reconciliation Rate</div>
                 <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--accent-purple)', marginTop: '2px' }}>
-                  {sellInOut.summary.sales_accuracy_pct}%
+                  {sellInOut.summary?.sales_accuracy_pct}%
                 </div>
                 <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', marginTop: '2px' }}>ความสมบูรณ์ของท่อส่งยอดขาย</div>
               </div>
@@ -988,7 +988,7 @@ export default function Dashboard() {
             {/* The Visual Chart: ComposedChart with Bars and SLA Line */}
             <div style={{ width: '100%', height: 260 }}>
               <ResponsiveContainer>
-                <ComposedChart data={sellInOut.timeline} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
+                <ComposedChart data={sellInOut.timeline ?? []} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
                   <XAxis dataKey="period" stroke="var(--text-muted)" fontSize={11} tickLine={false} />
                   <YAxis yAxisId="left" stroke="var(--text-muted)" fontSize={11} tickLine={false} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />

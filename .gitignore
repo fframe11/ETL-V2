@@ -61,3 +61,4 @@ temp_input.txt
 spark/*.csv
 **/*.csv
 whitebox_ui_preview.png
+ui/src/test/text-report.json

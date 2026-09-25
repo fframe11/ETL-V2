@@ -1,0 +1,62 @@
+{
+  "home": {
+    "baseline_chars": 2673,
+    "ratio": 0.45,
+    "max_chars": 2673,
+    "enforce_single_language": false
+  },
+  "guide": {
+    "baseline_chars": 5335,
+    "ratio": 0.4,
+    "max_chars": 5335,
+    "enforce_single_language": false
+  },
+  "ingestion": {
+    "baseline_chars": 2203,
+    "ratio": 0.55,
+    "max_chars": 2203,
+    "enforce_single_language": false
+  },
+  "rules": {
+    "baseline_chars": 1562,
+    "ratio": 0.5,
+    "max_chars": 1562,
+    "enforce_single_language": false
+  },
+  "pipeline": {
+    "baseline_chars": 1981,
+    "ratio": 0.6,
+    "max_chars": 1981,
+    "enforce_single_language": false
+  },
+  "export": {
+    "baseline_chars": 1447,
+    "ratio": 0.5,
+    "max_chars": 1447,
+    "enforce_single_language": false
+  },
+  "schema": {
+    "baseline_chars": 448,
+    "ratio": 0.7,
+    "max_chars": 448,
+    "enforce_single_language": false
+  },
+  "whitebox": {
+    "baseline_chars": 2310,
+    "ratio": 0.45,
+    "max_chars": 2310,
+    "enforce_single_language": false
+  },
+  "analytics": {
+    "baseline_chars": 1007,
+    "ratio": 0.6,
+    "max_chars": 1007,
+    "enforce_single_language": false
+  },
+  "dashboard": {
+    "baseline_chars": 1753,
+    "ratio": 0.9,
+    "max_chars": 1753,
+    "enforce_single_language": false
+  }
+}
