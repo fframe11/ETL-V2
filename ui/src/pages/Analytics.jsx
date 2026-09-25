@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import { Icon } from '../components/UiIcons';
 import { ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, ReferenceLine } from 'recharts';
+import { PageHeader, InfoHint } from '../components/ui';
 import "./Analytics.css";
 
 export default function Analytics() {
@@ -104,41 +105,20 @@ export default function Analytics() {
   return (
     <div className="gs-analytics">
 
-      {/* 1. Page Header & Interactive Analytics Control Bar */}
-      <div className="gs-page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
-        <div>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(255, 54, 33, 0.08)", color: "#FF3621", border: "1px solid rgba(255, 54, 33, 0.25)", borderRadius: "4px", padding: "2px 8px", fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em", marginBottom: "6px" }}>
-            LAKEHOUSE METRICS · OBSERVE & FORECASTING
-          </div>
-          <h1 className="gs-page-title">Lakehouse Metrics <span style={{ color: "#1B3139" }}>& Forecasting</span></h1>
-          <p className="gs-page-desc">พยากรณ์แนวโน้มคะแนนคุณภาพข้อมูล ปรับเกณฑ์ SLA เป้าหมาย และสั่งดำเนินการตามคำแนะนำอัตโนมัติ</p>
-        </div>
-        <button
-          type="button"
-          onClick={handleRefreshAll}
-          style={{
-            padding: '8px 14px',
-            background: '#1B3139',
-            color: '#FFFFFF',
-            border: 'none',
-            borderRadius: '8px',
-            fontSize: '12px',
-            fontWeight: 700,
-            cursor: 'pointer',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px'
-          }}
-        >
-          <Icon name="refresh" /> คำนวณโมเดลพยากรณ์ใหม่ (Refresh Forecast)
-        </button>
-      </div>
+      <PageHeader
+        pageKey="analytics"
+        actions={
+          <button type="button" className="ui-btn ui-btn-secondary" onClick={handleRefreshAll}>
+            <Icon name="refresh" /> คำนวณใหม่
+          </button>
+        }
+      />
 
       {/* Interactive Parameter Control Bar */}
       <div style={{ background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '10px', padding: '14px 16px', display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'flex-end', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
         <div style={{ minWidth: '170px' }}>
           <label style={{ display: 'block', fontSize: '10.5px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>
-            1. เกณฑ์เป้าหมาย SLA ขั้นต่ำ (% Target SLA):
+            เป้า SLA (%)
           </label>
           <input
             type="number"
@@ -153,28 +133,28 @@ export default function Analytics() {
 
         <div style={{ minWidth: '180px' }}>
           <label style={{ display: 'block', fontSize: '10.5px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>
-            2. ช่วงเวลาพยากรณ์ล่วงหน้า (Forecast Horizon):
+            พยากรณ์ล่วงหน้า
           </label>
           <select
             value={horizonDays}
             onChange={(e) => setHorizonDays(Number(e.target.value))}
             style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '12.5px', fontWeight: 700, color: '#0F172A', background: '#FFFFFF' }}
           >
-            <option value={7}>พยากรณ์ล่วงหน้า 7 วัน (7-Day Model)</option>
-            <option value={14}>พยากรณ์ล่วงหน้า 14 วัน (14-Day Model)</option>
-            <option value={30}>พยากรณ์ล่วงหน้า 30 วัน (30-Day Model)</option>
+            <option value={7}>7 วัน</option>
+            <option value={14}>14 วัน</option>
+            <option value={30}>30 วัน</option>
           </select>
         </div>
 
         <div style={{ minWidth: '220px', flex: 1 }}>
           <label style={{ display: 'block', fontSize: '10.5px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>
-            3. ค้นหาแหล่งที่มาของความผิดปกติ (Filter Anomaly Source):
+            ค้นหาความผิดปกติ
           </label>
           <input
             type="text"
             value={clusterSearch}
             onChange={(e) => setClusterSearch(e.target.value)}
-            placeholder="พิมพ์ชื่อตารางหรือรูปแบบความผิดปกติ เช่น users, orders, null..."
+            placeholder="ชื่อตารางหรือรูปแบบ เช่น null"
             style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '12.5px', color: '#0F172A' }}
           />
         </div>
@@ -193,8 +173,7 @@ export default function Analytics() {
       {/* 2. Quality Forecast Chart */}
       <div className="gs-acard gs-acard-wide">
         <div className="gs-acard-head">
-          <h3>{horizonDays}-Day Quality Forecast Model (Target SLA: {slaTarget}%)</h3>
-          <p>Predictive regression analysis of pipeline quality metrics across {horizonDays} days</p>
+          <h3>พยากรณ์ {horizonDays} วัน · เป้า {slaTarget}%</h3>
         </div>
 
         {projection.loading ? (
@@ -253,14 +232,13 @@ export default function Analytics() {
         {/* Error Pattern Clustering */}
         <div className="gs-acard">
           <div className="gs-acard-head">
-            <h3>Error Pattern Clustering</h3>
-            <p>Identified anomalies aggregated by source pattern {clusterSearch ? `(Filtered: "${clusterSearch}")` : ""}</p>
+            <h3>รูปแบบข้อผิดพลาด{clusterSearch ? ` · "${clusterSearch}"` : ""}</h3>
           </div>
 
           {clustering.loading ? (
-            <div className="gs-empty">Aggregating pattern anomalies...</div>
+            <div className="gs-empty">กำลังโหลด...</div>
           ) : clustering.error ? (
-            <div className="gs-toast err">Failed to load error patterns</div>
+            <div className="gs-toast err">โหลดไม่สำเร็จ</div>
           ) : clusteringData.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div className="gs-achart-sm">
@@ -296,14 +274,13 @@ export default function Analytics() {
         {/* Business KPI Impact */}
         <div className="gs-acard">
           <div className="gs-acard-head">
-            <h3>Business KPI Impact Assessment</h3>
-            <p>Estimated downstream degradation of analytical indicators</p>
+            <h3>ผลกระทบทางธุรกิจ<InfoHint text="ประมาณการว่าตัวชี้วัดปลายทางจะคลาดเคลื่อนเท่าไรจากข้อมูลที่ไม่ผ่านเกณฑ์" /></h3>
           </div>
 
           {impact.loading ? (
-            <div className="gs-empty">Assessing downstream SLA degradations...</div>
+            <div className="gs-empty">กำลังโหลด...</div>
           ) : impact.error ? (
-            <div className="gs-toast err">Failed to load business impacts</div>
+            <div className="gs-toast err">โหลดไม่สำเร็จ</div>
           ) : impact.data ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div className="gs-impact-list">
@@ -319,7 +296,7 @@ export default function Analytics() {
               </div>
 
               <div style={{ padding: '16px', background: 'rgba(239,68,68,0.04)', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.1)', textAlign: 'center', marginTop: '10px' }}>
-                <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>Estimated Cumulative Business Losses:</span>
+                <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>ความเสียหายโดยประมาณ</span>
                 <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--accent-red)', fontFamily: 'var(--font-mono)', marginTop: '4px' }}>
                   ${(impact.data?.total_financial_impact_usd || 0).toLocaleString()} USD
                 </div>
@@ -333,18 +310,17 @@ export default function Analytics() {
       <div className="gs-acard">
         <div className="gs-acard-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
           <div>
-            <h3>AI-Driven Actionable Recommendations</h3>
-            <p>กดปุ่มเพื่อนำข้อเสนอแนะไปปรับใช้กับกฎคัดกรองข้อมูลทันที</p>
+            <h3>คำแนะนำจาก AI</h3>
           </div>
           <Link to="/rules" style={{ fontSize: '12px', fontWeight: 700, color: '#2563EB', textDecoration: 'none' }}>
-            ไปที่หน้า Rule Hub (Step 2) &rarr;
+            ไปที่ Expectations & Alerts &rarr;
           </Link>
         </div>
 
         {recommendations.loading ? (
-          <div className="gs-empty">Synthesizing action recommendations...</div>
+          <div className="gs-empty">กำลังโหลด...</div>
         ) : recommendations.error ? (
-          <div className="gs-toast err">Failed to generate AI proposals</div>
+          <div className="gs-toast err">โหลดไม่สำเร็จ</div>
         ) : recommendations.data ? (
           <div className="gs-rec-list">
             {(recommendations.data.recommendations || []).map((rec) => {
@@ -372,7 +348,7 @@ export default function Analytics() {
                         cursor: isApplied ? 'default' : 'pointer'
                       }}
                     >
-                      {isApplied ? 'นำไปใช้แล้ว (APPLIED ✓)' : 'นำไปใช้ทันที (Apply Action)'}
+                      {isApplied ? 'นำไปใช้แล้ว ✓' : 'นำไปใช้'}
                     </button>
                   </div>
                 </div>

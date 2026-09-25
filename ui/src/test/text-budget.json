@@ -50,8 +50,8 @@
   "analytics": {
     "baseline_chars": 1007,
     "ratio": 0.6,
-    "max_chars": 1007,
-    "enforce_single_language": false
+    "max_chars": 604,
+    "enforce_single_language": true
   },
   "dashboard": {
     "baseline_chars": 1753,
