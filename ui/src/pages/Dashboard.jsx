@@ -20,6 +20,7 @@ import {
 import { Link, useNavigate } from 'react-router-dom';
 import EchartsDataLineage from '../components/EchartsDataLineage';
 import { useDashboardStore } from '../store/useDashboardStore';
+import { getPage } from '../config/pages';
 import "./Dashboard.css";
 
 const getQualityGrade = (score) => {
@@ -301,12 +302,8 @@ export default function Dashboard() {
       {/* ── TOP HEADER ── */}
       <div className="gs-topbar">
         <div>
-          <h1 className="gs-title">
-            Quality <span>Summary &amp; Trust Dashboard</span>
-          </h1>
-          <p className="gs-subtitle">
-            สรุปผลลัพธ์การคัดกรองข้อมูลระดับ Medallion Pipeline สมการคำนวณคะแนนความเชื่อมั่น และการปิดช่องโหว่ที่ระบบต้นทาง
-          </p>
+          <h1 className="gs-title">{getPage("dashboard").label}</h1>
+          <p className="gs-subtitle">{getPage("dashboard").subtitle}</p>
         </div>
 
         {/* 4 View Modes Switcher */}
@@ -611,7 +608,7 @@ export default function Dashboard() {
                   <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#F59E0B' }} /> 90-94% เฝ้าระวัง
                 </span>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px' }}>
-                  <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#EF4444' }} /> &lt;90% หลุดเกณฑ์ (SLA Breached)
+                  <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#EF4444' }} /> &lt;90% หลุดเกณฑ์
                 </span>
               </div>
             </div>
@@ -622,7 +619,6 @@ export default function Dashboard() {
                 <h3 style={{ margin: 0, fontSize: '13px' }}>
                   <span><Icon name="bolt" /></span> Executive 5-Question Framework
                 </h3>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>Instant Decision Support</span>
               </div>
               <div className="exec-5w-list" style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '6px' }}>
                 <div className="exec-5w-row what" style={{ padding: '6px 8px' }}>
@@ -671,7 +667,6 @@ export default function Dashboard() {
               <div className="gs-card-head" style={{ marginBottom: '8px' }}>
                 <div>
                   <h3 style={{ margin: 0, fontSize: '13px' }}>Business KPI Impact Matrix</h3>
-                  <p style={{ marginTop: '2px', fontSize: '11px' }}>Translating Technical Anomaly → KPI Degradation → Executive Business Impact</p>
                 </div>
                 <button
                   className="exec-btn"

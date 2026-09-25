@@ -56,7 +56,7 @@
   "dashboard": {
     "baseline_chars": 1753,
     "ratio": 0.9,
-    "max_chars": 1753,
-    "enforce_single_language": false
+    "max_chars": 1577,
+    "enforce_single_language": true
   }
 }
