@@ -169,3 +169,16 @@
   color: var(--text-muted);
   padding: 20px !important;
 }
+
+.pl-dataset-line { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+.pl-notice { padding: 8px 12px; margin-bottom: 12px; border-radius: 6px; background: var(--db-amber-light); color: var(--db-amber); font-size: 12px; font-weight: 600; }
+.pl-funnel { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-bottom: 16px; }
+.pl-funnel-step { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--border-color); border-left: 3px solid var(--db-navy); border-radius: 6px; background: var(--bg-secondary); text-align: left; cursor: pointer; }
+.pl-funnel-step.red { border-left-color: var(--db-red); }
+.pl-funnel-step.amber { border-left-color: var(--db-amber); }
+.pl-funnel-step.green { border-left-color: var(--db-emerald); }
+.pl-funnel-step.active { outline: 2px solid var(--accent-blue); }
+.pl-funnel-value { font-size: 18px; font-weight: 700; color: var(--text-main); }
+.pl-funnel-label { font-size: 11px; color: var(--text-muted); }
+.pl-next { margin-top: 20px; display: flex; justify-content: flex-end; }
+@media (max-width: 720px) { .pl-funnel { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

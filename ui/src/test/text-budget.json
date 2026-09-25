@@ -26,8 +26,8 @@
   "pipeline": {
     "baseline_chars": 1981,
     "ratio": 0.6,
-    "max_chars": 1981,
-    "enforce_single_language": false
+    "max_chars": 1188,
+    "enforce_single_language": true
   },
   "export": {
     "baseline_chars": 1447,
