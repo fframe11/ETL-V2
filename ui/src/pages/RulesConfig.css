@@ -360,3 +360,6 @@
   box-shadow: var(--shadow-sm);
   transition: border-color 0.2s, box-shadow 0.2s;
 }
+
+.gs-rules-dataset-line { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; }
+.gs-rules-next { margin-top: 20px; display: flex; justify-content: flex-end; }

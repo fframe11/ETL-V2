@@ -1,10 +1,10 @@
 import { Icon } from '../components/UiIcons';
 import React, { useState, useEffect } from "react";
-import { useSearchParams, Link } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useApi, postApi } from "../hooks/useApi";
-import Tooltip from "../components/Tooltip";
 import ConfirmationModal from "../components/ConfirmationModal";
 import TileCard from "../components/ui/TileCard";
+import { PageHeader, InfoHint, NextStepLink } from "../components/ui";
 import "./RulesConfig.css";
 
 const generateYamlDsl = (rules, tableName) => {
@@ -126,7 +126,8 @@ export default function RulesConfig() {
   const [wbAiContext, setWbAiContext] = useState(null);
   const [wbAiLoading, setWbAiLoading] = useState(false);
 
-  const wbTotalRows = wbProfile?.total_rows ?? wbLiveMetrics?.total_rows ?? 10100;
+  const wbTotalRows = wbProfile?.total_rows ?? wbLiveMetrics?.total_rows ?? null;
+  const wbFmt = (n) => (typeof n === "number" ? n.toLocaleString() : "—");
 
   const fetchWbAiContext = async (force = false) => {
     setWbAiLoading(true);
@@ -215,7 +216,7 @@ export default function RulesConfig() {
       const m = updated?.metrics || wbLiveMetrics;
       setActionResult({
         success: true,
-        message: `ยืนยันและประมวลผลกฎบน ${wbTotalRows.toLocaleString()} แถวสำเร็จ: Clean ${(m?.clean_rows ?? 9400).toLocaleString()} แถว | Review ${(m?.review_rows ?? 100).toLocaleString()} แถว | Quarantine ${(m?.quarantine_rows ?? 600).toLocaleString()} แถว`
+        message: `ยืนยันและประมวลผลกฎบน ${wbFmt(wbTotalRows)} แถวสำเร็จ: Clean ${wbFmt(m?.clean_rows)} แถว | Review ${wbFmt(m?.review_rows)} แถว | Quarantine ${wbFmt(m?.quarantine_rows)} แถว`
       });
     } catch {
       setWbConfirmedAt(new Date().toLocaleTimeString());
@@ -617,122 +618,38 @@ export default function RulesConfig() {
   const proposalsList = proposals.data?.proposals || [];
   const selectedProposal = proposalsList.find(p => p.id === selectedProposalId || p.run_id === selectedProposalId || p._id === selectedProposalId);
 
+  const wbFlaggedText = (n) => (typeof n === "number" ? `${n.toLocaleString()} แถว` : "—");
+  const wbPassRateText = (n) =>
+    typeof n === "number" && wbTotalRows ? `${(((wbTotalRows - n) / wbTotalRows) * 100).toFixed(1)}%` : "—";
+
   return (
     <div className="gs-rules">
-      {/* 1. Page Header */}
-      <div className="gs-page-header">
-        <div>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(255, 54, 33, 0.08)", color: "#FF3621", border: "1px solid rgba(255, 54, 33, 0.25)", borderRadius: "4px", padding: "2px 8px", fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em", marginBottom: "6px" }}>
-            DELTA EXPECTATIONS & RULE ENGINE
-          </div>
-          <h1 className="gs-page-title">Delta Expectations <span style={{ color: "#1B3139" }}>& Quality Rules</span></h1>
-          <p className="gs-page-desc">กำหนดและยืนยันข้อกำหนดคุณภาพข้อมูล (Expectations & Thresholds) จากผลการวิเคราะห์สถิติ เพื่อควบคุมเกณฑ์การคัดแยกใน Silver Layer</p>
-        </div>
-      </div>
+      <PageHeader
+        pageKey="rules"
+        actions={
+          <>
+            <button type="button" className="ui-btn ui-btn-secondary" onClick={() => fetchWbAiContext(true)} disabled={wbAiLoading}>
+              {wbAiLoading ? "กำลังอธิบาย..." : "อธิบายด้วย AI"}
+            </button>
+            <button type="button" className="ui-btn ui-btn-primary" onClick={handleConfirmWhiteBoxRules} disabled={wbConfirming}>
+              {wbConfirming ? "กำลังบันทึก..." : wbConfirmedAt ? `บันทึกแล้ว ${wbConfirmedAt} · บันทึกอีกครั้ง` : "บันทึกกฎ"}
+            </button>
+          </>
+        }
+      />
 
       {/* Interactive Rule Formulation & Confirmation Workspace */}
       <div style={{ background: "#FFFFFF", border: "1px solid #CBD5E1", borderRadius: "12px", padding: "20px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)", marginBottom: "16px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px", flexWrap: "wrap" }}>
-              <span style={{ background: "#1B3139", color: "#FFFFFF", fontSize: "11px", fontWeight: 800, padding: "3px 8px", borderRadius: "4px", letterSpacing: "0.05em" }}>
-                DELTA EXPECTATIONS · SPECIFICATIONS
-              </span>
-              <span style={{ background: "#FEF3C7", color: "#92400E", fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "4px", border: "1px solid #FCD34D" }}>
-                <Icon name="target" /> Target Table: {wbDatasetName}
-              </span>
-              <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>
-                ({wbTotalRows.toLocaleString()} rows)
-              </span>
-              <span style={{ background: "#EEF2FF", color: "#3730A3", fontSize: "10.5px", fontWeight: 800, padding: "2px 8px", borderRadius: "4px", border: "1px solid #C7D2FE" }}>
-                <Icon name="sparkles" /> AI Contextual Reasoning ({wbAiContext?.model || "openai/gpt-oss-120b"})
-              </span>
-            </div>
-            <h3 style={{ margin: 0, fontSize: "16px", color: "#0F172A", fontWeight: 800 }}>
-              <Icon name="scale" /> Delta Expectations & Business Constraint Rules
-            </h3>
-            <div style={{ fontSize: "12px", color: "#64748B", marginTop: "4px" }}>
-              Delta Live Tables expectations &amp; business quality constraints for <strong>{wbDatasetName}</strong>
-            </div>
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-            <button
-              type="button"
-              onClick={() => fetchWbAiContext(true)}
-              disabled={wbAiLoading}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "8px 14px",
-                background: "#EEF2FF",
-                color: "#3730A3",
-                border: "1px solid #C7D2FE",
-                borderRadius: "6px",
-                fontSize: "12px",
-                fontWeight: 700,
-                cursor: wbAiLoading ? "wait" : "pointer"
-              }}
-            >
-              <Icon name="sparkles" />
-              <span>{wbAiLoading ? "Explaining..." : "Explain Constraints (AI)"}</span>
-            </button>
-
-            <button
-              onClick={handleConfirmWhiteBoxRules}
-              disabled={wbConfirming}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "8px 14px",
-                background: wbConfirmedAt ? "#ECFDF5" : "#00A972",
-                color: wbConfirmedAt ? "#047857" : "#FFFFFF",
-                border: wbConfirmedAt ? "1px solid #6EE7B7" : "none",
-                borderRadius: "6px",
-                fontSize: "12px",
-                fontWeight: 700,
-                cursor: "pointer",
-                boxShadow: "0 1px 2px rgba(0,169,114,0.2)"
-              }}
-            >
-              <span>
-                {wbConfirming
-                  ? "Saving Expectations..."
-                  : wbConfirmedAt
-                  ? `Published (${wbConfirmedAt}) — Click to Re-publish`
-                  : "Save & Publish Expectations"}
-              </span>
-            </button>
-          </div>
-        </div>
-
-        {/* Databricks Filter & Segmented Toolbar (Matches Learn & Workspace UI) */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", marginBottom: "14px", flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "#FFFFFF", border: "1px solid #CBD5E1", borderRadius: "4px", padding: "5px 10px", width: "220px" }}>
-              <span style={{ color: "#64748B", fontSize: "12px" }}><Icon name="search" /></span>
-              <span style={{ fontSize: "12px", color: "#94A3B8" }}>Search expectations...</span>
-            </div>
-            <div style={{ display: "inline-flex", border: "1px solid #CBD5E1", borderRadius: "4px", overflow: "hidden", background: "#FFFFFF" }}>
-              <span style={{ padding: "5px 12px", fontSize: "12px", fontWeight: 600, background: "#EFF6FF", color: "#1D4ED8", borderBottom: "2px solid #2272B4" }}>All (3)</span>
-              <span style={{ padding: "5px 12px", fontSize: "12px", color: "#475569", borderLeft: "1px solid #E2E8F0" }}>Completeness &amp; Range</span>
-              <span style={{ padding: "5px 12px", fontSize: "12px", color: "#475569", borderLeft: "1px solid #E2E8F0" }}>Primary Key</span>
-              <span style={{ padding: "5px 12px", fontSize: "12px", color: "#475569", borderLeft: "1px solid #E2E8F0" }}>Outlier Fence</span>
-            </div>
-          </div>
-          <span style={{ fontSize: "12px", color: "#64748B" }}>
-            Active dataset: <code>{wbDatasetName}</code> ({wbTotalRows.toLocaleString()} rows)
-          </span>
+        <div className="gs-rules-dataset-line">
+          ชุดข้อมูล <code>{wbDatasetName}</code> · {wbFmt(wbTotalRows)} แถว
         </div>
 
         {/* 3 Databricks Tile Cards — Exact 3-Element Card Anatomy from Databricks Learn UI */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: "14px", marginBottom: "20px" }}>
           {/* Card 1: Value Range & Completeness */}
           <TileCard
-            category="Expectation 01 · Completeness & Range"
-            title="Score Range & Null Check"
+            category="กฎที่ 1"
+            title="ช่วงคะแนนและค่าว่าง"
             subtitle={`score BETWEEN ${wbMinRange} AND ${wbMaxRange} AND NOT NULL`}
             percent={95}
             gradient="linear-gradient(135deg, #7E22CE 0%, #C084FC 100%)"
@@ -751,16 +668,16 @@ export default function RulesConfig() {
                         syncWbState({ rule1_confirmed: val });
                       }}
                     />
-                    <span>Active ({(wbLiveMetrics?.gate1_quarantined ?? 500).toLocaleString()} failing rows)</span>
+                    <span>Active ({wbFmt(wbLiveMetrics?.gate1_quarantined)} failing rows)</span>
                   </label>
                 </div>
                 <details>
                   <summary style={{ fontSize: "11px", fontWeight: 600, color: "#2272B4", cursor: "pointer", userSelect: "none" }}>
-                    ปรับแต่งเกณฑ์พารามิเตอร์ (Configure) ⚙️
+                    ปรับค่า
                   </summary>
                   <div style={{ marginTop: "8px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", fontSize: "11px" }}>
                     <div>
-                      <label style={{ display: "block", fontSize: "10px", color: "#64748B" }}>Min score</label>
+                      <label style={{ display: "block", fontSize: "10px", color: "#64748B" }}>คะแนนต่ำสุด</label>
                       <input
                         type="number"
                         value={wbMinRange}
@@ -773,7 +690,7 @@ export default function RulesConfig() {
                       />
                     </div>
                     <div>
-                      <label style={{ display: "block", fontSize: "10px", color: "#64748B" }}>Max score</label>
+                      <label style={{ display: "block", fontSize: "10px", color: "#64748B" }}>คะแนนสูงสุด</label>
                       <input
                         type="number"
                         value={wbMaxRange}
@@ -793,8 +710,8 @@ export default function RulesConfig() {
 
           {/* Card 2: Primary Key & Deduplication */}
           <TileCard
-            category="Expectation 02 · Uniqueness"
-            title="Composite Key Deduplication"
+            category="กฎที่ 2"
+            title="ห้ามคีย์ซ้ำ"
             subtitle={`UNIQUE (${wbCompositeKey})`}
             percent={99}
             gradient="linear-gradient(135deg, #0284C7 0%, #38BDF8 100%)"
@@ -813,15 +730,15 @@ export default function RulesConfig() {
                         syncWbState({ rule2_confirmed: val });
                       }}
                     />
-                    <span>Active ({(wbLiveMetrics?.gate2_quarantined ?? 100).toLocaleString()} duplicate rows)</span>
+                    <span>Active ({wbFmt(wbLiveMetrics?.gate2_quarantined)} duplicate rows)</span>
                   </label>
                 </div>
                 <details>
                   <summary style={{ fontSize: "11px", fontWeight: 600, color: "#2272B4", cursor: "pointer", userSelect: "none" }}>
-                    ปรับแต่งเกณฑ์พารามิเตอร์ (Configure) ⚙️
+                    ปรับค่า
                   </summary>
                   <div style={{ marginTop: "8px", fontSize: "11px" }}>
-                    <label style={{ display: "block", fontSize: "10px", color: "#64748B", marginBottom: "3px" }}>Natural Key</label>
+                    <label style={{ display: "block", fontSize: "10px", color: "#64748B", marginBottom: "3px" }}>คีย์หลัก</label>
                     <select
                       value={wbCompositeKey}
                       onChange={(e) => {
@@ -841,8 +758,8 @@ export default function RulesConfig() {
 
           {/* Card 3: Statistical Outlier Fence */}
           <TileCard
-            category="Expectation 03 · Statistical Anomaly"
-            title="Tukey IQR Outlier Fence"
+            category="กฎที่ 3"
+            title="ค่าผิดปกติ"
             subtitle={`study_hours <= Q3 + ${wbTukeyMultiplier || "3.0"} × IQR`}
             percent={99}
             gradient="linear-gradient(135deg, #D97706 0%, #FBBF24 100%)"
@@ -861,15 +778,15 @@ export default function RulesConfig() {
                         syncWbState({ rule3_confirmed: val });
                       }}
                     />
-                    <span>Active ({(wbLiveMetrics?.initial_outlier_count ?? 100).toLocaleString()} review rows)</span>
+                    <span>Active ({wbFmt(wbLiveMetrics?.initial_outlier_count)} review rows)</span>
                   </label>
                 </div>
                 <details>
                   <summary style={{ fontSize: "11px", fontWeight: 600, color: "#2272B4", cursor: "pointer", userSelect: "none" }}>
-                    ปรับแต่งเกณฑ์พารามิเตอร์ (Configure) ⚙️
+                    ปรับค่า
                   </summary>
                   <div style={{ marginTop: "8px", fontSize: "11px" }}>
-                    <label style={{ display: "block", fontSize: "10px", color: "#64748B", marginBottom: "3px" }}>Tukey Multiplier</label>
+                    <label style={{ display: "block", fontSize: "10px", color: "#64748B", marginBottom: "3px" }}>ตัวคูณ k<InfoHint text="ใช้ Tukey fence: ค่าที่เกิน Q3 + k×IQR ถูกส่งไป Review k=3.0 เข้มน้อยกว่า k=1.5" /></label>
                     <select
                       value={wbTukeyMultiplier}
                       onChange={(e) => {
@@ -896,66 +813,48 @@ export default function RulesConfig() {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12.5px", textAlign: "left" }}>
             <thead>
               <tr style={{ borderBottom: "1px solid #CBD5E1", color: "#475569", fontSize: "11.5px" }}>
-                <th style={{ padding: "8px 10px", fontWeight: 600 }}>Expectation Name ↑</th>
-                <th style={{ padding: "8px 10px", fontWeight: 600 }}>Target Column</th>
-                <th style={{ padding: "8px 10px", fontWeight: 600 }}>On Violation</th>
-                <th style={{ padding: "8px 10px", fontWeight: 600 }}>Flagged Rows</th>
-                <th style={{ padding: "8px 10px", fontWeight: 600 }}>Pass Rate</th>
+                <th style={{ padding: "8px 10px", fontWeight: 600 }}>กฎ</th>
+                <th style={{ padding: "8px 10px", fontWeight: 600 }}>คอลัมน์</th>
+                <th style={{ padding: "8px 10px", fontWeight: 600 }}>เมื่อไม่ผ่าน</th>
+                <th style={{ padding: "8px 10px", fontWeight: 600 }}>แถวที่ติด</th>
+                <th style={{ padding: "8px 10px", fontWeight: 600 }}>ผ่าน</th>
               </tr>
             </thead>
             <tbody>
               <tr style={{ borderBottom: "1px solid #F1F5F9" }}>
                 <td style={{ padding: "9px 10px", color: "#2272B4", fontWeight: 600 }}>valid_score_range_and_not_null</td>
                 <td style={{ padding: "9px 10px", fontFamily: "monospace" }}>score</td>
-                <td style={{ padding: "9px 10px", color: "#DC2626" }}>QUARANTINE</td>
-                <td style={{ padding: "9px 10px" }}>{(wbLiveMetrics?.gate1_quarantined ?? 500).toLocaleString()} rows</td>
-                <td style={{ padding: "9px 10px", fontWeight: 600 }}>95.0%</td>
+                <td style={{ padding: "9px 10px", color: "#DC2626" }}>กักกัน</td>
+                <td style={{ padding: "9px 10px" }}>{wbFlaggedText(wbLiveMetrics?.gate1_quarantined)}</td>
+                <td style={{ padding: "9px 10px", fontWeight: 600 }}>{wbPassRateText(wbLiveMetrics?.gate1_quarantined)}</td>
               </tr>
               <tr style={{ borderBottom: "1px solid #F1F5F9" }}>
                 <td style={{ padding: "9px 10px", color: "#2272B4", fontWeight: 600 }}>unique_composite_student_key</td>
                 <td style={{ padding: "9px 10px", fontFamily: "monospace" }}>{wbCompositeKey}</td>
-                <td style={{ padding: "9px 10px", color: "#DC2626" }}>QUARANTINE_DUPLICATES</td>
-                <td style={{ padding: "9px 10px" }}>{(wbLiveMetrics?.gate2_quarantined ?? 100).toLocaleString()} rows</td>
-                <td style={{ padding: "9px 10px", fontWeight: 600 }}>99.0%</td>
+                <td style={{ padding: "9px 10px", color: "#DC2626" }}>กักกันแถวซ้ำ</td>
+                <td style={{ padding: "9px 10px" }}>{wbFlaggedText(wbLiveMetrics?.gate2_quarantined)}</td>
+                <td style={{ padding: "9px 10px", fontWeight: 600 }}>{wbPassRateText(wbLiveMetrics?.gate2_quarantined)}</td>
               </tr>
               <tr style={{ borderBottom: "1px solid #F1F5F9" }}>
                 <td style={{ padding: "9px 10px", color: "#2272B4", fontWeight: 600 }}>study_hours_tukey_iqr_fence</td>
                 <td style={{ padding: "9px 10px", fontFamily: "monospace" }}>study_hours</td>
-                <td style={{ padding: "9px 10px", color: "#D97706" }}>HOLD_FOR_REVIEW</td>
-                <td style={{ padding: "9px 10px" }}>{(wbLiveMetrics?.initial_outlier_count ?? 100).toLocaleString()} rows</td>
-                <td style={{ padding: "9px 10px", fontWeight: 600 }}>99.0%</td>
+                <td style={{ padding: "9px 10px", color: "#D97706" }}>ส่ง Review</td>
+                <td style={{ padding: "9px 10px" }}>{wbFlaggedText(wbLiveMetrics?.initial_outlier_count)}</td>
+                <td style={{ padding: "9px 10px", fontWeight: 600 }}>{wbPassRateText(wbLiveMetrics?.initial_outlier_count)}</td>
               </tr>
             </tbody>
           </table>
         </div>
 
-          {/* Single Primary Action Button */}
-          <div style={{ marginTop: "16px", display: "flex", justifyContent: "flex-end" }}>
-            <Link
-              to="/pipeline"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "8px",
-                padding: "10px 22px",
-                background: "#059669",
-                color: "#FFFFFF",
-                borderRadius: "6px",
-                fontSize: "13px",
-                fontWeight: 800,
-                textDecoration: "none",
-                boxShadow: "0 2px 4px rgba(5,150,105,0.25)"
-              }}
-            >
-              <span>นำกฎที่ยืนยันไปใช้ใน Pipeline (Step 3) <Icon name="arrow-right" /></span>
-            </Link>
+          <div className="gs-rules-next">
+            <NextStepLink from="rules" />
           </div>
         </div>
 
       {/* 2. Optional: Advanced Multi-Table Rules & AI Proposals */}
       <details style={{ marginTop: "16px", background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: "10px", padding: "14px", marginBottom: "20px" }}>
         <summary style={{ cursor: "pointer", fontSize: "12px", fontWeight: 700, color: "#475569" }}>
-          <Icon name="sliders" /> จัดการกฎสารบัญตารางอื่น &amp; AI Proposals (Multi-Table Registry / YAML) ▼
+          <Icon name="sliders" /> ตั้งค่าขั้นสูง: ตารางอื่น, AI, Governance
         </summary>
         <div style={{ marginTop: "14px" }}>
       {actionResult && (
@@ -967,23 +866,23 @@ export default function RulesConfig() {
       {/* 2. Main Navigation Tabs */}
       <div className="gs-rules-tabs">
         <button className={`gs-rules-tab-btn ${activeTab === "tables" ? "active" : ""}`} onClick={() => { setActiveTab("tables"); setActionResult(null); }}>
-          Table Rules
+          กฎรายตาราง
         </button>
         <button className={`gs-rules-tab-btn ${activeTab === "proposals" ? "active" : ""}`} onClick={() => { setActiveTab("proposals"); setActionResult(null); }}>
-          AI Proposals
+          ข้อเสนอจาก AI
           {proposalsList.length > 0 && <span className="gs-badge-count">{proposalsList.length}</span>}
         </button>
         <button className={`gs-rules-tab-btn ${activeTab === "settings" ? "active" : ""}`} onClick={() => { setActiveTab("settings"); setActionResult(null); }}>
-          AI Settings
+          ตั้งค่า AI
         </button>
         <button className={`gs-rules-tab-btn ${activeTab === "remediations" ? "active" : ""}`} onClick={() => { setActiveTab("remediations"); setActionResult(null); }}>
-          Upstream Governance
+          แจ้งแก้ต้นทาง
           {remediations.filter(t => t.status === "OPEN").length > 0 && (
             <span className="gs-badge-count">{remediations.filter(t => t.status === "OPEN").length}</span>
           )}
         </button>
         <button className={`gs-rules-tab-btn ${activeTab === "standardize" ? "active" : ""}`} onClick={() => { setActiveTab("standardize"); setActionResult(null); }}>
-          Standardization Review
+          มาตรฐานข้อมูล
           {reviewQueue.length > 0 && (
             <span className="gs-badge-count">{reviewQueue.length}</span>
           )}
