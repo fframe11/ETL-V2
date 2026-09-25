@@ -2,7 +2,7 @@ import { Icon } from '../components/UiIcons';
 import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { postApi } from "../hooks/useApi";
-import WorkflowJourneyBar, { DatabricksTileCard } from "../components/WorkflowJourneyBar";
+import TileCard from "../components/ui/TileCard";
 import "./Ingestion.css";
 
 export default function Ingestion() {

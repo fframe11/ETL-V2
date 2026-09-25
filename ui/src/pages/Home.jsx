@@ -2,7 +2,6 @@ import { Icon } from '../components/UiIcons';
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
-import WorkflowJourneyBar from '../components/WorkflowJourneyBar';
 import "./Home.css";
 
 export default function Home() {

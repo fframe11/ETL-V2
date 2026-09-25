@@ -4,7 +4,7 @@ import { useSearchParams, Link } from "react-router-dom";
 import { useApi, postApi } from "../hooks/useApi";
 import Tooltip from "../components/Tooltip";
 import ConfirmationModal from "../components/ConfirmationModal";
-import WorkflowJourneyBar, { DatabricksTileCard } from "../components/WorkflowJourneyBar";
+import TileCard from "../components/ui/TileCard";
 import "./RulesConfig.css";
 
 const generateYamlDsl = (rules, tableName) => {
@@ -730,7 +730,7 @@ export default function RulesConfig() {
         {/* 3 Databricks Tile Cards — Exact 3-Element Card Anatomy from Databricks Learn UI */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: "14px", marginBottom: "20px" }}>
           {/* Card 1: Value Range & Completeness */}
-          <DatabricksTileCard
+          <TileCard
             category="Expectation 01 · Completeness & Range"
             title="Score Range & Null Check"
             subtitle={`score BETWEEN ${wbMinRange} AND ${wbMaxRange} AND NOT NULL`}
@@ -792,7 +792,7 @@ export default function RulesConfig() {
           />
 
           {/* Card 2: Primary Key & Deduplication */}
-          <DatabricksTileCard
+          <TileCard
             category="Expectation 02 · Uniqueness"
             title="Composite Key Deduplication"
             subtitle={`UNIQUE (${wbCompositeKey})`}
@@ -840,7 +840,7 @@ export default function RulesConfig() {
           />
 
           {/* Card 3: Statistical Outlier Fence */}
-          <DatabricksTileCard
+          <TileCard
             category="Expectation 03 · Statistical Anomaly"
             title="Tukey IQR Outlier Fence"
             subtitle={`study_hours <= Q3 + ${wbTukeyMultiplier || "3.0"} × IQR`}

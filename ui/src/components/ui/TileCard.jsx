@@ -1,45 +1,5 @@
-import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { Icon } from "./UiIcons";
-
-const JOURNEY_STEPS = [
-  {
-    stepNum: 0,
-    tag: "Learn",
-    title: "Architecture",
-    path: "/guide"
-  },
-  {
-    stepNum: 1,
-    tag: "Data Ingestion",
-    title: "Bronze Ingestion",
-    path: "/ingestion"
-  },
-  {
-    stepNum: 2,
-    tag: "Catalog",
-    title: "Expectations & Rules",
-    path: "/rules"
-  },
-  {
-    stepNum: 3,
-    tag: "Jobs & Pipelines",
-    title: "Silver Pipeline",
-    path: "/pipeline"
-  },
-  {
-    stepNum: 4,
-    tag: "Workspace",
-    title: "Gold Exports",
-    path: "/export"
-  },
-  {
-    stepNum: 5,
-    tag: "SQL",
-    title: "Dashboards",
-    path: "/dashboard"
-  }
-];
+import React from "react";
+import { Icon } from "../UiIcons";
 
 /**
  * Reusable Databricks 3-Element Course/Tile Card (Matches Databricks "Learn" & "Add Data" UI)
@@ -48,7 +8,7 @@ const JOURNEY_STEPS = [
  *  2. 3-line bottom text (Category, Bold Title, 1-line Subtitle)
  *  3. Circular SVG percentage ring in bottom-right corner
  */
-export function DatabricksTileCard({
+export default function TileCard({
   category = "Data engineer",
   title = "Build a data pipeline",
   subtitle = "Create and manage pipelines end-to-end.",
@@ -157,8 +117,4 @@ export function DatabricksTileCard({
       )}
     </div>
   );
-}
-
-export default function WorkflowJourneyBar() {
-  return null;
 }

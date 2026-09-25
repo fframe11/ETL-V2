@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import WorkflowJourneyBar from '../components/WorkflowJourneyBar';
 import './RulesConfig.css';
 
 // --- Enterprise SVG Icons ---

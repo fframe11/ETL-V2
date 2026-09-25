@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../hooks/useAuth";
+import { PAGES, NAV_GROUPS } from "../config/pages";
 import "./NavBar.css";
 
 // --- SVG Icons ---
@@ -125,40 +126,29 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
   const services = useApi('/services/status', { refreshInterval: 15000 });
   const isHealthy = !services.error && services.data && typeof services.data === 'object' && Object.values(services.data).every(s => s?.status === 'online');
 
-  // Primary-First Navigation Ordering (Databricks Lakehouse Architecture):
-  // 1) Lakehouse Workspace (Home + Runbook)
-  // 2) Medallion Pipeline (Bronze Ingestion -> Delta Rules -> Silver Segregation -> Gold Export)
-  // 3) Observability & Catalog (Executive Trust Dashboard, Audit, Analytics, Schemas)
-  const menuGroups = [
-    {
-      title: "",
-      key: "getting_started",
-      links: [
-        { to: "/", label: "Home", icon: <HomeIcon /> },
-        { to: "/guide", label: "Learn & Architecture", icon: <GuideIcon /> },
-        { to: "/schema", label: "Catalog", icon: <SchemaIcon />, badge: schemaCount > 0 ? schemaCount : null },
-        { to: "/pipeline", label: "Jobs & Pipelines", icon: <PipelineIcon /> }
-      ]
-    },
-    {
-      title: "SQL",
-      key: "sql_section",
-      links: [
-        { to: "/dashboard", label: "Dashboards", icon: <DashboardIcon /> },
-        { to: aiRulesCount > 0 ? "/rules?tab=proposals" : "/rules", label: "Expectations & Alerts", icon: <RulesIcon />, badge: aiRulesCount > 0 ? aiRulesCount : null },
-        { to: "/export", label: "Workspace Exports", icon: <ExportIcon /> },
-        { to: "/analytics", label: "Query & Metrics", icon: <AnalyticsIcon /> }
-      ]
-    },
-    {
-      title: "Data Engineering",
-      key: "data_eng_section",
-      links: [
-        { to: "/whitebox", label: "Runs", icon: <RunsIcon /> },
-        { to: "/ingestion", label: "Data Ingestion", icon: <IngestionIcon /> }
-      ]
-    }
-  ];
+  // Menu is derived from the single page registry (ui/src/config/pages.js) so
+  // the sidebar label, the page <h1>, and workflow step order never drift apart.
+  const NAV_ICONS = {
+    home: <HomeIcon />, guide: <GuideIcon />, schema: <SchemaIcon />, pipeline: <PipelineIcon />,
+    dashboard: <DashboardIcon />, rules: <RulesIcon />, export: <ExportIcon />,
+    analytics: <AnalyticsIcon />, whitebox: <RunsIcon />, ingestion: <IngestionIcon />
+  };
+  const NAV_BADGES = {
+    schema: schemaCount > 0 ? schemaCount : null,
+    rules: aiRulesCount > 0 ? aiRulesCount : null
+  };
+  const menuGroups = NAV_GROUPS.map((g) => ({
+    title: g.title,
+    key: g.key,
+    links: PAGES.filter((p) => p.group === g.key).map((p) => ({
+      to: p.key === "rules" && aiRulesCount > 0 ? "/rules?tab=proposals" : p.path,
+      label: p.label,
+      subtitle: p.subtitle,
+      stepTag: p.step ? String(p.step) : undefined,
+      icon: NAV_ICONS[p.key],
+      badge: NAV_BADGES[p.key] ?? null
+    }))
+  }));
 
   // Command Palette states
   const [showSearchModal, setShowSearchModal] = useState(false);
@@ -171,9 +161,11 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
     return [...acc, ...group.links.map(l => ({ ...l, category: group.title }))];
   }, []);
 
-  const filteredLinks = allLinks.filter(link =>
-    link.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    link.category.toLowerCase().includes(searchQuery.toLowerCase())
+  const q = searchQuery.toLowerCase();
+  const filteredLinks = allLinks.filter((link) =>
+    link.label.toLowerCase().includes(q) ||
+    link.category.toLowerCase().includes(q) ||
+    (link.subtitle || "").toLowerCase().includes(q)
   );
 
   // Toggle Command Palette shortcuts

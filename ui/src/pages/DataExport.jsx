@@ -2,7 +2,7 @@ import { Icon } from '../components/UiIcons';
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../hooks/useApi";
-import WorkflowJourneyBar, { DatabricksTileCard } from "../components/WorkflowJourneyBar";
+import TileCard from "../components/ui/TileCard";
 import "./DataExport.css";
 
 export default function DataExport() {
@@ -478,7 +478,7 @@ export default function DataExport() {
         {/* 3 Databricks Tile Cards — Exact 3-Element Card Anatomy from Databricks Learn UI */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: "14px" }}>
           {/* Zone 1: Clean Data CSV */}
-          <DatabricksTileCard
+          <TileCard
             category="Gold Layer · BI & ML Ready"
             title={`Certified Gold Dataset (${cleanCount.toLocaleString()} แถว)`}
             subtitle={`score ∈ [${wbState?.min_score ?? 0}, ${wbState?.max_score ?? 100}] · Null 0% · Unique 100%`}
@@ -508,7 +508,7 @@ export default function DataExport() {
           />
 
           {/* Zone 2: Human Review Queue CSV */}
-          <DatabricksTileCard
+          <TileCard
             category="Data Steward · Outlier Review"
             title={`Human Review Queue (${reviewCount.toLocaleString()} แถว)`}
             subtitle={`study_hours > Q3 + ${wbState?.tukey_multiplier || "3.0"}× IQR`}
@@ -538,7 +538,7 @@ export default function DataExport() {
           />
 
           {/* Zone 3: Quarantine Root-Cause Log CSV */}
-          <DatabricksTileCard
+          <TileCard
             category="Upstream Governance · Diagnostic Log"
             title={`Quarantine Audit Log (${quarantineCount.toLocaleString()} แถว)`}
             subtitle={`Null ${wbMetrics.missing_score_count ?? 300} · Range ${wbMetrics.invalid_range_count ?? 200} · Dup ${wbMetrics.gate2_quarantined ?? 100}`}

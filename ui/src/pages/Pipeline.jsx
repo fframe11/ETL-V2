@@ -2,7 +2,7 @@ import { Icon } from '../components/UiIcons';
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useApi, postApi } from '../hooks/useApi';
-import WorkflowJourneyBar, { DatabricksTileCard } from '../components/WorkflowJourneyBar';
+import TileCard from "../components/ui/TileCard";
 import ConfirmationModal from '../components/ConfirmationModal';
 import "./Pipeline.css";
 
@@ -395,7 +395,7 @@ export default function Pipeline() {
           {/* 3 Databricks Tile Cards — Exact 3-Element Card Anatomy from Databricks Learn UI */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', gap: '14px', marginBottom: '18px' }}>
             {/* Card 1: Validated Silver Dataset */}
-            <DatabricksTileCard
+            <TileCard
               category="Silver Layer · Certified Asset"
               title={`Validated Silver (${cleanRowsCount.toLocaleString()} แถว)`}
               subtitle={`score ∈ [${wbState?.min_score ?? 0}, ${wbState?.max_score ?? 100}] · Null 0% · Recall 100%`}
@@ -419,7 +419,7 @@ export default function Pipeline() {
             />
 
             {/* Card 2: Human Review Queue */}
-            <DatabricksTileCard
+            <TileCard
               category="Data steward · Outlier review"
               title={`Human Review Queue (${reviewRowsCount.toLocaleString()} แถว)`}
               subtitle={`study_hours > Tukey ${wbState?.tukey_multiplier || "3.0"}× IQR · คะแนนปกติ 75–98`}
@@ -466,7 +466,7 @@ export default function Pipeline() {
             />
 
             {/* Card 3: Quarantine Store */}
-            <DatabricksTileCard
+            <TileCard
               category="Audit sink · Upstream remediation"
               title={`Quarantine Store (${quarantineRowsCount.toLocaleString()} แถว)`}
               subtitle={`Null: ${missingScoreCount} · Range: ${invalidRangeCount} · DupKey: ${gate2Quarantined}`}

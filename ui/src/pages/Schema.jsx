@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { useApi, postApi } from "../hooks/useApi";
-import WorkflowJourneyBar from "../components/WorkflowJourneyBar";
 import { Icon } from "../components/UiIcons";
 import ConfirmationModal from "../components/ConfirmationModal";
 import "./Schema.css";

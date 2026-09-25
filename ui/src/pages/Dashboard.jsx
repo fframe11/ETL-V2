@@ -18,7 +18,6 @@ import {
   Cell
 } from 'recharts';
 import { Link, useNavigate } from 'react-router-dom';
-import WorkflowJourneyBar from '../components/WorkflowJourneyBar';
 import EchartsDataLineage from '../components/EchartsDataLineage';
 import { useDashboardStore } from '../store/useDashboardStore';
 import "./Dashboard.css";

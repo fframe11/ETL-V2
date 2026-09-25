@@ -1,6 +1,5 @@
 import { Icon } from '../components/UiIcons';
 import React, { useState, useEffect } from "react";
-import WorkflowJourneyBar from "../components/WorkflowJourneyBar";
 import "./WhiteBoxPipeline.css";
 
 export default function WhiteBoxPipeline() {
