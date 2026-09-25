@@ -129,6 +129,7 @@ export default function Ingestion() {
   const [rawSearchQuery, setRawSearchQuery] = useState("");
   const [rawSearchResults, setRawSearchResults] = useState(null);
   const [quickUploadNotice, setQuickUploadNotice] = useState("");
+  const [uploadError, setUploadError] = useState("");
   const [aiContext, setAiContext] = useState(null);
   const [aiContextLoading, setAiContextLoading] = useState(false);
 
@@ -166,6 +167,8 @@ export default function Ingestion() {
 
   const handleConnectSourceAndProfile = async (sourceType, tableName, connectionUri) => {
     setProfilingLoading(true);
+    setUploadError("");
+    setQuickUploadNotice("");
     const cleanTbl = String(tableName || "student_course_scores").replace(/[^a-zA-Z0-9_]/g, "_");
     setPrimaryDatasetName(cleanTbl);
     setActiveSourceSummary(`${sourceType} · ${connectionUri || cleanTbl}`);
@@ -184,9 +187,54 @@ export default function Ingestion() {
         if (d.profile) setProfilingData(d.profile);
         setQuickUploadNotice(`เชื่อมต่อแหล่งข้อมูล [${sourceType}] ตาราง '${cleanTbl}' (${(d.rows_ingested ?? 0).toLocaleString()} แถว) และอัปเดตผลวิเคราะห์ System Auto-Profiling เรียบร้อยแล้ว`);
         fetchAiContext(true);
+      } else {
+        const detail = await res.json().catch(() => null);
+        setUploadError(detail?.detail || `เชื่อมต่อแหล่งข้อมูลไม่สำเร็จ (HTTP ${res.status})`);
       }
     } catch (err) {
       console.error("Failed to connect source and profile:", err);
+      setUploadError("เชื่อมต่อแหล่งข้อมูลไม่สำเร็จ: ไม่สามารถติดต่อเซิร์ฟเวอร์ได้");
+    } finally {
+      setProfilingLoading(false);
+    }
+  };
+
+  // Uploads an actual CSV/Excel file's bytes to the server (used by both the
+  // hidden file input and the "นำเข้าไฟล์และรัน Auto-Profiling ทันที" button —
+  // that button used to call handleConnectSourceAndProfile instead, which never
+  // sent the file itself and silently 404'd when no dataset already existed).
+  const uploadCsvFile = async (file, tableName) => {
+    if (!file) {
+      setUploadError("กรุณาเลือกไฟล์ก่อน");
+      return;
+    }
+    const cleanName = String(tableName || file.name.replace(/\.(csv|xlsx|xls)$/i, ""))
+      .replace(/[^a-zA-Z0-9_]/g, "_");
+    setProfilingLoading(true);
+    setUploadError("");
+    setQuickUploadNotice("");
+    setCsvFile(file);
+    setPrimaryDatasetName(cleanName);
+    setCsvTableName(cleanName);
+    setActiveSourceSummary(`FILE_UPLOAD · ${file.name}`);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("table_name", cleanName);
+      const upRes = await fetch("/api/v1/whitebox/upload-csv", { method: "POST", body: fd });
+      if (upRes.ok) {
+        const upData = await upRes.json();
+        if (upData.profile) setProfilingData(upData.profile);
+        setQuickUploadNotice(`นำเข้าไฟล์ '${file.name}' (${(upData.rows_ingested ?? 0).toLocaleString()} แถว) และประมวลผล System Auto-Profiling สำเร็จแล้ว`);
+        fetchAiContext(true);
+        handleRescanProfile();
+      } else {
+        const detail = await upRes.json().catch(() => null);
+        setUploadError(detail?.detail || `นำเข้าไฟล์ไม่สำเร็จ (HTTP ${upRes.status})`);
+      }
+    } catch (err) {
+      console.error("Failed to upload CSV file:", err);
+      setUploadError("นำเข้าไฟล์ไม่สำเร็จ: ไม่สามารถติดต่อเซิร์ฟเวอร์ได้");
     } finally {
       setProfilingLoading(false);
     }
@@ -622,26 +670,9 @@ export default function Ingestion() {
                     type="file"
                     accept=".csv,.xlsx,.xls"
                     style={{ display: "none" }}
-                    onChange={async (e) => {
+                    onChange={(e) => {
                       if (e.target.files && e.target.files.length > 0) {
-                        const f = e.target.files[0];
-                        const cleanName = f.name.replace(/\.(csv|xlsx|xls)$/i, "").replace(/[^a-zA-Z0-9_]/g, "_");
-                        setPrimaryDatasetName(cleanName);
-                        setCsvFile(f);
-                        setCsvTableName(cleanName);
-                        setActiveSourceSummary(`FILE_UPLOAD · ${f.name}`);
-                        try {
-                          const fd = new FormData();
-                          fd.append("file", f);
-                          fd.append("table_name", cleanName);
-                          const upRes = await fetch("/api/v1/whitebox/upload-csv", { method: "POST", body: fd });
-                          if (upRes.ok) {
-                            const upData = await upRes.json();
-                            if (upData.profile) setProfilingData(upData.profile);
-                            setQuickUploadNotice(`นำเข้าไฟล์ '${f.name}' (${(upData.rows_ingested || 0).toLocaleString()} แถว) และประมวลผล System Auto-Profiling สำเร็จแล้ว`);
-                          }
-                        } catch {}
-                        handleRescanProfile();
+                        uploadCsvFile(e.target.files[0], e.target.files[0].name.replace(/\.(csv|xlsx|xls)$/i, ""));
                       }
                     }}
                   />
@@ -651,9 +682,9 @@ export default function Ingestion() {
               <div>
                 <button
                   type="button"
-                  onClick={() => handleConnectSourceAndProfile("FILE_UPLOAD", primaryDatasetName, `${primaryDatasetName}.csv`)}
+                  onClick={() => uploadCsvFile(csvFile, primaryDatasetName)}
                   disabled={profilingLoading}
-                  style={{ width: "100%", padding: "9px 16px", background: "#1B3139", color: "#FFFFFF", border: "none", borderRadius: "6px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}
+                  style={{ width: "100%", padding: "9px 16px", background: "#1B3139", color: "#FFFFFF", border: "none", borderRadius: "6px", fontSize: "12.5px", fontWeight: 700, cursor: profilingLoading ? "wait" : "pointer" }}
                 >
                   {profilingLoading ? "กำลังนำเข้าและวิเคราะห์..." : "นำเข้าไฟล์และรัน Auto-Profiling ทันที"}
                 </button>
@@ -773,6 +804,11 @@ export default function Ingestion() {
         {quickUploadNotice && (
           <div style={{ marginTop: "12px", background: "#F0FDF4", border: "1px solid #BBF7D0", color: "#15803D", padding: "8px 12px", borderRadius: "6px", fontSize: "12px", fontWeight: 700 }}>
             <Icon name="check" /> {quickUploadNotice}
+          </div>
+        )}
+        {uploadError && (
+          <div style={{ marginTop: "12px", background: "#FEF2F2", border: "1px solid #FECACA", color: "#B91C1C", padding: "8px 12px", borderRadius: "6px", fontSize: "12px", fontWeight: 700 }}>
+            <Icon name="alert" /> {uploadError}
           </div>
         )}
       </div>
