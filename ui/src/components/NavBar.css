@@ -237,8 +237,10 @@
 .gs-nav-status-dot {
   width: 6px; height: 6px; border-radius: 50%;
 }
-.gs-nav-status-dot.online { background: var(--db-emerald); box-shadow: 0 0 6px var(--db-emerald); }
-.gs-nav-status-dot.offline { background: var(--db-red); }
+.gs-nav-status-dot.ok { background: var(--db-emerald); box-shadow: 0 0 6px var(--db-emerald); }
+.gs-nav-status-dot.degraded { background: var(--db-amber); }
+.gs-nav-status-dot.down { background: var(--db-red); }
+.gs-nav-status-dot.unknown { background: #64748B; }
 .gs-nav-status-text {
   font-size: 10px; color: #94A3B8;
   font-family: var(--font-mono);

@@ -43,3 +43,15 @@ it("shows the step number and the pending count side by side, labelled different
   expect(within(link).getByTitle("ขั้นที่ 2")).toHaveTextContent("2");
   expect(within(link).getByLabelText("รออนุมัติ 3 รายการ")).toBeInTheDocument();
 });
+
+it("names offline services instead of saying the whole API is offline", async () => {
+  mockFetchByUrl([
+    ["/services/status", { body: {
+      "Kafka Broker": { status: "offline", url: null },
+      "Postgres DB": { status: "online", url: null }
+    } }]
+  ]);
+  await renderNav();
+  expect(screen.getByText("1 บริการออฟไลน์")).toBeInTheDocument();
+  expect(screen.queryByText(/API: OFFLINE/)).toBeNull();
+});

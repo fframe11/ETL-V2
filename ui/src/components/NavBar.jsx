@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../hooks/useAuth";
+import { summarizeServiceHealth } from "../utils/serviceHealth";
 import { PAGES, NAV_GROUPS } from "../config/pages";
 import "./NavBar.css";
 
@@ -124,7 +125,7 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
 
   // Fetch services status for bottom panel
   const services = useApi('/services/status', { refreshInterval: 15000 });
-  const isHealthy = !services.error && services.data && typeof services.data === 'object' && Object.values(services.data).every(s => s?.status === 'online');
+  const health = summarizeServiceHealth(services);
 
   // Menu is derived from the single page registry (ui/src/config/pages.js) so
   // the sidebar label, the page <h1>, and workflow step order never drift apart.
@@ -425,11 +426,12 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
             )
           )}
           {navOpen && (
-            <div className="gs-nav-status">
-              <span className={`gs-nav-status-dot ${isHealthy ? "online" : "offline"}`} />
-              <span className="gs-nav-status-text">
-                {isHealthy ? "API: HEALTHY" : "API: OFFLINE"}
-              </span>
+            <div
+              className="gs-nav-status"
+              title={health.offline.length ? `ออฟไลน์: ${health.offline.join(", ")}` : undefined}
+            >
+              <span className={`gs-nav-status-dot ${health.level}`} />
+              <span className="gs-nav-status-text">{health.text}</span>
             </div>
           )}
           <div className="gs-nav-version" style={{ justifyContent: navOpen ? "space-between" : "center" }}>
