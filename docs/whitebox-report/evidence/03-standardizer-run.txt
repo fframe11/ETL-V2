@@ -1,0 +1,9 @@
+'fresh milk' -> ('Dairy', 1.0)
+'Fresh Milk 1L' -> ('Dairy', 1.0)
+'wheat bred' -> ('Other', 0.37360679774997896)
+'coke' -> ('Other', 0.2095445115010332)
+'laptop' -> ('Other', 0.10242640687119284)
+None -> ('Other', 0.0)
+---hybrid_similarity check---
+wheat bred vs whole wheat bread: 0.7453559924999299
+hybrid: 0.37360679774997896
