@@ -1480,93 +1480,115 @@ def _get_groq_api_key() -> str:
 
 def _build_dynamic_context_fallback(
     dataset_name: str,
-    total_rows: int,
-    min_score: float,
-    max_score: float,
-    null_policy: str,
-    tukey_mult: float,
-    upper_fence: float,
-    null_count: int,
-    out_of_range_count: int,
-    dup_count: int,
-    review_count: int,
-    clean_count: int,
-    quarantine_count: int,
-    quality_score_pct: float,
-    q1: float,
-    q3: float,
-    iqr: float,
+    metrics: Dict[str, Any],
+    state: Dict[str, Any],
+    profile: Dict[str, Any],
     range_col: str = "score",
     outlier_col: str = "study_hours",
-    key_cols: str = "student_id + course + semester"
 ) -> Dict[str, Any]:
-    fence_mode_desc = (
-        f"รั้วชั้นใน (1.5× IQR > {upper_fence} ชม.) ซึ่งคัดกรองอย่างละเอียดโดยดึงทั้งค่าที่กระโดดสูงผิดปกติและกลุ่มที่สูงกว่าค่าเฉลี่ยทั่วไป ({review_count} แถว) มาให้ผู้เชี่ยวชาญตรวจทานก่อน"
-        if tukey_mult <= 1.6
-        else f"รั้วชั้นนอก (3.0× IQR > {upper_fence} ชม.) ซึ่งคัดแยกเฉพาะเรคคอร์ดที่มีค่ากระโดดสูงผิดปกติอย่างชัดเจน ({review_count} แถว) เข้าคิวตรวจสอบโดยไม่รบกวนข้อมูลปกติ"
-    )
-    null_mode_desc = (
-        "ไม่อนุญาตให้มีค่าว่าง (Strict Not-Null) จึงกักกันแถวที่ไม่มีข้อมูลทันทีเพื่อไม่ให้ตัวหารค่าเฉลี่ยผิดพลาด"
-        if "strict" in str(null_policy).lower() or "not-null" in str(null_policy).lower()
-        else "อนุญาตหรือจัดการค่าว่างตามเงื่อนไขที่กำหนด"
-    )
+    """Builds the rule-based context text from the pipeline's computed metrics.
 
-    return {
-        "engine": "SDOQAP Contextual AI Engine (openai/gpt-oss-120b)",
+    Every number comes from `metrics` (the output of _recompute_interactive_state)
+    or the dataset profile. When the pipeline has not produced metrics yet (no
+    dataset), the text fields are empty and `available` is False so the UI can
+    fall back to its own wording instead of showing invented counts.
+    """
+    base: Dict[str, Any] = {
+        "engine": "SDOQAP rule-based summary",
+        "model": None,
+        "ai_live_generated": False,
+        "available": False,
         "dataset_name": dataset_name,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "step1_findings": {
-            "overview_summary": (
-                f"จากการสแกนโครงสร้างและค่าสถิติของตาราง '{dataset_name}' ({total_rows:,} แถว) พบเรคคอร์ดที่ผ่านเกณฑ์มาตรฐาน {clean_count:,} แถว ({quality_score_pct}%) "
-                f"และตรวจพบรายการที่ต้องควบคุมคุณภาพ 3 หมวดหมู่ ได้แก่ ค่าว่างและค่าหลุดขอบเขตในคอลัมน์ '{range_col}', ข้อมูลส่งซ้ำบนคีย์ '{key_cols}', และค่าที่สูงเกินเกณฑ์การกระจายตัวในคอลัมน์ '{outlier_col}'"
-            ),
-            "finding1_explanation": (
-                f"คอลัมน์ '{range_col}' มีค่าว่าง {null_count:,} แถว และมีค่าที่อยู่นอกช่วง [{min_score:g}, {max_score:g}] จำนวน {out_of_range_count:,} แถว "
-                f"ซึ่งมักเกิดจากการบันทึกผิดพลาดหรือระบบต้นทางส่งรหัสสถานะติดลบเข้ามา หากปล่อยเข้าคลังข้อมูลจะทำให้ค่าเฉลี่ยของตาราง '{dataset_name}' คลาดเคลื่อน"
-            ),
-            "finding2_explanation": (
-                f"พบเรคคอร์ดที่มีคีย์หลัก '{key_cols}' ซ้ำกัน {dup_count:,} แถว ซึ่งเกิดจากการส่งข้อมูลซ้ำรอบ (Batch Retry) จากระบบต้นทาง "
-                f"จำเป็นต้องคงไว้เฉพาะรายการแรกและคัดแยกรายการซ้ำออก เพื่อป้องกันการนับยอดซ้ำซ้อนในรายงาน"
-            ),
-            "finding3_explanation": (
-                f"คอลัมน์ '{outlier_col}' มีค่ากลางอยู่ในช่วง {q1:g}–{q3:g} (IQR = {iqr:g}) และพบเรคคอร์ดที่สูงเกินเพดาน {upper_fence:g} จำนวน {review_count:,} แถว "
-                f"จึงแนะนำให้คัดแยกเข้าคิวตรวจสอบ (Review Queue) เพื่อให้ผู้รับผิดชอบพิจารณาแทนการตัดทิ้งอัตโนมัติ"
-            )
-        },
-        "step2_rules": {
-            "rule1_evidence": (
-                f"คอลัมน์ '{range_col}' มีค่าต่ำสุด–สูงสุดที่ [-10 → 150] โดยมีค่าว่าง {null_count:,} แถว และค่าที่อยู่นอกขอบเขต [{min_score:g}, {max_score:g}] จำนวน {out_of_range_count:,} แถว"
-            ),
-            "rule1_why": (
-                f"ตามบริบทของตาราง '{dataset_name}' คอลัมน์ '{range_col}' ต้องอยู่ในช่วง {min_score:g} ถึง {max_score:g} เท่านั้น และ{null_mode_desc} "
-                f"การคัดแยก {null_count + out_of_range_count:,} แถวนี้ออกช่วยให้การคำนวณสถิติปลายทางมีความแม่นยำ"
-            ),
-            "rule2_evidence": (
-                f"ตรวจพบเรคคอร์ดที่มีคีย์ผสม ({key_cols}) ซ้ำกันจำนวน {dup_count:,} แถว ในตาราง '{dataset_name}' ({total_rows:,} แถว)"
-            ),
-            "rule2_why": (
-                f"ในตาราง '{dataset_name}' หนึ่งรหัสอ้างอิงต่อหนึ่งรายการ ({key_cols}) ต้องมีเพียง 1 เรคคอร์ด "
-                f"การใช้นโยบาย Keep First & Quarantine Duplicates จะช่วยคัดแยกแถวที่ส่งซ้ำ {dup_count:,} แถวออกโดยไม่กระทบข้อมูลหลัก"
-            ),
-            "rule3_evidence": (
-                f"คอลัมน์ '{outlier_col}' มีค่าสถิติ Q1 = {q1:g}, Q3 = {q3:g}, IQR = {iqr:g} และกำหนดเพดานคัดแยกไว้ที่ > {upper_fence:g}"
-            ),
-            "rule3_why": (
-                f"คอลัมน์ '{outlier_col}' ไม่มีเพดานตายตัวตามกฎระเบียบ ระบบจึงใช้ {fence_mode_desc} เพื่อคัดกรองเรคคอร์ดที่สูงเกินเกณฑ์เข้าคิวตรวจสอบอย่างเป็นระบบ"
-            )
-        },
-        "step5_lineage": {
-            "executive_narrative": (
-                f"สรุปผลการประมวลผลตาราง '{dataset_name}' ({total_rows:,} แถว): ระบบได้คัดกรองข้อมูลตามเกณฑ์ [{min_score:g}–{max_score:g}] และรั้วสถิติ {tukey_mult}× IQR "
-                f"ได้ข้อมูลพร้อมใช้งาน {clean_count:,} แถว ({quality_score_pct}%), แยกข้อมูลที่ไม่ผ่านเกณฑ์เข้าโซนกักกัน {quarantine_count:,} แถวเพื่อออกรายงานแจ้งระบบต้นทาง "
-                f"และส่งรายการที่เกินเกณฑ์สถิติ {review_count:,} แถวเข้าคิวตรวจสอบ"
-            ),
-            "step1_card_desc": f"ตรวจพบค่าว่าง {null_count} แถว · นอกช่วง [{min_score:g},{max_score:g}] {out_of_range_count} แถว · คีย์ซ้ำ {dup_count} แถว",
-            "step2_card_desc": f"บังคับใช้ช่วง [{min_score:g}–{max_score:g}] · คีย์ไม่ซ้ำ · รั้วสถิติ {tukey_mult}× IQR (> {upper_fence:g})",
-            "step3_card_desc": f"ผ่านเกณฑ์ {clean_count:,} แถว · รอตรวจสอบ {review_count:,} แถว · กักกัน {quarantine_count:,} แถว",
-            "step4_card_desc": f"พร้อมส่งออกชุดข้อมูลสะอาด ({clean_count:,} แถว) และรายงานสาเหตุต้นทาง ({quarantine_count:,} แถว)"
-        }
+        "step1_findings": {},
+        "step2_rules": {},
+        "step5_lineage": {},
     }
+    total_rows = metrics.get("total_rows")
+    if not total_rows:
+        return base
+
+    min_score = float(state.get("min_score") if state.get("min_score") is not None else 0.0)
+    max_score = float(state.get("max_score") if state.get("max_score") is not None else 100.0)
+    null_policy = str(state.get("null_policy") or "")
+    tukey_mult = float(state.get("tukey_multiplier") or 3.0)
+    key_cols = str(state.get("composite_key") or "student_id + course + semester")
+
+    null_count = int(metrics.get("missing_score_count") or 0)
+    out_of_range_count = int(metrics.get("invalid_range_count") or 0)
+    dup_count = int(metrics.get("gate2_quarantined") or 0)
+    review_count = int(metrics.get("review_rows") or 0)
+    clean_count = int(metrics.get("clean_rows") or 0)
+    quarantine_count = int(metrics.get("quarantine_rows") or 0)
+    quality_score_pct = float(metrics.get("quality_score_pct") or 0.0)
+    upper_fence = metrics.get("upper_fence")
+    q1, q3, iqr = metrics.get("q1"), metrics.get("q3"), metrics.get("iqr")
+
+    cols_prof = profile.get("columns_profile") or profile.get("column_profiles") or {}
+    range_prof = cols_prof.get(range_col) or {}
+    observed = (
+        f"ค่าต่ำสุด–สูงสุดที่พบคือ {range_prof['min']:g} ถึง {range_prof['max']:g} "
+        if range_prof.get("min") is not None and range_prof.get("max") is not None
+        else ""
+    )
+    fence_text = f"เพดาน {upper_fence:g}" if upper_fence is not None else "รั้วสถิติ"
+    iqr_text = (
+        f"ค่ากลางอยู่ในช่วง {q1:g}–{q3:g} (IQR = {iqr:g}) "
+        if q1 is not None and q3 is not None and iqr is not None
+        else ""
+    )
+    null_mode_desc = (
+        "ไม่อนุญาตให้มีค่าว่าง จึงกักกันแถวที่ไม่มีค่าทันที"
+        if "strict" in null_policy.lower() or "not-null" in null_policy.lower()
+        else "จัดการค่าว่างตามนโยบายที่ตั้งไว้"
+    )
+
+    base["available"] = True
+    base["step1_findings"] = {
+        "overview_summary": (
+            f"ตาราง '{dataset_name}' มี {total_rows:,} แถว ผ่านเกณฑ์ {clean_count:,} แถว ({quality_score_pct}%) "
+            f"กักกัน {quarantine_count:,} แถว และรอตรวจสอบ {review_count:,} แถว"
+        ),
+        "finding1_explanation": (
+            f"คอลัมน์ '{range_col}' มีค่าว่าง {null_count:,} แถว และค่านอกช่วง [{min_score:g}, {max_score:g}] {out_of_range_count:,} แถว "
+            f"ถ้าปล่อยผ่านจะทำให้ค่าเฉลี่ยและรายงานคลาดเคลื่อน"
+        ),
+        "finding2_explanation": (
+            f"พบแถวที่คีย์ '{key_cols}' ซ้ำกัน {dup_count:,} แถว "
+            f"ควรเก็บไว้เฉพาะแถวแรกเพื่อไม่ให้นับยอดซ้ำ"
+        ),
+        "finding3_explanation": (
+            f"คอลัมน์ '{outlier_col}' {iqr_text}และมี {review_count:,} แถวที่เกิน{fence_text} "
+            f"ควรส่งเข้าคิวตรวจสอบแทนการตัดทิ้งอัตโนมัติ"
+        ),
+    }
+    base["step2_rules"] = {
+        "rule1_evidence": (
+            f"คอลัมน์ '{range_col}' {observed}มีค่าว่าง {null_count:,} แถว และค่านอกช่วง [{min_score:g}, {max_score:g}] {out_of_range_count:,} แถว"
+        ),
+        "rule1_why": (
+            f"คอลัมน์ '{range_col}' ต้องอยู่ในช่วง {min_score:g} ถึง {max_score:g} และ{null_mode_desc} "
+            f"การคัดแยก {null_count + out_of_range_count:,} แถวนี้ช่วยให้สถิติปลายทางถูกต้อง"
+        ),
+        "rule2_evidence": f"คีย์ '{key_cols}' ซ้ำกัน {dup_count:,} แถว จากทั้งหมด {total_rows:,} แถว",
+        "rule2_why": f"หนึ่งคีย์ '{key_cols}' ควรมีเพียงหนึ่งแถว จึงเก็บแถวแรกและกักกันแถวซ้ำ {dup_count:,} แถว",
+        "rule3_evidence": f"คอลัมน์ '{outlier_col}' {iqr_text}ใช้{fence_text} ({tukey_mult:g}× IQR)",
+        "rule3_why": (
+            f"คอลัมน์ '{outlier_col}' ไม่มีเพดานตายตัว จึงใช้รั้วสถิติ {tukey_mult:g}× IQR "
+            f"คัดแถวที่สูงผิดปกติ {review_count:,} แถวเข้าคิวตรวจสอบ"
+        ),
+    }
+    base["step5_lineage"] = {
+        "executive_narrative": (
+            f"ตาราง '{dataset_name}' ({total_rows:,} แถว): ผ่านเกณฑ์ {clean_count:,} แถว ({quality_score_pct}%), "
+            f"กักกัน {quarantine_count:,} แถวเพื่อแจ้งแก้ที่ต้นทาง และส่ง {review_count:,} แถวเข้าคิวตรวจสอบ"
+        ),
+        "step1_card_desc": f"ค่าว่าง {null_count:,} แถว · นอกช่วง [{min_score:g},{max_score:g}] {out_of_range_count:,} แถว · คีย์ซ้ำ {dup_count:,} แถว",
+        "step2_card_desc": f"ช่วง [{min_score:g}–{max_score:g}] · คีย์ไม่ซ้ำ · รั้วสถิติ {tukey_mult:g}× IQR",
+        "step3_card_desc": f"ผ่านเกณฑ์ {clean_count:,} แถว · รอตรวจสอบ {review_count:,} แถว · กักกัน {quarantine_count:,} แถว",
+        "step4_card_desc": f"ส่งออกข้อมูลสะอาด {clean_count:,} แถว และรายงานต้นทาง {quarantine_count:,} แถว",
+    }
+    return base
 
 
 @router.get("/ai-context-explanations")
@@ -1574,74 +1596,38 @@ def _build_dynamic_context_fallback(
 def generate_ai_context_explanations(force: bool = False):
     state = _recompute_interactive_state()
     dataset_name = str(state.get("dataset_name") or "student_course_scores")
-    prof = get_dataset_profile(dataset_name)
-    metrics = state.get("live_metrics", {})
+    # _recompute_interactive_state stores its counts under "metrics"; this used to
+    # read "live_metrics" (never set), so every number fell back to hard-coded
+    # demo values (9,400 clean rows, 100 duplicates, …) regardless of the data.
+    metrics = state.get("metrics") or {}
+    prof = get_dataset_profile(dataset_name) if metrics.get("total_rows") else {}
 
-    total_rows = int(prof.get("total_rows") or 10100)
-    min_score = float(state.get("min_score") if state.get("min_score") is not None else 0.0)
-    max_score = float(state.get("max_score") if state.get("max_score") is not None else 100.0)
-    null_policy = str(state.get("null_policy") or "Strict Not-Null")
-    tukey_mult = float(state.get("tukey_multiplier") or 3.0)
-    upper_fence = float(metrics.get("upper_fence_hours") or (9.0 if tukey_mult <= 1.6 else 12.0))
-
-    null_count = int(metrics.get("missing_score_count") or 300)
-    out_of_range_count = int(metrics.get("invalid_range_count") or 200)
-    dup_count = int(metrics.get("gate2_quarantined") or 100)
-    review_count = int(metrics.get("review_rows") or 100)
-    clean_count = int(metrics.get("clean_rows") or 9400)
-    quarantine_count = int(metrics.get("quarantine_rows") or 600)
-    quality_score_pct = float(metrics.get("quality_score_pct") or 93.1)
-
-    cols_prof = prof.get("columns_profile") or prof.get("column_profiles") or {}
-    sh_prof = cols_prof.get("study_hours") or {}
-    q1 = float(sh_prof.get("q1") or 4.0)
-    q3 = float(sh_prof.get("q3") or 6.0)
-    iqr = float(sh_prof.get("iqr") or 2.0)
-
-    cache_key = f"{dataset_name}|{total_rows}|{min_score}|{max_score}|{null_policy}|{tukey_mult}"
+    cache_key = (
+        f"{dataset_name}|{metrics.get('total_rows')}|{metrics.get('clean_rows')}|{metrics.get('review_rows')}|"
+        f"{state.get('min_score')}|{state.get('max_score')}|{state.get('null_policy')}|{state.get('tukey_multiplier')}"
+    )
     if not force and cache_key in _AI_CONTEXT_CACHE:
         return _AI_CONTEXT_CACHE[cache_key]
 
-    base_result = _build_dynamic_context_fallback(
-        dataset_name=dataset_name,
-        total_rows=total_rows,
-        min_score=min_score,
-        max_score=max_score,
-        null_policy=null_policy,
-        tukey_mult=tukey_mult,
-        upper_fence=upper_fence,
-        null_count=null_count,
-        out_of_range_count=out_of_range_count,
-        dup_count=dup_count,
-        review_count=review_count,
-        clean_count=clean_count,
-        quarantine_count=quarantine_count,
-        quality_score_pct=quality_score_pct,
-        q1=q1,
-        q3=q3,
-        iqr=iqr
-    )
+    base_result = _build_dynamic_context_fallback(dataset_name, metrics, state, prof)
 
-    base_result["model"] = "openai/gpt-oss-120b"
-
-    # Call Groq LLM (openai/gpt-oss-120b) to refine user-friendly explanations tailored to the exact dataset & parameters
+    # Optional LLM rewrite (Groq). Runs only when a key is configured and there are
+    # real metrics to describe; the rule-based text above already carries the numbers.
     try:
         import json
         import urllib.request as _ureq
         api_key = _get_groq_api_key()
-        if api_key:
+        if api_key and base_result["available"]:
+            facts = "\n".join(
+                f"- {v}" for section in ("step1_findings", "step2_rules") for v in base_result[section].values()
+            )
             prompt = (
-                f"คุณคือสถาปนิกข้อมูลระดับ Enterprise (สไตล์ Databricks Unity Catalog / Lakehouse Monitoring) ที่อธิบายเหตุผลของกฎคุณภาพข้อมูลให้เข้าใจง่าย กระชับ และเป็นมืออาชีพ.\n"
-                f"ข้อห้ามเด็ดขาด: ห้ามใช้คำว่า 'ข้อมูลจริง', 'ค่าจริง', 'คำนวณจริง', 'เทส', 'ทดสอบ', หรือ 'จำลอง' ในประโยคเด็ดขาด ให้กล่าวถึงชื่อตารางและคอลัมน์โดยตรงอย่างเป็นธรรมชาติ.\n"
-                f"จงเขียนคำอธิบายตามบริบทของตารางต่อไปนี้ในรูปแบบ JSON:\n"
-                f"- ตารางชุดข้อมูล: {dataset_name} ({total_rows:,} แถว)\n"
-                f"- กฎที่ 1 (ขอบเขตค่าและค่าว่าง): ช่วงที่กำหนด [{min_score:g} ถึง {max_score:g}], นโยบายค่าว่าง='{null_policy}', พบค่าว่าง {null_count} แถว และค่านอกช่วง {out_of_range_count} แถว\n"
-                f"- กฎที่ 2 (คีย์หลักไม่ซ้ำ): พบแถวซ้ำซ้อน {dup_count} แถว\n"
-                f"- กฎที่ 3 (รั้วสถิติ IQR): Q1={q1:g}, Q3={q3:g}, IQR={iqr:g}, ตัวคูณ {tukey_mult}x IQR (เพดาน > {upper_fence:g}) คัดแยกเข้าคิวตรวจสอบ {review_count} แถว\n"
-                f"- ผลลัพธ์รวม: ข้อมูลผ่านเกณฑ์ {clean_count:,} แถว ({quality_score_pct}%), กักกัน {quarantine_count:,} แถว, รอตรวจสอบ {review_count:,} แถว\n\n"
-                f"ตอบกลับเป็น JSON เท่านั้น โดยมีโครงสร้างคีย์ตรงตามนี้:\n"
-                f'{{"finding1_explanation": "...", "finding2_explanation": "...", "finding3_explanation": "...", '
-                f'"rule1_why": "...", "rule2_why": "...", "rule3_why": "...", "executive_narrative": "..."}}'
+                "คุณคือวิศวกรข้อมูลที่อธิบายผลตรวจคุณภาพข้อมูลให้เข้าใจง่ายและกระชับ.\n"
+                "ใช้เฉพาะตัวเลขและข้อเท็จจริงด้านล่าง ห้ามเดาสาเหตุหรือเพิ่มตัวเลขใหม่.\n"
+                f"{facts}\n\n"
+                "ตอบกลับเป็น JSON เท่านั้น โดยมีโครงสร้างคีย์ตรงตามนี้:\n"
+                '{"finding1_explanation": "...", "finding2_explanation": "...", "finding3_explanation": "...", '
+                '"rule1_why": "...", "rule2_why": "...", "rule3_why": "...", "executive_narrative": "..."}'
             )
             req_payload = json.dumps({
                 "model": "openai/gpt-oss-120b",
@@ -1665,24 +1651,23 @@ def generate_ai_context_explanations(force: bool = False):
                 end_idx = content.rfind("}")
                 if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
                     llm_json = json.loads(content[start_idx:end_idx + 1])
-                    if llm_json.get("finding1_explanation"):
-                        base_result["step1_findings"]["finding1_explanation"] = llm_json["finding1_explanation"]
-                    if llm_json.get("finding2_explanation"):
-                        base_result["step1_findings"]["finding2_explanation"] = llm_json["finding2_explanation"]
-                    if llm_json.get("finding3_explanation"):
-                        base_result["step1_findings"]["finding3_explanation"] = llm_json["finding3_explanation"]
-                    if llm_json.get("rule1_why"):
-                        base_result["step2_rules"]["rule1_why"] = llm_json["rule1_why"]
-                    if llm_json.get("rule2_why"):
-                        base_result["step2_rules"]["rule2_why"] = llm_json["rule2_why"]
-                    if llm_json.get("rule3_why"):
-                        base_result["step2_rules"]["rule3_why"] = llm_json["rule3_why"]
-                    if llm_json.get("executive_narrative"):
-                        base_result["step5_lineage"]["executive_narrative"] = llm_json["executive_narrative"]
+                    targets = {
+                        "finding1_explanation": "step1_findings",
+                        "finding2_explanation": "step1_findings",
+                        "finding3_explanation": "step1_findings",
+                        "rule1_why": "step2_rules",
+                        "rule2_why": "step2_rules",
+                        "rule3_why": "step2_rules",
+                        "executive_narrative": "step5_lineage",
+                    }
+                    for key, section in targets.items():
+                        if llm_json.get(key):
+                            base_result[section][key] = llm_json[key]
                     base_result["ai_live_generated"] = True
+                    base_result["model"] = "openai/gpt-oss-120b"
+                    base_result["engine"] = "Groq openai/gpt-oss-120b"
     except Exception as exc:
         logger.warning("AI Context LLM fallback used: %s", exc)
-        base_result["ai_live_generated"] = False
 
     _AI_CONTEXT_CACHE[cache_key] = base_result
     return base_result

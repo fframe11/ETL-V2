@@ -123,26 +123,9 @@ export default function RulesConfig() {
   const [wbConfirmedAt, setWbConfirmedAt] = useState(null);
   const [wbLiveMetrics, setWbLiveMetrics] = useState(null);
   const [wbDatasetName, setWbDatasetName] = useState("student_course_scores");
-  const [wbAiContext, setWbAiContext] = useState(null);
-  const [wbAiLoading, setWbAiLoading] = useState(false);
 
   const wbTotalRows = wbProfile?.total_rows ?? wbLiveMetrics?.total_rows ?? null;
   const wbFmt = (n) => (typeof n === "number" ? n.toLocaleString() : "—");
-
-  const fetchWbAiContext = async (force = false) => {
-    setWbAiLoading(true);
-    try {
-      const res = await fetch(`/api/v1/whitebox/ai-context-explanations${force ? "?force=true" : ""}`);
-      if (res.ok) {
-        const data = await res.json();
-        setWbAiContext(data);
-      }
-    } catch {
-      // fallback handled gracefully
-    } finally {
-      setWbAiLoading(false);
-    }
-  };
 
   const syncWbState = async (overrides = {}) => {
     try {
@@ -168,7 +151,6 @@ export default function RulesConfig() {
         const d = await res.json();
         if (d.metrics) setWbLiveMetrics(d.metrics);
         if (d.dataset_name) setWbDatasetName(d.dataset_name);
-        fetchWbAiContext(false);
         return d;
       }
     } catch {
@@ -204,14 +186,12 @@ export default function RulesConfig() {
         }
       })
       .catch(() => {});
-    fetchWbAiContext(false);
   }, []);
 
   const handleConfirmWhiteBoxRules = async () => {
     setWbConfirming(true);
     try {
       const updated = await syncWbState();
-      await fetchWbAiContext(true);
       setWbConfirmedAt(new Date().toLocaleTimeString());
       const m = updated?.metrics || wbLiveMetrics;
       setActionResult({
@@ -628,9 +608,6 @@ export default function RulesConfig() {
         pageKey="rules"
         actions={
           <>
-            <button type="button" className="ui-btn ui-btn-secondary" onClick={() => fetchWbAiContext(true)} disabled={wbAiLoading}>
-              {wbAiLoading ? "กำลังอธิบาย..." : "อธิบายด้วย AI"}
-            </button>
             <button type="button" className="ui-btn ui-btn-primary" onClick={handleConfirmWhiteBoxRules} disabled={wbConfirming}>
               {wbConfirming ? "กำลังบันทึก..." : wbConfirmedAt ? `บันทึกแล้ว ${wbConfirmedAt} · บันทึกอีกครั้ง` : "บันทึกกฎ"}
             </button>

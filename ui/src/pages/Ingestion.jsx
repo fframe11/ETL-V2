@@ -131,24 +131,6 @@ export default function Ingestion() {
   const [quickUploadNotice, setQuickUploadNotice] = useState("");
   const [uploadError, setUploadError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
-  const [aiContext, setAiContext] = useState(null);
-  const [aiContextLoading, setAiContextLoading] = useState(false);
-
-  const fetchAiContext = async (force = false) => {
-    setAiContextLoading(true);
-    try {
-      const res = await fetch(`/api/v1/whitebox/ai-context-explanations${force ? "?force=true" : ""}`);
-      if (res.ok) {
-        const data = await res.json();
-        setAiContext(data);
-      }
-    } catch (e) {
-      console.error("Failed to fetch AI context explanations:", e);
-    } finally {
-      setAiContextLoading(false);
-    }
-  };
-
   const handleInspectFindingRows = async (findingKey, zone, errorType) => {
     if (expandedFinding === findingKey) {
       setExpandedFinding(null);
@@ -187,7 +169,6 @@ export default function Ingestion() {
         const d = await res.json();
         if (d.profile) setProfilingData(d.profile);
         setQuickUploadNotice(`เชื่อมต่อแหล่งข้อมูล [${sourceType}] ตาราง '${cleanTbl}' (${(d.rows_ingested ?? 0).toLocaleString()} แถว) และอัปเดตผลวิเคราะห์ System Auto-Profiling เรียบร้อยแล้ว`);
-        fetchAiContext(true);
       } else {
         const detail = await res.json().catch(() => null);
         setUploadError(detail?.detail || `เชื่อมต่อแหล่งข้อมูลไม่สำเร็จ (HTTP ${res.status})`);
@@ -240,7 +221,6 @@ export default function Ingestion() {
         const upData = await upRes.json();
         if (upData.profile) setProfilingData(upData.profile);
         setQuickUploadNotice(`นำเข้า '${file.name}' แล้ว (${(upData.rows_ingested ?? 0).toLocaleString()} แถว)`);
-        fetchAiContext(true);
         handleRescanProfile();
       } else {
         const detail = await upRes.json().catch(() => null);
@@ -285,7 +265,6 @@ export default function Ingestion() {
         if (st.dataset_name) setPrimaryDatasetName(st.dataset_name);
         if (st.source_type) setActiveSourceSummary(`${st.source_type} · ${st.connection_uri || st.dataset_name}`);
       }
-      fetchAiContext(false);
     } catch (err) {
       console.error("Failed to fetch data profile:", err);
     } finally {
@@ -622,7 +601,15 @@ export default function Ingestion() {
   const duplicateKey = profilingData?.duplicate_analysis?.tested_composite_key || [];
   const distinctRows = totalIngestedRows != null && duplicateRows != null ? totalIngestedRows - duplicateRows : null;
   const fmtNum = (v) => (v == null ? "—" : Number(v).toLocaleString());
-  const issueCount = [scoreProf.null_count, duplicateRows, hoursProf.outlier_count].filter((v) => v > 0).length;
+  const issueParts = [
+    ["ค่าว่าง", scoreProf.null_count],
+    ["ซ้ำ", duplicateRows],
+    ["ผิดปกติ", hoursProf.outlier_count]
+  ].filter(([, v]) => v > 0);
+  const issueCount = issueParts.length;
+  const issueSummary = issueCount
+    ? `พบปัญหา ${issueCount} ด้าน: ${issueParts.map(([label, v]) => `${label} ${Number(v).toLocaleString()}`).join(" · ")}`
+    : "ไม่พบปัญหา";
   const fmtStat = (v) => (v == null ? "—" : Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 }));
 
   return (
@@ -829,7 +816,7 @@ export default function Ingestion() {
             <h3>ผลตรวจข้อมูล</h3>
             <p>
               {profilingData ? (
-                <>ตาราง <code>{primaryDatasetName}</code></>
+                <>ตาราง <code>{primaryDatasetName}</code> · {issueSummary}</>
               ) : (
                 "ยังไม่มีข้อมูล นำเข้าไฟล์ด้านบนเพื่อเริ่มตรวจ"
               )}
@@ -860,15 +847,6 @@ export default function Ingestion() {
 
         {profilingData && (
           <>
-            <LearnMore summary="สรุปจาก AI">
-              {aiContext?.step1_findings?.overview_summary ? (
-                <p className="ing-ai-summary">{aiContext.step1_findings.overview_summary}</p>
-              ) : null}
-              <button type="button" className="ui-btn ui-btn-secondary" onClick={() => fetchAiContext(true)} disabled={aiContextLoading}>
-                <Icon name="sparkles" /> {aiContextLoading ? "กำลังสรุป..." : aiContext ? "สรุปใหม่" : "สร้างสรุป"}
-              </button>
-            </LearnMore>
-
             <div className="ing-findings">
               <FindingCard
                 tone="critical"
@@ -881,7 +859,7 @@ export default function Ingestion() {
                   ["ต่ำสุด → สูงสุด", scoreProf.min != null ? `${fmtStat(scoreProf.min)} → ${fmtStat(scoreProf.max)}` : "—"],
                   ["ค่าว่าง", scoreProf.null_count != null ? `${fmtNum(scoreProf.null_count)} แถว (${fmtStat(scoreProf.null_rate_pct)}%)` : "—"]
                 ]}
-                explanation={aiContext?.step1_findings?.finding1_explanation || "ค่าว่างหรือค่านอกช่วงทำให้ค่าเฉลี่ยและรายงานคลาดเคลื่อน"}
+                explanation="ค่าว่างหรือค่านอกช่วงทำให้ค่าเฉลี่ยและรายงานคลาดเคลื่อน"
                 selected={selectedFindings.range}
                 onToggle={(v) => toggleFinding("range", v)}
                 expanded={expandedFinding === "range"}
@@ -901,7 +879,7 @@ export default function Ingestion() {
                   ["ไม่ซ้ำ", distinctRows != null ? `${fmtNum(distinctRows)} / ${fmtNum(totalIngestedRows)}` : "—"],
                   ["ซ้ำ", duplicateRows != null ? `${fmtNum(duplicateRows)} แถว` : "—"]
                 ]}
-                explanation={aiContext?.step1_findings?.finding2_explanation || "เรคคอร์ดที่คีย์ซ้ำกันทำให้นับยอดเกินจริง ต้องแยกออกก่อนประมวลผล"}
+                explanation="เรคคอร์ดที่คีย์ซ้ำกันทำให้นับยอดเกินจริง ต้องแยกออกก่อนประมวลผล"
                 selected={selectedFindings.duplicate}
                 onToggle={(v) => toggleFinding("duplicate", v)}
                 expanded={expandedFinding === "dup"}
@@ -921,7 +899,7 @@ export default function Ingestion() {
                   ["Q1 / Q3", hoursProf.q1 != null ? `${fmtStat(hoursProf.q1)} / ${fmtStat(hoursProf.q3)}` : "—"],
                   ["ช่วงปกติ", hoursProf.lower_fence != null ? `${fmtStat(hoursProf.lower_fence)} ถึง ${fmtStat(hoursProf.upper_fence)}` : "—"]
                 ]}
-                explanation={aiContext?.step1_findings?.finding3_explanation || "ค่าที่อยู่นอกช่วงปกติควรส่งเข้าคิวตรวจสอบ แทนการตัดทิ้งอัตโนมัติ"}
+                explanation="ค่าที่อยู่นอกช่วงปกติควรส่งเข้าคิวตรวจสอบ แทนการตัดทิ้งอัตโนมัติ"
                 selected={selectedFindings.outlier}
                 onToggle={(v) => toggleFinding("outlier", v)}
                 expanded={expandedFinding === "outlier"}

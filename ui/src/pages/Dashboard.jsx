@@ -1266,7 +1266,7 @@ export default function Dashboard() {
             <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderLeft: "3px solid #FF3621", borderRadius: "6px", padding: "10px 12px", marginBottom: "12px", fontSize: "11.5px", color: "#334155", lineHeight: "1.55" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "3px", flexWrap: "wrap", gap: "6px" }}>
                 <span style={{ fontSize: "10.5px", fontWeight: 700, color: "#1B3139", display: "flex", alignItems: "center", gap: "5px" }}>
-                  <Icon name="sparkles" /> สรุปสถานะคุณภาพข้อมูลและเส้นทางสายข้อมูลโดย AI ({aiContextApi.data?.model || "openai/gpt-oss-120b"})
+                  {aiContextApi.data?.ai_live_generated && <Icon name="sparkles" />} สรุปสถานะคุณภาพข้อมูล{aiContextApi.data?.ai_live_generated ? " โดย AI" : ""}
                 </span>
                 <span style={{ fontSize: "10px", fontWeight: 700, color: "#64748B" }}>
                   ตาราง: {wbDatasetName} ({fmtOrDash(wbTotal)} แถว)

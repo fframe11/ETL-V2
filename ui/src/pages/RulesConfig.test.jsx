@@ -12,3 +12,8 @@ it("has no fake search box", async () => {
   await renderPage(RulesConfig, "/rules");
   expect(screen.queryByText("Search expectations...")).toBeNull();
 });
+
+it("has no AI explain button that renders nothing", async () => {
+  await renderPage(RulesConfig, "/rules");
+  expect(screen.queryByRole("button", { name: "อธิบายด้วย AI" })).toBeNull();
+});
