@@ -291,7 +291,7 @@ Every chapter task follows these steps; each task lists its own reading, evidenc
 - Create: `docs/whitebox-report/00-system-overview.md`
 - Create: `docs/whitebox-report/evidence/00-services.txt`, `00-indices.txt`
 
-**Read:** `docker-compose.yml:1-460` (every service), `api/main.py:1-140` (routers mounted), `ui/src/config/pages.js:1-40` (pages), `nginx/nginx.conf` (routing).
+**Read:** `docker-compose.yml:1-460` (every service), `api/main.py:1-121` (routers mounted), `ui/src/config/pages.js:1-40` (pages), `nginx/nginx.conf` (routing).
 
 **Evidence:**
 
@@ -726,7 +726,7 @@ done > docs/whitebox-report/evidence/13-alert-config.txt
 - Create: `docs/whitebox-report/14-authentication-and-security.md`
 - Create: `docs/whitebox-report/evidence/14-auth-checks.txt`
 
-**Read:** `api/app/api/auth.py:1-134`; `api/main.py:1-140` (CORS, rate limiting, routers); `api/app/api/pipeline.py:20-64`; `api/app/api/whitebox.py:1436-1443` (path sanitising); `docker-compose.yml:1-40`.
+**Read:** `api/app/api/auth.py:1-134`; `api/main.py:1-121` (CORS, rate limiting, routers); `api/app/api/pipeline.py:20-64`; `api/app/api/whitebox.py:1436-1443` (path sanitising); `docker-compose.yml:1-40`.
 
 **Evidence:**
 
