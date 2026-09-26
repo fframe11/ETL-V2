@@ -29,6 +29,31 @@ from .auth import require_session
 
 logger = logging.getLogger(__name__)
 
+
+def _read_uploaded_table(filename: str, content: bytes) -> pd.DataFrame:
+    """
+    Parses an uploaded dataset file into a DataFrame based on its extension.
+
+    Root Cause Fix: both upload endpoints called pd.read_csv() on the raw bytes
+    unconditionally, even though the UI's file picker accepts .xlsx/.xls too.
+    An Excel file is a binary (zip) format, so pd.read_csv() failed with an
+    unhandled UnicodeDecodeError -> the request 500'd with no useful message.
+    """
+    ext = os.path.splitext(str(filename or ""))[1].lower()
+    if ext in (".xlsx", ".xls"):
+        try:
+            return pd.read_excel(io.BytesIO(content))
+        except ImportError as e:
+            # Missing optional engine (e.g. xlrd for legacy .xls) — a clear
+            # message beats a generic 500 from a raw ImportError.
+            raise ValueError(f"ไม่สามารถอ่านไฟล์ {ext} ได้: ขาดไลบรารีที่จำเป็น ({e})")
+        except Exception as e:
+            raise ValueError(f"ไม่สามารถอ่านไฟล์ Excel ได้: {e}")
+    try:
+        return pd.read_csv(io.BytesIO(content))
+    except Exception as e:
+        raise ValueError(f"ไม่สามารถอ่านไฟล์ CSV ได้: {e}")
+
 router = APIRouter(prefix="/api/v1/whitebox", tags=["Transparent Quality Governance"])
 
 # Robust dataset and output path resolution (works on Windows host and Linux containers)
@@ -260,9 +285,9 @@ async def profile_uploaded_file(file: UploadFile = File(...), dataset_name: str 
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
     try:
-        df = pd.read_csv(io.BytesIO(content))
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to parse CSV: {str(e)}")
+        df = _read_uploaded_table(file.filename, content)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     profile = _compute_profile(df, dataset_name)
     _LATEST_PROFILING[dataset_name] = profile
@@ -1394,8 +1419,13 @@ async def upload_csv_dataset(
     table_name: str = Form("student_course_scores")
 ):
     content = await file.read()
-    df_up = pd.read_csv(io.BytesIO(content))
-    raw_tbl = str(table_name or file.filename or "uploaded_dataset").replace(".csv", "").strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="กรุณาเลือกไฟล์ก่อน (ไฟล์ว่างเปล่า)")
+    try:
+        df_up = _read_uploaded_table(file.filename, content)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    raw_tbl = str(table_name or file.filename or "uploaded_dataset").replace(".csv", "").replace(".xlsx", "").replace(".xls", "").strip()
     # Root Cause Fix: clean_tbl was used directly in os.path.join() below with no
     # sanitization — a table_name like "../../../malicious" would write outside
     # OUTPUT_DIR. Strip anything but letters/digits/underscore/hyphen.
@@ -1422,7 +1452,14 @@ async def upload_csv_dataset(
     else:
         custom_path = os.path.join(OUTPUT_DIR, f"{clean_tbl}_uploaded.csv")
         df_up.to_csv(custom_path, index=False)
-        prof = get_dataset_profile(clean_tbl)
+        # Root Cause Fix: get_dataset_profile(clean_tbl) has a cache-miss fallback
+        # that reads DIRTY_DATASET_PATH — the *other*, fixed student-schema
+        # dataset — not the file just uploaded here. For any file without
+        # student_id/course/score columns this returned 404 (no prior dataset
+        # cached) or, worse, silently profiled an unrelated dataset. Profile the
+        # DataFrame we actually just parsed instead.
+        prof = _compute_profile(df_up, clean_tbl)
+        _LATEST_PROFILING[clean_tbl] = prof
         return _clean_for_json({
             "status": "ingested",
             "source_type": "FILE_UPLOAD",
