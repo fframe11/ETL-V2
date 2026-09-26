@@ -350,9 +350,10 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
                               {link.label}
                             </span>
                           )}
-                          {navOpen && link.stepTag && !link.badge && (
+                          {navOpen && link.stepTag && (
                             <span
                               className="gs-nav-step-tag"
+                              title={`ขั้นที่ ${link.stepTag}`}
                               style={{
                                 fontSize: "9px",
                                 fontWeight: 800,
@@ -380,7 +381,13 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
                             </span>
                           )}
                           {navOpen && link.badge && (
-                            <span className="gs-nav-badge">{link.badge}</span>
+                            <span
+                              className="gs-nav-badge"
+                              aria-label={`รออนุมัติ ${link.badge} รายการ`}
+                              title={`รออนุมัติ ${link.badge} รายการ`}
+                            >
+                              {link.badge} รอ
+                            </span>
                           )}
                         </Link>
                       );

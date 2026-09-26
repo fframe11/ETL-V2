@@ -359,7 +359,8 @@
   font-weight: 700;
   padding: 1px 6px;
   border-radius: 10px;
-  margin-left: auto;
+  margin-left: 4px;
+  white-space: nowrap;
   line-height: 1.4;
 }
 

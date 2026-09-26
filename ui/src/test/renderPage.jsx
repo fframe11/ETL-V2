@@ -15,6 +15,25 @@ export function mockFetchEmpty() {
   return fn;
 }
 
+// Like mockFetchEmpty, but lets a test answer specific endpoints.
+// routes: [[urlSubstring, { status, body }], ...]; first match wins.
+export function mockFetchByUrl(routes) {
+  const fn = vi.fn(async (url) => {
+    const hit = routes.find(([part]) => String(url).includes(part));
+    const status = hit?.[1]?.status ?? 200;
+    const body = hit?.[1]?.body ?? {};
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => body,
+      text: async () => JSON.stringify(body),
+      blob: async () => new Blob()
+    };
+  });
+  vi.stubGlobal("fetch", fn);
+  return fn;
+}
+
 // Renders a page as a first-time visitor sees it when the API has no data yet.
 export async function renderPage(Component, path = "/") {
   mockFetchEmpty();
