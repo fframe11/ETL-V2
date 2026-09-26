@@ -1,0 +1,40 @@
+# ตัวอย่างคำนวณ z-score ของอัตรากักกันด้วยตัวเลขสมมติ (ไม่ใช่ข้อมูลจากระบบจริง)
+# ใช้ยืนยันว่า sigma floor (0.05), dead-band (0.02) และเกณฑ์ anomaly (3.0) ทำงานอย่างไร
+# สูตรคัดลอกจาก spark/spark_quality_engine.py:2584-2610
+#
+# คำสั่งที่รัน:
+#   python3 -c "..."  (สคริปต์ด้านล่าง)
+
+python3 -c "
+rates = [0.010, 0.014, 0.009, 0.016, 0.011]
+n = len(rates)
+mean = sum(rates)/n
+variance = sum((x-mean)**2 for x in rates)/n
+sd = variance**0.5
+sd_floor = max(sd, 0.05)
+print('n=',n)
+print('mean=',mean)
+print('variance=',variance)
+print('sd=',sd)
+print('sd_floor=',sd_floor)
+
+for r in [0.025, 0.20]:
+    diff = abs(r-mean)
+    if diff < 0.02:
+        z = 0.0
+    else:
+        z = diff/sd_floor
+    print('---')
+    print('r=',r,'diff=',diff,'dead-band applies:',diff<0.02,'z=',z,'is_anomaly:', z>3.0)
+"
+
+# ผลลัพธ์จริงที่ได้:
+n= 5
+mean= 0.012
+variance= 6.800000000000001e-06
+sd= 0.0026076809620810596
+sd_floor= 0.05
+---
+r= 0.025 diff= 0.013000000000000001 dead-band applies: True z= 0.0 is_anomaly: False
+---
+r= 0.2 diff= 0.188 dead-band applies: False z= 3.76 is_anomaly: True
