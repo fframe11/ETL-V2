@@ -622,45 +622,37 @@ export default function Ingestion() {
   const duplicateKey = profilingData?.duplicate_analysis?.tested_composite_key || [];
   const distinctRows = totalIngestedRows != null && duplicateRows != null ? totalIngestedRows - duplicateRows : null;
   const fmtNum = (v) => (v == null ? "—" : Number(v).toLocaleString());
+  const issueCount = [scoreProf.null_count, duplicateRows, hoursProf.outlier_count].filter((v) => v > 0).length;
   const fmtStat = (v) => (v == null ? "—" : Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 }));
 
   return (
     <div className="gs-ingestion">
       <PageHeader pageKey="ingestion" />
 
-      {/* Source picker */}
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "16px", paddingBottom: "12px", borderBottom: "1px solid #E2E8F0" }}>
-        {[
-          { id: "csv", label: "ไฟล์" },
-          { id: "rdbms", label: "ฐานข้อมูล" },
-          { id: "api", label: "API" },
-          { id: "stream", label: "Stream" }
-        ].map((tab) => {
-          const isAct = activeSourceTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveSourceTab(tab.id)}
-              style={{
-                background: isAct ? "#0F172A" : "#FFFFFF",
-                color: isAct ? "#FFFFFF" : "#475569",
-                border: isAct ? "1px solid #0F172A" : "1px solid #CBD5E1",
-                borderRadius: "6px",
-                padding: "5px 12px",
-                fontSize: "12px",
-                fontWeight: 500,
-                cursor: "pointer"
-              }}
-            >
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* PART 1: UNIFIED SOURCE CONNECTOR FORM */}
-      <div className="gs-icard" style={{ minHeight: "auto", background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: "8px", padding: "16px 20px", marginBottom: "16px" }}>
+      {/* Source card: picker + active connector form */}
+      <section className="ing-card">
+        <div className="ing-card-head">
+          <h3>แหล่งข้อมูล</h3>
+          <div className="ing-seg" role="tablist" aria-label="แหล่งข้อมูล">
+            {[
+              { id: "csv", label: "ไฟล์", icon: "upload" },
+              { id: "rdbms", label: "ฐานข้อมูล", icon: "box" },
+              { id: "api", label: "API", icon: "globe" },
+              { id: "stream", label: "Stream", icon: "bolt" }
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={activeSourceTab === tab.id}
+                className={activeSourceTab === tab.id ? "is-active" : ""}
+                onClick={() => setActiveSourceTab(tab.id)}
+              >
+                <Icon name={tab.icon} size={13} /> {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
         {/* Active Source Tab Content */}
         {activeSourceTab === "csv" && (
           <div className="ing-upload">
@@ -674,7 +666,7 @@ export default function Ingestion() {
                 stageCsvFile(e.dataTransfer.files?.[0]);
               }}
             >
-              <Icon name="folder" />
+              <span className="ing-dropzone-icon"><Icon name={csvFile ? "check" : "upload"} size={22} style={{ marginRight: 0 }} /></span>
               <strong>{csvFile ? csvFile.name : "เลือกไฟล์ หรือลากมาวางที่นี่"}</strong>
               <span>{csvFile ? `${(csvFile.size / 1024).toFixed(1)} KB · กดเพื่อเปลี่ยนไฟล์` : ".csv หรือ .xlsx"}</span>
               <input
@@ -819,16 +811,16 @@ export default function Ingestion() {
         )}
 
         {quickUploadNotice && (
-          <div style={{ marginTop: "12px", background: "#F0FDF4", border: "1px solid #BBF7D0", color: "#15803D", padding: "8px 12px", borderRadius: "6px", fontSize: "12px", fontWeight: 700 }}>
+          <div className="ing-notice ing-notice-ok">
             <Icon name="check" /> {quickUploadNotice}
           </div>
         )}
         {uploadError && (
-          <div style={{ marginTop: "12px", background: "#FEF2F2", border: "1px solid #FECACA", color: "#B91C1C", padding: "8px 12px", borderRadius: "6px", fontSize: "12px", fontWeight: 700 }}>
+          <div className="ing-notice ing-notice-error" role="alert">
             <Icon name="alert" /> {uploadError}
           </div>
         )}
-      </div>
+      </section>
 
       {/* Profiling results */}
       <section className="ing-results">
@@ -837,7 +829,7 @@ export default function Ingestion() {
             <h3>ผลตรวจข้อมูล</h3>
             <p>
               {profilingData ? (
-                <>ตาราง <code>{primaryDatasetName}</code> · {fmtNum(totalIngestedRows)} แถว · ไม่ซ้ำ {fmtNum(distinctRows)}</>
+                <>ตาราง <code>{primaryDatasetName}</code></>
               ) : (
                 "ยังไม่มีข้อมูล นำเข้าไฟล์ด้านบนเพื่อเริ่มตรวจ"
               )}
@@ -852,6 +844,15 @@ export default function Ingestion() {
             </div>
           )}
         </div>
+
+        {profilingData && (
+          <div className="ing-summary">
+            <div><span>แถวทั้งหมด</span><strong>{fmtNum(totalIngestedRows)}</strong></div>
+            <div><span>คอลัมน์</span><strong>{fmtNum(profilingData.total_columns)}</strong></div>
+            <div><span>แถวไม่ซ้ำ</span><strong>{fmtNum(distinctRows)}</strong></div>
+            <div className={issueCount ? "is-warn" : "is-ok"}><span>ประเด็นที่ต้องดูแล</span><strong>{issueCount} / 3</strong></div>
+          </div>
+        )}
 
         {profilingLoading && !profilingData && (
           <div className="ing-empty"><Icon name="clock" /> กำลังตรวจข้อมูล...</div>
@@ -873,7 +874,9 @@ export default function Ingestion() {
                 tone="critical"
                 column="score"
                 title="ค่าว่างและช่วงค่า"
-                badge={scoreProf.null_count != null ? `ว่าง ${fmtNum(scoreProf.null_count)} แถว` : null}
+                icon="alert"
+                count={scoreProf.null_count}
+                countLabel="แถวว่าง"
                 stats={[
                   ["ต่ำสุด → สูงสุด", scoreProf.min != null ? `${fmtStat(scoreProf.min)} → ${fmtStat(scoreProf.max)}` : "—"],
                   ["ค่าว่าง", scoreProf.null_count != null ? `${fmtNum(scoreProf.null_count)} แถว (${fmtStat(scoreProf.null_rate_pct)}%)` : "—"]
@@ -891,7 +894,9 @@ export default function Ingestion() {
                 tone="warning"
                 column={duplicateKey.length ? duplicateKey.join(" + ") : "student_id + course + semester"}
                 title="เรคคอร์ดซ้ำ"
-                badge={duplicateRows != null ? `ซ้ำ ${fmtNum(duplicateRows)} แถว` : null}
+                icon="key"
+                count={duplicateRows}
+                countLabel="แถวซ้ำ"
                 stats={[
                   ["ไม่ซ้ำ", distinctRows != null ? `${fmtNum(distinctRows)} / ${fmtNum(totalIngestedRows)}` : "—"],
                   ["ซ้ำ", duplicateRows != null ? `${fmtNum(duplicateRows)} แถว` : "—"]
@@ -909,7 +914,9 @@ export default function Ingestion() {
                 tone="info"
                 column="study_hours"
                 title="ค่าผิดปกติ"
-                badge={hoursProf.outlier_count != null ? `ผิดปกติ ${fmtNum(hoursProf.outlier_count)} แถว` : null}
+                icon="chart"
+                count={hoursProf.outlier_count}
+                countLabel="ค่าผิดปกติ"
                 stats={[
                   ["Q1 / Q3", hoursProf.q1 != null ? `${fmtStat(hoursProf.q1)} / ${fmtStat(hoursProf.q3)}` : "—"],
                   ["ช่วงปกติ", hoursProf.lower_fence != null ? `${fmtStat(hoursProf.lower_fence)} ถึง ${fmtStat(hoursProf.upper_fence)}` : "—"]
@@ -961,15 +968,21 @@ export default function Ingestion() {
   );
 }
 
-function FindingCard({ tone, column, title, badge, stats, explanation, selected, onToggle, expanded, onInspect, samples, renderSample }) {
+function FindingCard({ tone, icon, column, title, count, countLabel, stats, explanation, selected, onToggle, expanded, onInspect, samples, renderSample }) {
+  const status = count == null ? "unknown" : count > 0 ? tone : "ok";
   return (
-    <div className={`ing-finding ing-finding-${tone}${selected ? " is-selected" : ""}`}>
+    <div className={`ing-finding ing-finding-${status}${selected ? " is-selected" : ""}`}>
       <div className="ing-finding-head">
-        <div>
-          <code className="ing-finding-col">{column}</code>
+        <span className="ing-finding-icon"><Icon name={count === 0 ? "check" : icon} size={16} style={{ marginRight: 0 }} /></span>
+        <div className="ing-finding-title">
           <h4>{title}</h4>
+          <code>{column}</code>
         </div>
-        {badge && <span className="ing-finding-badge">{badge}</span>}
+      </div>
+
+      <div className="ing-finding-count">
+        <strong>{count == null ? "—" : Number(count).toLocaleString()}</strong>
+        <span>{count === 0 ? "ไม่พบปัญหา" : countLabel}</span>
       </div>
 
       <dl className="ing-finding-stats">
