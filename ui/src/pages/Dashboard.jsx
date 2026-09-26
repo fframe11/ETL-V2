@@ -21,6 +21,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import EchartsDataLineage from '../components/EchartsDataLineage';
 import { useDashboardStore } from '../store/useDashboardStore';
 import { getPage } from '../config/pages';
+import { formatUsd, formatThbApprox, formatUsdWithThb } from '../utils/currency';
 import "./Dashboard.css";
 
 const getQualityGrade = (score) => {
@@ -146,6 +147,12 @@ export default function Dashboard() {
   const bizImpact = execKpis.business_impact || { areas_affected_count: 0, total_areas_count: 0, critical_issues_count: 0, reports_ok_pct: null, monetary_loss_usd: 0 };
   const reportAvail = execKpis.report_availability || { score: null, available_reports: 0, delayed_reports: 0, failed_reports: 0 };
   const activeCriticalCount = execKpis.active_critical_issues_count ?? 0;
+  // These backend narrative strings (fiveQuestions.how_much, area.impact_summary,
+  // item/issue.business_impact) embed the same global monetary_loss_usd figure as
+  // free-form prose ("Estimated COPDQ impact $14,277 USD due to bad values").
+  // Rather than parse a rendered sentence for its number, append the Baht
+  // reference only when the sentence actually names a dollar figure.
+  const thbFootnote = (text) => (typeof text === 'string' && text.includes('$')) ? ` (${formatThbApprox(bizImpact.monetary_loss_usd)})` : '';
 
   const bizAreas = execData.business_areas || [];
   const bizKpiImpactList = execData.business_kpi_impact || [];
@@ -277,7 +284,7 @@ export default function Dashboard() {
       ["Data Health Score", `${dataHealth.score}%`, dataHealth.status, `${dataHealth.clean_records} Clean / ${dataHealth.quarantined_records} Quarantined`],
       ["Data Availability", `${dataAvailability.score}%`, dataAvailability.status, `${dataAvailability.total_pipelines - dataAvailability.failed_pipelines}/${dataAvailability.total_pipelines} Active Pipelines`],
       ["Data Freshness", `${dataFreshness.score}%`, dataFreshness.status, `Avg Lag: ${dataFreshness.avg_lag_hours} hrs`],
-      ["Business Impact", `${bizImpact.areas_affected_count} Areas`, "Warning", `Est. COPDQ Loss: $${bizImpact.monetary_loss_usd}`],
+      ["Business Impact", `${bizImpact.areas_affected_count} Areas`, "Warning", `Est. COPDQ Loss: ${formatUsdWithThb(bizImpact.monetary_loss_usd)}`],
       ["Report Availability", `${reportAvail.score}%`, "Normal", `${reportAvail.available_reports} Available / ${reportAvail.delayed_reports} Delayed`],
       [],
       ["2. CRITICAL BUSINESS ISSUES"],
@@ -476,10 +483,10 @@ export default function Dashboard() {
                 </span>
               </div>
               <div className="exec-kpi-val" style={{ color: bizImpact.monetary_loss_usd > 0 ? 'var(--accent-red)' : 'var(--accent-green)' }}>
-                ${bizImpact.monetary_loss_usd?.toLocaleString()} <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>USD</span>
+                {formatUsd(bizImpact.monetary_loss_usd)}
               </div>
               <div className="exec-kpi-sub" style={{ fontSize: '11px' }}>
-                Estimated revenue exposure from bad data
+                Estimated revenue exposure from bad data · {formatThbApprox(bizImpact.monetary_loss_usd)}
               </div>
             </div>
           </div>
@@ -635,7 +642,7 @@ export default function Dashboard() {
                 </div>
                 <div className="exec-5w-row howmuch" style={{ padding: '6px 8px' }}>
                   <div className="exec-5w-tag howmuch" style={{ fontSize: '10px' }}><Icon name="chart" /> HOW MUCH?</div>
-                  <div className="exec-5w-text" style={{ fontSize: '11px' }}>{fiveQuestions.how_much}</div>
+                  <div className="exec-5w-text" style={{ fontSize: '11px' }}>{fiveQuestions.how_much}{thbFootnote(fiveQuestions.how_much)}</div>
                 </div>
                 <div className="exec-5w-row action" style={{ padding: '6px 8px' }}>
                   <div className="exec-5w-tag action" style={{ fontSize: '10px' }}><Icon name="bolt" /> ACTION?</div>
@@ -692,7 +699,7 @@ export default function Dashboard() {
                       <tr key={idx}>
                         <td style={{ fontWeight: 700, color: 'var(--accent-purple)', fontSize: '11px' }}>{item.technical_issue}</td>
                         <td style={{ fontWeight: 600, fontSize: '11px' }}>{item.impacted_kpi}</td>
-                        <td style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{item.business_impact}</td>
+                        <td style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{item.business_impact}{thbFootnote(item.business_impact)}</td>
                         <td>
                           <span className={`exec-chip ${item.severity === 'Critical' ? 'exec-chip-crit' : item.severity === 'Warning' ? 'exec-chip-warn' : 'exec-chip-good'}`} style={{ fontSize: '11px' }}>
                             {item.severity}
@@ -803,7 +810,7 @@ export default function Dashboard() {
                     <tr key={issue.id}>
                       <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--text-muted)', fontSize: '11px' }}>{issue.id}</td>
                       <td style={{ fontWeight: 700, fontSize: '11px' }}>{issue.issue}</td>
-                      <td style={{ color: 'var(--text-main)', fontSize: '11px' }}>{issue.business_impact}</td>
+                      <td style={{ color: 'var(--text-main)', fontSize: '11px' }}>{issue.business_impact}{thbFootnote(issue.business_impact)}</td>
                       <td style={{ color: 'var(--accent-purple)', fontWeight: 600, fontSize: '11px' }}>{issue.kpi_affected}</td>
                       <td>
                         <span className={`exec-chip ${issue.severity === 'Critical' ? 'exec-chip-crit' : 'exec-chip-warn'}`} style={{ fontSize: '11px' }}>
@@ -873,7 +880,7 @@ export default function Dashboard() {
                     {area.health_pct}%
                   </div>
                   <div style={{ fontSize: '10px', color: 'var(--text-muted)', lineHeight: '1.4' }}>
-                    {area.impact_summary}
+                    {area.impact_summary}{thbFootnote(area.impact_summary)}
                   </div>
                   {area.affected_datasets && area.affected_datasets.length > 0 && (
                     <div style={{ marginTop: '8px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
@@ -939,7 +946,7 @@ export default function Dashboard() {
                   Reconciliation Gap: {sellInOut.summary?.reconciliation_gap_volume?.toLocaleString()} Units
                 </span>
                 <span className="exec-chip exec-chip-crit" style={{ fontSize: '10.5px' }}>
-                  COPDQ Sales Risk: ${sellInOut.summary?.copdq_sales_loss_usd?.toLocaleString()} USD
+                  COPDQ Sales Risk: {formatUsd(sellInOut.summary?.copdq_sales_loss_usd)} ({formatThbApprox(sellInOut.summary?.copdq_sales_loss_usd)})
                 </span>
               </div>
             </div>
@@ -1021,6 +1028,11 @@ export default function Dashboard() {
                 บทวิเคราะห์ผลกระทบรูปธรรมต่อห่วงโซ่อุปทานและการขาย (Supply Chain &amp; Revenue Reality)
               </div>
               <div>{sellInOut.business_impact_narrative}</div>
+              {sellInOut.summary?.copdq_sales_loss_usd != null && (
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  {formatThbApprox(sellInOut.summary.copdq_sales_loss_usd)}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1032,7 +1044,7 @@ export default function Dashboard() {
                   <h3>COPDQ Financial Loss Breakdown</h3>
                   <p>Gartner &amp; IBM Framework: Cost of Poor Data Quality</p>
                 </div>
-                <span className="exec-chip exec-chip-crit">${bizImpact.monetary_loss_usd} Total</span>
+                <span className="exec-chip exec-chip-crit">${(bizImpact.monetary_loss_usd ?? 0).toLocaleString()} Total ({formatThbApprox(bizImpact.monetary_loss_usd)})</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '8px 0' }}>
                 {/* Root Cause Fix: these three figures used to be an invented client-side
@@ -1045,21 +1057,30 @@ export default function Dashboard() {
                     <strong style={{ fontSize: '11.5px' }}>1. Cost of Correction</strong>
                     <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Operational engineering compute to re-ingest quarantined rows</div>
                   </div>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>${(impact.data?.cost_breakdown?.cost_of_correction_usd ?? 0).toFixed(0)}</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, textAlign: 'right' }}>
+                    ${(impact.data?.cost_breakdown?.cost_of_correction_usd ?? 0).toFixed(0)}
+                    <div style={{ fontSize: '9.5px', fontWeight: 400, color: 'var(--text-muted)' }}>{formatThbApprox(impact.data?.cost_breakdown?.cost_of_correction_usd)}</div>
+                  </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
                   <div>
                     <strong style={{ fontSize: '11.5px' }}>2. Cost of Lost Opportunities</strong>
                     <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Sales inaccuracy and delayed decision execution</div>
                   </div>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>${(impact.data?.cost_breakdown?.cost_of_lost_opportunities_usd ?? 0).toFixed(0)}</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, textAlign: 'right' }}>
+                    ${(impact.data?.cost_breakdown?.cost_of_lost_opportunities_usd ?? 0).toFixed(0)}
+                    <div style={{ fontSize: '9.5px', fontWeight: 400, color: 'var(--text-muted)' }}>{formatThbApprox(impact.data?.cost_breakdown?.cost_of_lost_opportunities_usd)}</div>
+                  </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
                   <div>
                     <strong style={{ fontSize: '11.5px' }}>3. Cost of Risk &amp; Compliance</strong>
                     <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Schema drift SLA penalties and governance audit risk</div>
                   </div>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>${(impact.data?.cost_breakdown?.cost_of_risk_usd ?? 0).toFixed(0)}</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, textAlign: 'right' }}>
+                    ${(impact.data?.cost_breakdown?.cost_of_risk_usd ?? 0).toFixed(0)}
+                    <div style={{ fontSize: '9.5px', fontWeight: 400, color: 'var(--text-muted)' }}>{formatThbApprox(impact.data?.cost_breakdown?.cost_of_risk_usd)}</div>
+                  </span>
                 </div>
               </div>
             </div>
