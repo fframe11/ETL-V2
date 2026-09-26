@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { postApi } from "../hooks/useApi";
 import TileCard from "../components/ui/TileCard";
 import { PageHeader, LearnMore, NextStepLink } from "../components/ui";
+import { friendlyApiError } from "../utils/apiError";
 import "./Ingestion.css";
 
 export default function Ingestion() {
@@ -171,7 +172,7 @@ export default function Ingestion() {
         setQuickUploadNotice(`เชื่อมต่อแหล่งข้อมูล [${sourceType}] ตาราง '${cleanTbl}' (${(d.rows_ingested ?? 0).toLocaleString()} แถว) และอัปเดตผลวิเคราะห์ System Auto-Profiling เรียบร้อยแล้ว`);
       } else {
         const detail = await res.json().catch(() => null);
-        setUploadError(detail?.detail || `เชื่อมต่อแหล่งข้อมูลไม่สำเร็จ (HTTP ${res.status})`);
+        setUploadError(friendlyApiError(detail?.detail, `เชื่อมต่อแหล่งข้อมูลไม่สำเร็จ (HTTP ${res.status})`))
       }
     } catch (err) {
       console.error("Failed to connect source and profile:", err);
@@ -224,7 +225,7 @@ export default function Ingestion() {
         handleRescanProfile();
       } else {
         const detail = await upRes.json().catch(() => null);
-        setUploadError(detail?.detail || `นำเข้าไฟล์ไม่สำเร็จ (HTTP ${upRes.status})`);
+        setUploadError(friendlyApiError(detail?.detail, `นำเข้าไฟล์ไม่สำเร็จ (HTTP ${upRes.status})`));
       }
     } catch (err) {
       console.error("Failed to upload CSV file:", err);
