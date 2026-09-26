@@ -1,0 +1,20 @@
+# ทดสอบนิพจน์ทำความสะอาดตัวเลขของเอนจิน Spark (spark/spark_quality_engine.py บรรทัด 1845-1853)
+# รันใน container spark-master ด้วย PySpark จริง วันที่ 2026-09-26
+#
+# นิพจน์ที่ทดสอบ (คัดลอกจากโค้ด):
+#   IntegerType: regexp_replace(col, "[^\d\-]", "").cast("double").cast(IntegerType())
+#   DoubleType : regexp_replace(col, "[^\d\.\-]", "").cast(DoubleType())
+#
+# คำสั่ง:
+#   MSYS_NO_PATHCONV=1 docker compose exec -T spark-master python3 -c "<สคริปต์สร้าง DataFrame 6 ค่าแล้ว select 2 นิพจน์ข้างบน>"
+#
+# ผลลัพธ์:
+'12' -> IntegerType: 12 | DoubleType: 12.0
+'12.00' -> IntegerType: 1200 | DoubleType: 12.0
+'1,234' -> IntegerType: 1234 | DoubleType: 1234.0
+'12 units' -> IntegerType: 12 | DoubleType: 12.0
+'N/A' -> IntegerType: None | DoubleType: None
+'-5' -> IntegerType: -5 | DoubleType: -5.0
+#
+# ข้อสังเกต: '12.00' ในคอลัมน์ IntegerType กลายเป็น 1200 เพราะนิพจน์ลบจุดทศนิยมทิ้งก่อนแปลง
+# (คอลัมน์จะถูกเลื่อนเป็น DoubleType ก่อนเฉพาะเมื่อมีค่าที่ทศนิยมไม่ใช่ศูนย์ เช่น 12.50 — บรรทัด 1821-1843)
