@@ -6,6 +6,11 @@ import { ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Respon
 import { PageHeader, InfoHint } from '../components/ui';
 import "./Analytics.css";
 
+// Backend cost model (see /api/v1/analytics/impact) is USD-denominated
+// (e.g. "$2 per record", "$50 avg transaction"). This is a fixed, approximate
+// display-only conversion — not a live FX rate — so both figures are shown.
+const USD_TO_THB_RATE = 36.5;
+
 export default function Analytics() {
   const [workspaceMode, setWorkspaceMode] = useState("primary");
   const [slaTarget, setSlaTarget] = useState(95.0);
@@ -298,7 +303,10 @@ export default function Analytics() {
               <div style={{ padding: '16px', background: 'rgba(239,68,68,0.04)', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.1)', textAlign: 'center', marginTop: '10px' }}>
                 <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>ความเสียหายโดยประมาณ</span>
                 <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--accent-red)', fontFamily: 'var(--font-mono)', marginTop: '4px' }}>
-                  ${(impact.data?.total_financial_impact_usd || 0).toLocaleString()} USD
+                  ฿{Math.round((impact.data?.total_financial_impact_usd || 0) * USD_TO_THB_RATE).toLocaleString('th-TH')}
+                </div>
+                <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  (≈ ${(impact.data?.total_financial_impact_usd || 0).toLocaleString()} USD ที่อัตรา {USD_TO_THB_RATE} บาท/ดอลลาร์)
                 </div>
               </div>
             </div>
