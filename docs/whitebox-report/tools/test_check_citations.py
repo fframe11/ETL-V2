@@ -62,6 +62,57 @@ def test_citation_check_still_works():
     assert count == 2 and len(problems) == 1, problems
 
 
+def test_four_backtick_wrapper_content_is_not_an_excerpt():
+    # Per CommonMark: a ````markdown block (4 backticks) closes only at a line
+    # with 4+ backticks and only backticks+whitespace. A ``` inside is content.
+    # This test has a ````markdown wrapper containing an inner ```python block
+    # with an excerpt header followed by WRONG lines. The wrapper is NOT closed
+    # until the final ````, so the inner block is content, not checked. Result: count=0.
+    text = (
+        "````markdown\n"
+        "```python\n"
+        "# " + SRC + ":1-3\n"
+        "wrong line 1\n"
+        "wrong line 2\n"
+        "wrong line 3\n"
+        "```\n"
+        "````\n"  # Closes the 4-backtick wrapper (4 backticks, nothing else)
+    )
+    md = write_md(text)
+    problems, count = check_excerpts(md, ROOT)
+    # Fixed code: wrapper stays open until final ````, inner ``` is content, count=0
+    # Broken code: would close wrapper at inner ```, wrongly extract as excerpt, count=1
+    assert count == 0 and problems == [], f"count={count}, problems={problems}"
+
+
+def test_real_excerpt_after_wrapper_is_still_checked():
+    # Same wrapper as test 1, but followed by a REAL ```python excerpt after the wrapper closes.
+    # The real excerpt has one line edited, so it should fail the check.
+    text = (
+        "````markdown\n"
+        "```python\n"
+        "# " + SRC + ":1-3\n"
+        "wrong line 1\n"
+        "wrong line 2\n"
+        "wrong line 3\n"
+        "```\n"
+        "````\n"  # Closes the wrapper
+    )
+    real_block_lines = list(src_lines[0:3])
+    real_block_lines[0] = real_block_lines[0] + " edited"
+    text += (
+        "```python\n"
+        "# " + SRC + ":1-3\n"
+        + "\n".join(real_block_lines) + "\n"
+        "```\n"
+    )
+    md = write_md(text)
+    problems, count = check_excerpts(md, ROOT)
+    # After wrapper closes, the real excerpt is found and checked
+    # count=1 (one real excerpt), len(problems)=1 (one content mismatch due to "edited")
+    assert count == 1 and len(problems) == 1, f"count={count}, problems={problems}"
+
+
 if __name__ == "__main__":
     tests = [v for k, v in dict(globals()).items() if k.startswith("test_")]
     for t in tests:

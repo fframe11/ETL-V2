@@ -18,17 +18,45 @@ EXCERPT_HEADER = re.compile(
 
 def check_excerpts(md_path: Path, root: Path):
     """A fenced block whose first line is `# path:a-b` or `// path:a-b` must
-    contain exactly source lines a..b (trailing whitespace ignored)."""
+    contain exactly source lines a..b (trailing whitespace ignored).
+
+    Per CommonMark: a fence with N backticks opens a block; only a line with
+    N or more backticks (and only backticks+whitespace) closes it."""
     problems, count = [], 0
     lines = md_path.read_text(encoding="utf-8").splitlines()
     i = 0
     while i < len(lines):
-        if not lines[i].startswith("```"):
+        # Check if line starts a fence: count leading backticks
+        stripped = lines[i].lstrip()
+        if not stripped.startswith("```"):
             i += 1
             continue
+        # Count backticks in the opening fence
+        fence_len = 0
+        for ch in stripped:
+            if ch == "`":
+                fence_len += 1
+            else:
+                break
+        # Find closing fence: must have at least fence_len backticks and only backticks+whitespace
         j = i + 1
-        while j < len(lines) and not lines[j].startswith("```"):
+        while j < len(lines):
+            close_stripped = lines[j].lstrip()
+            if close_stripped.startswith("`"):
+                # Count backticks
+                close_fence_len = 0
+                for ch in close_stripped:
+                    if ch == "`":
+                        close_fence_len += 1
+                    else:
+                        break
+                # Check if this closes the fence: must have >= fence_len and only backticks+whitespace after
+                remainder = close_stripped[close_fence_len:].lstrip()
+                if close_fence_len >= fence_len and not remainder:
+                    # This is the closing fence
+                    break
             j += 1
+        # Check for excerpt header on first line of content
         header = EXCERPT_HEADER.match(lines[i + 1].strip()) if i + 1 < j else None
         if header:
             count += 1
