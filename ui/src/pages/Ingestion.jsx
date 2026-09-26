@@ -130,6 +130,7 @@ export default function Ingestion() {
   const [rawSearchResults, setRawSearchResults] = useState(null);
   const [quickUploadNotice, setQuickUploadNotice] = useState("");
   const [uploadError, setUploadError] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
   const [aiContext, setAiContext] = useState(null);
   const [aiContextLoading, setAiContextLoading] = useState(false);
 
@@ -203,6 +204,19 @@ export default function Ingestion() {
   // hidden file input and the "นำเข้าไฟล์และรัน Auto-Profiling ทันที" button —
   // that button used to call handleConnectSourceAndProfile instead, which never
   // sent the file itself and silently 404'd when no dataset already existed).
+  // Picking or dropping a file only stages it and pre-fills the table name
+  // from the file name; the import button does the upload, so the name can
+  // still be edited first.
+  const stageCsvFile = (file) => {
+    if (!file) return;
+    const name = file.name.replace(/\.(csv|xlsx|xls)$/i, "").replace(/[^a-zA-Z0-9_]/g, "_");
+    setCsvFile(file);
+    setPrimaryDatasetName(name);
+    setCsvTableName(name);
+    setUploadError("");
+    setQuickUploadNotice("");
+  };
+
   const uploadCsvFile = async (file, tableName) => {
     if (!file) {
       setUploadError("กรุณาเลือกไฟล์ก่อน");
@@ -225,7 +239,7 @@ export default function Ingestion() {
       if (upRes.ok) {
         const upData = await upRes.json();
         if (upData.profile) setProfilingData(upData.profile);
-        setQuickUploadNotice(`นำเข้าไฟล์ '${file.name}' (${(upData.rows_ingested ?? 0).toLocaleString()} แถว) และประมวลผล System Auto-Profiling สำเร็จแล้ว`);
+        setQuickUploadNotice(`นำเข้า '${file.name}' แล้ว (${(upData.rows_ingested ?? 0).toLocaleString()} แถว)`);
         fetchAiContext(true);
         handleRescanProfile();
       } else {
@@ -600,8 +614,15 @@ export default function Ingestion() {
     return Math.min(100, Math.max(0, (streamInfo.elapsed / streamInfo.duration) * 100));
   };
 
-  const totalIngestedRows = profilingData?.total_rows ?? 10100;
-  const distinctRows = (profilingData?.total_rows ?? 10100) - (profilingData?.duplicate_analysis?.duplicate_rows_detected ?? 100);
+  const colProfiles = profilingData?.columns_profile || profilingData?.column_profiles || {};
+  const scoreProf = colProfiles.score || {};
+  const hoursProf = colProfiles.study_hours || {};
+  const totalIngestedRows = profilingData?.total_rows;
+  const duplicateRows = profilingData?.duplicate_analysis?.duplicate_rows_detected;
+  const duplicateKey = profilingData?.duplicate_analysis?.tested_composite_key || [];
+  const distinctRows = totalIngestedRows != null && duplicateRows != null ? totalIngestedRows - duplicateRows : null;
+  const fmtNum = (v) => (v == null ? "—" : Number(v).toLocaleString());
+  const fmtStat = (v) => (v == null ? "—" : Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 }));
 
   return (
     <div className="gs-ingestion">
@@ -642,12 +663,31 @@ export default function Ingestion() {
       <div className="gs-icard" style={{ minHeight: "auto", background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: "8px", padding: "16px 20px", marginBottom: "16px" }}>
         {/* Active Source Tab Content */}
         {activeSourceTab === "csv" && (
-          <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: "8px", padding: "16px" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "16px", alignItems: "end" }}>
-              <div>
-                <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
-                  Target Table Name
-                </label>
+          <div className="ing-upload">
+            <label
+              className={`ing-dropzone${isDragging ? " is-dragging" : ""}${csvFile ? " has-file" : ""}`}
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setIsDragging(false);
+                stageCsvFile(e.dataTransfer.files?.[0]);
+              }}
+            >
+              <Icon name="folder" />
+              <strong>{csvFile ? csvFile.name : "เลือกไฟล์ หรือลากมาวางที่นี่"}</strong>
+              <span>{csvFile ? `${(csvFile.size / 1024).toFixed(1)} KB · กดเพื่อเปลี่ยนไฟล์` : ".csv หรือ .xlsx"}</span>
+              <input
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                hidden
+                onChange={(e) => stageCsvFile(e.target.files?.[0])}
+              />
+            </label>
+
+            <div className="ing-upload-side">
+              <label className="ing-field">
+                <span>ชื่อตาราง</span>
                 <input
                   type="text"
                   value={primaryDatasetName}
@@ -656,39 +696,16 @@ export default function Ingestion() {
                     setPrimaryDatasetName(v);
                     setCsvTableName(v);
                   }}
-                  style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12.5px", fontWeight: 700, color: "#0F172A", background: "#FFFFFF" }}
                 />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
-                  Source Data File (.csv, .xlsx)
-                </label>
-                <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", padding: "8px 14px", background: "#FFFFFF", border: "1px dashed #CBD5E1", borderRadius: "6px", fontSize: "12px", fontWeight: 700, color: "#1B3139", cursor: "pointer" }}>
-                  <Icon name="folder" /> {csvFile ? `${csvFile.name} (${(csvFile.size / 1024).toFixed(1)} KB)` : "Browse or drop CSV / Excel file"}
-                  <input
-                    type="file"
-                    accept=".csv,.xlsx,.xls"
-                    style={{ display: "none" }}
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files.length > 0) {
-                        uploadCsvFile(e.target.files[0], e.target.files[0].name.replace(/\.(csv|xlsx|xls)$/i, ""));
-                      }
-                    }}
-                  />
-                </label>
-              </div>
-
-              <div>
-                <button
-                  type="button"
-                  onClick={() => uploadCsvFile(csvFile, primaryDatasetName)}
-                  disabled={profilingLoading}
-                  style={{ width: "100%", padding: "9px 16px", background: "#1B3139", color: "#FFFFFF", border: "none", borderRadius: "6px", fontSize: "12.5px", fontWeight: 700, cursor: profilingLoading ? "wait" : "pointer" }}
-                >
-                  {profilingLoading ? "กำลังนำเข้าและวิเคราะห์..." : "นำเข้าไฟล์และรัน Auto-Profiling ทันที"}
-                </button>
-              </div>
+              </label>
+              <button
+                type="button"
+                className="ui-btn ui-btn-primary ing-upload-btn"
+                onClick={() => uploadCsvFile(csvFile, primaryDatasetName)}
+                disabled={profilingLoading || !csvFile}
+              >
+                {profilingLoading ? "กำลังนำเข้า..." : "นำเข้าและตรวจข้อมูล"}
+              </button>
             </div>
           </div>
         )}
@@ -813,82 +830,104 @@ export default function Ingestion() {
         )}
       </div>
 
-      {/* DATASET PROFILING & SCHEMA DISCOVERY */}
-      <div className="gs-icard" style={{ minHeight: "auto", background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: "10px", padding: "20px", boxShadow: "0 1px 2px rgba(15,23,42,0.03)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
+      {/* Profiling results */}
+      <section className="ing-results">
+        <div className="ing-results-head">
           <div>
-            <h3 style={{ margin: 0, fontSize: "16px", color: "#0F172A", fontWeight: 800 }}>
-              <Icon name="search" /> ผลสำรวจข้อมูล
-            </h3>
-            <div style={{ fontSize: "12.5px", color: "#64748B", marginTop: "4px" }}>
-              Table: <code>{primaryDatasetName}</code> · {totalIngestedRows.toLocaleString()} rows ({distinctRows.toLocaleString()} distinct)
+            <h3>ผลตรวจข้อมูล</h3>
+            <p>
+              {profilingData ? (
+                <>ตาราง <code>{primaryDatasetName}</code> · {fmtNum(totalIngestedRows)} แถว · ไม่ซ้ำ {fmtNum(distinctRows)}</>
+              ) : (
+                "ยังไม่มีข้อมูล นำเข้าไฟล์ด้านบนเพื่อเริ่มตรวจ"
+              )}
+            </p>
+          </div>
+          {profilingData && (
+            <div className="ing-results-actions">
+              <button type="button" className="ui-btn ui-btn-secondary" onClick={handleRescanProfile} disabled={profilingLoading}>
+                {profilingLoading ? "กำลังตรวจ..." : "ตรวจใหม่"}
+              </button>
+              <NextStepLink from="ingestion" />
             </div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-            <button
-              type="button"
-              onClick={() => fetchAiContext(true)}
-              disabled={aiContextLoading}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "8px 14px",
-                background: "#FFFFFF",
-                color: "#1E293B",
-                border: "1px solid #CBD5E1",
-                borderRadius: "6px",
-                fontSize: "12px",
-                fontWeight: 700,
-                cursor: aiContextLoading ? "wait" : "pointer"
-              }}
-            >
-              <Icon name="sparkles" />
-              <span>{aiContextLoading ? "กำลังสรุป..." : "สรุปด้วย AI"}</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleRescanProfile}
-              disabled={profilingLoading}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "8px 14px",
-                background: "#1B3139",
-                color: "#FFFFFF",
-                border: "none",
-                borderRadius: "6px",
-                fontSize: "12px",
-                fontWeight: 700,
-                cursor: profilingLoading ? "wait" : "pointer"
-              }}
-            >
-              <span>{profilingLoading ? "กำลังสแกน..." : "สแกนใหม่"}</span>
-            </button>
-            <NextStepLink from="ingestion" />
-          </div>
+          )}
         </div>
 
-        {/* Databricks-style AI Contextual Summary Banner */}
-        <LearnMore summary="สรุปจาก AI">
-          <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderLeft: "4px solid #1B3139", borderRadius: "8px", padding: "12px 16px", marginBottom: "14px", display: "flex", flexDirection: "column", gap: "4px" }}>
-            <div style={{ fontSize: "12px", color: "#334155", lineHeight: "1.6", fontWeight: 500 }}>
-              {aiContext?.step1_findings?.overview_summary ||
-                `จากการสแกนโครงสร้างและค่าสถิติของตาราง '${primaryDatasetName}' (${totalIngestedRows.toLocaleString()} แถว) พบรายการที่ต้องกำหนดเกณฑ์ควบคุมคุณภาพ 3 หมวดหมู่หลักก่อนนำไปประมวลผลต่อ`}
-            </div>
-          </div>
-        </LearnMore>
+        {profilingLoading && !profilingData && (
+          <div className="ing-empty"><Icon name="clock" /> กำลังตรวจข้อมูล...</div>
+        )}
 
-        {/* Unified Live Record Filter Bar */}
-        <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: "8px", padding: "12px 14px", marginBottom: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-            <div style={{ flex: 1, minWidth: "280px" }}>
-              <label style={{ display: "block", fontSize: "10.5px", fontWeight: 800, color: "#475569", textTransform: "uppercase", marginBottom: "4px" }}>
-                ค้นหาเรคคอร์ด
-              </label>
+        {profilingData && (
+          <>
+            <LearnMore summary="สรุปจาก AI">
+              {aiContext?.step1_findings?.overview_summary ? (
+                <p className="ing-ai-summary">{aiContext.step1_findings.overview_summary}</p>
+              ) : null}
+              <button type="button" className="ui-btn ui-btn-secondary" onClick={() => fetchAiContext(true)} disabled={aiContextLoading}>
+                <Icon name="sparkles" /> {aiContextLoading ? "กำลังสรุป..." : aiContext ? "สรุปใหม่" : "สร้างสรุป"}
+              </button>
+            </LearnMore>
+
+            <div className="ing-findings">
+              <FindingCard
+                tone="critical"
+                column="score"
+                title="ค่าว่างและช่วงค่า"
+                badge={scoreProf.null_count != null ? `ว่าง ${fmtNum(scoreProf.null_count)} แถว` : null}
+                stats={[
+                  ["ต่ำสุด → สูงสุด", scoreProf.min != null ? `${fmtStat(scoreProf.min)} → ${fmtStat(scoreProf.max)}` : "—"],
+                  ["ค่าว่าง", scoreProf.null_count != null ? `${fmtNum(scoreProf.null_count)} แถว (${fmtStat(scoreProf.null_rate_pct)}%)` : "—"]
+                ]}
+                explanation={aiContext?.step1_findings?.finding1_explanation || "ค่าว่างหรือค่านอกช่วงทำให้ค่าเฉลี่ยและรายงานคลาดเคลื่อน"}
+                selected={selectedFindings.range}
+                onToggle={(v) => toggleFinding("range", v)}
+                expanded={expandedFinding === "range"}
+                onInspect={() => handleInspectFindingRows("range", "quarantine", "Score")}
+                samples={findingRecords.range}
+                renderSample={(r) => `#${r.dirty_row_id} · ${r.student_id} · ${r.course} · score=${String(r.score ?? "NULL")}`}
+              />
+
+              <FindingCard
+                tone="warning"
+                column={duplicateKey.length ? duplicateKey.join(" + ") : "student_id + course + semester"}
+                title="เรคคอร์ดซ้ำ"
+                badge={duplicateRows != null ? `ซ้ำ ${fmtNum(duplicateRows)} แถว` : null}
+                stats={[
+                  ["ไม่ซ้ำ", distinctRows != null ? `${fmtNum(distinctRows)} / ${fmtNum(totalIngestedRows)}` : "—"],
+                  ["ซ้ำ", duplicateRows != null ? `${fmtNum(duplicateRows)} แถว` : "—"]
+                ]}
+                explanation={aiContext?.step1_findings?.finding2_explanation || "เรคคอร์ดที่คีย์ซ้ำกันทำให้นับยอดเกินจริง ต้องแยกออกก่อนประมวลผล"}
+                selected={selectedFindings.duplicate}
+                onToggle={(v) => toggleFinding("duplicate", v)}
+                expanded={expandedFinding === "dup"}
+                onInspect={() => handleInspectFindingRows("dup", "quarantine", "Duplicate")}
+                samples={findingRecords.dup}
+                renderSample={(r) => `#${r.dirty_row_id} · ${r.student_id} + ${r.course} + ${r.semester}`}
+              />
+
+              <FindingCard
+                tone="info"
+                column="study_hours"
+                title="ค่าผิดปกติ"
+                badge={hoursProf.outlier_count != null ? `ผิดปกติ ${fmtNum(hoursProf.outlier_count)} แถว` : null}
+                stats={[
+                  ["Q1 / Q3", hoursProf.q1 != null ? `${fmtStat(hoursProf.q1)} / ${fmtStat(hoursProf.q3)}` : "—"],
+                  ["ช่วงปกติ", hoursProf.lower_fence != null ? `${fmtStat(hoursProf.lower_fence)} ถึง ${fmtStat(hoursProf.upper_fence)}` : "—"]
+                ]}
+                explanation={aiContext?.step1_findings?.finding3_explanation || "ค่าที่อยู่นอกช่วงปกติควรส่งเข้าคิวตรวจสอบ แทนการตัดทิ้งอัตโนมัติ"}
+                selected={selectedFindings.outlier}
+                onToggle={(v) => toggleFinding("outlier", v)}
+                expanded={expandedFinding === "outlier"}
+                onInspect={() => handleInspectFindingRows("outlier", "review", "Outlier")}
+                samples={findingRecords.outlier}
+                renderSample={(r) => `#${r.dirty_row_id} · ${r.student_id} · study_hours=${r.study_hours}`}
+              />
+            </div>
+
+            <LearnMore summary="ค้นหาเรคคอร์ด">
               <input
-                type="text"
+                type="search"
+                className="ing-search"
                 value={rawSearchQuery}
                 onChange={async (e) => {
                   const q = e.target.value;
@@ -896,234 +935,76 @@ export default function Ingestion() {
                   if (q.trim()) {
                     try {
                       const r = await fetch(`/api/v1/whitebox/preview-zone/raw?limit=8&search=${encodeURIComponent(q.trim())}`);
-                      if (r.ok) {
-                        const d = await r.json();
-                        setRawSearchResults(d);
-                      }
+                      if (r.ok) setRawSearchResults(await r.json());
                     } catch {}
                   } else {
                     setRawSearchResults(null);
                   }
                 }}
-                placeholder="กรอกรหัสประจำตัว ชื่อวิชา หรือค่าที่ต้องการค้นหาในตาราง..."
-                style={{ width: "100%", padding: "8px 12px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12px", color: "#0F172A", background: "#FFFFFF" }}
+                placeholder="รหัสนักศึกษา ชื่อวิชา หรือค่าอื่น"
               />
-            </div>
-          </div>
-
-          {rawSearchQuery.trim() !== "" && (
-            <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: "6px", padding: "8px 10px", fontSize: "11px", fontFamily: "var(--font-mono)" }}>
-              <div style={{ fontWeight: 800, color: "#0F172A", marginBottom: "4px" }}>
-                ผลการค้นหาเรคคอร์ดในตาราง (พบ {(rawSearchResults?.matched_rows ?? 0).toLocaleString()} แถวที่ตรงกับ &quot;{rawSearchQuery}&quot;):
-              </div>
-              {(rawSearchResults?.rows || []).map((item, idx) => (
-                <div key={idx} style={{ padding: "3px 0", borderBottom: "1px solid #F1F5F9", color: "#334155" }}>
-                  <strong>Row #{item.dirty_row_id ?? item.record_id ?? idx + 1}</strong> · student_id=<code>{String(item.student_id ?? "")}</code> · course=<code>{String(item.course ?? "")}</code> · score=<code>{String(item.score ?? "NULL")}</code> · study_hours=<code>{String(item.study_hours ?? "")}</code> · semester=<code>{String(item.semester ?? "")}</code>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {profilingLoading && !profilingData ? (
-          <div style={{ padding: "24px", textAlign: "center", color: "#64748B", fontSize: "13px" }}>
-            <Icon name="clock" /> กำลังสแกนคำนวณค่าสถิติของชุดข้อมูล...
-          </div>
-        ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "14px" }}>
-            {/* Card 1: Value Range & Nulls (Databricks Clean Surface + Top Accent) */}
-            <div style={{ background: "#FFFFFF", border: selectedFindings.range ? "1px solid #94A3B8" : "1px solid #E2E8F0", borderTop: "3px solid #DC2626", borderRadius: "8px", padding: "16px", display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px", gap: "8px" }}>
-                  <div>
-                    <span style={{ fontSize: "10px", color: "#64748B", fontWeight: 800, letterSpacing: "0.04em" }}>score</span>
-                    <h4 style={{ margin: "2px 0 0", color: "#0F172A", fontSize: "13.5px", fontWeight: 800 }}>ค่าว่างและช่วงค่า</h4>
-                  </div>
-                  <span style={{ background: "#FEF2F2", color: "#B91C1C", border: "1px solid #FECACA", fontSize: "10.5px", fontWeight: 800, padding: "2px 8px", borderRadius: "4px", whiteSpace: "nowrap" }}>
-                    — flagged
-                  </span>
-                </div>
-
-                <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: "6px", padding: "10px 12px", marginBottom: "10px", fontSize: "11.5px", color: "#334155" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: "1px solid #E2E8F0" }}>
-                    <span>Min → Max Observed:</span>
-                    <strong style={{ color: "#0F172A" }}>{(profilingData?.columns_profile || profilingData?.column_profiles)?.score?.min ?? -10.0} → {(profilingData?.columns_profile || profilingData?.column_profiles)?.score?.max ?? 150.0}</strong>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: "1px solid #E2E8F0" }}>
-                    <span>Null Count (<code>NULL</code>):</span>
-                    <strong style={{ color: "#0F172A" }}>{(profilingData?.columns_profile || profilingData?.column_profiles)?.score?.null_rate_pct ?? 3.02}% ({(profilingData?.columns_profile || profilingData?.column_profiles)?.score?.null_count ?? 305} rows)</strong>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}>
-                    <span>Out-of-Bounds Rows:</span>
-                    <strong style={{ color: "#0F172A" }}>—</strong>
-                  </div>
-                </div>
-
-                <LearnMore summary="บริบทข้อมูล">
-                  <div style={{ background: "#F8FAFC", borderLeft: "3px solid #475569", padding: "8px 10px", borderRadius: "4px", marginBottom: "10px", fontSize: "11px", color: "#334155", lineHeight: "1.55" }}>
-                    {aiContext?.step1_findings?.finding1_explanation ||
-                      "คอลัมน์ score มีทั้งค่าว่างและค่าที่อยู่นอกช่วงปกติ (-10 ถึง 150) หากปล่อยผ่านจะทำให้การคำนวณค่าเฉลี่ยของชุดข้อมูลคลาดเคลื่อน"}
-                  </div>
-                </LearnMore>
-
-                {expandedFinding === "range" && (
-                  <div style={{ background: "#F8FAFC", border: "1px solid #CBD5E1", borderRadius: "6px", padding: "8px", marginBottom: "10px", fontSize: "10px", fontFamily: "var(--font-mono)", color: "#1E293B" }}>
-                    <div style={{ fontWeight: 800, marginBottom: "4px" }}>ตัวอย่างเรคคอร์ดที่ไม่ผ่านเกณฑ์ (Sample Rows):</div>
-                    {(findingRecords.range || []).map((r, i) => (
-                      <div key={i}>• Row #{r.dirty_row_id}: student_id={r.student_id}, course={r.course}, score={String(r.score ?? "NULL")} ({r.whitebox_error_type})</div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: "10px", borderTop: "1px solid #E2E8F0", gap: "6px" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11.5px", fontWeight: 700, color: "#1E293B", cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={selectedFindings.range}
-                    onChange={(e) => toggleFinding("range", e.target.checked)}
-                  />
-                  <span>เลือกไปสร้างเกณฑ์ใน Rule Hub</span>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => handleInspectFindingRows("range", "quarantine", "Score")}
-                  style={{ padding: "4px 10px", fontSize: "10.5px", fontWeight: 700, borderRadius: "4px", border: "1px solid #CBD5E1", background: "#FFFFFF", color: "#334155", cursor: "pointer" }}
-                >
-                  {expandedFinding === "range" ? "ซ่อนตัวอย่าง" : "ดูตัวอย่างเรคคอร์ด"}
-                </button>
-              </div>
-            </div>
-
-            {/* Card 2: Key Uniqueness (Databricks Clean Surface + Top Accent) */}
-            <div style={{ background: "#FFFFFF", border: selectedFindings.duplicate ? "1px solid #94A3B8" : "1px solid #E2E8F0", borderTop: "3px solid #D97706", borderRadius: "8px", padding: "16px", display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px", gap: "8px" }}>
-                  <div>
-                    <span style={{ fontSize: "10px", color: "#64748B", fontWeight: 800, letterSpacing: "0.04em" }}>คีย์รวม</span>
-                    <h4 style={{ margin: "2px 0 0", color: "#0F172A", fontSize: "13.5px", fontWeight: 800 }}>คีย์ซ้ำ</h4>
-                  </div>
-                  <span style={{ background: "#FFFBEB", color: "#B45309", border: "1px solid #FDE68A", fontSize: "10.5px", fontWeight: 800, padding: "2px 8px", borderRadius: "4px", whiteSpace: "nowrap" }}>
-                    {profilingData?.duplicate_analysis?.duplicate_rows_detected ?? 100} duplicates
-                  </span>
-                </div>
-
-                <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: "6px", padding: "10px 12px", marginBottom: "10px", fontSize: "11.5px", color: "#334155" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: "1px solid #E2E8F0" }}>
-                    <span>Composite Key:</span>
-                    <strong style={{ color: "#0F172A" }}><code>student_id + course + semester</code></strong>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: "1px solid #E2E8F0" }}>
-                    <span>Distinct Entities:</span>
-                    <strong style={{ color: "#0F172A" }}>{distinctRows.toLocaleString()} / {totalIngestedRows.toLocaleString()} rows</strong>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}>
-                    <span>Duplicate Records:</span>
-                    <strong style={{ color: "#0F172A" }}>{profilingData?.duplicate_analysis?.duplicate_rows_detected ?? "—"} rows</strong>
-                  </div>
-                </div>
-
-                <LearnMore summary="บริบทข้อมูล">
-                  <div style={{ background: "#F8FAFC", borderLeft: "3px solid #475569", padding: "8px 10px", borderRadius: "4px", marginBottom: "10px", fontSize: "11px", color: "#334155", lineHeight: "1.55" }}>
-                    {aiContext?.step1_findings?.finding2_explanation ||
-                      "พบเรคคอร์ดที่มีรหัสประจำตัว รายวิชา และภาคการศึกษาซ้ำกันเกิน 1 ครั้ง ซึ่งเกิดจากการส่งข้อมูลซ้ำจากระบบต้นทางและต้องแยกออกเพื่อป้องกันการนับยอดซ้ำ"}
-                  </div>
-                </LearnMore>
-
-                {expandedFinding === "dup" && (
-                  <div style={{ background: "#F8FAFC", border: "1px solid #CBD5E1", borderRadius: "6px", padding: "8px", marginBottom: "10px", fontSize: "10px", fontFamily: "var(--font-mono)", color: "#1E293B" }}>
-                    <div style={{ fontWeight: 800, marginBottom: "4px" }}>ตัวอย่างเรคคอร์ดที่ซ้ำซ้อน (Sample Duplicate Rows):</div>
-                    {(findingRecords.dup || []).map((r, i) => (
-                      <div key={i}>• Row #{r.dirty_row_id}: {r.student_id} + {r.course} + {r.semester} (score={r.score})</div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: "10px", borderTop: "1px solid #E2E8F0", gap: "6px" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11.5px", fontWeight: 700, color: "#1E293B", cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={selectedFindings.duplicate}
-                    onChange={(e) => toggleFinding("duplicate", e.target.checked)}
-                  />
-                  <span>เลือกไปสร้างเกณฑ์ใน Rule Hub</span>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => handleInspectFindingRows("dup", "quarantine", "Duplicate")}
-                  style={{ padding: "4px 10px", fontSize: "10.5px", fontWeight: 700, borderRadius: "4px", border: "1px solid #CBD5E1", background: "#FFFFFF", color: "#334155", cursor: "pointer" }}
-                >
-                  {expandedFinding === "dup" ? "ซ่อนตัวอย่าง" : "ดูตัวอย่างเรคคอร์ด"}
-                </button>
-              </div>
-            </div>
-
-            {/* Card 3: Adaptive Outliers (Databricks Clean Surface + Top Accent) */}
-            <div style={{ background: "#FFFFFF", border: selectedFindings.outlier ? "1px solid #94A3B8" : "1px solid #E2E8F0", borderTop: "3px solid #0284C7", borderRadius: "8px", padding: "16px", display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px", gap: "8px" }}>
-                  <div>
-                    <span style={{ fontSize: "10px", color: "#64748B", fontWeight: 800, letterSpacing: "0.04em" }}>study_hours</span>
-                    <h4 style={{ margin: "2px 0 0", color: "#0F172A", fontSize: "13.5px", fontWeight: 800 }}>ค่าผิดปกติ</h4>
-                  </div>
-                  <span style={{ background: "#F0F9FF", color: "#0369A1", border: "1px solid #BAE6FD", fontSize: "10.5px", fontWeight: 800, padding: "2px 8px", borderRadius: "4px", whiteSpace: "nowrap" }}>
-                    — outliers
-                  </span>
-                </div>
-
-                <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: "6px", padding: "10px 12px", marginBottom: "10px", fontSize: "11.5px", color: "#334155" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: "1px solid #E2E8F0" }}>
-                    <span>Q1 / Q3 / IQR:</span>
-                    <strong style={{ color: "#0F172A" }}>Q1={(profilingData?.columns_profile || profilingData?.column_profiles)?.study_hours?.q1 ?? 4.0} · Q3={(profilingData?.columns_profile || profilingData?.column_profiles)?.study_hours?.q3 ?? 6.0} · IQR={(profilingData?.columns_profile || profilingData?.column_profiles)?.study_hours?.iqr ?? 2.0}</strong>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: "1px solid #E2E8F0" }}>
-                    <span>Inner Fence (<code>1.5× IQR &gt; 9.0</code>):</span>
-                    <strong style={{ color: "#0F172A" }}>—</strong>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}>
-                    <span>Outer Fence (<code>3.0× IQR &gt; 12.0</code>):</span>
-                    <strong style={{ color: "#0F172A" }}>—</strong>
-                  </div>
-                </div>
-
-                <LearnMore summary="บริบทข้อมูล">
-                  <div style={{ background: "#F8FAFC", borderLeft: "3px solid #475569", padding: "8px 10px", borderRadius: "4px", marginBottom: "10px", fontSize: "11px", color: "#334155", lineHeight: "1.55" }}>
-                    {aiContext?.step1_findings?.finding3_explanation ||
-                      "ค่าในคอลัมน์ study_hours ที่สูงเกินรั้วสถิติควรคัดแยกเข้าคิวตรวจสอบ เพื่อให้ผู้รับผิดชอบพิจารณาแทนการตัดทิ้งอัตโนมัติ"}
-                  </div>
-                </LearnMore>
-
-                {expandedFinding === "outlier" && (
-                  <div style={{ background: "#F8FAFC", border: "1px solid #CBD5E1", borderRadius: "6px", padding: "8px", marginBottom: "10px", fontSize: "10px", fontFamily: "var(--font-mono)", color: "#1E293B" }}>
-                    <div style={{ fontWeight: 800, marginBottom: "4px" }}>ตัวอย่างเรคคอร์ดที่เกินเกณฑ์สถิติ (Sample Outlier Rows):</div>
-                    {(findingRecords.outlier || []).map((r, i) => (
-                      <div key={i}>• Row #{r.dirty_row_id}: student_id={r.student_id}, study_hours={r.study_hours} ชม., score={r.score}</div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: "10px", borderTop: "1px solid #E2E8F0", gap: "6px" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11.5px", fontWeight: 700, color: "#1E293B", cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={selectedFindings.outlier}
-                    onChange={(e) => toggleFinding("outlier", e.target.checked)}
-                  />
-                  <span>เลือกไปสร้างเกณฑ์ใน Rule Hub</span>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => handleInspectFindingRows("outlier", "review", "Outlier")}
-                  style={{ padding: "4px 10px", fontSize: "10.5px", fontWeight: 700, borderRadius: "4px", border: "1px solid #CBD5E1", background: "#FFFFFF", color: "#334155", cursor: "pointer" }}
-                >
-                  {expandedFinding === "outlier" ? "ซ่อนตัวอย่าง" : "ดูตัวอย่างเรคคอร์ด"}
-                </button>
-              </div>
-            </div>
-          </div>
+              {rawSearchQuery.trim() !== "" && (
+                <ul className="ing-samples">
+                  <li><strong>พบ {fmtNum(rawSearchResults?.matched_rows ?? 0)} แถว</strong></li>
+                  {(rawSearchResults?.rows || []).map((item, idx) => (
+                    <li key={idx}>
+                      #{item.dirty_row_id ?? item.record_id ?? idx + 1} · {String(item.student_id ?? "")} · {String(item.course ?? "")} · score={String(item.score ?? "NULL")} · study_hours={String(item.study_hours ?? "")} · {String(item.semester ?? "")}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </LearnMore>
+          </>
         )}
+      </section>
+    </div>
+  );
+}
+
+function FindingCard({ tone, column, title, badge, stats, explanation, selected, onToggle, expanded, onInspect, samples, renderSample }) {
+  return (
+    <div className={`ing-finding ing-finding-${tone}${selected ? " is-selected" : ""}`}>
+      <div className="ing-finding-head">
+        <div>
+          <code className="ing-finding-col">{column}</code>
+          <h4>{title}</h4>
+        </div>
+        {badge && <span className="ing-finding-badge">{badge}</span>}
+      </div>
+
+      <dl className="ing-finding-stats">
+        {stats.map(([label, value]) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
+
+      <LearnMore summary="ทำไมถึงเป็นปัญหา">
+        <p className="ing-finding-note">{explanation}</p>
+      </LearnMore>
+
+      {expanded && (
+        <ul className="ing-samples">
+          {samples === undefined ? (
+            <li>กำลังโหลด...</li>
+          ) : samples.length === 0 ? (
+            <li>ไม่พบตัวอย่าง</li>
+          ) : (
+            samples.map((r, i) => <li key={i}>{renderSample(r)}</li>)
+          )}
+        </ul>
+      )}
+
+      <div className="ing-finding-foot">
+        <label>
+          <input type="checkbox" checked={selected} onChange={(e) => onToggle(e.target.checked)} />
+          <span>ใช้สร้างเกณฑ์</span>
+        </label>
+        <button type="button" className="ui-btn-link" onClick={onInspect}>
+          {expanded ? "ซ่อนตัวอย่าง" : "ดูตัวอย่าง"}
+        </button>
       </div>
     </div>
   );

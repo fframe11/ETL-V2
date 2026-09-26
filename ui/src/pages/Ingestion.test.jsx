@@ -1,0 +1,16 @@
+import { it, expect } from "vitest";
+import { screen } from "@testing-library/react";
+import { renderPage } from "../test/renderPage";
+import Ingestion from "./Ingestion";
+
+it("shows no invented profiling numbers without data", async () => {
+  await renderPage(Ingestion, "/ingestion");
+  for (const fake of ["10,100", "10,000", "-10 → 150", "305", "3.02"]) {
+    expect(screen.queryAllByText(new RegExp(fake))).toHaveLength(0);
+  }
+});
+
+it("keeps the import button disabled until a file is chosen", async () => {
+  await renderPage(Ingestion, "/ingestion");
+  expect(screen.getByRole("button", { name: "นำเข้าและตรวจข้อมูล" }).disabled).toBe(true);
+});
