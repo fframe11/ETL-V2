@@ -54,6 +54,16 @@ def _read_uploaded_table(filename: str, content: bytes) -> pd.DataFrame:
     except Exception as e:
         raise ValueError(f"ไม่สามารถอ่านไฟล์ CSV ได้: {e}")
 
+
+# Columns the quality-rule engine (_recompute_interactive_state) reads
+# directly. A file missing any of them can be profiled, but must not be
+# sent into the engine.
+QUALITY_ENGINE_COLUMNS = ("student_id", "course", "score", "study_hours")
+
+
+def _is_supported_schema(columns) -> bool:
+    return set(QUALITY_ENGINE_COLUMNS).issubset(set(columns))
+
 router = APIRouter(prefix="/api/v1/whitebox", tags=["Transparent Quality Governance"])
 
 # Robust dataset and output path resolution (works on Windows host and Linux containers)
@@ -1433,7 +1443,7 @@ async def upload_csv_dataset(
     _WORKFLOW_STATE["dataset_name"] = clean_tbl
     _WORKFLOW_STATE["source_type"] = "FILE_UPLOAD"
 
-    if {"student_id", "course", "score"}.issubset(set(df_up.columns)):
+    if _is_supported_schema(df_up.columns):
         if "dirty_row_id" not in df_up.columns:
             df_up.insert(0, "dirty_row_id", range(1, len(df_up) + 1))
         df_up.to_csv(DIRTY_DATASET_PATH, index=False)
