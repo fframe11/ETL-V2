@@ -62,3 +62,6 @@ spark/*.csv
 **/*.csv
 whitebox_ui_preview.png
 ui/src/test/text-report.json
+
+# Subagent-driven-development scratch workspace (ledgers, briefs, review packages)
+.superpowers/
