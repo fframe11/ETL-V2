@@ -6,6 +6,9 @@ import { PageHeader, LearnMore, NextStepLink } from "../components/ui";
 import { friendlyApiError } from "../utils/apiError";
 import "./Ingestion.css";
 
+// Must match QUALITY_ENGINE_COLUMNS in api/app/api/whitebox.py.
+const QUALITY_CHECK_COLUMNS = ["student_id", "course", "score", "study_hours"];
+
 export default function Ingestion() {
   // Empirical Data Profiling State (White-Box Foundation)
   const [profilingData, setProfilingData] = useState(null);
@@ -594,7 +597,11 @@ export default function Ingestion() {
     return Math.min(100, Math.max(0, (streamInfo.elapsed / streamInfo.duration) * 100));
   };
 
+  // An empty object is not a profile; only a response with a row count is.
+  const hasProfile = profilingData?.total_rows != null;
   const colProfiles = profilingData?.columns_profile || profilingData?.column_profiles || {};
+  const missingCheckColumns = QUALITY_CHECK_COLUMNS.filter((c) => !(c in colProfiles));
+  const checksSupported = missingCheckColumns.length === 0;
   const scoreProf = colProfiles.score || {};
   const hoursProf = colProfiles.study_hours || {};
   const totalIngestedRows = profilingData?.total_rows;
@@ -608,9 +615,11 @@ export default function Ingestion() {
     ["ผิดปกติ", hoursProf.outlier_count]
   ].filter(([, v]) => v > 0);
   const issueCount = issueParts.length;
-  const issueSummary = issueCount
-    ? `พบปัญหา ${issueCount} ด้าน: ${issueParts.map(([label, v]) => `${label} ${Number(v).toLocaleString()}`).join(" · ")}`
-    : "ไม่พบปัญหา";
+  const issueSummary = !checksSupported
+    ? "ตรวจอัตโนมัติไม่ได้ (คอลัมน์ไม่ครบ)"
+    : issueCount
+      ? `พบปัญหา ${issueCount} ด้าน: ${issueParts.map(([label, v]) => `${label} ${Number(v).toLocaleString()}`).join(" · ")}`
+      : "ไม่พบปัญหา";
   const fmtStat = (v) => (v == null ? "—" : Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 }));
 
   return (
@@ -816,14 +825,14 @@ export default function Ingestion() {
           <div>
             <h3>ผลตรวจข้อมูล</h3>
             <p>
-              {profilingData ? (
+              {hasProfile ? (
                 <>ตาราง <code>{primaryDatasetName}</code> · {issueSummary}</>
               ) : (
                 "ยังไม่มีข้อมูล นำเข้าไฟล์ด้านบนเพื่อเริ่มตรวจ"
               )}
             </p>
           </div>
-          {profilingData && (
+          {hasProfile && (
             <div className="ing-results-actions">
               <button type="button" className="ui-btn ui-btn-secondary" onClick={handleRescanProfile} disabled={profilingLoading}>
                 {profilingLoading ? "กำลังตรวจ..." : "ตรวจใหม่"}
@@ -833,12 +842,15 @@ export default function Ingestion() {
           )}
         </div>
 
-        {profilingData && (
+        {hasProfile && (
           <div className="ing-summary">
             <div><span>แถวทั้งหมด</span><strong>{fmtNum(totalIngestedRows)}</strong></div>
             <div><span>คอลัมน์</span><strong>{fmtNum(profilingData.total_columns)}</strong></div>
             <div><span>แถวไม่ซ้ำ</span><strong>{fmtNum(distinctRows)}</strong></div>
-            <div className={issueCount ? "is-warn" : "is-ok"}><span>ประเด็นที่ต้องดูแล</span><strong>{issueCount} / 3</strong></div>
+            <div className={!checksSupported ? "" : issueCount ? "is-warn" : "is-ok"}>
+              <span>ประเด็นที่ต้องดูแล</span>
+              <strong>{checksSupported ? `${issueCount} / 3` : "—"}</strong>
+            </div>
           </div>
         )}
 
@@ -846,8 +858,14 @@ export default function Ingestion() {
           <div className="ing-empty"><Icon name="clock" /> กำลังตรวจข้อมูล...</div>
         )}
 
-        {profilingData && (
+        {hasProfile && (
           <>
+            {!checksSupported && (
+              <div className="ing-notice ing-notice-info" role="status">
+                การตรวจคุณภาพอัตโนมัติรองรับเฉพาะข้อมูลที่มีคอลัมน์ {QUALITY_CHECK_COLUMNS.join(", ")} · ไฟล์นี้ไม่มี: {missingCheckColumns.join(", ")}
+              </div>
+            )}
+            {checksSupported && (
             <div className="ing-findings">
               <FindingCard
                 tone="critical"
@@ -909,6 +927,7 @@ export default function Ingestion() {
                 renderSample={(r) => `#${r.dirty_row_id} · ${r.student_id} · study_hours=${r.study_hours}`}
               />
             </div>
+            )}
 
             <LearnMore summary="ค้นหาเรคคอร์ด">
               <input

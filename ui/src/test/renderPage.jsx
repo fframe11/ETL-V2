@@ -35,8 +35,8 @@ export function mockFetchByUrl(routes) {
 }
 
 // Renders a page as a first-time visitor sees it when the API has no data yet.
-export async function renderPage(Component, path = "/") {
-  mockFetchEmpty();
+export async function renderPage(Component, path = "/", routes) {
+  if (routes) mockFetchByUrl(routes); else mockFetchEmpty();
   let utils;
   await act(async () => {
     utils = render(

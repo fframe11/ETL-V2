@@ -399,6 +399,7 @@
 }
 .ing-notice-ok { background: var(--db-emerald-light); color: #047857; }
 .ing-notice-error { background: var(--db-red-light); color: #B91C1C; }
+.ing-notice-info { background: var(--db-blue-light); color: #0369A1; }
 
 /* ── Profiling results ───────────────────────────── */
 .ing-results-head {

@@ -34,3 +34,17 @@ it("explains a missing dataset instead of showing a server file path", async () 
   expect(screen.getByRole("alert")).toHaveTextContent("ยังไม่มีข้อมูลในระบบ");
   expect(screen.queryByText(/\/app\//)).toBeNull();
 });
+
+it("says the automatic checks need specific columns instead of reporting no problems", async () => {
+  await renderPage(Ingestion, "/ingestion", [
+    ["/whitebox/profile", { body: {
+      total_rows: 562,
+      total_columns: 5,
+      columns_profile: { "วันที่": {}, "รายการสินค้า": {}, "จำนวน": {}, "ราคาต่อหน่วย": {}, "ยอดขายรวม": {} },
+      duplicate_analysis: { tested_composite_key: [], duplicate_rows_detected: 0 }
+    } }]
+  ]);
+  expect(screen.getByRole("status")).toHaveTextContent("study_hours");
+  expect(screen.queryByText(/ไม่พบปัญหา/)).toBeNull();
+  expect(screen.queryByText("ค่าว่างและช่วงค่า")).toBeNull();
+});
