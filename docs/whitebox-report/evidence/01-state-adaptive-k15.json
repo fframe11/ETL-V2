@@ -1,0 +1,23 @@
+{
+  "null_policy": "adaptive_5",
+  "tukey_multiplier": "1.5",
+  "metrics": {
+    "total_rows": 250,
+    "clean_rows": 200,
+    "review_rows": 24,
+    "quarantine_rows": 26,
+    "quality_score_pct": 80.0,
+    "missing_score_count": 12,
+    "invalid_range_count": 13,
+    "duplicate_count": 13,
+    "initial_outlier_count": 12,
+    "gate1_quarantined": 13,
+    "gate1_passed": 237,
+    "gate2_quarantined": 13,
+    "gate2_passed": 224,
+    "upper_fence": 12.05,
+    "q1": 3.8,
+    "q3": 7.1,
+    "iqr": 3.3
+  }
+}
