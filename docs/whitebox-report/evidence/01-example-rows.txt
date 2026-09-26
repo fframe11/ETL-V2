@@ -1,0 +1,12 @@
+# ตัวอย่างแถวจริงจาก dirty_course_scores_demo.csv (สร้างด้วย tools/gen_demo_dataset.py)
+# ลำดับแถว (row) นับจาก 1 = แถวข้อมูลแรกหลังหัวตาราง; ระบบเติมคอลัมน์ dirty_row_id ตามลำดับนี้ตอนอัปโหลด
+
+[ซ้ำ] คู่แรกที่คีย์ซ้ำกัน (แถวแรกถูกเก็บ แถวหลังถูกกักกัน):
+  row 99: student_id=S3026 course=CS101 semester=2025-1 score=79.4 study_hours=7.1
+  row 135: student_id=S3026 course=CS101 semester=2025-1 score=78.3 study_hours=6.8
+
+[ค่าว่าง] row 2: student_id=S4004 course=PHYS110 semester=2025-2 score=(ว่าง) study_hours=6.6
+[นอกช่วงต่ำ] row 7: student_id=S4113 course=BIO220 semester=2025-2 score=-26.3 study_hours=7.2
+[นอกช่วงสูง] row 25: student_id=S4104 course=PHYS110 semester=2025-2 score=117.3 study_hours=7.6
+[ค่าผิดปกติ] study_hours > 17.0 มี 12 แถว เช่น row 3: student_id=S4305 course=MATH201 semester=2025-2 score=78.8 study_hours=40.4
+study_hours ของแถวปกติอยู่ระหว่าง 2.0 ถึง 8.0 ; ค่าผิดปกติต่ำสุด = 31.9

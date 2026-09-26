@@ -1,0 +1,30 @@
+{
+  "dataset_name": "dirty_course_scores_demo",
+  "min_score": 0.0,
+  "max_score": 100.0,
+  "null_policy": "strict_0",
+  "max_null_pct": 5.0,
+  "composite_key": "student_id + course + semester",
+  "dedup_strategy": "keep_first_quarantine",
+  "tukey_multiplier": "3.0",
+  "review_action": "KEEP",
+  "metrics": {
+    "total_rows": 250,
+    "clean_rows": 200,
+    "review_rows": 12,
+    "quarantine_rows": 38,
+    "quality_score_pct": 80.0,
+    "missing_score_count": 12,
+    "invalid_range_count": 13,
+    "duplicate_count": 13,
+    "initial_outlier_count": 12,
+    "gate1_quarantined": 25,
+    "gate1_passed": 225,
+    "gate2_quarantined": 13,
+    "gate2_passed": 212,
+    "upper_fence": 17.0,
+    "q1": 3.8,
+    "q3": 7.1,
+    "iqr": 3.3
+  }
+}
