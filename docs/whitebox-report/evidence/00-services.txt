@@ -1,0 +1,15 @@
+NAME                   SERVICE         STATUS                            PORTS
+sdoqap-api             api             Up 4 hours (healthy)              0.0.0.0:8002->8000/tcp, [::]:8002->8000/tcp
+sdoqap-datanode        datanode        Up 11 hours (healthy)             9864/tcp
+sdoqap-elasticsearch   elasticsearch   Up 11 hours (healthy)             0.0.0.0:9200->9200/tcp, [::]:9200->9200/tcp
+sdoqap-grafana         grafana         Up 11 hours (healthy)             0.0.0.0:3002->3000/tcp, [::]:3002->3000/tcp
+sdoqap-kafka           kafka           Up 4 seconds (health: starting)   0.0.0.0:9092->29092/tcp, [::]:9092->29092/tcp
+sdoqap-kibana          kibana          Up 11 hours (unhealthy)           0.0.0.0:5601->5601/tcp, [::]:5601->5601/tcp
+sdoqap-n8n             n8n             Up 11 hours (healthy)             0.0.0.0:5678->5678/tcp, [::]:5678->5678/tcp
+sdoqap-namenode        namenode        Up 11 hours (healthy)             0.0.0.0:9870->9870/tcp, [::]:9870->9870/tcp, 0.0.0.0:9002->9000/tcp, [::]:9002->9000/tcp
+sdoqap-nginx           nginx           Up 11 hours (healthy)             0.0.0.0:80->80/tcp, [::]:80->80/tcp
+sdoqap-ollama          ollama          Up 11 hours (unhealthy)           11434/tcp
+sdoqap-postgres        postgres        Up 11 hours (healthy)             0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
+sdoqap-spark-master    spark-master    Up 11 hours (healthy)             0.0.0.0:7077->7077/tcp, [::]:7077->7077/tcp, 0.0.0.0:8099->8099/tcp, [::]:8099->8099/tcp, 0.0.0.0:8081->8080/tcp, [::]:8081->8080/tcp
+sdoqap-spark-worker    spark-worker    Up 11 hours (healthy)             
+sdoqap-ui              ui              Up 5 hours (healthy)              80/tcp

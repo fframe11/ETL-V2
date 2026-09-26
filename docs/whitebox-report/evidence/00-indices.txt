@@ -1,0 +1,16 @@
+index                        docs.count
+sdoqap_gold_daily_quality            20
+sdoqap_gold_error_patterns           16
+sdoqap_gold_financial_impact         10
+sdoqap_gold_schema_drift              2
+sdoqap_lineage_runs                 143
+sdoqap_pipeline_runs                133
+sdoqap_quality_runs                  89
+sdoqap_rules_audit_log                1
+sdoqap_rules_registry                16
+sdoqap_run_locks                      0
+sdoqap_schema_drifts                  4
+sdoqap_schema_proposals               6
+sdoqap_schema_registry               10
+sdoqap_settings                       1
+sdoqap_upstream_remediations          2
