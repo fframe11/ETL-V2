@@ -134,6 +134,15 @@
   margin-top: 1px;
 }
 .gs-achart {
+  /* Root Cause Fix: flex-grow + min-height alone never gives this box a
+     definite CSS height — only a resolved layout size. Recharts'
+     ResponsiveContainer renders a child at height:100%, which needs a
+     definite parent height to resolve; without it the child measures 0px
+     and the chart silently never draws its <svg> (no error, no console
+     warning). An explicit height alongside flex-grow keeps the box growing
+     to fill extra space while still giving descendants something definite
+     to resolve percentages against. */
+  height: 220px;
   flex-grow: 1;
   min-height: 220px;
 }
