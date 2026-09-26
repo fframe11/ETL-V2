@@ -55,3 +55,11 @@ it("names offline services instead of saying the whole API is offline", async ()
   expect(screen.getByText("1 บริการออฟไลน์")).toBeInTheDocument();
   expect(screen.queryByText(/API: OFFLINE/)).toBeNull();
 });
+
+it("labels the primary action by what it does", async () => {
+  mockFetchEmpty();
+  await renderNav();
+  const link = screen.getByRole("link", { name: /^\+\s*นำเข้าข้อมูล$/ });
+  expect(link.getAttribute("href")).toBe("/ingestion");
+  expect(screen.queryByText("New")).toBeNull();
+});

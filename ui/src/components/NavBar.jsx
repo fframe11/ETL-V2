@@ -261,7 +261,7 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
           </button>
         </div>
 
-        {/* Databricks "+ New" Primary Action Button */}
+        {/* Primary action: start a new import */}
         {navOpen ? (
           <div style={{ padding: "8px 12px 6px 12px" }}>
             <Link
@@ -283,14 +283,15 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
               }}
             >
               <span style={{ fontSize: "16px", lineHeight: 1, fontWeight: 400 }}>+</span>
-              <span>New</span>
+              <span>นำเข้าข้อมูล</span>
             </Link>
           </div>
         ) : (
           <div style={{ display: "flex", justifyContent: "center", padding: "8px 0" }}>
             <Link
               to="/ingestion"
-              title="+ New"
+              title="นำเข้าข้อมูล"
+              aria-label="นำเข้าข้อมูล"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
