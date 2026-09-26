@@ -173,7 +173,7 @@ app.include_router(auth_router)
 
 ลำดับการเมานต์ไม่มีผลต่อผลลัพธ์เพราะแต่ละ router มี path ไม่ซ้ำกัน (ยืนยันด้วยการไล่ `prefix=` ของทุกไฟล์ใน `api/app/api/*.py`)
 
-**จุดที่ตัดสินว่าเบราว์เซอร์ไปหา container ไหน** — nginx อ่าน path แล้วเลือก upstream (แสดงเป็น plain code block ตามกติกา เพราะ checker ไม่ตรวจไฟล์ `.conf`):
+**จุดที่ตัดสินว่าเบราว์เซอร์ไปหา container ไหน** — nginx อ่าน path แล้วเลือก upstream ที่ `nginx/nginx.conf:19-26` (แสดงเป็น plain code block ตามกติกา เพราะ checker ไม่ตรวจไฟล์ `.conf`):
 
 ```
         location /api/ {
@@ -186,7 +186,18 @@ app.include_router(auth_router)
         }
 ```
 
-บล็อกนี้คือ `nginx/nginx.conf:19-26` request ที่ path ขึ้นต้นด้วย `/api/` ถูกส่งไปที่ตัวแปร `$upstream_api` ซึ่งตั้งเป็น `api:8000` (ชื่อ container ในเครือข่าย Docker เดียวกัน) ทุก path อื่น (`location /` ที่ `nginx/nginx.conf:27-34`) ส่งไปที่ `ui:80` แทน คอมเมนต์เหนือบล็อกนี้ (`nginx/nginx.conf:8-15`) อธิบายเหตุผลที่ใช้ `resolver` + ตัวแปรแทน `upstream {}` แบบคงที่: ป้องกันปัญหา nginx แคช IP เก่าของ container ที่ถูกสร้างใหม่ (502 ค้าง) ซึ่งเป็นปัญหาที่เคยเกิดขึ้นจริงตามคอมเมนต์นั้น
+| บรรทัด | ทำอะไร |
+|---|---|
+| 19 | จับคู่คำขอทุกอันที่ path ขึ้นต้นด้วย `/api/` |
+| 20 | ตั้งตัวแปร `$upstream_api` เป็น `api:8000` (ชื่อ container ในเครือข่าย Docker เดียวกัน ไม่ใช่ IP ตายตัว) |
+| 21 | ส่งต่อคำขอไปที่ `$upstream_api` — ใช้ตัวแปรแทนชื่อ host ตรง ๆ เพื่อให้ nginx re-resolve DNS ใหม่ตาม `resolver` ที่ตั้งไว้ด้านบน (`nginx/nginx.conf:15`) แทนที่จะแคช IP เดิมค้างไว้ |
+| 22 | ส่งต่อ header `Host` เดิมของผู้ใช้ไปให้ `api` |
+| 23 | ส่งต่อ IP จริงของผู้ใช้ผ่าน header `X-Real-IP` |
+| 24 | ต่อ IP ของผู้ใช้เข้าไปในสาย `X-Forwarded-For` (เผื่อมีการ proxy ซ้อนหลายชั้น) |
+| 25 | บอก `api` ว่าโปรโตคอลเดิมจากผู้ใช้คือ http หรือ https ผ่าน `X-Forwarded-Proto` |
+| 26 | ปิดบล็อก `location /api/` |
+
+ทุก path อื่น (`location /` ที่ `nginx/nginx.conf:27-34`) ส่งไปที่ `ui:80` แทน คอมเมนต์เหนือบล็อกนี้ (`nginx/nginx.conf:8-15`) อธิบายเหตุผลที่ใช้ `resolver` + ตัวแปรแทน `upstream {}` แบบคงที่: ป้องกันปัญหา nginx แคช IP เก่าของ container ที่ถูกสร้างใหม่ (502 ค้าง) ซึ่งเป็นปัญหาที่เคยเกิดขึ้นจริงตามคอมเมนต์นั้น
 
 ## 5. ตัวอย่างการคำนวณจริง
 
