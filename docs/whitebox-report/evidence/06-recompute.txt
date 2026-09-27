@@ -1,0 +1,308 @@
+=== ws06.py ===
+"""Recompute the /api/v1/analytics/projection formulas by hand from the raw
+Elasticsearch history in docs/whitebox-report/evidence/06-history.json, and
+compare against docs/whitebox-report/evidence/06-projection.json.
+
+Formulas copied from api/app/api/analytics.py:486-565 (see plan Task 8 /
+docs/whitebox-report/06-quality-forecast.md part 5 for citations).
+"""
+import json
+import math
+from datetime import datetime
+
+with open("06-history.json", encoding="utf-8") as f:
+    history = json.load(f)
+
+hits = history["hits"]["hits"]
+print(f"total hits in index for this table (from 'total'): {history['hits']['total']['value']}")
+print(f"hits returned (size=10, sort desc): {len(hits)}")
+
+# The API sorts desc and then reverses to ascending (oldest -> newest):
+# scores = [hit["_source"]["quality_score"] for hit in hits][::-1]
+scores = [h["_source"]["quality_score"] for h in hits][::-1]
+timestamps = [h["_source"]["timestamp"] for h in hits][::-1]
+
+print("\nscores (oldest -> newest):", scores)
+print("timestamps (oldest -> newest):")
+for t in timestamps:
+    print(" ", t)
+
+# x = days since first run (analytics.py:488-493)
+t0 = datetime.fromisoformat(timestamps[0].replace("Z", "+00:00")).replace(tzinfo=None)
+x = []
+for ts in timestamps:
+    t = datetime.fromisoformat(ts.replace("Z", "+00:00")).replace(tzinfo=None)
+    days_diff = (t - t0).total_seconds() / 86400.0
+    x.append(days_diff)
+
+# analytics.py:496-497 fallback to index if all timestamps collapse to day 0
+if x[-1] == 0:
+    print("\nx[-1] == 0 -> falling back to index-based x (analytics.py:496-497)")
+    x = list(range(len(scores)))
+
+print("\nx (days since first run):")
+for xi in x:
+    print(f"  {xi:.6f}")
+
+y = scores
+n = len(scores)
+sum_x = sum(x)
+sum_y = sum(y)
+sum_xx = sum(xi * xi for xi in x)
+sum_xy = sum(xi * yi for xi, yi in zip(x, y))
+denom = (n * sum_xx - sum_x * sum_x)
+
+print(f"\nn = {n}")
+print(f"sum_x = {sum_x}")
+print(f"sum_y = {sum_y}")
+print(f"sum_xx = {sum_xx}")
+print(f"sum_xy = {sum_xy}")
+print(f"denom = n*sum_xx - sum_x^2 = {denom}")
+
+if denom != 0:
+    m = (n * sum_xy - sum_x * sum_y) / denom
+else:
+    m = -0.5
+    print("denom == 0 -> m fixed at -0.5 (analytics.py:506)")
+
+c = (sum_y - m * sum_x) / n
+
+print(f"\nOLS slope m = {m}")
+print(f"OLS intercept c = {c}")
+
+# Standard error of the regression (analytics.py:509-513)
+sse = sum((y[i] - (m * x[i] + c)) ** 2 for i in range(n))
+print(f"\nSSE = sum((y_i - (m*x_i + c))^2) = {sse}")
+if n > 2:
+    variance = sse / (n - 2)
+else:
+    variance = 2.0
+    print("n <= 2 -> variance fixed at 2.0 (analytics.py:511)")
+print(f"variance = SSE/(n-2) = {variance}")
+std_error = variance ** 0.5
+if std_error < 0.5:
+    print(f"std_error {std_error} < 0.5 floor -> clamped to 0.5 (analytics.py:513)")
+    std_error = 0.5
+print(f"std_error (after floor) = {std_error}")
+
+# Projections for day 1..7 (analytics.py:515-529)
+projected_scores = []
+ci_high = []
+ci_low = []
+last_day = x[-1]
+print(f"\nlast_day (x[-1]) = {last_day}")
+for day_offset in range(1, 8):
+    future_day = last_day + day_offset
+    raw_val = c + (future_day * m)
+    proj_val = max(0.0, min(100.0, raw_val))
+    proj_val_r = round(proj_val, 2)
+    projected_scores.append(proj_val_r)
+
+    margin = std_error * (1 + (day_offset * 0.2))
+    high = round(min(100.0, proj_val + margin), 2)
+    low = round(max(0.0, proj_val - margin), 2)
+    ci_high.append(high)
+    ci_low.append(low)
+    print(f"day {day_offset}: future_day={future_day:.4f} raw={raw_val:.4f} "
+          f"clamped={proj_val_r} margin={margin:.4f} ci_high={high} ci_low={low}")
+
+print(f"\nprojected_scores = {projected_scores}")
+print(f"ci_high = {ci_high}")
+print(f"ci_low  = {ci_low}")
+
+# Stability index (analytics.py:531-535)
+mean_score = sum(scores) / len(scores)
+variance2 = sum((s - mean_score) ** 2 for s in scores) / len(scores)
+std_dev = variance2 ** 0.5
+stability = max(5.0, min(100.0, 100.0 - (std_dev * 4.0)))
+print(f"\nmean_score = {mean_score}")
+print(f"population variance of scores = {variance2}")
+print(f"std_dev (sigma) = {std_dev}")
+print(f"stability_index = clamp(100 - 4*sigma, 5, 100) = {stability}")
+
+# SLA breach probability (analytics.py:537-550)
+sla_threshold = 95.0
+if scores[-1] < sla_threshold:
+    breach_prob = 99.9
+    print(f"\nlast score {scores[-1]} < 95 -> breach_prob fixed at 99.9 (analytics.py:540-541)")
+else:
+    max_breach = 0.0
+    for val in projected_scores:
+        z_sla = (val - sla_threshold) / std_error
+        prob = 0.5 * (1.0 - math.erf(z_sla / math.sqrt(2.0)))
+        print(f"  proj={val} z=(proj-95)/se={z_sla:.6f} "
+              f"prob=0.5*(1-erf(z/sqrt2))={prob * 100:.6f}%")
+        if prob > max_breach:
+            max_breach = prob
+    breach_prob = max(0.1, min(99.9, max_breach * 100.0))
+print(f"sla_breach_probability = {breach_prob:.1f}%")
+
+# Trend description (analytics.py:552-553)
+trend_desc = "Decline detected" if m < 0 else "Stable or improving trend detected"
+trend_desc += f" in pipeline runs (slope: {m:.3f} per run)"
+print(f"\nhistorical_trend = {trend_desc!r}")
+
+# Crisis forecast (analytics.py:555-565)
+days_until_crisis = 7
+crisis_component = "None"
+crisis_reason = "No quality crisis predicted in the next 7 days."
+severity = "LOW"
+for idx, val in enumerate(projected_scores):
+    if val < 90.0:
+        days_until_crisis = idx + 1
+        crisis_component = "Ingestion Pipeline Gateway" if m < -1.0 else "Data Quality Validation Layer"
+        crisis_reason = (f"Quality score is projected to drop below 90% "
+                          f"(estimated: {val}%) due to cumulative errors.")
+        severity = "CRITICAL" if val < 80.0 else "WARNING"
+        break
+print(f"crisis_forecast = days_until_crisis={days_until_crisis}, "
+      f"impacted_component={crisis_component!r}, severity={severity!r}")
+print(f"crisis_reason = {crisis_reason!r}")
+
+# ---- Compare against the recorded API response ----
+with open("06-projection.json", encoding="utf-8") as f:
+    api_result = json.load(f)
+
+print("\n=== COMPARISON WITH docs/whitebox-report/evidence/06-projection.json ===")
+
+
+def close(a, b, tol=0.01):
+    return abs(a - b) <= tol
+
+
+ok = True
+for i, (mine, theirs) in enumerate(zip(projected_scores, api_result["projected_scores"])):
+    match = close(mine, theirs)
+    ok &= match
+    print(f"projected_scores[{i}]: mine={mine} api={theirs} match={match}")
+for i, (mine, theirs) in enumerate(zip(ci_high, api_result["ci_high"])):
+    match = close(mine, theirs)
+    ok &= match
+    print(f"ci_high[{i}]: mine={mine} api={theirs} match={match}")
+for i, (mine, theirs) in enumerate(zip(ci_low, api_result["ci_low"])):
+    match = close(mine, theirs)
+    ok &= match
+    print(f"ci_low[{i}]: mine={mine} api={theirs} match={match}")
+
+my_stability_str = f"{stability:.1f}%"
+print(f"stability_index: mine={my_stability_str} api={api_result['stability_index']} "
+      f"match={my_stability_str == api_result['stability_index']}")
+ok &= my_stability_str == api_result['stability_index']
+
+my_breach_str = f"{breach_prob:.1f}%"
+print(f"sla_breach_probability: mine={my_breach_str} api={api_result['sla_breach_probability']} "
+      f"match={my_breach_str == api_result['sla_breach_probability']}")
+ok &= my_breach_str == api_result['sla_breach_probability']
+
+print(f"historical_trend: mine={trend_desc!r} api={api_result['historical_trend']!r} "
+      f"match={trend_desc == api_result['historical_trend']}")
+ok &= trend_desc == api_result['historical_trend']
+
+print(f"crisis_forecast.severity: mine={severity!r} api={api_result['crisis_forecast']['severity']!r} "
+      f"match={severity == api_result['crisis_forecast']['severity']}")
+ok &= severity == api_result['crisis_forecast']['severity']
+
+print(f"\n=== OVERALL MATCH (within 0.01 / exact string): {ok} ===")
+
+=== OUTPUT ===
+total hits in index for this table (from 'total'): 53
+hits returned (size=10, sort desc): 10
+
+scores (oldest -> newest): [100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0]
+timestamps (oldest -> newest):
+  2026-09-26T21:01:32.581476+00:00
+  2026-09-26T21:32:42.246153+00:00
+  2026-09-26T22:02:30.755903+00:00
+  2026-09-26T22:31:14.593355+00:00
+  2026-09-27T06:32:47.106266+00:00
+  2026-09-27T07:02:13.437759+00:00
+  2026-09-27T07:32:31.795090+00:00
+  2026-09-27T08:01:23.591647+00:00
+  2026-09-27T08:32:56.775109+00:00
+  2026-09-27T09:02:31.895294+00:00
+
+x (days since first run):
+  0.000000
+  0.021640
+  0.042340
+  0.062292
+  0.396696
+  0.417140
+  0.438185
+  0.458229
+  0.480141
+  0.500687
+
+n = 10
+sum_x = 2.817349112175926
+sum_y = 1000.0
+sum_xx = 1.2207171913065593
+sum_xy = 281.7349112175926
+denom = n*sum_xx - sum_x^2 = 4.269715893187115
+
+OLS slope m = -1.0650529502725754e-13
+OLS intercept c = 100.00000000000003
+
+SSE = sum((y_i - (m*x_i + c))^2) = 5.6545549686242126e-27
+variance = SSE/(n-2) = 7.068193710780266e-28
+std_error 2.6586074758753436e-14 < 0.5 floor -> clamped to 0.5 (analytics.py:513)
+std_error (after floor) = 0.5
+
+last_day (x[-1]) = 0.5006865025231482
+day 1: future_day=1.5007 raw=100.0000 clamped=100.0 margin=0.6000 ci_high=100.0 ci_low=99.4
+day 2: future_day=2.5007 raw=100.0000 clamped=100.0 margin=0.7000 ci_high=100.0 ci_low=99.3
+day 3: future_day=3.5007 raw=100.0000 clamped=100.0 margin=0.8000 ci_high=100.0 ci_low=99.2
+day 4: future_day=4.5007 raw=100.0000 clamped=100.0 margin=0.9000 ci_high=100.0 ci_low=99.1
+day 5: future_day=5.5007 raw=100.0000 clamped=100.0 margin=1.0000 ci_high=100.0 ci_low=99.0
+day 6: future_day=6.5007 raw=100.0000 clamped=100.0 margin=1.1000 ci_high=100.0 ci_low=98.9
+day 7: future_day=7.5007 raw=100.0000 clamped=100.0 margin=1.2000 ci_high=100.0 ci_low=98.8
+
+projected_scores = [100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0]
+ci_high = [100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0]
+ci_low  = [99.4, 99.3, 99.2, 99.1, 99.0, 98.9, 98.8]
+
+mean_score = 100.0
+population variance of scores = 0.0
+std_dev (sigma) = 0.0
+stability_index = clamp(100 - 4*sigma, 5, 100) = 100.0
+  proj=100.0 z=(proj-95)/se=10.000000 prob=0.5*(1-erf(z/sqrt2))=0.000000%
+  proj=100.0 z=(proj-95)/se=10.000000 prob=0.5*(1-erf(z/sqrt2))=0.000000%
+  proj=100.0 z=(proj-95)/se=10.000000 prob=0.5*(1-erf(z/sqrt2))=0.000000%
+  proj=100.0 z=(proj-95)/se=10.000000 prob=0.5*(1-erf(z/sqrt2))=0.000000%
+  proj=100.0 z=(proj-95)/se=10.000000 prob=0.5*(1-erf(z/sqrt2))=0.000000%
+  proj=100.0 z=(proj-95)/se=10.000000 prob=0.5*(1-erf(z/sqrt2))=0.000000%
+  proj=100.0 z=(proj-95)/se=10.000000 prob=0.5*(1-erf(z/sqrt2))=0.000000%
+sla_breach_probability = 0.1%
+
+historical_trend = 'Decline detected in pipeline runs (slope: -0.000 per run)'
+crisis_forecast = days_until_crisis=7, impacted_component='None', severity='LOW'
+crisis_reason = 'No quality crisis predicted in the next 7 days.'
+
+=== COMPARISON WITH docs/whitebox-report/evidence/06-projection.json ===
+projected_scores[0]: mine=100.0 api=100.0 match=True
+projected_scores[1]: mine=100.0 api=100.0 match=True
+projected_scores[2]: mine=100.0 api=100.0 match=True
+projected_scores[3]: mine=100.0 api=100.0 match=True
+projected_scores[4]: mine=100.0 api=100.0 match=True
+projected_scores[5]: mine=100.0 api=100.0 match=True
+projected_scores[6]: mine=100.0 api=100.0 match=True
+ci_high[0]: mine=100.0 api=100.0 match=True
+ci_high[1]: mine=100.0 api=100.0 match=True
+ci_high[2]: mine=100.0 api=100.0 match=True
+ci_high[3]: mine=100.0 api=100.0 match=True
+ci_high[4]: mine=100.0 api=100.0 match=True
+ci_high[5]: mine=100.0 api=100.0 match=True
+ci_high[6]: mine=100.0 api=100.0 match=True
+ci_low[0]: mine=99.4 api=99.4 match=True
+ci_low[1]: mine=99.3 api=99.3 match=True
+ci_low[2]: mine=99.2 api=99.2 match=True
+ci_low[3]: mine=99.1 api=99.1 match=True
+ci_low[4]: mine=99.0 api=99.0 match=True
+ci_low[5]: mine=98.9 api=98.9 match=True
+ci_low[6]: mine=98.8 api=98.8 match=True
+stability_index: mine=100.0% api=100.0% match=True
+sla_breach_probability: mine=0.1% api=0.1% match=True
+historical_trend: mine='Decline detected in pipeline runs (slope: -0.000 per run)' api='Decline detected in pipeline runs (slope: -0.000 per run)' match=True
+crisis_forecast.severity: mine='LOW' api='LOW' match=True
+
+=== OVERALL MATCH (within 0.01 / exact string): True ===
