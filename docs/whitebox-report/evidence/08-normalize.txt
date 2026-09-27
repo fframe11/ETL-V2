@@ -1,0 +1,5 @@
+'studentId' -> 'studentid'
+'student_id' -> 'studentid'
+'Student ID' -> 'studentid'
+'enrollmentDate' -> 'enrollmentdate'
+'updated_at' -> 'updatedat'
