@@ -1,0 +1,332 @@
+# Evidence for Chapter 04 — Adaptive thresholds, anomaly detection and drift
+# Script: docs/whitebox-report/evidence/04-worked-math.txt (this file) — script pasted below, then its output
+# Run: PYTHONIOENCODING=utf-8 python "$W/ws04.py" > docs/whitebox-report/evidence/04-worked-math.txt
+# Note: Docker Desktop was not reachable in this session (docker ps failed:
+#   'open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.')
+#   so the optional live-Spark run/compare step was skipped; see script docstring.
+
+===== SCRIPT ($W/ws04.py) =====
+
+# -*- coding: utf-8 -*-
+"""
+ws04.py -- worked-math evidence for Chapter 04 (Adaptive thresholds, anomaly
+detection and drift).
+
+Every formula below is copied from the code's own constants/logic:
+  - spark/dynamic_rules_engine.py: compute_value_range_rules (IQR),
+    detect_unsupervised_anomalies (row z-score), compute_adaptive_threshold
+  - spark/data_profile_store.py: update_profiles_ema (EMA), compute_psi (PSI)
+
+Where a function normally takes a Spark DataFrame (all of them, since they
+call df.stat.approxQuantile / F.mean / F.stddev / df.filter(...).count()),
+this script reproduces the same arithmetic in plain Python on the same
+input values -- printed as "สูตรเดียวกับบรรทัด X คำนวณซ้ำด้วย Python".
+
+Docker Desktop was not reachable in this session (docker ps failed with
+"open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file
+specified."), so the optional live-Spark comparison was not run. The
+quantile-algorithm comparison below is therefore analytical, based on the
+documented behaviour of PySpark's approxQuantile (a Greenwald-Khanna
+quantile-summary sketch controlled by a relativeError parameter) versus a
+plain Python linear-interpolation percentile.
+"""
+import math
+import statistics
+
+def line(title):
+    print("\n" + "=" * 78)
+    print(title)
+    print("=" * 78)
+
+# ---------------------------------------------------------------------------
+# 1. IQR -- spark/dynamic_rules_engine.py:239-247 (compute_value_range_rules)
+#    quantiles = df.stat.approxQuantile(col_name, [0.25, 0.75], 0.01)
+#    iqr = q3 - q1 ; lower = q1 - multiplier*iqr ; upper = q3 + multiplier*iqr
+# ---------------------------------------------------------------------------
+line("1. IQR fences -- สูตรเดียวกับบรรทัด spark/dynamic_rules_engine.py:239-247 คำนวณซ้ำด้วย Python")
+
+data = [4, 5, 5, 6, 6, 7, 30]
+sorted_data = sorted(data)
+n = len(sorted_data)
+print(f"data (sorted) = {sorted_data}, n = {n}")
+
+def nearest_rank_quantile(sorted_vals, p):
+    """Nearest-rank quantile (no interpolation): returns an ACTUAL observed
+    value. This is how a quantile-summary sketch such as PySpark's
+    approxQuantile behaves once its error tolerance is smaller than 1 rank
+    position -- with n=7 and relativeError=0.01 (the value the engine passes
+    at dynamic_rules_engine.py:239), the allowed rank error is 0.01*7=0.07
+    ranks, i.e. effectively exact nearest-rank for this tiny dataset."""
+    rank = math.ceil(p * len(sorted_vals))  # 1-indexed
+    rank = max(1, min(len(sorted_vals), rank))
+    return sorted_vals[rank - 1]
+
+def linear_interpolate_quantile(sorted_vals, p):
+    """Typical plain-Python percentile (e.g. numpy.percentile default
+    'linear', or manual formula): interpolates between the two bracketing
+    order statistics instead of returning an observed value."""
+    m = len(sorted_vals)
+    pos = p * (m - 1)  # 0-indexed
+    lo = math.floor(pos)
+    hi = math.ceil(pos)
+    if lo == hi:
+        return float(sorted_vals[lo])
+    frac = pos - lo
+    return sorted_vals[lo] + frac * (sorted_vals[hi] - sorted_vals[lo])
+
+q1_spark = nearest_rank_quantile(sorted_data, 0.25)
+q3_spark = nearest_rank_quantile(sorted_data, 0.75)
+q1_py = linear_interpolate_quantile(sorted_data, 0.25)
+q3_py = linear_interpolate_quantile(sorted_data, 0.75)
+
+print(f"\n[แบบ Spark-approxQuantile ผลลัพธ์เป็น 'ค่าจริงในข้อมูล' ไม่ปัดเศษ]")
+print(f"  Q1 = {q1_spark}, Q3 = {q3_spark}")
+iqr_spark = q3_spark - q1_spark
+mult = 1.5  # dynamic_rules_engine.py:204 default multiplier
+lower_spark = q1_spark - mult * iqr_spark
+upper_spark = q3_spark + mult * iqr_spark
+print(f"  IQR = Q3-Q1 = {iqr_spark}")
+print(f"  lower_bound = Q1 - 1.5*IQR = {lower_spark}")
+print(f"  upper_bound = Q3 + 1.5*IQR = {upper_spark}")
+print(f"  30 > upper_bound ({upper_spark})? -> {30 > upper_spark}  (แถวนี้ถูกกักกันด้วย IQR)")
+
+print(f"\n[แบบ Python เชิงเส้น (linear interpolation) เพื่อเทียบ -- ไม่ใช่สิ่งที่โค้ดจริงใช้]")
+print(f"  Q1 = {q1_py}, Q3 = {q3_py}")
+iqr_py = q3_py - q1_py
+lower_py = q1_py - mult * iqr_py
+upper_py = q3_py + mult * iqr_py
+print(f"  IQR = {iqr_py}")
+print(f"  lower_bound = {lower_py}, upper_bound = {upper_py}")
+print(f"  30 > upper_bound ({upper_py})? -> {30 > upper_py}")
+print(f"\n  ผลต่าง: Q3 ต่างกัน ({q3_spark} แบบ Spark เทียบ {q3_py} แบบ interpolation) เพราะ")
+print(f"  approxQuantile คืน 'ค่าที่มีอยู่จริง' ใกล้อันดับที่ต้องการ ไม่ได้เฉลี่ยถ่วงน้ำหนัก")
+print(f"  ระหว่างสองค่าเหมือนสูตร linear interpolation ทั่วไป -- ในตัวอย่างนี้ข้อสรุปว่า")
+print(f"  30 เป็นค่าผิดปกติไม่เปลี่ยน แต่ค่ารั้วบนที่แน่นอน ({upper_spark} vs {upper_py}) ต่างกัน")
+print(f"  ดังนั้นแถวที่อยู่ 'ชายขอบ' ระหว่างสองค่านี้อาจถูกตัดสินต่างกันได้ในชุดข้อมูลอื่น")
+
+# ---------------------------------------------------------------------------
+# 2. Row z-score -- spark/dynamic_rules_engine.py:616-645 (detect_unsupervised_anomalies)
+#    z = abs(val - mean) / stddev ; stddev = F.stddev = SAMPLE stddev (n-1)
+#    threshold = 3.0 (call-site default at spark_quality_engine.py:2266)
+# ---------------------------------------------------------------------------
+line("2. Row-level z-score -- สูตรเดียวกับบรรทัด spark/dynamic_rules_engine.py:616-645 คำนวณซ้ำด้วย Python")
+
+mean_val = statistics.mean(data)
+stddev_val = statistics.stdev(data)  # sample stdev, n-1 -- matches PySpark's F.stddev (stddev_samp)
+print(f"data = {data}")
+print(f"mean = {mean_val}")
+print(f"stddev (sample, n-1, เหมือน F.stddev ของ Spark ซึ่งเป็น stddev_samp) = {stddev_val}")
+
+threshold = 3.0
+print(f"\nz-score ต่อค่า (threshold = {threshold}):")
+any_flagged = False
+for v in data:
+    z = abs(v - mean_val) / stddev_val
+    flagged = z > threshold
+    any_flagged = any_flagged or flagged
+    print(f"  value={v:>3}  z={z:.4f}  flagged={flagged}")
+print(f"\nมีแถวใดถูกตั้งธง _unsupervised_anomaly หรือไม่ -> {any_flagged}")
+print("สังเกต: ค่า 30 (ผิดปกติชัดเจนด้วยตา) ได้ z ต่ำกว่า 3.0 เพราะตัวมันเองไปดันค่าเฉลี่ย")
+print("และค่าเบี่ยงเบนมาตรฐานให้สูงขึ้นมาก (masking/swamping effect) -- คนละผลกับ IQR ข้างบน")
+print("ที่จับ 30 ได้ เพราะ IQR อิงตำแหน่งอันดับ (median-based) ไม่อิงค่าเฉลี่ย/ค่าเบี่ยงเบน")
+
+# ---------------------------------------------------------------------------
+# 3. EMA update -- spark/data_profile_store.py:311-338 (update_profiles_ema)
+#    new_value = alpha * current + (1 - alpha) * stored ; EMA_ALPHA = 0.3
+# ---------------------------------------------------------------------------
+line("3. EMA update ของค่าเฉลี่ยที่เก็บไว้ -- สูตรเดียวกับบรรทัด spark/data_profile_store.py:311-338 คำนวณซ้ำด้วย Python")
+
+EMA_ALPHA = 0.3  # spark/data_profile_store.py:69
+stored_mean = 100.0
+current_batch_mean = 130.0
+new_mean = round(EMA_ALPHA * current_batch_mean + (1 - EMA_ALPHA) * stored_mean, 6)
+print(f"alpha (EMA_ALPHA) = {EMA_ALPHA}")
+print(f"stored_mean (จากรอบก่อน) = {stored_mean}")
+print(f"current_batch_mean (รอบนี้) = {current_batch_mean}")
+print(f"new_mean = {EMA_ALPHA} * {current_batch_mean} + {1-EMA_ALPHA} * {stored_mean} = {new_mean}")
+
+# ---------------------------------------------------------------------------
+# 4. PSI -- spark/data_profile_store.py:421-450 (compute_psi)
+#    expected_prop = 1/n_buckets (uniform, NOT baseline's measured proportions)
+#    actual_prop = bucket_count/total_count ; both floored at epsilon=1e-6
+#    psi += (actual-expected) * ln(actual/expected)
+# ---------------------------------------------------------------------------
+line("4. PSI สำหรับการแจกแจง 4 กลุ่ม -- สูตรเดียวกับบรรทัด spark/data_profile_store.py:421-450 คำนวณซ้ำด้วย Python")
+
+baseline_boundaries = [0, 10, 20, 30, 40]  # 4 buckets -> 5 boundary points, เหมือนที่ compute_current_profile สร้างจาก quantile cut points
+n_buckets = len(baseline_boundaries) - 1
+expected_prop = 1.0 / n_buckets
+epsilon = 1e-6  # spark/data_profile_store.py:430
+
+current_batch = (
+    [1, 2, 3, 4, 5, 6, 7, 8, 9] +      # bucket 0: <= 10           -> 9 ค่า
+    [11, 12, 13, 14, 15, 16] +          # bucket 1: > 10 and <= 20  -> 6 ค่า
+    [25, 26, 27] +                      # bucket 2: > 20 and <= 30  -> 3 ค่า
+    [35, 36]                            # bucket 3: > 30            -> 2 ค่า
+)
+total_count = len(current_batch)
+print(f"baseline_boundaries = {baseline_boundaries}  (n_buckets = {n_buckets}, expected_prop = {expected_prop})")
+print(f"current_batch (n={total_count}) = {current_batch}")
+
+psi = 0.0
+rows = []
+for i in range(n_buckets):
+    lower = baseline_boundaries[i]
+    upper = baseline_boundaries[i + 1]
+    if i == 0:
+        bucket_count = sum(1 for x in current_batch if x <= upper)
+        rule = f"x <= {upper}"
+    elif i == n_buckets - 1:
+        bucket_count = sum(1 for x in current_batch if x > lower)
+        rule = f"x > {lower}"
+    else:
+        bucket_count = sum(1 for x in current_batch if lower < x <= upper)
+        rule = f"{lower} < x <= {upper}"
+    actual_prop = max(bucket_count / total_count, epsilon)
+    expected = max(expected_prop, epsilon)
+    contrib = (actual_prop - expected) * math.log(actual_prop / expected)
+    psi += contrib
+    rows.append((i, rule, bucket_count, actual_prop, expected, contrib))
+
+for i, rule, bc, ap, ep, contrib in rows:
+    print(f"  bucket {i} [{rule:16s}] count={bc:2d}  actual_prop={ap:.4f}  expected_prop={ep:.4f}  contrib={contrib:+.6f}")
+
+psi_final = round(abs(psi), 6)
+print(f"\nPSI = sum(contrib) = {psi_final}")
+PSI_WARN_THRESHOLD = 0.1
+PSI_CRITICAL_THRESHOLD = 0.25
+if psi_final > PSI_CRITICAL_THRESHOLD:
+    status = "CRITICAL_DRIFT"
+elif psi_final > PSI_WARN_THRESHOLD:
+    status = "MODERATE_DRIFT"
+else:
+    status = "STABLE"
+print(f"เทียบเกณฑ์: PSI_WARN={PSI_WARN_THRESHOLD}, PSI_CRITICAL={PSI_CRITICAL_THRESHOLD} -> status = {status}")
+print("\nข้อสังเกตสำคัญของสูตรนี้: expected_prop คือค่าคงที่ 1/n_buckets (สมมติว่า baseline")
+print("กระจายเท่ากันทุกช่อง) ไม่ใช่สัดส่วนจริงที่วัดจากข้อมูล baseline ตรงๆ -- ใช้ได้ถูกต้องก็ต่อเมื่อ")
+print("baseline_boundaries มาจากจุดตัด quantile ของ baseline เอง (ซึ่งบังคับให้แต่ละช่วงมี 1/n_buckets")
+print("ของข้อมูล baseline พอดีตอนที่สร้างขึ้น) แต่ boundaries นี้ถูกแทนที่ทั้งชุดทุกรอบด้วยของรอบล่าสุด")
+print("(ไม่ใช่ EMA) จึงเป็น 'baseline เลื่อนตามรอบก่อนหน้า 1 รอบ' ไม่ใช่ baseline คงที่ระยะยาว")
+
+# ---------------------------------------------------------------------------
+# 5. Adaptive quality-score threshold -- spark/dynamic_rules_engine.py:326-349
+#    (compute_adaptive_threshold): adaptive = max(mean(values) - stdev(values), min_value)
+#    stdev = statistics.stdev -- SAMPLE stdev (n-1), needs len(values) >= 2
+# ---------------------------------------------------------------------------
+line("5. Adaptive quality-score threshold -- สูตรเดียวกับบรรทัด spark/dynamic_rules_engine.py:326-349 คำนวณซ้ำด้วย Python")
+
+history_10_runs = [92.5, 91.0, 93.2, 89.5, 90.1, 94.0, 88.7, 92.9, 91.5, 76.0]
+base_value = 90.0     # rules_config.json ตัวอย่าง / generate_rules_from_schema ค่าตั้งต้น
+min_value = 70.0       # dynamic_rules_engine.py:269 default
+print(f"history (10 รอบล่าสุดที่ ES มีอยู่ก่อนรอบนี้, สมมติ) = {history_10_runs}")
+print(f"len(values) = {len(history_10_runs)} >= 2 -> คำนวณจากประวัติ ไม่ใช้ base_value={base_value} เป็นค่าโดยตรง")
+
+moving_avg = statistics.mean(history_10_runs)
+std_dev = statistics.stdev(history_10_runs)
+adaptive = max(moving_avg - std_dev, min_value)
+adaptive_rounded = round(adaptive, 4)
+print(f"moving_avg = mean(values) = {moving_avg}")
+print(f"std_dev = statistics.stdev(values) (sample, n-1) = {std_dev}")
+print(f"adaptive_threshold = max(moving_avg - std_dev, min_value={min_value}) = {adaptive_rounded}")
+print("(base_value ไม่ถูกผสมเข้าสูตรเลยเมื่อมีประวัติพอ -- ใช้เฉพาะตอน len(values) < 2 เป็นค่าสำรองทั้งหมด)")
+
+# Also show the insufficient-history fallback branch explicitly
+too_short_history = [95.0]
+print(f"\nตัวอย่างกรณีประวัติไม่พอ: history = {too_short_history} (len={len(too_short_history)} < 2)")
+print(f"-> คืน float(base_value) = {float(base_value)} ทันที โดยไม่คำนวณ mean/std เลย")
+
+print("\n" + "=" * 78)
+print("จบสคริปต์ ws04.py")
+print("=" * 78)
+
+===== OUTPUT =====
+
+
+==============================================================================
+1. IQR fences -- สูตรเดียวกับบรรทัด spark/dynamic_rules_engine.py:239-247 คำนวณซ้ำด้วย Python
+==============================================================================
+data (sorted) = [4, 5, 5, 6, 6, 7, 30], n = 7
+
+[แบบ Spark-approxQuantile ผลลัพธ์เป็น 'ค่าจริงในข้อมูล' ไม่ปัดเศษ]
+  Q1 = 5, Q3 = 7
+  IQR = Q3-Q1 = 2
+  lower_bound = Q1 - 1.5*IQR = 2.0
+  upper_bound = Q3 + 1.5*IQR = 10.0
+  30 > upper_bound (10.0)? -> True  (แถวนี้ถูกกักกันด้วย IQR)
+
+[แบบ Python เชิงเส้น (linear interpolation) เพื่อเทียบ -- ไม่ใช่สิ่งที่โค้ดจริงใช้]
+  Q1 = 5.0, Q3 = 6.5
+  IQR = 1.5
+  lower_bound = 2.75, upper_bound = 8.75
+  30 > upper_bound (8.75)? -> True
+
+  ผลต่าง: Q3 ต่างกัน (7 แบบ Spark เทียบ 6.5 แบบ interpolation) เพราะ
+  approxQuantile คืน 'ค่าที่มีอยู่จริง' ใกล้อันดับที่ต้องการ ไม่ได้เฉลี่ยถ่วงน้ำหนัก
+  ระหว่างสองค่าเหมือนสูตร linear interpolation ทั่วไป -- ในตัวอย่างนี้ข้อสรุปว่า
+  30 เป็นค่าผิดปกติไม่เปลี่ยน แต่ค่ารั้วบนที่แน่นอน (10.0 vs 8.75) ต่างกัน
+  ดังนั้นแถวที่อยู่ 'ชายขอบ' ระหว่างสองค่านี้อาจถูกตัดสินต่างกันได้ในชุดข้อมูลอื่น
+
+==============================================================================
+2. Row-level z-score -- สูตรเดียวกับบรรทัด spark/dynamic_rules_engine.py:616-645 คำนวณซ้ำด้วย Python
+==============================================================================
+data = [4, 5, 5, 6, 6, 7, 30]
+mean = 9
+stddev (sample, n-1, เหมือน F.stddev ของ Spark ซึ่งเป็น stddev_samp) = 9.309493362512628
+
+z-score ต่อค่า (threshold = 3.0):
+  value=  4  z=0.5371  flagged=False
+  value=  5  z=0.4297  flagged=False
+  value=  5  z=0.4297  flagged=False
+  value=  6  z=0.3223  flagged=False
+  value=  6  z=0.3223  flagged=False
+  value=  7  z=0.2148  flagged=False
+  value= 30  z=2.2558  flagged=False
+
+มีแถวใดถูกตั้งธง _unsupervised_anomaly หรือไม่ -> False
+สังเกต: ค่า 30 (ผิดปกติชัดเจนด้วยตา) ได้ z ต่ำกว่า 3.0 เพราะตัวมันเองไปดันค่าเฉลี่ย
+และค่าเบี่ยงเบนมาตรฐานให้สูงขึ้นมาก (masking/swamping effect) -- คนละผลกับ IQR ข้างบน
+ที่จับ 30 ได้ เพราะ IQR อิงตำแหน่งอันดับ (median-based) ไม่อิงค่าเฉลี่ย/ค่าเบี่ยงเบน
+
+==============================================================================
+3. EMA update ของค่าเฉลี่ยที่เก็บไว้ -- สูตรเดียวกับบรรทัด spark/data_profile_store.py:311-338 คำนวณซ้ำด้วย Python
+==============================================================================
+alpha (EMA_ALPHA) = 0.3
+stored_mean (จากรอบก่อน) = 100.0
+current_batch_mean (รอบนี้) = 130.0
+new_mean = 0.3 * 130.0 + 0.7 * 100.0 = 109.0
+
+==============================================================================
+4. PSI สำหรับการแจกแจง 4 กลุ่ม -- สูตรเดียวกับบรรทัด spark/data_profile_store.py:421-450 คำนวณซ้ำด้วย Python
+==============================================================================
+baseline_boundaries = [0, 10, 20, 30, 40]  (n_buckets = 4, expected_prop = 0.25)
+current_batch (n=20) = [1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 25, 26, 27, 35, 36]
+  bucket 0 [x <= 10         ] count= 9  actual_prop=0.4500  expected_prop=0.2500  contrib=+0.117557
+  bucket 1 [10 < x <= 20    ] count= 6  actual_prop=0.3000  expected_prop=0.2500  contrib=+0.009116
+  bucket 2 [20 < x <= 30    ] count= 3  actual_prop=0.1500  expected_prop=0.2500  contrib=+0.051083
+  bucket 3 [x > 30          ] count= 2  actual_prop=0.1000  expected_prop=0.2500  contrib=+0.137444
+
+PSI = sum(contrib) = 0.3152
+เทียบเกณฑ์: PSI_WARN=0.1, PSI_CRITICAL=0.25 -> status = CRITICAL_DRIFT
+
+ข้อสังเกตสำคัญของสูตรนี้: expected_prop คือค่าคงที่ 1/n_buckets (สมมติว่า baseline
+กระจายเท่ากันทุกช่อง) ไม่ใช่สัดส่วนจริงที่วัดจากข้อมูล baseline ตรงๆ -- ใช้ได้ถูกต้องก็ต่อเมื่อ
+baseline_boundaries มาจากจุดตัด quantile ของ baseline เอง (ซึ่งบังคับให้แต่ละช่วงมี 1/n_buckets
+ของข้อมูล baseline พอดีตอนที่สร้างขึ้น) แต่ boundaries นี้ถูกแทนที่ทั้งชุดทุกรอบด้วยของรอบล่าสุด
+(ไม่ใช่ EMA) จึงเป็น 'baseline เลื่อนตามรอบก่อนหน้า 1 รอบ' ไม่ใช่ baseline คงที่ระยะยาว
+
+==============================================================================
+5. Adaptive quality-score threshold -- สูตรเดียวกับบรรทัด spark/dynamic_rules_engine.py:326-349 คำนวณซ้ำด้วย Python
+==============================================================================
+history (10 รอบล่าสุดที่ ES มีอยู่ก่อนรอบนี้, สมมติ) = [92.5, 91.0, 93.2, 89.5, 90.1, 94.0, 88.7, 92.9, 91.5, 76.0]
+len(values) = 10 >= 2 -> คำนวณจากประวัติ ไม่ใช้ base_value=90.0 เป็นค่าโดยตรง
+moving_avg = mean(values) = 89.94
+std_dev = statistics.stdev(values) (sample, n-1) = 5.186135362676143
+adaptive_threshold = max(moving_avg - std_dev, min_value=70.0) = 84.7539
+(base_value ไม่ถูกผสมเข้าสูตรเลยเมื่อมีประวัติพอ -- ใช้เฉพาะตอน len(values) < 2 เป็นค่าสำรองทั้งหมด)
+
+ตัวอย่างกรณีประวัติไม่พอ: history = [95.0] (len=1 < 2)
+-> คืน float(base_value) = 90.0 ทันที โดยไม่คำนวณ mean/std เลย
+
+==============================================================================
+จบสคริปต์ ws04.py
+==============================================================================
