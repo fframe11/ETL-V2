@@ -13,10 +13,8 @@ env/
 
 # Docker/Database
 postgres_data/
-airflow_logs/
-airflow_plugins/
-n8n/credentials.json
-n8n/database.sqlite
+infra/n8n/credentials.json
+infra/n8n/database.sqlite
 secrets/
 
 # Large local datasets

@@ -62,8 +62,8 @@ if %errorlevel% neq 0 (
 echo Services started.
 echo.
 
-if not exist "n8n\credentials.json" (
-    echo Creating default n8n/credentials.json for Postgres...
+if not exist "infra\n8n\credentials.json" (
+    echo Creating default infra/n8n/credentials.json for Postgres...
     (
         echo [
         echo   {
@@ -80,12 +80,12 @@ if not exist "n8n\credentials.json" (
         echo     }
         echo   }
         echo ]
-    ) > "n8n\credentials.json"
+    ) > "infra\n8n\credentials.json"
 )
 
 echo [3/5] Preparing optional n8n workflow import...
-if exist "n8n\ingestion_workflow.json" (
-    docker cp n8n/ingestion_workflow.json sdoqap-n8n:/home/node/ingestion_workflow.json >nul 2>&1
+if exist "infra\n8n\ingestion_workflow.json" (
+    docker cp infra/n8n/ingestion_workflow.json sdoqap-n8n:/home/node/ingestion_workflow.json >nul 2>&1
     docker exec -u node sdoqap-n8n n8n import:workflow --active --input /home/node/ingestion_workflow.json >nul 2>&1
     if !errorlevel! equ 0 (
         echo n8n workflow import completed.
@@ -93,11 +93,11 @@ if exist "n8n\ingestion_workflow.json" (
         echo [WARNING] n8n workflow import was skipped or failed. You can still test data directly with test_data_source.bat.
     )
 ) else (
-    echo [WARNING] n8n\ingestion_workflow.json not found. Skipping workflow import.
+    echo [WARNING] infra\n8n\ingestion_workflow.json not found. Skipping workflow import.
 )
 
-if exist "n8n\credentials.json" (
-    docker cp n8n/credentials.json sdoqap-n8n:/home/node/credentials.json >nul 2>&1
+if exist "infra\n8n\credentials.json" (
+    docker cp infra/n8n/credentials.json sdoqap-n8n:/home/node/credentials.json >nul 2>&1
     docker exec -u node sdoqap-n8n n8n import:credentials --input /home/node/credentials.json >nul 2>&1
     if !errorlevel! equ 0 (
         echo n8n credentials import completed.
