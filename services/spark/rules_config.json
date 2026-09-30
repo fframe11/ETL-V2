@@ -526,7 +526,11 @@
       "confidence_threshold": 0.7
     }
   },
-  "student_course_score": {
+  "student_course_scores": {
+    "range_checks": {
+      "score": {"min": 0, "max": 100},
+      "study_hours": {"min": 0, "max": null}
+    },
     "null_primary_key": {
       "enabled": true,
       "severity": "critical",

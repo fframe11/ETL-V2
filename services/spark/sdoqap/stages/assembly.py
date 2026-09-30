@@ -10,6 +10,8 @@ def quarantine_assembly(ctx):
     run_id, clean_df = ctx.run_id, ctx.clean_df
     # Combine all quarantined records (null PKs + duplicates + outliers + unsupervised anomalies + induced anomalies)
     all_quarantined = invalid_df.unionByName(duplicate_df, allowMissingColumns=True)
+    if ctx.range_violation_df is not None:
+        all_quarantined = all_quarantined.unionByName(ctx.range_violation_df, allowMissingColumns=True)
     if unsupervised_outlier_df is not None:
         try:
             if unsupervised_outlier_df.count() > 0:

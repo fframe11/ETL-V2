@@ -300,14 +300,17 @@
     }
   },
   "student_course_scores": {
-    "primary_key": "student_id",
-    "date_column": "semester",
+    "primary_key": ["student_id", "course", "semester"],
+    "date_column": "updated_at",
     "schema_spec": {
+      "dirty_row_id": "StringType",
+      "record_id": "StringType",
       "student_id": "StringType",
       "course": "StringType",
+      "semester": "StringType",
       "score": "DoubleType",
       "study_hours": "DoubleType",
-      "gpa_weighted": "DoubleType"
+      "updated_at": "TimestampType"
     }
   },
   "global_ecommerce_sales": {
