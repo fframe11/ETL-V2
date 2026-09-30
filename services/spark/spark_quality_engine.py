@@ -2,25 +2,8 @@ import sys
 import argparse
 import os
 
-def load_env_file():
-    # Dynamically search and load .env from project root if available
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    for _ in range(3):
-        env_path = os.path.join(current_dir, ".env")
-        if os.path.exists(env_path):
-            try:
-                with open(env_path, "r") as f:
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith("#") and "=" in line:
-                            k, v = line.split("=", 1)
-                            os.environ.setdefault(k.strip(), v.strip())
-            except Exception:
-                pass
-            break
-        current_dir = os.path.dirname(current_dir)
-
-load_env_file()
+from sdoqap.common.settings import load_env_file
+load_env_file(os.path.dirname(os.path.abspath(__file__)))
 
 try:
     from api.app.api.config import get_required_env
@@ -36,7 +19,6 @@ except ModuleNotFoundError:
 
 # Set default env values if not provided by OS environment or loaded .env file
 os.environ.setdefault('ELASTICSEARCH_USER', 'elastic')
-os.environ.setdefault('ELASTICSEARCH_PASSWORD', 'sdoqap_secure')
 os.environ.setdefault('ELASTICSEARCH_HOST', 'localhost')
 os.environ.setdefault('ELASTICSEARCH_PORT', '9200')
 os.environ.setdefault('HDFS_URL', 'hdfs://namenode:9000')
@@ -59,6 +41,8 @@ import requests
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from run_support import EXIT_SKIPPED, Heartbeat, archive_paths, raw_read_path, should_optimize
+from sdoqap.common.names import clean_column_name, normalize_name
+from sdoqap.common.es import es_base_and_auth
 
 def get_elasticsearch_url():
     # Prefer full URL if provided via environment
@@ -74,20 +58,6 @@ def get_elasticsearch_url():
 
 ELASTICSEARCH_URL = get_elasticsearch_url()
 HDFS_URL = get_required_env("HDFS_URL")
-
-def normalize_name(name):
-    import re
-    if not name:
-        return ""
-    return re.sub(r'[\s\-_]', '', name).lower()
-
-def clean_column_name(name):
-    import re
-    if not name:
-        return ""
-    cleaned = re.sub(r'[ ,;{}()\n\t=]', '_', name)
-    cleaned = re.sub(r'_{2,}', '_', cleaned)
-    return cleaned.strip('_')
 
 def get_spark_session(app_name):
     builder = (
@@ -152,9 +122,7 @@ def acquire_lock(table_name: str, run_id: str, force: bool = False) -> bool:
     using Optimistic Concurrency Control (seq_no & primary_term) to ensure atomicity."""
     from urllib.parse import urlparse
     from datetime import timezone
-    parsed = urlparse(ELASTICSEARCH_URL)
-    auth = (parsed.username, parsed.password) if parsed.username else None
-    base_url = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+    base_url, auth = es_base_and_auth(ELASTICSEARCH_URL)
     lock_doc = {
         "table_name": table_name,
         "run_id": run_id,
@@ -222,9 +190,7 @@ def release_lock(table_name: str):
     """Release the distributed lock for a table after job completes or fails."""
     try:
         from urllib.parse import urlparse
-        parsed = urlparse(ELASTICSEARCH_URL)
-        auth = (parsed.username, parsed.password) if parsed.username else None
-        base_url = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+        base_url, auth = es_base_and_auth(ELASTICSEARCH_URL)
         requests.delete(f"{base_url}/sdoqap_run_locks/_doc/{table_name}", auth=auth, timeout=5)
         print(f"[LOCK] Released lock for '{table_name}'.")
     except Exception as e:
@@ -234,9 +200,7 @@ def renew_lock(table_name: str, run_id: str, minutes: int = 15) -> None:
     """Push expires_at forward, but only while the lock still belongs to this run."""
     from urllib.parse import urlparse
     from datetime import timezone
-    parsed = urlparse(ELASTICSEARCH_URL)
-    auth = (parsed.username, parsed.password) if parsed.username else None
-    base_url = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+    base_url, auth = es_base_and_auth(ELASTICSEARCH_URL)
     body = {
         "script": {
             "source": "if (ctx._source.run_id == params.run_id) { ctx._source.expires_at = params.exp } else { ctx.op = 'noop' }",
@@ -254,9 +218,7 @@ def _load_standardization_rules(table_name: str) -> dict:
     Returns empty dict if no rules are defined — the system simply skips standardization.
     No hardcoding. All rules are data."""
     from urllib.parse import urlparse
-    parsed = urlparse(ELASTICSEARCH_URL)
-    auth = (parsed.username, parsed.password) if parsed.username else None
-    base_url = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+    base_url, auth = es_base_and_auth(ELASTICSEARCH_URL)
 
     url = f"{base_url}/sdoqap_schema_registry/_doc/{table_name}"
     try:
@@ -813,9 +775,7 @@ def _update_standardization_memory(table_name: str, col_name: str, raw_val: str,
             # 2. Update Elasticsearch index sdoqap_rules_registry
             try:
                 from urllib.parse import urlparse
-                parsed = urlparse(ELASTICSEARCH_URL)
-                auth = (parsed.username, parsed.password) if parsed.username else None
-                base_url = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+                base_url, auth = es_base_and_auth(ELASTICSEARCH_URL)
                 
                 url_table = f"{base_url}/sdoqap_rules_registry/_doc/{table_name}"
                 requests.post(url_table, auth=auth, json=table_rules, timeout=3)
@@ -858,9 +818,7 @@ def _process_standardize_learning(df, col_name, target_col, score_col, fallback,
     mapping_override_rate = 0.0
     try:
         from urllib.parse import urlparse
-        parsed = urlparse(ELASTICSEARCH_URL)
-        auth = (parsed.username, parsed.password) if parsed.username else None
-        base_url = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+        base_url, auth = es_base_and_auth(ELASTICSEARCH_URL)
         
         res_reviews = requests.post(f"{base_url}/sdoqap_mapping_reviews/_search", auth=auth, json={
             "size": 0,
@@ -1368,9 +1326,7 @@ def load_expected_schema(table_name: str) -> dict:
     """Loads schema spec, primary key, and date column for a table from Elasticsearch index sdoqap_schema_registry.
     Falls back to default_registry if Elasticsearch doesn't have it."""
     from urllib.parse import urlparse
-    parsed = urlparse(ELASTICSEARCH_URL)
-    auth = (parsed.username, parsed.password) if parsed.username else None
-    base_url = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+    base_url, auth = es_base_and_auth(ELASTICSEARCH_URL)
     
     url = f"{base_url}/sdoqap_schema_registry/_doc/{table_name}"
     try:
@@ -1447,9 +1403,7 @@ def load_expected_schema(table_name: str) -> dict:
 def save_registry_to_es(table_name: str, spec: dict) -> bool:
     """Saves schema specification to Elasticsearch index sdoqap_schema_registry."""
     from urllib.parse import urlparse
-    parsed = urlparse(ELASTICSEARCH_URL)
-    auth = (parsed.username, parsed.password) if parsed.username else None
-    base_url = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+    base_url, auth = es_base_and_auth(ELASTICSEARCH_URL)
     url = f"{base_url}/sdoqap_schema_registry/_doc/{table_name}"
     try:
         res = requests.put(url, json=spec, auth=auth, headers={"Content-Type": "application/json"}, timeout=5)
@@ -1467,9 +1421,7 @@ def auto_evolve_schema_registry(table_name: str, proposed_schema: dict) -> bool:
     # 1. Fetch current registry doc from ES (or construct standard fallback)
     try:
         from urllib.parse import urlparse
-        parsed = urlparse(ELASTICSEARCH_URL)
-        auth = (parsed.username, parsed.password) if parsed.username else None
-        base_url = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+        base_url, auth = es_base_and_auth(ELASTICSEARCH_URL)
         
         url = f"{base_url}/sdoqap_schema_registry/_doc/{table_name}"
         res = requests.get(url, auth=auth, timeout=5)
@@ -1521,9 +1473,7 @@ def load_rules_config(table_name: str) -> dict:
     Falls back to rules_config.json on disk if ES is unreachable or index does not exist.
     """
     from urllib.parse import urlparse
-    parsed = urlparse(ELASTICSEARCH_URL)
-    auth = (parsed.username, parsed.password) if parsed.username else None
-    base_url = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+    base_url, auth = es_base_and_auth(ELASTICSEARCH_URL)
     
     # 1. Try reading from ES
     es_default = {}

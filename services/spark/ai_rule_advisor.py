@@ -40,27 +40,8 @@ from urllib.parse import urlparse
 
 # ─── Environment bootstrap (same pattern as spark_quality_engine.py) ──────────
 
-def load_env_file():
-    """Walk up to 3 parent directories looking for a ``.env`` file and load
-    its key=value pairs into ``os.environ`` (without overwriting existing vars).
-    """
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    for _ in range(3):
-        env_path = os.path.join(current_dir, ".env")
-        if os.path.exists(env_path):
-            try:
-                with open(env_path, "r") as f:
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith("#") and "=" in line:
-                            k, v = line.split("=", 1)
-                            os.environ.setdefault(k.strip(), v.strip())
-            except Exception:
-                pass
-            break
-        current_dir = os.path.dirname(current_dir)
-
-load_env_file()
+from sdoqap.common.settings import load_env_file
+load_env_file(os.path.dirname(os.path.abspath(__file__)))
 
 import requests
 

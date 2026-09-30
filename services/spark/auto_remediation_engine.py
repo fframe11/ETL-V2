@@ -10,23 +10,8 @@ import requests
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-def load_env_file():
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    for _ in range(3):
-        env_path = os.path.join(current_dir, ".env")
-        if os.path.exists(env_path):
-            try:
-                with open(env_path, "r") as f:
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith("#") and "=" in line:
-                            k, v = line.split("=", 1)
-                            os.environ.setdefault(k.strip(), v.strip())
-            except Exception:
-                pass
-            break
-        current_dir = os.path.dirname(current_dir)
-load_env_file()
+from sdoqap.common.settings import load_env_file
+load_env_file(os.path.dirname(os.path.abspath(__file__)))
 
 def _get_es_connection():
     from urllib.parse import urlparse
