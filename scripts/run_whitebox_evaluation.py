@@ -18,7 +18,7 @@ import numpy as np
 
 # Adjust import path
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(PROJECT_ROOT, "api"))
+sys.path.insert(0, os.path.join(PROJECT_ROOT, "services", "api"))
 
 from app.api.whitebox import (
     _compute_profile,

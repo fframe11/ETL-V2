@@ -26,7 +26,7 @@ jobs:
 
       - name: Check Python syntax
         run: |
-          python -m py_compile api/main.py api/seed_es.py spark/spark_quality_engine.py spark/streaming_job.py scripts/reddit_stream.py
+          python -m py_compile services/api/main.py services/api/seed_es.py services/spark/spark_quality_engine.py services/spark/streaming_job.py services/spark/reddit_stream.py
 
       - name: Check UI manifest
-        run: test -f ui/package.json && test -f ui/package-lock.json
+        run: test -f services/ui/package.json && test -f services/ui/package-lock.json

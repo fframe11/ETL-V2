@@ -116,7 +116,7 @@ services:
 
   spark-master:
     build:
-      context: ./spark
+      context: ./services/spark
       dockerfile: Dockerfile
     container_name: sdoqap-spark-master
     restart: always
@@ -148,7 +148,7 @@ services:
       retries: 5
       start_period: 120s
     volumes:
-      - ./spark:/opt/spark-apps
+      - ./services/spark:/opt/spark-apps
     deploy:
       resources:
         limits:
@@ -159,7 +159,7 @@ services:
 
   spark-worker:
     build:
-      context: ./spark
+      context: ./services/spark
       dockerfile: Dockerfile
     container_name: sdoqap-spark-worker
     restart: always
@@ -183,7 +183,7 @@ services:
       namenode:
         condition: service_healthy
     volumes:
-      - ./spark:/opt/spark-apps
+      - ./services/spark:/opt/spark-apps
     deploy:
       resources:
         limits:
@@ -233,7 +233,7 @@ services:
 
   api:
     build:
-      context: ./api
+      context: ./services/api
       dockerfile: Dockerfile
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
@@ -249,8 +249,8 @@ services:
       - .env
     volumes:
       - ./scripts:/app/scripts:ro
-      - ./spark:/opt/spark-apps
-      - ./api/student_course_score_evaluation_dataset:/app/student_course_score_evaluation_dataset
+      - ./services/spark:/opt/spark-apps
+      - ./services/api/student_course_score_evaluation_dataset:/app/student_course_score_evaluation_dataset
       - ./student_course_score_evaluation_dataset.zip:/app/seed/student_course_score_evaluation_dataset.zip:ro
 
     restart: always
@@ -372,7 +372,7 @@ services:
 
   ui:
     build:
-      context: ./ui
+      context: ./services/ui
       dockerfile: Dockerfile
     container_name: sdoqap-ui
     restart: always

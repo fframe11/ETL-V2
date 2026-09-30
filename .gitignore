@@ -25,20 +25,20 @@ stress test/*.csv
 stress test/**/*.csv
 !stress test/Olist Brazilian E-Commerce/olist_products_dataset.csv
 dummy_data/
-spark/spark-warehouse/
-spark/derby.log
+services/spark/spark-warehouse/
+services/spark/derby.log
 user_inputs/datasets/*
 !user_inputs/datasets/README.md
 user_inputs/apis/*
 !user_inputs/apis/README.md
 
 # Build/dependency outputs
-ui/node_modules/
-ui/dist/
+services/ui/node_modules/
+services/ui/dist/
 scripts/*.log
 *.log
 *.bak
-spark/backups/
+services/spark/backups/
 
 # OS files
 .DS_Store
@@ -49,22 +49,22 @@ graphify-out/
 graphify_repo/
 gridgeist_repo/
 ponytail_repo/
-ui/src/backup_original/
-ui/src/_backup_original/
-ui/debug_status.py
+services/ui/src/backup_original/
+services/ui/src/_backup_original/
+services/ui/debug_status.py
 chunk2.txt
 chunk2_utf8.txt
 dump.txt
 .graphifyignore
 temp_input.txt
 # Large data files
-spark/*.csv
+services/spark/*.csv
 **/*.csv
 whitebox_ui_preview.png
-ui/src/test/text-report.json
+services/ui/src/test/text-report.json
 
 # Subagent-driven-development scratch workspace (ledgers, briefs, review packages)
 .superpowers/
 
 # Interactive-engine runtime output (bind-mounted into the api container)
-api/student_course_score_evaluation_dataset/output_runs/
+services/api/student_course_score_evaluation_dataset/output_runs/
