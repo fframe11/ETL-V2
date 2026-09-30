@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+export PYTHONUTF8=1
 # End-to-end check of the ingestion/loading guarantees from Plan B.
 # Usage: bash scripts/ops/e2e_ingest_check.sh  (stack running, run from repo root)
 set -u

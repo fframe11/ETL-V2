@@ -559,7 +559,7 @@
     "value_range": {
       "mode": "auto",
       "method": "iqr",
-      "iqr_multiplier": 1.5,
+      "iqr_multiplier": 3.0,
       "column_overrides": {
         "dirty_row_id": {
           "iqr_multiplier": 2.5

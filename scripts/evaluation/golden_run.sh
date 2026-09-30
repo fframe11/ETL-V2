@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+export PYTHONUTF8=1
 # Run one CSV through the real batch pipeline and save the counted results.
 # First call for a table ingests it; later calls re-process the same ingestion via retry,
 # so before/after comparisons always use identical input.

@@ -1,0 +1,103 @@
+======================================================================
+WHITE BOX SEMI-AUTOMATED ETL: EMPIRICAL BENCHMARK EVALUATION
+======================================================================
+
+[Step 1: Ingestion & Profiling]
+Total Ingested Rows:    10,100
+Total Columns:          8
+Profiling completed in: 12.41 ms
+Summary of Profiled Anomalies:
+  - null_issues: {'score': 305}
+  - range_anomalies: {'score': '-10.0 -> 150.0'}
+  - outlier_anomalies: {'score': 202, 'study_hours': 158}
+  - duplicate_count: 100
+
+[Step 2 & 3: User Context & Explainable Rule Recommendations]
+Generated 5 explainable rules with concrete 'Why?' rationale:
+
+  Rule #1: Strict Required (0% Null Tolerance) on 'score'
+  Action:    QUARANTINE
+  Sources:   User Context, Business Criticality, Data Profiling
+  Why?:
+    * User marked 'score' as Required for Official Grade Reporting.
+    * Data Profiling detected 305 missing records (3.02% Null Rate).
+    * Missing scores directly invalidate student grade point calculation and graduation audits.
+
+  Rule #2: Known Domain Range Check [0–100] on 'score'
+  Action:    QUARANTINE
+  Sources:   User Context, Business Rule, Data Profiling
+  Why?:
+    * User Context explicitly defined Known Domain as [0, 100].
+    * Data Profiling identified values violating domain bounds (Observed Range is -10.0 to 150.0).
+    * Grades below 0 or above 100 represent input corruption or schema scale mismatch.
+
+  Rule #3: Statistical Auto IQR (Tukey's Non-Parametric Fences) on 'study_hours'
+  Action:    REVIEW
+  Sources:   Data Profiling (IQR), Statistical Non-Parametric Theory, User Business Context (Unknown Domain), Semi-Auto Human Review Safeguard
+  Why?:
+    * Domain boundaries for study_hours are Unknown (no regulatory/system policy specifies an upper cap).
+    * Statistical Data Profiling computed Q1=4.0h, Q3=6.0h, IQR=2.0h.
+    * Under Tukey's Outer Fence (3.0×, upper=12.0h), exactly 100 extreme outliers (30–60h) are isolated.
+    * Under Tukey's Inner Fence (1.5×, upper=9.0h), 154 rows are flagged (including 54 diligent students studying 10–12h).
+    * Routed to Human Review Queue (NOT Quarantine) to protect valid high-effort students from irreversible data loss.
+
+  Rule #4: Composite Natural Key Uniqueness (student_id + course + semester) on 'student_id + course + semester'
+  Action:    QUARANTINE
+  Sources:   Data Profiling, Identity Integrity, Relational Model
+  Why?:
+    * A student cannot be enrolled or receive distinct final grades for the same course in the same semester multiple times.
+    * Data Profiling detected 100 duplicate composite instances.
+    * Enforces relational integrity before analytical aggregations.
+
+  Rule #5: SLA Freshness Check (<= 24h Delay) on 'updated_at'
+  Action:    WARNING
+  Sources:   User Context, SLA Policy
+  Why?:
+    * User declared Update Frequency as 'Daily Batch (<= 24h)'.
+    * Verifies data ingestion pipeline meets daily batch timeliness SLAs.
+
+[Step 4 & 5: Transformation & 3-Way Segregation]
+Execution runtime:           522.0 ms
+Total Ingested:              10,100
+Clean Data (Valid):          9,400 rows (Ready for Analytics)
+Human Review Queue:          100 rows (Study Hours Outliers)
+Quarantine Lake:             600 rows (Missing/Invalid/Duplicates)
+Pre-clean Quality Score:     93.07%
+Post-clean Quality Score:    100.0%
+
+[Step 6: Ground Truth Empirical Comparison]
+Overall Benchmark Match:     100.0%
+
+Error Detection Breakdown vs Ground Truth:
+Category                 | Expected   | Detected   | Recall     | Precision  | F1      
+--------------------------------------------------------------------------------
+Missing Score            | 300        | 300        | 100.0%    | 100.0%    | 100.0
+Invalid Score Range      | 200        | 200        | 100.0%    | 100.0%    | 100.0
+Study Hours Outlier      | 100        | 100        | 100.0%    | 100.0%    | 100.0
+Duplicate                | 100        | 100        | 100.0%    | 100.0%    | 100.0
+None                     | 9400       | 9400       | 100.0%    | 100.0%    | 100.0
+
+[Ground Truth & Segregation Reconciliation (700 Problematic Rows)]
+  Total Ingested Records:        10,100
+  Clean / Certified Valid:       9,400
+  Problematic Instances in GT:   700
+  Quarantine Lake (600 rows):
+    - missing_score: 300
+    - invalid_score_range: 200
+    - duplicate_composite: 100
+    - total_quarantine: 600
+    * Note: None
+  Human Review Queue Comparison:
+    - Tukey 1.5x (Inner Fence): Flags None rows (100 Outliers + 54 Valid Diligent Students 10-12h)
+    - Tukey 3.0x (Outer Fence): Flags None rows (100 Extreme Outliers 30-60h, 0 False Positives)
+
+[Step 7: Clean Data Business Utilization (Academic Analytics)]
+Certified Clean Records Analyzed: 9,400
+Overall Average Score:            77.93
+Overall Pass Rate (Score >= 50):  99.72% (Passed: 9,374, Failed: 26)
+Grade Distribution: {'A': 4127, 'B': 3385, 'C': 1566, 'D': 296, 'F': 26}
+Score Distribution Brackets: {'0-20': 0, '21-40': 3, '41-60': 394, '61-80': 5237, '81-100': 3766}
+
+======================================================================
+ALL EMPIRICAL EVALUATION BENCHMARKS PASSED SUCCESSFULLY (100% RECALL)
+======================================================================

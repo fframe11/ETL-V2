@@ -1,0 +1,128 @@
+[
+  {
+    "order": 1,
+    "name": "schema_align",
+    "title": "จัดชื่อคอลัมน์และแปลงชนิดข้อมูล",
+    "phase": "align"
+  },
+  {
+    "order": 2,
+    "name": "schema_drift",
+    "title": "ตรวจการเปลี่ยนโครงสร้างตาราง",
+    "phase": "transform"
+  },
+  {
+    "order": 3,
+    "name": "auto_clean",
+    "title": "แก้ข้อมูลอัตโนมัติด้วยกฎ DSL และลบแถวซ้ำตามคีย์",
+    "phase": "transform"
+  },
+  {
+    "order": 4,
+    "name": "validation",
+    "title": "ตรวจค่าว่าง ชนิดข้อมูล และวันที่",
+    "phase": "transform"
+  },
+  {
+    "order": 5,
+    "name": "dedup",
+    "title": "คัดแถวซ้ำและเก็บแถวล่าสุด",
+    "phase": "transform"
+  },
+  {
+    "order": 6,
+    "name": "standardize_dates",
+    "title": "ปรับรูปแบบวันที่ (รวม พ.ศ.)",
+    "phase": "transform"
+  },
+  {
+    "order": 7,
+    "name": "standardize_categories",
+    "title": "จัดหมวดค่าตามคำสำคัญ",
+    "phase": "transform"
+  },
+  {
+    "order": 8,
+    "name": "range_rules",
+    "title": "ตรวจช่วงค่าตามกฎธุรกิจ",
+    "phase": "transform"
+  },
+  {
+    "order": 9,
+    "name": "anomaly_iqr",
+    "title": "หา outlier ด้วย IQR",
+    "phase": "transform"
+  },
+  {
+    "order": 10,
+    "name": "anomaly_zscore",
+    "title": "หา anomaly ด้วย Z-score",
+    "phase": "transform"
+  },
+  {
+    "order": 11,
+    "name": "anomaly_induced",
+    "title": "ใช้กฎที่เรียนรู้จาก Decision Tree",
+    "phase": "transform"
+  },
+  {
+    "order": 12,
+    "name": "quarantine_assembly",
+    "title": "รวมแถวที่ไม่ผ่านเข้าโซนกักกัน",
+    "phase": "transform"
+  },
+  {
+    "order": 13,
+    "name": "column_filter",
+    "title": "ตัดคอลัมน์ที่ไม่อยู่ใน schema",
+    "phase": "transform"
+  },
+  {
+    "order": 14,
+    "name": "distribution",
+    "title": "สรุปการกระจายของข้อมูล",
+    "phase": "post_load"
+  },
+  {
+    "order": 15,
+    "name": "quarantine_breakdown",
+    "title": "สรุปเหตุผลที่กักกัน",
+    "phase": "post_load"
+  },
+  {
+    "order": 16,
+    "name": "copdq",
+    "title": "ประเมินมูลค่าความเสียหาย (COPDQ)",
+    "phase": "post_load"
+  },
+  {
+    "order": 17,
+    "name": "freshness",
+    "title": "วัดความสดใหม่ของข้อมูล",
+    "phase": "post_load"
+  },
+  {
+    "order": 18,
+    "name": "quality_score",
+    "title": "คำนวณคะแนนคุณภาพและ anomaly ของอัตรากักกัน",
+    "phase": "post_load"
+  },
+  {
+    "order": 19,
+    "name": "ai_advisory",
+    "title": "วิเคราะห์ด้วย AI และเสนอกฎ",
+    "phase": "post_load"
+  },
+  {
+    "order": 20,
+    "name": "operational_impact",
+    "title": "คะแนนผลกระทบเชิงปฏิบัติการแบบถ่วงน้ำหนัก",
+    "phase": "post_load"
+  },
+  {
+    "order": 21,
+    "name": "report",
+    "title": "บันทึกผลลง Elasticsearch",
+    "phase": "post_load"
+  }
+]

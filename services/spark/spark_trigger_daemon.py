@@ -200,8 +200,6 @@ def run_quality_job(table, ingest_id, revalidation=False):
         if line:
             append_log(f"[spark] {line.strip()}")
     proc.wait()
-    state = state_for_exit(proc.returncode)
-    update_run_state(ingest_id, state, finished_at=_now(), exit_code=proc.returncode)
     if revalidation:
         append_log(f"[SYSTEM] Spark re-validation finished for table '{table}' (Exit code: {proc.returncode})")
     else:
@@ -219,10 +217,12 @@ def run_job_chain(table, ingest_id):
                 if code == EXIT_OK and table not in remediation_in_progress and try_auto_remediate(table, ingest_id):
                     remediation_in_progress.add(table)
                     try:
-                        run_quality_job(table, ingest_id, revalidation=True)
+                        code = run_quality_job(table, ingest_id, revalidation=True)
                         append_log(f"[SYSTEM] Remediation re-validation completed for table '{table}'")
                     finally:
                         remediation_in_progress.discard(table)
+                # One final state per ingestion, only after remediation and re-validation are done.
+                update_run_state(ingest_id, state_for_exit(code), finished_at=_now(), exit_code=code)
             except Exception as e:
                 append_log(f"[ERROR] Spark Quality Engine run failed for '{table}': {e}")
                 update_run_state(ingest_id, "FAILED", finished_at=_now(), error=str(e))

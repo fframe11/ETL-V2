@@ -1,0 +1,54 @@
+{
+  "rows": 9370,
+  "students": 9370,
+  "by_course": [
+    {
+      "course": "Big Data",
+      "n": 1938,
+      "avg_score": 77.91,
+      "pass_rate": 0.9995
+    },
+    {
+      "course": "Data Warehouse",
+      "n": 1822,
+      "avg_score": 77.93,
+      "pass_rate": 0.9989
+    },
+    {
+      "course": "Database",
+      "n": 1874,
+      "avg_score": 77.66,
+      "pass_rate": 0.9989
+    },
+    {
+      "course": "Python",
+      "n": 1845,
+      "avg_score": 78.45,
+      "pass_rate": 1.0
+    },
+    {
+      "course": "Statistics",
+      "n": 1891,
+      "avg_score": 78.03,
+      "pass_rate": 1.0
+    }
+  ],
+  "pass_rate": 0.9995,
+  "fail_rate": 0.0005,
+  "distribution": {
+    "0-49": 5,
+    "50-59": 296,
+    "60-69": 1565,
+    "70-79": 3383,
+    "80-89": 2940,
+    "90-100": 1181
+  },
+  "follow_up_students": [
+    "65316",
+    "67431",
+    "68346",
+    "71569",
+    "74045"
+  ],
+  "pass_mark": 50.0
+}

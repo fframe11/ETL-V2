@@ -1,0 +1,50 @@
+{
+  "per_type": {
+    "Missing Score": {
+      "actual": 300,
+      "detected": 300,
+      "rate": 1.0
+    },
+    "Invalid Score Range": {
+      "actual": 200,
+      "detected": 200,
+      "rate": 1.0
+    },
+    "Study Hours Outlier": {
+      "actual": 100,
+      "detected": 100,
+      "rate": 1.0
+    },
+    "Duplicate": {
+      "actual": 100,
+      "detected": 100,
+      "rate": 1.0
+    }
+  },
+  "confusion": {
+    "tp": 700,
+    "fp": 30,
+    "fn": 0,
+    "tn": 9370
+  },
+  "precision": 0.9589,
+  "recall": 1.0,
+  "accuracy": 0.997,
+  "false_positive_reasons": {
+    "study_hours_zscore=3.34 (val=study_hours deviates > 3.0σ)": 8,
+    "score_zscore=3.1 (val=score deviates > 3.0σ)": 5,
+    "score_zscore=3.3 (val=score deviates > 3.0σ)": 4,
+    "score_zscore=3.0 (val=score deviates > 3.0σ)": 3,
+    "score_zscore=3.2 (val=score deviates > 3.0σ)": 3,
+    "study_hours_zscore=3.89 (val=study_hours deviates > 3.0σ)": 2,
+    "score_zscore=3.5 (val=score deviates > 3.0σ)": 1,
+    "score_zscore=3.8 (val=score deviates > 3.0σ)": 1,
+    "score_zscore=4.0 (val=score deviates > 3.0σ)": 1,
+    "score_zscore=4.1 (val=score deviates > 3.0σ)": 1
+  },
+  "outcome_counts": {
+    "clean": 9370,
+    "dropped": 100,
+    "quarantined": 630
+  }
+}
