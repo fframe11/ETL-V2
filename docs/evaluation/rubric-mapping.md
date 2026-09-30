@@ -15,7 +15,7 @@
 
 ไฟล์ข้อมูลต้นทางใน `data/`: 31 ไฟล์ รวม 651,466 แถว (นับเฉพาะ CSV)
 ชุดขยายสำหรับ benchmark (สำเนาซ้ำของชุดประเมินชุดเดียว ไม่ใช่ข้อมูลใหม่): 8 ไฟล์ รวม 3,220,000 แถว
-ประมวลผลผ่าน Spark แล้ว 166 รอบ จาก 20 ตาราง รวม 3,555,974 แถว (รอบใหญ่สุด 990,100 แถว)
+ประมวลผลผ่าน Spark แล้ว 169 รอบ จาก 21 ตาราง รวม 3,566,454 แถว (รอบใหญ่สุด 990,100 แถว)
 
 ### จำนวนกระบวนการในการจัดการข้อมูล (15)
 
@@ -45,7 +45,7 @@
 | 20 | post_load | `operational_impact` | คะแนนผลกระทบเชิงปฏิบัติการแบบถ่วงน้ำหนัก |
 | 21 | post_load | `report` | บันทึกผลลง Elasticsearch |
 
-เวลาต่อ stage ในรอบประเมิน (วินาที): `schema_align` 0.184, `schema_drift` 0.001, `auto_clean` 3.068, `validation` 0.495, `dedup` 0.146, `standardize_dates` 0.001, `standardize_categories` 0.004, `range_rules` 3.499, `anomaly_iqr` 3.733, `anomaly_zscore` 2.331, `anomaly_induced` 0.0, `quarantine_assembly` 8.872, `column_filter` 0.001, `distribution` 1.164, `quarantine_breakdown` 2.108, `copdq` 0.0, `freshness` 0.754, `quality_score` 0.007, `ai_advisory` 8.249, `operational_impact` 2.882
+เวลาต่อ stage ในรอบประเมิน (วินาที): `schema_align` 0.199, `schema_drift` 0.001, `auto_clean` 4.043, `validation` 0.844, `dedup` 0.243, `standardize_dates` 0.001, `standardize_categories` 0.007, `range_rules` 6.26, `anomaly_iqr` 8.991, `anomaly_zscore` 3.438, `anomaly_induced` 0.0, `quarantine_assembly` 9.911, `column_filter` 0.002, `distribution` 2.546, `quarantine_breakdown` 1.163, `copdq` 0.0, `freshness` 0.768, `quality_score` 0.011, `ai_advisory` 9.458, `operational_impact` 4.604
 
 ## CLO5 · คุณภาพและความสมบูรณ์ (30%)
 
@@ -88,15 +88,15 @@ Golden test ก่อน/หลังแยก stage: ตรงกันทุ�
 ### ความครบถ้วนของการถ่ายโอนข้อมูล — Data loading (5)
 
 - เขียน quarantine แบบ idempotent (ลบตาม `ingest_id` แล้วเขียนใหม่) **ก่อน** Delta MERGE, ย้าย raw ไป `/data/archive/` แทนการลบ, lock มี heartbeat, สถานะ QUEUED→RUNNING→SUCCEEDED/FAILED/SKIPPED ใน `sdoqap_runs`
-- รอบประเมิน: รับเข้า 10,000 แถว → active 9,370 + quarantine 630 (ครบถ้วน), เวลาใน engine 67.434 วินาที
+- รอบประเมิน: รับเข้า 10,000 แถว → active 9,370 + quarantine 630 (ครบถ้วน), เวลาใน engine 98.489 วินาที
 - ไฟล์ต้นทางมี 10,100 แถว ส่วนต่าง 100 แถวคือแถวคีย์ซ้ำที่ `auto_clean` ตัดทิ้งก่อนนับ (ไม่ถูกเก็บใน quarantine) — ตัวตรวจ detection นับว่าเป็น `dropped`
 
 | แถว | สถานะ | เวลาใน engine (s) | end-to-end (s) | หมายเหตุ |
 |---:|---|---:|---:|---|
-| 10,000 | SUCCEEDED | 66.172 | 95 |  |
-| 100,000 | SUCCEEDED | 85.487 | 116 |  |
-| 500,000 | SUCCEEDED | 203.369 | 238 |  |
-| 1,000,000 | SUCCEEDED | 414.215 | 454 |  |
+| 10,000 | FAILED | — | 1 |  |
+| 100,000 | FAILED | — | 1 |  |
+| 500,000 | FAILED | — | 1 |  |
+| 1,000,000 | FAILED | — | 1 |  |
 
 ### ประสิทธิผลของการใช้ประโยชน์จากข้อมูล (5)
 
