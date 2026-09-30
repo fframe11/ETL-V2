@@ -22,6 +22,7 @@ import EchartsDataLineage from '../components/EchartsDataLineage';
 import { useDashboardStore } from '../store/useDashboardStore';
 import { getPage } from '../config/pages';
 import { formatUsd, formatThbApprox, formatUsdWithThb } from '../utils/currency';
+import { InfoHint } from '../components/ui';
 import "./Dashboard.css";
 
 const getQualityGrade = (score) => {
@@ -477,7 +478,10 @@ export default function Dashboard() {
             {/* Card 4: Financial COPDQ Risk */}
             <div className={`exec-kpi-card ${bizImpact.monetary_loss_usd > 0 ? 'kpi-crit' : 'kpi-good'}`}>
               <div className="exec-kpi-top">
-                <span className="exec-kpi-title">Financial COPDQ Risk</span>
+                <span className="exec-kpi-title">
+                  Financial COPDQ Risk
+                  <InfoHint text="คำนวณจากค่าคงที่สมมติ (เช่น ค่าแก้ไข 2 ดอลลาร์/แถวที่ถูกกักกัน) ไม่ใช่ข้อมูลต้นทุนทางการเงินจริงของธุรกิจ" />
+                </span>
                 <span className={`exec-chip ${bizImpact.monetary_loss_usd > 0 ? 'exec-chip-crit' : 'exec-chip-good'}`} style={{ fontSize: '11px' }}>
                   {bizImpact.monetary_loss_usd > 0 ? 'ACTION' : 'CLEAR'}
                 </span>
@@ -936,10 +940,18 @@ export default function Dashboard() {
                     CONCRETE BUSINESS EVIDENCE
                   </span>
                   <h3 style={{ margin: 0, fontSize: '15px' }}>Sell-In vs. Sell-Out Volume Reconciliation &amp; Data Quality Discrepancy</h3>
+                  {(sellInOutApi.data?.is_example ?? true) && (
+                    <InfoHint text="ยังไม่มีการเชื่อมข้อมูลยอดขายจริงสำหรับการ์ดนี้ ตัวเลขและกราฟทั้งหมดด้านล่างเป็นชุดตัวอย่างคงที่ที่เซิร์ฟเวอร์ส่งมาเสมอ ไม่ใช่ข้อมูลจากรอบตรวจคุณภาพจริง" />
+                  )}
                 </div>
                 <p style={{ marginTop: '4px', fontSize: '11px', color: 'var(--text-muted)' }}>
                   เปรียบเทียบยอดกระจายสินค้าเข้าสู่ช่องทางจัดจำหน่าย (Sell-In) กับยอดขายจริงหน้าร้าน POS (Sell-Out) เพื่อระบุสต็อกลวง (Phantom Inventory) และความเสียหายจากข้อมูลตกหล่น
                 </p>
+                {(sellInOutApi.data?.is_example ?? true) && (
+                  <div style={{ marginTop: '6px', display: 'inline-block', fontSize: '10.5px', fontWeight: 700, color: '#B45309', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '6px', padding: '4px 10px' }}>
+                    แสดงข้อมูลตัวอย่าง — ยังไม่ใช่ข้อมูลจริงจากระบบ
+                  </div>
+                )}
               </div>
               <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                 <span className="exec-chip exec-chip-warn" style={{ fontSize: '10.5px' }}>

@@ -1,7 +1,9 @@
 import os
 import io
+import time
 import requests
 import pandas as pd
+from urllib.parse import unquote
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from elasticsearch import Elasticsearch
@@ -98,6 +100,30 @@ def stream_hdfs_file_raw(path: str):
         raise HTTPException(status_code=500, detail=f"HDFS stream exception: {str(e)}")
 
 
+def _with_partition_columns(df: pd.DataFrame, relative_path: str) -> pd.DataFrame:
+    """Restore Hive-style partition values (e.g. run_id=...) that Spark keeps in folder names, not in the file."""
+    for segment in unquote(relative_path).split("/")[:-1]:
+        if "=" in segment:
+            key, value = segment.split("=", 1)
+            if key not in df.columns:
+                df[key] = value
+    return df
+
+
+def _column_mapping(metadata: dict) -> dict:
+    """Map Delta column-mapping physical names (col-<uuid>) back to the table's real column names."""
+    try:
+        fields = json.loads(metadata.get("schemaString", "{}")).get("fields", [])
+    except ValueError:
+        return {}
+    mapping = {}
+    for field in fields:
+        physical = field.get("metadata", {}).get("delta.columnMapping.physicalName")
+        if physical and physical != field.get("name"):
+            mapping[physical] = field["name"]
+    return mapping
+
+
 def read_parquet_folder_to_df(hdfs_folder: str) -> pd.DataFrame:
     """Read Delta Lake table correctly by parsing _delta_log to find active Parquet files only.
     
@@ -114,6 +140,7 @@ def read_parquet_folder_to_df(hdfs_folder: str) -> pd.DataFrame:
     delta_log_url = f"http://namenode:9870/webhdfs/v1{hdfs_folder}/_delta_log?op=LISTSTATUS&user.name=spark"
     is_delta = False
     active_files = set()
+    physical_to_logical = {}
 
     try:
         r_log = requests.get(delta_log_url, timeout=10)
@@ -137,6 +164,8 @@ def read_parquet_folder_to_df(hdfs_folder: str) -> pd.DataFrame:
                                 active_files.add(entry["add"]["path"])
                             if "remove" in entry:
                                 active_files.discard(entry["remove"]["path"])
+                            if "metaData" in entry:
+                                physical_to_logical = _column_mapping(entry["metaData"])
                     except Exception:
                         continue
     except Exception:
@@ -150,12 +179,12 @@ def read_parquet_folder_to_df(hdfs_folder: str) -> pd.DataFrame:
             try:
                 content = read_hdfs_file(full_path)
                 df = pd.read_parquet(io.BytesIO(content))
-                dfs.append(df)
+                dfs.append(_with_partition_columns(df, file_path))
             except Exception:
                 continue
         if not dfs:
             raise HTTPException(status_code=404, detail=f"No active Parquet data in Delta table {hdfs_folder}")
-        return pd.concat(dfs, ignore_index=True)
+        return pd.concat(dfs, ignore_index=True).rename(columns=physical_to_logical)
 
     # Fallback: Plain Parquet folder (no _delta_log)
     list_url = f"http://namenode:9870/webhdfs/v1{hdfs_folder}?op=LISTSTATUS&user.name=spark"
@@ -167,16 +196,26 @@ def read_parquet_folder_to_df(hdfs_folder: str) -> pd.DataFrame:
         
         files = r.json().get("FileStatuses", {}).get("FileStatus", [])
         parquet_files = [f["pathSuffix"] for f in files if f["pathSuffix"].endswith(".parquet")]
-        
+        # Spark writes partitioned output (e.g. quarantine) as key=value/ subfolders.
+        for f in files:
+            if f["type"] == "DIRECTORY" and "=" in f["pathSuffix"]:
+                sub = requests.get(f"http://namenode:9870/webhdfs/v1{hdfs_folder}/{f['pathSuffix']}?op=LISTSTATUS&user.name=spark", timeout=10)
+                if sub.status_code == 200:
+                    parquet_files += [
+                        f"{f['pathSuffix']}/{s['pathSuffix']}"
+                        for s in sub.json().get("FileStatuses", {}).get("FileStatus", [])
+                        if s["pathSuffix"].endswith(".parquet")
+                    ]
+
         if not parquet_files:
             raise HTTPException(status_code=404, detail=f"No parquet data files found in {hdfs_folder}")
-            
+
         dfs = []
         for file_name in parquet_files:
             file_path = f"{hdfs_folder}/{file_name}"
             content = read_hdfs_file(file_path)
             df = pd.read_parquet(io.BytesIO(content))
-            dfs.append(df)
+            dfs.append(_with_partition_columns(df, file_name))
             
         if not dfs:
             raise HTTPException(status_code=404, detail="No datasets could be loaded")
@@ -424,6 +463,66 @@ def get_dataset_preview(layer: str, table_name: str):
         raise he
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Preview generation error: {str(e)}")
+
+
+_RECORDS_CACHE: dict = {}
+_RECORDS_CACHE_TTL_S = 60
+_RECORDS_CACHE_MAX_ENTRIES = 4
+
+
+def _load_layer_with_search_index(layer: str, table_name: str):
+    key = (layer, table_name)
+    cached = _RECORDS_CACHE.get(key)
+    if cached and time.time() - cached[0] < _RECORDS_CACHE_TTL_S:
+        return cached[1], cached[2]
+    df = read_parquet_folder_to_df(f"/data/{layer}/{table_name}")
+    df = df.drop(columns=["__index_level_0__"], errors="ignore").reset_index(drop=True)
+    haystack = pd.Series("", index=df.index)
+    for col in df.columns:
+        haystack = haystack + "\x1f" + df[col].astype(str)
+    haystack = haystack.str.lower()
+    if len(_RECORDS_CACHE) >= _RECORDS_CACHE_MAX_ENTRIES:
+        _RECORDS_CACHE.pop(min(_RECORDS_CACHE, key=lambda k: _RECORDS_CACHE[k][0]))
+    _RECORDS_CACHE[key] = (time.time(), df, haystack)
+    return df, haystack
+
+
+@router.get("/records/{layer}/{table_name}", dependencies=[Depends(require_session)])
+def search_dataset_records(layer: str, table_name: str, search: str = "", run_id: str = "", limit: int = 50, offset: int = 0):
+    """Searchable, paginated rows of a table's active or quarantine layer, optionally limited to one run."""
+    validate_table_name(table_name)
+    if layer not in ("active", "quarantine"):
+        raise HTTPException(status_code=400, detail="layer must be 'active' or 'quarantine'")
+    try:
+        df, haystack = _load_layer_with_search_index(layer, table_name)
+    except HTTPException as he:
+        if he.status_code == 404:
+            return {"columns": load_registered_schema_columns(table_name) or [], "rows": [], "total_rows": 0,
+                    "matched_rows": 0, "run_filter_applied": False, "run_ids": []}
+        raise
+
+    has_run_id = "run_id" in df.columns
+    idx = df.index
+    run_filter_applied = bool(run_id) and has_run_id
+    if run_filter_applied:
+        idx = idx[df["run_id"].astype(str).to_numpy() == run_id]
+    query = search.strip().lower()
+    if query:
+        sub = haystack.loc[idx]
+        idx = sub.index[sub.str.contains(query, regex=False, na=False)]
+
+    safe_limit = max(1, min(int(limit), 500))
+    safe_offset = max(0, int(offset))
+    page = df.loc[idx[safe_offset:safe_offset + safe_limit]]
+    return {
+        "columns": list(df.columns),
+        "rows": json.loads(page.to_json(orient="records", date_format="iso")),
+        "total_rows": int(len(df)),
+        "matched_rows": int(len(idx)),
+        "offset": safe_offset,
+        "run_filter_applied": run_filter_applied,
+        "run_ids": sorted(df["run_id"].dropna().astype(str).unique().tolist(), reverse=True) if has_run_id else [],
+    }
 
 
 @router.get("/raw/{table_name}")

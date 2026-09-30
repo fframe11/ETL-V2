@@ -4,7 +4,25 @@ import { useApi, postApi } from '../hooks/useApi';
 import TileCard from "../components/ui/TileCard";
 import { PageHeader, InfoHint, NextStepLink } from "../components/ui";
 import ConfirmationModal from '../components/ConfirmationModal';
+import RunRecordsPanel from '../components/RunRecordsPanel';
 import "./Pipeline.css";
+
+const HISTORY_PAGE_SIZE = 10;
+
+const matchesHistoryFilter = (run, table, query) =>
+  (table === "ALL" || run.table_name === table) &&
+  (!query || `${run.table_name || ""} ${run.run_id || ""}`.toLowerCase().includes(query));
+
+function HistoryPager({ page, pages, total, onChange }) {
+  if (pages <= 1) return null;
+  return (
+    <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "8px", marginTop: "8px", fontSize: "11.5px", color: "#475569" }}>
+      <span>{total} รอบ · หน้า {page}/{pages}</span>
+      <button type="button" className="gs-btn-retry" disabled={page <= 1} onClick={() => onChange(page - 1)}>ก่อนหน้า</button>
+      <button type="button" className="gs-btn-retry" disabled={page >= pages} onClick={() => onChange(page + 1)}>ถัดไป</button>
+    </div>
+  );
+}
 
 const ZONE_ROW_COLUMNS = [
   { key: "dirty_row_id", label: "Row ID" },
@@ -18,8 +36,28 @@ const ZONE_ROW_COLUMNS = [
 ];
 
 export default function Pipeline() {
-  const pipeline = useApi('/pipeline?limit=20', { refreshInterval: 30000 });
-  const quality = useApi('/quality?limit=20', { refreshInterval: 30000 });
+  const pipeline = useApi('/pipeline?limit=100', { refreshInterval: 30000 });
+  const quality = useApi('/quality?limit=100', { refreshInterval: 30000 });
+
+  const [historySearch, setHistorySearch] = useState("");
+  const [historyTable, setHistoryTable] = useState("ALL");
+  const [pipePage, setPipePage] = useState(1);
+  const [qualPage, setQualPage] = useState(1);
+  const [recordsTarget, setRecordsTarget] = useState(null);
+
+  const pipelineRuns = Array.isArray(pipeline.data) ? pipeline.data : [];
+  const qualityRuns = Array.isArray(quality.data) ? quality.data : [];
+  const historyTables = Array.from(new Set([...pipelineRuns, ...qualityRuns].map(r => r.table_name).filter(Boolean))).sort();
+  const historyQuery = historySearch.trim().toLowerCase();
+  const filteredPipelineRuns = pipelineRuns.filter(r => matchesHistoryFilter(r, historyTable, historyQuery));
+  const filteredQualityRuns = qualityRuns.filter(r => matchesHistoryFilter(r, historyTable, historyQuery));
+  const pageOf = (list, page) => list.slice((page - 1) * HISTORY_PAGE_SIZE, page * HISTORY_PAGE_SIZE);
+  const pageCount = (list) => Math.max(1, Math.ceil(list.length / HISTORY_PAGE_SIZE));
+
+  const openRecords = (run, hasQuarantine) => {
+    setRecordsTarget({ tableName: run.table_name, runId: run.run_id, layer: hasQuarantine ? "quarantine" : "active" });
+    setTimeout(() => document.querySelector('[data-testid="run-records-panel"]')?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  };
 
   const [retrying, setRetrying] = useState({});
   const [retryResult, setRetryResult] = useState(null);
@@ -230,6 +268,7 @@ export default function Pipeline() {
       <div style={{ background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', marginBottom: '16px' }}>
           <div className="pl-dataset-line">
             ชุดข้อมูล <code>{wbState?.dataset_name || "—"}</code> · {fmt(totalRows)} แถว
+            <InfoHint text="ตัวเลขในส่วนนี้มาจากเอนจินตรวจคุณภาพแบบโต้ตอบ (ทดลองทีละไฟล์ อยู่ในหน่วยความจำ ไม่ถาวร) คนละชุดกับ 'ประวัติการรัน' ด้านล่างซึ่งเป็นผลจากรอบตรวจ Spark จริงที่เก็บถาวรใน Elasticsearch" />
           </div>
           {!m && <div className="pl-notice">ยังไม่มีผลการรันสำหรับชุดข้อมูลนี้</div>}
 
@@ -499,6 +538,26 @@ export default function Pipeline() {
           <Icon name="activity" /> ประวัติการรัน
         </summary>
         <div style={{ marginTop: "14px" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center", marginBottom: "14px" }}>
+        <input
+          type="search"
+          value={historySearch}
+          onChange={(e) => { setHistorySearch(e.target.value); setPipePage(1); setQualPage(1); }}
+          placeholder="ค้นหาชื่อตารางหรือรหัสรอบ"
+          aria-label="ค้นหาประวัติการรัน"
+          style={{ flex: "1 1 240px", minWidth: "200px", padding: "7px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12.5px" }}
+        />
+        <select
+          value={historyTable}
+          onChange={(e) => { setHistoryTable(e.target.value); setPipePage(1); setQualPage(1); }}
+          aria-label="กรองตามตาราง"
+          style={{ padding: "7px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12.5px", background: "#FFFFFF" }}
+        >
+          <option value="ALL">ทุกตาราง</option>
+          {historyTables.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <span className="gs-muted" style={{ fontSize: "11.5px" }}>กด "ดูข้อมูล" เพื่อเปิดแถวข้อมูลของรอบนั้น</span>
+      </div>
       <div className="gs-pipeline-grid">
         {/* Pipeline Runs Table */}
         <div className="gs-pcard">
@@ -508,6 +567,8 @@ export default function Pipeline() {
               <div className="gs-empty-cell">Fetching pipeline executions...</div>
             ) : pipeline.error ? (
               <div className="gs-empty-cell" style={{ color: 'var(--accent-red)' }}>Failed to load pipeline executions</div>
+            ) : filteredPipelineRuns.length === 0 ? (
+              <div className="gs-empty-cell">ไม่พบรอบที่ตรงกับการค้นหา</div>
             ) : (
               <table className="gs-ptable">
                 <thead>
@@ -521,14 +582,19 @@ export default function Pipeline() {
                   </tr>
                 </thead>
                 <tbody>
-                  {Array.isArray(pipeline.data) && pipeline.data.map((run) => (
-                    <tr key={run.run_id}>
+                  {pageOf(filteredPipelineRuns, pipePage).map((run) => (
+                    <tr key={run.run_id} style={recordsTarget?.runId === run.run_id ? { background: '#EFF6FF' } : undefined}>
                       <td className="gs-mono" style={{ fontWeight: 700 }}>{run.run_id}</td>
                       <td><strong>{run.table_name}</strong></td>
                       <td>{getStatusBadge(run.state)}</td>
                       <td className="gs-mono">{run.duration_seconds != null ? run.duration_seconds.toFixed(2) : '-'}</td>
                       <td className="gs-muted">{run.timestamp ? new Date(run.timestamp).toLocaleString() : '-'}</td>
-                      <td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        {run.table_name && (
+                          <button type="button" className="gs-btn-retry" onClick={() => openRecords(run, run.state === 'quarantined')} style={{ marginRight: '6px' }}>
+                            ดูข้อมูล
+                          </button>
+                        )}
                         {(run.state === 'failed' || run.state === 'quarantined') && (
                           <button
                             className="gs-btn-retry"
@@ -545,6 +611,7 @@ export default function Pipeline() {
               </table>
             )}
           </div>
+          <HistoryPager page={pipePage} pages={pageCount(filteredPipelineRuns)} total={filteredPipelineRuns.length} onChange={setPipePage} />
         </div>
 
         {/* Quality Audit History Table */}
@@ -555,6 +622,8 @@ export default function Pipeline() {
               <div className="gs-empty-cell">Fetching quality audits...</div>
             ) : quality.error ? (
               <div className="gs-empty-cell" style={{ color: 'var(--accent-red)' }}>Failed to load quality audits</div>
+            ) : filteredQualityRuns.length === 0 ? (
+              <div className="gs-empty-cell">ไม่พบรอบที่ตรงกับการค้นหา</div>
             ) : (
               <table className="gs-ptable">
                 <thead>
@@ -565,11 +634,12 @@ export default function Pipeline() {
                     <th>Quarantined</th>
                     <th>Quality Score</th>
                     <th>Timestamp</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {Array.isArray(quality.data) && quality.data.map((audit, i) => (
-                    <tr key={i}>
+                  {pageOf(filteredQualityRuns, qualPage).map((audit, i) => (
+                    <tr key={audit.run_id || i} style={audit.run_id && recordsTarget?.runId === audit.run_id ? { background: '#EFF6FF' } : undefined}>
                       <td><strong>{audit.table_name || 'unknown'}</strong></td>
                       <td className="gs-mono">{audit.total_records != null ? audit.total_records.toLocaleString() : '-'}</td>
                       <td className="gs-mono">{audit.clean_records != null ? audit.clean_records.toLocaleString() : '-'}</td>
@@ -591,14 +661,30 @@ export default function Pipeline() {
                         )}
                       </td>
                       <td className="gs-muted">{audit.timestamp ? new Date(audit.timestamp).toLocaleString() : '-'}</td>
+                      <td>
+                        {audit.table_name && (
+                          <button type="button" className="gs-btn-retry" onClick={() => openRecords(audit, (audit.quarantined_records || 0) > 0)}>
+                            ดูข้อมูล
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             )}
           </div>
+          <HistoryPager page={qualPage} pages={pageCount(filteredQualityRuns)} total={filteredQualityRuns.length} onChange={setQualPage} />
         </div>
       </div>
+      {recordsTarget && (
+        <RunRecordsPanel
+          tableName={recordsTarget.tableName}
+          runId={recordsTarget.runId}
+          initialLayer={recordsTarget.layer}
+          onClose={() => setRecordsTarget(null)}
+        />
+      )}
         </div>
       </details>
 

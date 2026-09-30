@@ -250,6 +250,8 @@ services:
     volumes:
       - ./scripts:/app/scripts:ro
       - ./spark:/opt/spark-apps
+      - ./api/student_course_score_evaluation_dataset:/app/student_course_score_evaluation_dataset
+      - ./student_course_score_evaluation_dataset.zip:/app/seed/student_course_score_evaluation_dataset.zip:ro
 
     restart: always
     depends_on:
@@ -309,9 +311,9 @@ services:
     container_name: sdoqap-postgres
     restart: always
     environment:
-      - POSTGRES_USER=sdoqap
-      - POSTGRES_PASSWORD=sdoqap
-      - POSTGRES_DB=sdoqap_oltp
+      - POSTGRES_USER=${POSTGRES_USER:-sdoqap}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-sdoqap}
+      - POSTGRES_DB=${POSTGRES_DB:-sdoqap_oltp}
     ports:
       - "${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
@@ -323,10 +325,29 @@ services:
         limits:
           memory: 256M
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sdoqap -d sdoqap_oltp"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - sdoqap_network
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: sdoqap-pgadmin
+    restart: unless-stopped
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_EMAIL:-admin@admin.com}
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PASSWORD:-admin}
+      - PGADMIN_CONFIG_SERVER_MODE=False
+      - PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED=False
+    ports:
+      - "${PGADMIN_HOST_PORT:-5050}:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - sdoqap_network
 
@@ -451,6 +472,7 @@ volumes:
   hadoop_datanode:
   n8n_data:
   postgres_data:
+  pgadmin_data:
   ollama_data:
 
 networks:

@@ -1,0 +1,20 @@
+# Probe: compute_adaptive_threshold('gov_data', base_value=90.0) run inside sdoqap-spark-master (read-only ES query)
+# Code path: spark/dynamic_rules_engine.py:268-354 (copied to /opt/spark-apps in the container)
+
+## A. As deployed (ELASTICSEARCH_URL unset in this container)
+[DYNAMIC_RULES] ELASTICSEARCH_URL not set. Using base_value as threshold.
+returned: 90.0
+
+## B. Same call with ELASTICSEARCH_URL built at runtime from the container's own ELASTICSEARCH_USER/PASSWORD/HOST/PORT
+[DYNAMIC_RULES] Adaptive threshold for 'gov_data': avg=100.00, std=0.00, threshold=100.00 (base=90.0)
+returned: 100.0
+
+## C. Container code == repo code (md5, first 8 hex chars)
+dynamic_rules_engine.py repo=01607f31 container(spark-master:/opt/spark-apps)=01607f31
+spark_quality_engine.py repo=17d7d55b container(spark-master:/opt/spark-apps)=17d7d55b
+rules_config.json repo=ce100921 container(spark-master:/opt/spark-apps)=ce100921
+
+## D. ELASTICSEARCH_URL presence (set/unset only; value never printed)
+spark-master: UNSET
+spark-worker: UNSET
+api: set

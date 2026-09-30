@@ -1,0 +1,54 @@
+Worked calculations for the Spark rules chapter (docs/transform-report/02-spark-table-rules.md)
+Formula source: spark/dynamic_rules_engine.py:341-349
+    moving_avg = statistics.mean(values)
+    std_dev    = statistics.stdev(values)        # SAMPLE standard deviation (divides by n-1)
+    adaptive   = max(moving_avg - std_dev, min_value)
+    return round(adaptive, 4)
+Window and fallbacks: spark/dynamic_rules_engine.py:309-315 (newest `window` runs by timestamp desc),
+    :336-339 (fewer than 2 values -> base_value), :303-305 (no ELASTICSEARCH_URL -> base_value).
+
+== 1. REAL DATA: gov_data, window=15, min_value=70.0, base_value=90.0 ==
+Input: quality_score of the newest 15 runs in evidence/spark-quality-runs-gov_data.json
+       (2026-09-28T18:33:25 ... 2026-09-27T18:32:41): all 15 values are 100.0
+    mean  = (15 x 100.0) / 15 = 100.0
+    stdev = sqrt( sum((x - 100.0)^2) / (15 - 1) ) = sqrt(0 / 14) = 0.0
+    adaptive = max(100.0 - 0.0, 70.0) = 100.0
+Observed with the function run inside sdoqap-spark-master (evidence/spark-adaptive-threshold-probe.txt):
+    A. as deployed (ELASTICSEARCH_URL unset in that container)  -> returned 90.0  (= base_value)
+    B. with ELASTICSEARCH_URL supplied at call time             -> returned 100.0 (= the hand calculation)
+Stored by the real runs: effective_quality_threshold = 90.0 in all 86 gov_data runs (evidence/spark-quality-runs-gov_data.json),
+    i.e. what happened in production matches case A, not the formula.
+Note: 100.0 is ABOVE base_value 90.0. The code never takes min(adaptive, base_value).
+
+== 2. REAL DATA: benchmark_test, window=15, min_value=70.0 ==
+Input: newest 15 quality_score values in evidence/spark-quality-runs-benchmark_test.json: all 74.0740740...
+       (each run: total_records=27, quarantined_records=7, clean=20)
+    quality_score = 20 / 27 * 100 = 74.0740741 (recurring 074074...)
+    mean  = 74.0740741, stdev = 0.0
+    adaptive = max(74.0740741 - 0.0, 70.0) = 74.0740741
+    round(adaptive, 4) = 74.0741            <- rounded UP from 74.074074...
+Consequence, derived by hand from spark/spark_quality_engine.py:2577 (`if quality_score < quality_threshold`):
+    74.0740741 < 74.0741  -> True
+    A table that scores exactly the same every run would still fire the "Critical Data Quality Drop" alert
+    if the adaptive threshold were active. (Not observed in production because case A applies there; this is arithmetic only.)
+
+== 3. HYPOTHETICAL SERIES (illustration only, NOT system data) ==
+Five made-up run scores: 95, 90, 100, 85, 100 ; min_value = 70
+    mean = (95 + 90 + 100 + 85 + 100) / 5 = 470 / 5 = 94.0
+    deviations = +1, -4, +6, -9, +6
+    squares    = 1, 16, 36, 81, 36 ; sum = 170
+    variance (n-1) = 170 / 4 = 42.5
+    stdev = sqrt(42.5) = 6.5192
+    adaptive = max(94.0 - 6.5192, 70) = 87.4808 -> round(., 4) = 87.4808
+    Reading: a run scoring below 87.48 % would alert. A base_value of 90 would have alerted at 89.9 %.
+
+== 4. REAL DATA: IQR bounds for grocery_sales (value_range, multiplier 1.5) ==
+Input: value_range_profile in the newest run of evidence/spark-quality-runs-grocery_sales.json
+    q1 = 25.0 , q3 = 50.0                       (from approxQuantile, spark/dynamic_rules_engine.py:239)
+    iqr = q3 - q1 = 50.0 - 25.0 = 25.0          (:245)
+    lower_bound = q1 - 1.5 * iqr = 25.0 - 37.5 = -12.5   (:246)  -> stored -12.5
+    upper_bound = q3 + 1.5 * iqr = 50.0 + 37.5 = 87.5    (:247)  -> stored 87.5
+Both match the stored bounds exactly.
+
+== 5. REAL DATA: quality score for grocery_sales ==
+    557 clean / 561 total * 100 = 99.2870...    -> stored quality_score 99.287 (4 rows quarantined: null_value_in_<column>)

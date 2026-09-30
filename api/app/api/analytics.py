@@ -822,6 +822,7 @@ def get_sell_in_out_analytics():
             "quarantined_records_count": quarantined_count
         },
         "timeline": timeline,
+        "is_example": True,
         "business_impact_narrative": (
             f"การเปรียบเทียบ Sell-In ({total_sell_in:,} ชิ้น) กับ Sell-Out ({total_sell_out:,} ชิ้น) เผยให้เห็นช่องว่าง (Discrepancy Gap) {total_gap:,} ชิ้น "
             f"โดยมีข้อมูลตกค้างใน Quarantine ถึง {total_quarantined_gap:,} ชิ้น ในช่วงที่ Data Quality ตกต่ำกว่า SLA 95% "

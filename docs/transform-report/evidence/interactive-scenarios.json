@@ -1,0 +1,626 @@
+{
+  "S1_default": {
+    "params": {},
+    "metrics": {
+      "total_rows": 1030,
+      "clean_rows": 915,
+      "review_rows": 20,
+      "quarantine_rows": 95,
+      "quality_score_pct": 88.8,
+      "missing_score_count": 40,
+      "invalid_range_count": 25,
+      "duplicate_count": 30,
+      "initial_outlier_count": 20,
+      "gate1_quarantined": 65,
+      "gate2_quarantined": 30,
+      "upper_fence": 23.0,
+      "q1": 3.0,
+      "q3": 8.0,
+      "iqr": 5.0
+    },
+    "rule_applied_counts": {
+      "Passed All Active Rules": 915,
+      "Strict Completeness (0% Null)": 40,
+      "Composite Key Uniqueness (student_id + course + semester)": 30,
+      "Value Range Check [0.0, 100.0]": 25,
+      "Tukey IQR Fence (> 23.0h)": 20
+    },
+    "examples": [
+      {
+        "dirty_row_id": 27,
+        "score": 71.6,
+        "study_hours": 41,
+        "whitebox_status": "Review",
+        "whitebox_error_type": "Study Hours Outlier",
+        "whitebox_rule_applied": "Tukey IQR Fence (> 23.0h)"
+      },
+      {
+        "dirty_row_id": 2,
+        "score": null,
+        "study_hours": 3,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Missing Score",
+        "whitebox_rule_applied": "Strict Completeness (0% Null)"
+      },
+      {
+        "dirty_row_id": 21,
+        "score": -5.0,
+        "study_hours": 2,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Invalid Score Range",
+        "whitebox_rule_applied": "Value Range Check [0.0, 100.0]"
+      },
+      {
+        "dirty_row_id": 219,
+        "score": 69.7,
+        "study_hours": 7,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Duplicate",
+        "whitebox_rule_applied": "Composite Key Uniqueness (student_id + course + semester)"
+      }
+    ]
+  },
+  "S2_k_1_5": {
+    "params": {
+      "tukey_multiplier": "1.5"
+    },
+    "metrics": {
+      "total_rows": 1030,
+      "clean_rows": 915,
+      "review_rows": 20,
+      "quarantine_rows": 95,
+      "quality_score_pct": 88.8,
+      "missing_score_count": 40,
+      "invalid_range_count": 25,
+      "duplicate_count": 30,
+      "initial_outlier_count": 20,
+      "gate1_quarantined": 65,
+      "gate2_quarantined": 30,
+      "upper_fence": 15.5,
+      "q1": 3.0,
+      "q3": 8.0,
+      "iqr": 5.0
+    },
+    "rule_applied_counts": {
+      "Passed All Active Rules": 915,
+      "Strict Completeness (0% Null)": 40,
+      "Composite Key Uniqueness (student_id + course + semester)": 30,
+      "Value Range Check [0.0, 100.0]": 25,
+      "Tukey IQR Fence (> 15.5h)": 20
+    },
+    "examples": [
+      {
+        "dirty_row_id": 27,
+        "score": 71.6,
+        "study_hours": 41,
+        "whitebox_status": "Review",
+        "whitebox_error_type": "Study Hours Outlier",
+        "whitebox_rule_applied": "Tukey IQR Fence (> 15.5h)"
+      },
+      {
+        "dirty_row_id": 2,
+        "score": null,
+        "study_hours": 3,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Missing Score",
+        "whitebox_rule_applied": "Strict Completeness (0% Null)"
+      },
+      {
+        "dirty_row_id": 21,
+        "score": -5.0,
+        "study_hours": 2,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Invalid Score Range",
+        "whitebox_rule_applied": "Value Range Check [0.0, 100.0]"
+      },
+      {
+        "dirty_row_id": 219,
+        "score": 69.7,
+        "study_hours": 7,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Duplicate",
+        "whitebox_rule_applied": "Composite Key Uniqueness (student_id + course + semester)"
+      }
+    ]
+  },
+  "S3_min_score_40": {
+    "params": {
+      "min_score": 40.0
+    },
+    "metrics": {
+      "total_rows": 1030,
+      "clean_rows": 911,
+      "review_rows": 20,
+      "quarantine_rows": 99,
+      "quality_score_pct": 88.4,
+      "missing_score_count": 40,
+      "invalid_range_count": 29,
+      "duplicate_count": 30,
+      "initial_outlier_count": 20,
+      "gate1_quarantined": 69,
+      "gate2_quarantined": 30,
+      "upper_fence": 23.0,
+      "q1": 3.0,
+      "q3": 8.0,
+      "iqr": 5.0
+    },
+    "rule_applied_counts": {
+      "Passed All Active Rules": 911,
+      "Strict Completeness (0% Null)": 40,
+      "Composite Key Uniqueness (student_id + course + semester)": 30,
+      "Value Range Check [40.0, 100.0]": 29,
+      "Tukey IQR Fence (> 23.0h)": 20
+    },
+    "examples": [
+      {
+        "dirty_row_id": 27,
+        "score": 71.6,
+        "study_hours": 41,
+        "whitebox_status": "Review",
+        "whitebox_error_type": "Study Hours Outlier",
+        "whitebox_rule_applied": "Tukey IQR Fence (> 23.0h)"
+      },
+      {
+        "dirty_row_id": 2,
+        "score": null,
+        "study_hours": 3,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Missing Score",
+        "whitebox_rule_applied": "Strict Completeness (0% Null)"
+      },
+      {
+        "dirty_row_id": 21,
+        "score": -5.0,
+        "study_hours": 2,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Invalid Score Range",
+        "whitebox_rule_applied": "Value Range Check [40.0, 100.0]"
+      },
+      {
+        "dirty_row_id": 219,
+        "score": 69.7,
+        "study_hours": 7,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Duplicate",
+        "whitebox_rule_applied": "Composite Key Uniqueness (student_id + course + semester)"
+      }
+    ]
+  },
+  "S4_null_adaptive_5": {
+    "params": {
+      "null_policy": "adaptive_5",
+      "max_null_pct": 5.0
+    },
+    "metrics": {
+      "total_rows": 1030,
+      "clean_rows": 915,
+      "review_rows": 60,
+      "quarantine_rows": 55,
+      "quality_score_pct": 88.8,
+      "missing_score_count": 40,
+      "invalid_range_count": 25,
+      "duplicate_count": 30,
+      "initial_outlier_count": 20,
+      "gate1_quarantined": 25,
+      "gate2_quarantined": 30,
+      "upper_fence": 23.0,
+      "q1": 3.0,
+      "q3": 8.0,
+      "iqr": 5.0
+    },
+    "rule_applied_counts": {
+      "Passed All Active Rules": 915,
+      "Adaptive Null Review (<=5.0%)": 40,
+      "Composite Key Uniqueness (student_id + course + semester)": 30,
+      "Value Range Check [0.0, 100.0]": 25,
+      "Tukey IQR Fence (> 23.0h)": 20
+    },
+    "examples": [
+      {
+        "dirty_row_id": 2,
+        "score": null,
+        "study_hours": 3,
+        "whitebox_status": "Review",
+        "whitebox_error_type": "Missing Score",
+        "whitebox_rule_applied": "Adaptive Null Review (<=5.0%)"
+      },
+      {
+        "dirty_row_id": 27,
+        "score": 71.6,
+        "study_hours": 41,
+        "whitebox_status": "Review",
+        "whitebox_error_type": "Study Hours Outlier",
+        "whitebox_rule_applied": "Tukey IQR Fence (> 23.0h)"
+      },
+      {
+        "dirty_row_id": 21,
+        "score": -5.0,
+        "study_hours": 2,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Invalid Score Range",
+        "whitebox_rule_applied": "Value Range Check [0.0, 100.0]"
+      },
+      {
+        "dirty_row_id": 219,
+        "score": 69.7,
+        "study_hours": 7,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Duplicate",
+        "whitebox_rule_applied": "Composite Key Uniqueness (student_id + course + semester)"
+      }
+    ]
+  },
+  "S5_null_adaptive_3": {
+    "params": {
+      "null_policy": "adaptive_5",
+      "max_null_pct": 3.0
+    },
+    "metrics": {
+      "total_rows": 1030,
+      "clean_rows": 915,
+      "review_rows": 20,
+      "quarantine_rows": 95,
+      "quality_score_pct": 88.8,
+      "missing_score_count": 40,
+      "invalid_range_count": 25,
+      "duplicate_count": 30,
+      "initial_outlier_count": 20,
+      "gate1_quarantined": 65,
+      "gate2_quarantined": 30,
+      "upper_fence": 23.0,
+      "q1": 3.0,
+      "q3": 8.0,
+      "iqr": 5.0
+    },
+    "rule_applied_counts": {
+      "Passed All Active Rules": 915,
+      "Strict Completeness (0% Null)": 40,
+      "Composite Key Uniqueness (student_id + course + semester)": 30,
+      "Value Range Check [0.0, 100.0]": 25,
+      "Tukey IQR Fence (> 23.0h)": 20
+    },
+    "examples": [
+      {
+        "dirty_row_id": 27,
+        "score": 71.6,
+        "study_hours": 41,
+        "whitebox_status": "Review",
+        "whitebox_error_type": "Study Hours Outlier",
+        "whitebox_rule_applied": "Tukey IQR Fence (> 23.0h)"
+      },
+      {
+        "dirty_row_id": 2,
+        "score": null,
+        "study_hours": 3,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Missing Score",
+        "whitebox_rule_applied": "Strict Completeness (0% Null)"
+      },
+      {
+        "dirty_row_id": 21,
+        "score": -5.0,
+        "study_hours": 2,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Invalid Score Range",
+        "whitebox_rule_applied": "Value Range Check [0.0, 100.0]"
+      },
+      {
+        "dirty_row_id": 219,
+        "score": 69.7,
+        "study_hours": 7,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Duplicate",
+        "whitebox_rule_applied": "Composite Key Uniqueness (student_id + course + semester)"
+      }
+    ]
+  },
+  "S6_dedup_review_all": {
+    "params": {
+      "dedup_strategy": "review_all"
+    },
+    "metrics": {
+      "total_rows": 1030,
+      "clean_rows": 915,
+      "review_rows": 50,
+      "quarantine_rows": 65,
+      "quality_score_pct": 88.8,
+      "missing_score_count": 40,
+      "invalid_range_count": 25,
+      "duplicate_count": 30,
+      "initial_outlier_count": 20,
+      "gate1_quarantined": 65,
+      "gate2_quarantined": 0,
+      "upper_fence": 23.0,
+      "q1": 3.0,
+      "q3": 8.0,
+      "iqr": 5.0
+    },
+    "rule_applied_counts": {
+      "Passed All Active Rules": 915,
+      "Strict Completeness (0% Null)": 40,
+      "Composite Key Uniqueness (student_id + course + semester)": 30,
+      "Value Range Check [0.0, 100.0]": 25,
+      "Tukey IQR Fence (> 23.0h)": 20
+    },
+    "examples": [
+      {
+        "dirty_row_id": 27,
+        "score": 71.6,
+        "study_hours": 41,
+        "whitebox_status": "Review",
+        "whitebox_error_type": "Study Hours Outlier",
+        "whitebox_rule_applied": "Tukey IQR Fence (> 23.0h)"
+      },
+      {
+        "dirty_row_id": 219,
+        "score": 69.7,
+        "study_hours": 7,
+        "whitebox_status": "Review",
+        "whitebox_error_type": "Duplicate",
+        "whitebox_rule_applied": "Composite Key Uniqueness (student_id + course + semester)"
+      },
+      {
+        "dirty_row_id": 2,
+        "score": null,
+        "study_hours": 3,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Missing Score",
+        "whitebox_rule_applied": "Strict Completeness (0% Null)"
+      },
+      {
+        "dirty_row_id": 21,
+        "score": -5.0,
+        "study_hours": 2,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Invalid Score Range",
+        "whitebox_rule_applied": "Value Range Check [0.0, 100.0]"
+      }
+    ]
+  },
+  "S7_unknown_key_record_id": {
+    "params": {
+      "composite_key": "record_id"
+    },
+    "metrics": {
+      "total_rows": 1030,
+      "clean_rows": 915,
+      "review_rows": 20,
+      "quarantine_rows": 95,
+      "quality_score_pct": 88.8,
+      "missing_score_count": 40,
+      "invalid_range_count": 25,
+      "duplicate_count": 30,
+      "initial_outlier_count": 20,
+      "gate1_quarantined": 65,
+      "gate2_quarantined": 30,
+      "upper_fence": 23.0,
+      "q1": 3.0,
+      "q3": 8.0,
+      "iqr": 5.0
+    },
+    "rule_applied_counts": {
+      "Passed All Active Rules": 915,
+      "Strict Completeness (0% Null)": 40,
+      "Composite Key Uniqueness (record_id)": 30,
+      "Value Range Check [0.0, 100.0]": 25,
+      "Tukey IQR Fence (> 23.0h)": 20
+    },
+    "examples": [
+      {
+        "dirty_row_id": 27,
+        "score": 71.6,
+        "study_hours": 41,
+        "whitebox_status": "Review",
+        "whitebox_error_type": "Study Hours Outlier",
+        "whitebox_rule_applied": "Tukey IQR Fence (> 23.0h)"
+      },
+      {
+        "dirty_row_id": 2,
+        "score": null,
+        "study_hours": 3,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Missing Score",
+        "whitebox_rule_applied": "Strict Completeness (0% Null)"
+      },
+      {
+        "dirty_row_id": 21,
+        "score": -5.0,
+        "study_hours": 2,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Invalid Score Range",
+        "whitebox_rule_applied": "Value Range Check [0.0, 100.0]"
+      },
+      {
+        "dirty_row_id": 219,
+        "score": 69.7,
+        "study_hours": 7,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Duplicate",
+        "whitebox_rule_applied": "Composite Key Uniqueness (record_id)"
+      }
+    ]
+  },
+  "S8_custom_fence_12": {
+    "params": {
+      "tukey_multiplier": "custom",
+      "custom_upper_fence": 12.0
+    },
+    "metrics": {
+      "total_rows": 1030,
+      "clean_rows": 915,
+      "review_rows": 20,
+      "quarantine_rows": 95,
+      "quality_score_pct": 88.8,
+      "missing_score_count": 40,
+      "invalid_range_count": 25,
+      "duplicate_count": 30,
+      "initial_outlier_count": 20,
+      "gate1_quarantined": 65,
+      "gate2_quarantined": 30,
+      "upper_fence": 12.0,
+      "q1": 3.0,
+      "q3": 8.0,
+      "iqr": 5.0
+    },
+    "rule_applied_counts": {
+      "Passed All Active Rules": 915,
+      "Strict Completeness (0% Null)": 40,
+      "Composite Key Uniqueness (student_id + course + semester)": 30,
+      "Value Range Check [0.0, 100.0]": 25,
+      "Tukey IQR Fence (> 12.0h)": 20
+    },
+    "examples": [
+      {
+        "dirty_row_id": 27,
+        "score": 71.6,
+        "study_hours": 41,
+        "whitebox_status": "Review",
+        "whitebox_error_type": "Study Hours Outlier",
+        "whitebox_rule_applied": "Tukey IQR Fence (> 12.0h)"
+      },
+      {
+        "dirty_row_id": 2,
+        "score": null,
+        "study_hours": 3,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Missing Score",
+        "whitebox_rule_applied": "Strict Completeness (0% Null)"
+      },
+      {
+        "dirty_row_id": 21,
+        "score": -5.0,
+        "study_hours": 2,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Invalid Score Range",
+        "whitebox_rule_applied": "Value Range Check [0.0, 100.0]"
+      },
+      {
+        "dirty_row_id": 219,
+        "score": 69.7,
+        "study_hours": 7,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Duplicate",
+        "whitebox_rule_applied": "Composite Key Uniqueness (student_id + course + semester)"
+      }
+    ]
+  },
+  "S9_rule3_off": {
+    "params": {
+      "rule3_confirmed": false
+    },
+    "metrics": {
+      "total_rows": 1030,
+      "clean_rows": 935,
+      "review_rows": 0,
+      "quarantine_rows": 95,
+      "quality_score_pct": 90.8,
+      "missing_score_count": 40,
+      "invalid_range_count": 25,
+      "duplicate_count": 30,
+      "initial_outlier_count": 0,
+      "gate1_quarantined": 65,
+      "gate2_quarantined": 30,
+      "upper_fence": 23.0,
+      "q1": 3.0,
+      "q3": 8.0,
+      "iqr": 5.0
+    },
+    "rule_applied_counts": {
+      "Passed All Active Rules": 935,
+      "Strict Completeness (0% Null)": 40,
+      "Composite Key Uniqueness (student_id + course + semester)": 30,
+      "Value Range Check [0.0, 100.0]": 25
+    },
+    "examples": [
+      {
+        "dirty_row_id": 2,
+        "score": null,
+        "study_hours": 3,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Missing Score",
+        "whitebox_rule_applied": "Strict Completeness (0% Null)"
+      },
+      {
+        "dirty_row_id": 21,
+        "score": -5.0,
+        "study_hours": 2,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Invalid Score Range",
+        "whitebox_rule_applied": "Value Range Check [0.0, 100.0]"
+      },
+      {
+        "dirty_row_id": 219,
+        "score": 69.7,
+        "study_hours": 7,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Duplicate",
+        "whitebox_rule_applied": "Composite Key Uniqueness (student_id + course + semester)"
+      }
+    ]
+  },
+  "S10_file_without_semester": {
+    "params": {
+      "_drop_columns": [
+        "semester"
+      ]
+    },
+    "metrics": {
+      "total_rows": 1030,
+      "clean_rows": 746,
+      "review_rows": 15,
+      "quarantine_rows": 269,
+      "quality_score_pct": 72.4,
+      "missing_score_count": 36,
+      "invalid_range_count": 20,
+      "duplicate_count": 213,
+      "initial_outlier_count": 15,
+      "gate1_quarantined": 56,
+      "gate2_quarantined": 213,
+      "upper_fence": 23.0,
+      "q1": 3.0,
+      "q3": 8.0,
+      "iqr": 5.0
+    },
+    "rule_applied_counts": {
+      "Passed All Active Rules": 746,
+      "Composite Key Uniqueness (student_id + course + semester)": 213,
+      "Strict Completeness (0% Null)": 36,
+      "Value Range Check [0.0, 100.0]": 20,
+      "Tukey IQR Fence (> 23.0h)": 15
+    },
+    "examples": [
+      {
+        "dirty_row_id": 27,
+        "score": 71.6,
+        "study_hours": 41,
+        "whitebox_status": "Review",
+        "whitebox_error_type": "Study Hours Outlier",
+        "whitebox_rule_applied": "Tukey IQR Fence (> 23.0h)"
+      },
+      {
+        "dirty_row_id": 2,
+        "score": null,
+        "study_hours": 3,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Missing Score",
+        "whitebox_rule_applied": "Strict Completeness (0% Null)"
+      },
+      {
+        "dirty_row_id": 21,
+        "score": -5.0,
+        "study_hours": 2,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Invalid Score Range",
+        "whitebox_rule_applied": "Value Range Check [0.0, 100.0]"
+      },
+      {
+        "dirty_row_id": 78,
+        "score": 65.6,
+        "study_hours": 3,
+        "whitebox_status": "Quarantine",
+        "whitebox_error_type": "Duplicate",
+        "whitebox_rule_applied": "Composite Key Uniqueness (student_id + course + semester)"
+      }
+    ]
+  }
+}

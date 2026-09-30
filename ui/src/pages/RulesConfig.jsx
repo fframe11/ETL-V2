@@ -848,6 +848,7 @@ export default function RulesConfig() {
         <button className={`gs-rules-tab-btn ${activeTab === "proposals" ? "active" : ""}`} onClick={() => { setActiveTab("proposals"); setActionResult(null); }}>
           ข้อเสนอจาก AI
           {proposalsList.length > 0 && <span className="gs-badge-count">{proposalsList.length}</span>}
+          {proposals.data?.is_example && <span className="gs-badge-count" style={{ background: "#F59E0B" }}>ตัวอย่าง</span>}
         </button>
         <button className={`gs-rules-tab-btn ${activeTab === "settings" ? "active" : ""}`} onClick={() => { setActiveTab("settings"); setActionResult(null); }}>
           ตั้งค่า AI
@@ -1224,7 +1225,17 @@ export default function RulesConfig() {
           {/* Left: Proposals list */}
           <div className="gs-rules-list">
             <div className="gs-rcard">
-              <h3>Advisor Proposals</h3>
+              <h3>
+                Advisor Proposals
+                {proposals.data?.is_example && (
+                  <InfoHint text="ตอนนี้ยังไม่มีข้อเสนอจริงใน Elasticsearch (sdoqap_ai_rule_proposals) ที่เห็นด้านล่างเป็น 3 ตัวอย่างที่ฝังไว้ในโค้ด ไม่ใช่ผลจากการวิเคราะห์ข้อมูลจริงรอบล่าสุด" />
+                )}
+              </h3>
+              {proposals.data?.is_example && (
+                <div style={{ fontSize: "10.5px", fontWeight: 700, color: "#B45309", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: "6px", padding: "6px 10px", marginBottom: "10px" }}>
+                  แสดงตัวอย่าง — ยังไม่มีข้อเสนอจริงจากระบบในขณะนี้
+                </div>
+              )}
               <div className="gs-list-items">
                 {proposals.loading ? (
                   <div className="gs-empty">Loading proposals...</div>
@@ -1566,7 +1577,7 @@ export default function RulesConfig() {
                       <tr>
                         <th>Source Detail</th>
                         <th>Raw Value</th>
-                        <th>AI Suggestion</th>
+                        <th>คำแนะนำ (จับคู่ข้อความ)<InfoHint text="คำนวณจากความคล้ายของตัวอักษร (bigram similarity) เทียบกับหมวดที่รู้จัก ไม่ใช่โมเดล AI" /></th>
                         <th>Confidence</th>
                         <th>Frequency</th>
                         <th>Priority</th>

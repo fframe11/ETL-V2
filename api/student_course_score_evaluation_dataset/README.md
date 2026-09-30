@@ -33,3 +33,13 @@ Use this package to evaluate the Semi-Auto ETL platform.
 
 ## Important
 Use the actual results from your system in the presentation. Do not invent performance numbers.
+
+## Runtime setup (api container)
+This folder is bind-mounted into the `api` container, so uploads and `output_runs/` survive rebuilds.
+On startup the API restores the three CSVs above from `student_course_score_evaluation_dataset.zip`
+(repo root) if they are missing, and generates `student_demographics.csv` if it is missing.
+
+`student_demographics.csv` is **synthetic demo data** for the multi-table (Audit Trail stage 0) demo:
+one row per `student_id` in `clean_dataset.csv`, except every 500th id (left out on purpose so the
+demo shows unmatched keys). Names, faculties and enrollment dates are random (seed 42), not real people.
+Delete the file to regenerate it.

@@ -918,7 +918,7 @@ export default function Ingestion() {
                   ["Q1 / Q3", hoursProf.q1 != null ? `${fmtStat(hoursProf.q1)} / ${fmtStat(hoursProf.q3)}` : "—"],
                   ["ช่วงปกติ", hoursProf.lower_fence != null ? `${fmtStat(hoursProf.lower_fence)} ถึง ${fmtStat(hoursProf.upper_fence)}` : "—"]
                 ]}
-                explanation="ค่าที่อยู่นอกช่วงปกติควรส่งเข้าคิวตรวจสอบ แทนการตัดทิ้งอัตโนมัติ"
+                explanation="ค่าที่อยู่นอกช่วงปกติควรส่งเข้าคิวตรวจสอบ แทนการตัดทิ้งอัตโนมัติ (การ์ดนี้ใช้ตัวคูณ 1.5×IQR ตายตัวเสมอ แม้เปลี่ยนค่าตัวคูณในหน้า Expectations & Alerts แล้ว การ์ดนี้จะยังไม่อัปเดตตาม)"
                 selected={selectedFindings.outlier}
                 onToggle={(v) => toggleFinding("outlier", v)}
                 expanded={expandedFinding === "outlier"}

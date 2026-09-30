@@ -2,7 +2,7 @@ import { Icon } from '../components/UiIcons';
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../hooks/useApi";
-import { PageHeader } from "../components/ui";
+import { PageHeader, InfoHint } from "../components/ui";
 import "./DataExport.css";
 
 export default function DataExport() {
@@ -285,6 +285,7 @@ export default function DataExport() {
           <span style={{ background: "#DCFCE7", color: "#15803D", fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "4px" }}>
             <Icon name="check" /> ผ่านการคัดกรองแล้ว {typeof wbState?.metrics?.total_rows === "number" ? wbState.metrics.total_rows.toLocaleString() : "—"} แถว
           </span>
+          <InfoHint text="ส่วนนี้มาจากเอนจินตรวจคุณภาพแบบโต้ตอบ (ทดลองทีละไฟล์ อยู่ในหน่วยความจำ ไม่ถาวร) คนละชุดกับตาราง Pipeline/รายงาน Gold ด้านล่างซึ่งมาจากรอบตรวจ Spark จริงที่เก็บถาวรใน HDFS/Elasticsearch" />
         </div>
 
         {/* Workspace Filter Toolbar */}

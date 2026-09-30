@@ -347,7 +347,8 @@ def list_ai_proposals(table: Optional[str] = Query(None, description="Filter by 
     except Exception:
         pass
 
-    if not proposals:
+    is_example = not proposals
+    if is_example:
         for p in _FALLBACK_AI_PROPOSALS:
             if p.get("status") == "PROPOSED":
                 if not table or p.get("table_name", "").lower() == table.lower():
@@ -356,7 +357,8 @@ def list_ai_proposals(table: Optional[str] = Query(None, description="Filter by 
     return {
         "proposals": proposals,
         "count": len(proposals),
-        "source": ES_INDEX_AI_PROPOSALS,
+        "is_example": is_example,
+        "source": "example_proposals" if is_example else ES_INDEX_AI_PROPOSALS,
     }
 
 

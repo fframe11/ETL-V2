@@ -454,11 +454,11 @@ export default function WhiteBoxPipeline() {
               <p className="wb-desc">Master student dimension containing personal identity and faculty enrollment.</p>
               <div className="wb-metric-box">
                 <span>Columns</span>
-                <code>['studentId', 'fullName', 'faculty', 'enrollmentDate']</code>
+                <code>{multiTablePreview?.table_a?.columns ? JSON.stringify(multiTablePreview.table_a.columns) : "—"}</code>
               </div>
               <div className="wb-metric-box" style={{ marginTop: "8px" }}>
                 <span>Total Master Records</span>
-                <strong>10,000 rows</strong>
+                <strong>{multiTablePreview?.table_a?.total_rows != null ? `${multiTablePreview.table_a.total_rows.toLocaleString()} rows` : "—"}</strong>
               </div>
             </div>
 
@@ -470,11 +470,11 @@ export default function WhiteBoxPipeline() {
               <p className="wb-desc">Fact table containing transactional semester course performance and study hours.</p>
               <div className="wb-metric-box">
                 <span>Columns</span>
-                <code>['dirty_row_id', 'student_id', 'course', 'score', 'semester', 'study_hours', 'updated_at']</code>
+                <code>{multiTablePreview?.table_b?.columns ? JSON.stringify(multiTablePreview.table_b.columns) : "—"}</code>
               </div>
               <div className="wb-metric-box" style={{ marginTop: "8px" }}>
                 <span>Total Transaction Records</span>
-                <strong>10,100 rows</strong>
+                <strong>{multiTablePreview?.table_b?.total_rows != null ? `${multiTablePreview.table_b.total_rows.toLocaleString()} rows` : "—"}</strong>
               </div>
             </div>
           </div>
@@ -509,7 +509,7 @@ export default function WhiteBoxPipeline() {
                           <td><code>{s.source_a_column}</code></td>
                           <td><code>{s.source_b_column}</code></td>
                           <td><span className="wb-pill warning">{s.difference_type}</span></td>
-                          <td><span className="wb-pill success">{s.confidence_pct}% Match</span></td>
+                          <td><span className="wb-pill success">{s.confidence_pct}% Match</span><InfoHint text="ตัวเลขนี้เป็นค่าคงที่ (96.0%) ที่ตั้งไว้ตายตัว ไม่ได้คำนวณจากข้อมูลจริง" /></td>
                           <td>
                             <ul className="wb-compact-list">
                               {(s.evidence || []).map((ev, eIdx) => <li key={eIdx}>{ev}</li>)}
@@ -580,7 +580,7 @@ export default function WhiteBoxPipeline() {
                     <strong>{multiTableAnalysis.candidate_relationship?.overlapping_keys} / {multiTableAnalysis.candidate_relationship?.unique_keys_b} keys</strong>
                   </div>
                   <div className="wb-metric-box">
-                    <span>Recommended Join</span>
+                    <span>Recommended Join<InfoHint text="ค่านี้ตายตัวเป็น Left Join เสมอ ไม่ได้เลือกตามข้อมูลจริง" /></span>
                     <strong>Left Join (Preserves All Scores)</strong>
                   </div>
                 </div>
@@ -591,7 +591,7 @@ export default function WhiteBoxPipeline() {
                     <strong>Semi-Automated Architecture Philosophy (No Black-Box Joins):</strong>
                   </div>
                   <p style={{ margin: "4px 0 8px 0", fontSize: "13px" }}>
-                    The system does <strong>not</strong> blindly join datasets. It computes candidate overlaps, verifies cardinality, and requires human confirmation to seal the data contract.
+                    The system computes candidate overlaps and verifies cardinality before joining. <strong>Note:</strong> in this demo dashboard, the join below already ran automatically when the page loaded (see "JOIN COMPLETED SUCCESSFULLY" below) — the button re-runs it rather than confirming a pending action.
                   </p>
                   <ul className="wb-why-list">
                     {(multiTableAnalysis.candidate_relationship?.rationale || []).map((r, rIdx) => (
@@ -622,7 +622,7 @@ export default function WhiteBoxPipeline() {
                     onClick={handleConfirmJoin}
                     disabled={joining}
                   >
-                    {joining ? "Reconciling & Joining..." : " Confirm Relationship & Execute Semi-Auto Join →"}
+                    {joining ? "Reconciling & Joining..." : joinResult ? " Re-run Join →" : " Confirm Relationship & Execute Semi-Auto Join →"}
                   </button>
                 </div>
               </div>

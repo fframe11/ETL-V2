@@ -14,9 +14,11 @@ Implements the transparent, explainable decision pipeline (re-architected from B
 import os
 import io
 import re
+import json
 import time
 import math
 import logging
+import zipfile
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 
@@ -106,6 +108,51 @@ def _resolve_output_dir() -> str:
 
 OUTPUT_DIR = _resolve_output_dir()
 UNIFIED_DATASET_PATH = os.path.join(OUTPUT_DIR, "unified_multitable_dataset.csv")
+CLEAN_DATASET_PATH = os.path.join(EVAL_DATASET_DIR, "clean_dataset.csv")
+SEED_DATASET_ZIP = os.environ.get("EVAL_DATASET_ZIP", "/app/seed/student_course_score_evaluation_dataset.zip")
+_SEED_CSV_FILES = ("dirty_dataset.csv", "ground_truth.csv", "clean_dataset.csv")
+_DEMO_FACULTIES = ("Engineering", "Science", "Business Administration", "Liberal Arts", "Information Technology")
+_DEMO_FIRST_NAMES = ("Anan", "Busaba", "Chai", "Darika", "Ekachai", "Fah", "Kanya", "Nattapong", "Pim", "Somchai", "Suda", "Wichai")
+_DEMO_LAST_NAMES = ("Srisuk", "Wongsa", "Chaiyaporn", "Rattanakul", "Boonmee", "Thongdee", "Sukjai", "Kaewmanee")
+
+
+def _restore_seed_csvs() -> None:
+    if not os.path.isfile(SEED_DATASET_ZIP):
+        return
+    with zipfile.ZipFile(SEED_DATASET_ZIP) as zf:
+        for name in _SEED_CSV_FILES:
+            if name in zf.namelist() and not os.path.isfile(os.path.join(EVAL_DATASET_DIR, name)):
+                zf.extract(name, EVAL_DATASET_DIR)
+                logger.info("Restored %s from %s", name, SEED_DATASET_ZIP)
+
+
+def _generate_demo_demographics() -> None:
+    """Synthetic master table for the multi-table demo, keyed on the evaluation dataset's student_id."""
+    source = CLEAN_DATASET_PATH if os.path.isfile(CLEAN_DATASET_PATH) else DIRTY_DATASET_PATH
+    if os.path.isfile(DEMOGRAPHICS_DATASET_PATH) or not os.path.isfile(source):
+        return
+    ids = pd.to_numeric(pd.read_csv(source, usecols=["student_id"])["student_id"], errors="coerce").dropna().astype(int).unique()
+    # Leave every 500th student out so the demo shows unmatched keys instead of a trivial 100% match.
+    ids = np.sort(ids[ids % 500 != 0])
+    rng = np.random.RandomState(42)
+    enroll = pd.Timestamp("2023-06-01") + pd.to_timedelta(rng.randint(0, 3 * 365, size=len(ids)), unit="D")
+    df_demo = pd.DataFrame({
+        "studentId": ids,
+        "fullName": [f"{_DEMO_FIRST_NAMES[i % len(_DEMO_FIRST_NAMES)]} {_DEMO_LAST_NAMES[(i // len(_DEMO_FIRST_NAMES)) % len(_DEMO_LAST_NAMES)]}" for i in rng.randint(0, 10_000, size=len(ids))],
+        "faculty": rng.choice(_DEMO_FACULTIES, size=len(ids)),
+        "enrollmentDate": enroll.strftime("%d/%m/%Y"),
+    })
+    tmp_path = DEMOGRAPHICS_DATASET_PATH + ".tmp"
+    df_demo.to_csv(tmp_path, index=False)
+    os.replace(tmp_path, DEMOGRAPHICS_DATASET_PATH)
+    logger.info("Generated synthetic %s (%d students) from %s", DEMOGRAPHICS_DATASET_PATH, len(df_demo), source)
+
+
+try:
+    _restore_seed_csvs()
+    _generate_demo_demographics()
+except Exception as exc:
+    logger.warning("Evaluation dataset bootstrap failed: %s", exc)
 
 # In-memory storage for latest run results to support fast UI querying
 _LATEST_PROFILING: Dict[str, Any] = {}
@@ -1148,6 +1195,34 @@ _WORKFLOW_STATE: Dict[str, Any] = {
     "upstream_ticket_id": "#UP-2026-089"
 }
 
+_WORKFLOW_STATE_PATH = os.path.join(OUTPUT_DIR, "workflow_state.json")
+
+
+def _save_workflow_state() -> None:
+    try:
+        tmp_path = _WORKFLOW_STATE_PATH + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(_WORKFLOW_STATE, f, ensure_ascii=False, default=str)
+        os.replace(tmp_path, _WORKFLOW_STATE_PATH)
+    except OSError as exc:
+        logger.warning("Could not persist workflow state to %s: %s", _WORKFLOW_STATE_PATH, exc)
+
+
+def _load_workflow_state() -> None:
+    try:
+        with open(_WORKFLOW_STATE_PATH, encoding="utf-8") as f:
+            saved = json.load(f)
+    except FileNotFoundError:
+        return
+    except (OSError, ValueError) as exc:
+        logger.warning("Ignoring unreadable workflow state %s: %s", _WORKFLOW_STATE_PATH, exc)
+        return
+    if isinstance(saved, dict):
+        _WORKFLOW_STATE.update(saved)
+
+
+_load_workflow_state()
+
 
 def _normalize_selected_findings(val: Any) -> Dict[str, bool]:
     if isinstance(val, dict):
@@ -1365,6 +1440,7 @@ def update_workflow_state(payload: Dict[str, Any] = Body(default_factory=dict)):
                 _WORKFLOW_STATE[k] = v
     if payload.get("confirm_rules"):
         _WORKFLOW_STATE["confirmed_at"] = datetime.now(timezone.utc).strftime("%H:%M:%S")
+    _save_workflow_state()
     return _recompute_interactive_state()
 
 
@@ -1442,6 +1518,7 @@ async def upload_csv_dataset(
     clean_tbl = re.sub(r"[^A-Za-z0-9_-]", "_", raw_tbl)[:128] or "uploaded_dataset"
     _WORKFLOW_STATE["dataset_name"] = clean_tbl
     _WORKFLOW_STATE["source_type"] = "FILE_UPLOAD"
+    _save_workflow_state()
 
     if _is_supported_schema(df_up.columns):
         if "dirty_row_id" not in df_up.columns:
@@ -1490,6 +1567,7 @@ def ingest_from_connector(payload: Dict[str, Any]):
     _WORKFLOW_STATE["dataset_name"] = table_name
     _WORKFLOW_STATE["source_type"] = source_type
     _WORKFLOW_STATE["connection_uri"] = endpoint_or_host
+    _save_workflow_state()
     _LATEST_PROFILING.clear()
 
     prof = get_dataset_profile(table_name)

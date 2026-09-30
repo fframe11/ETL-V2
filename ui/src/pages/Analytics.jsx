@@ -120,6 +120,7 @@ export default function Analytics() {
         <div style={{ minWidth: '170px' }}>
           <label style={{ display: 'block', fontSize: '10.5px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>
             เป้า SLA (%)
+            <InfoHint text="ค่านี้มีผลแค่การแสดงผลกราฟ/เส้นอ้างอิงในหน้านี้เท่านั้น เกณฑ์ที่เซิร์ฟเวอร์ใช้คำนวณจริงยังคงเป็น 95% เสมอ" />
           </label>
           <input
             type="number"
@@ -135,6 +136,7 @@ export default function Analytics() {
         <div style={{ minWidth: '180px' }}>
           <label style={{ display: 'block', fontSize: '10.5px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>
             พยากรณ์ล่วงหน้า
+            <InfoHint text="ระบบคำนวณจริงแค่ 7 วันแรกจากแนวโน้มคะแนนย้อนหลัง ถ้าเลือก 14 หรือ 30 วัน วันที่ 8 เป็นต้นไปหน้าเว็บสร้างตัวเลขต่อขึ้นเองจากวันที่ 7 (ไม่ใช่ผลคำนวณจากเซิร์ฟเวอร์)" />
           </label>
           <select
             value={horizonDays}
@@ -176,6 +178,11 @@ export default function Analytics() {
         <div className="gs-acard-head">
           <h3>พยากรณ์ {horizonDays} วัน · เป้า {slaTarget}%</h3>
         </div>
+        {horizonDays > 7 && (
+          <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#B45309', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '6px', padding: '5px 10px', marginBottom: '10px' }}>
+            คำนวณจริงแค่วันที่ 1–7 จากข้อมูลย้อนหลัง ส่วนวันที่ 8 เป็นต้นไปเป็นตัวเลขที่หน้าเว็บสร้างต่อขึ้นเองเพื่อการแสดงผล ไม่ใช่ผลคำนวณจากเซิร์ฟเวอร์
+          </div>
+        )}
 
         {projection.loading ? (
           <div className="gs-empty">Running quality forecasting models...</div>
@@ -214,7 +221,10 @@ export default function Analytics() {
                 <span className="gs-akpi-value" style={{ color: 'var(--accent-green)' }}>{projection.data.stability_index}</span>
               </div>
               <div className="gs-akpi">
-                <span className="gs-akpi-label">SLA Breach Prob ({slaTarget}%)</span>
+                <span className="gs-akpi-label">
+                  วันในกราฟที่ต่ำกว่าเป้า ({slaTarget}%)
+                  <InfoHint text="นับสัดส่วนวันในกราฟด้านบนที่คะแนนต่ำกว่าเป้า SLA ที่ตั้งไว้ ไม่ใช่ค่า sla_breach_probability ที่เซิร์ฟเวอร์คำนวณจริง (ซึ่งไม่ได้แสดงในหน้านี้) และถ้าเลือกพยากรณ์ 14/30 วัน ตัวเลขนี้จะรวมวันที่ 8 เป็นต้นไปที่เป็นตัวเลขสร้างขึ้นเองด้วย" />
+                </span>
                 <span className="gs-akpi-value" style={{ color: breachDaysCount > 0 ? 'var(--accent-red)' : 'var(--accent-green)' }}>
                   {breachDaysCount > 0 ? `${Math.round((breachDaysCount / projectionData.length) * 100)}%` : "0%"}
                 </span>
@@ -233,7 +243,10 @@ export default function Analytics() {
         {/* Error Pattern Clustering */}
         <div className="gs-acard">
           <div className="gs-acard-head">
-            <h3>รูปแบบข้อผิดพลาด{clusterSearch ? ` · "${clusterSearch}"` : ""}</h3>
+            <h3>
+              รูปแบบข้อผิดพลาด{clusterSearch ? ` · "${clusterSearch}"` : ""}
+              <InfoHint text="จัดกลุ่มด้วยกฎจับคำสำคัญในข้อความ error ที่ตั้งไว้ล่วงหน้า ไม่ใช่อัลกอริทึม clustering (เช่น k-means)" />
+            </h3>
           </div>
 
           {clustering.loading ? (
@@ -275,7 +288,7 @@ export default function Analytics() {
         {/* Business KPI Impact */}
         <div className="gs-acard">
           <div className="gs-acard-head">
-            <h3>ผลกระทบทางธุรกิจ<InfoHint text="ประมาณการว่าตัวชี้วัดปลายทางจะคลาดเคลื่อนเท่าไรจากข้อมูลที่ไม่ผ่านเกณฑ์" /></h3>
+            <h3>ผลกระทบทางธุรกิจ<InfoHint text="คำนวณจากค่าคงที่สมมติ (เช่น ค่าแก้ไข 2 ดอลลาร์/แถว) ไม่ใช่ข้อมูลต้นทุนทางการเงินจริงของธุรกิจ ใช้เพื่อประมาณสัดส่วนผลกระทบเท่านั้น" /></h3>
           </div>
 
           {impact.loading ? (
@@ -314,7 +327,7 @@ export default function Analytics() {
       <div className="gs-acard">
         <div className="gs-acard-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
           <div>
-            <h3>คำแนะนำจาก AI</h3>
+            <h3>คำแนะนำเชิงกฎ<InfoHint text="สร้างจากกฎตายตัว (เช่น พบ schema drift หรือคะแนนคุณภาพต่ำกว่าเกณฑ์) ไม่ใช่คำแนะนำจากโมเดล AI" /></h3>
           </div>
           <Link to="/rules" style={{ fontSize: '12px', fontWeight: 700, color: '#2563EB', textDecoration: 'none' }}>
             ไปที่ Expectations & Alerts &rarr;

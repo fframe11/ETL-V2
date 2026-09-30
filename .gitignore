@@ -65,3 +65,6 @@ ui/src/test/text-report.json
 
 # Subagent-driven-development scratch workspace (ledgers, briefs, review packages)
 .superpowers/
+
+# Interactive-engine runtime output (bind-mounted into the api container)
+api/student_course_score_evaluation_dataset/output_runs/
