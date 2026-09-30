@@ -41,7 +41,7 @@ jobs:
       - name: Install API dependencies
         working-directory: services/api
         run: |
-          pip install -r requirements.txt pandas pyarrow openpyxl xlrd psycopg2-binary pytest
+          pip install -r requirements.txt pandas pyarrow openpyxl xlrd psycopg2-binary pytest "httpx<0.28"
       - name: Run API tests
         working-directory: services/api
         env:

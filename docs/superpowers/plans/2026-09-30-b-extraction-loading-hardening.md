@@ -27,7 +27,7 @@
 API tests:
 
 ```bash
-MSYS_NO_PATHCONV=1 docker compose run --rm --no-deps -v "$PWD/services/api:/app" -w /app api sh -c "pip install -q --user pytest httpx && python -m pytest -q -p no:cacheprovider tests"
+MSYS_NO_PATHCONV=1 docker compose run --rm --no-deps -v "$PWD/services/api:/app" -w /app api sh -c "pip install -q --user pytest "httpx<0.28" && python -m pytest -q -p no:cacheprovider tests"
 ```
 
 Spark unit tests (ต้องให้ `spark-master` รันอยู่; โค้ด mount ที่ `/opt/spark-apps`):
@@ -1109,7 +1109,7 @@ Expected: ไม่พบ
 - [ ] **Step 12: เพิ่ม `httpx` ให้ CI** — ใน `.github/workflows/ci.yml` job `api-tests` แก้บรรทัด pip เป็น:
 
 ```yaml
-          pip install -r requirements.txt pandas pyarrow openpyxl xlrd psycopg2-binary pytest httpx
+          pip install -r requirements.txt pandas pyarrow openpyxl xlrd psycopg2-binary pytest "httpx<0.28"
 ```
 
 - [ ] **Step 13: Commit**
