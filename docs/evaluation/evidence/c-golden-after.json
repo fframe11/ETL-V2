@@ -1,0 +1,38 @@
+{
+  "ingest_id": "20260930T170725-d6e1ab5b",
+  "run_id": "run_20260930_172558_152701",
+  "total_records": 250,
+  "clean_records": 227,
+  "quarantined_records": 23,
+  "quarantine_breakdown": {
+    "score=-10_0 (expected [37_0500, 107_0500])": 4,
+    "score=-5_0 (expected [37_0500, 107_0500])": 2,
+    "| study_hours=54 (expected [-4_5000, 15_5000])": 2,
+    "| study_hours=38 (expected [-4_5000, 15_5000])": 1,
+    "| study_hours=35 (expected [-4_5000, 15_5000])": 1,
+    "| study_hours=56 (expected [-4_5000, 15_5000])": 1,
+    "null_value_in_score": 12
+  },
+  "duration_seconds": 60.284,
+  "stage_seconds": {
+    "schema_align": 1.126,
+    "schema_drift": 0.001,
+    "auto_clean": 2.211,
+    "validation": 0.419,
+    "dedup": 0.122,
+    "standardize_dates": 0.001,
+    "standardize_categories": 0.007,
+    "anomaly_iqr": 6.537,
+    "anomaly_zscore": 1.949,
+    "anomaly_induced": 0.0,
+    "quarantine_assembly": 4.991,
+    "column_filter": 0.001,
+    "distribution": 1.165,
+    "quarantine_breakdown": 0.774,
+    "copdq": 0.0,
+    "freshness": 0.842,
+    "quality_score": 0.007,
+    "ai_advisory": 11.626,
+    "operational_impact": 1.516
+  }
+}

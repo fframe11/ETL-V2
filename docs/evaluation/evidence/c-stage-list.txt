@@ -1,0 +1,21 @@
+ 1. [align] schema_align — จัดชื่อคอลัมน์และแปลงชนิดข้อมูล
+ 2. [transform] schema_drift — ตรวจการเปลี่ยนโครงสร้างตาราง
+ 3. [transform] auto_clean — แก้ข้อมูลอัตโนมัติด้วยกฎ DSL และลบแถวซ้ำตามคีย์
+ 4. [transform] validation — ตรวจค่าว่าง ชนิดข้อมูล และวันที่
+ 5. [transform] dedup — คัดแถวซ้ำและเก็บแถวล่าสุด
+ 6. [transform] standardize_dates — ปรับรูปแบบวันที่ (รวม พ.ศ.)
+ 7. [transform] standardize_categories — จัดหมวดค่าตามคำสำคัญ
+ 8. [transform] anomaly_iqr — หา outlier ด้วย IQR
+ 9. [transform] anomaly_zscore — หา anomaly ด้วย Z-score
+10. [transform] anomaly_induced — ใช้กฎที่เรียนรู้จาก Decision Tree
+11. [transform] quarantine_assembly — รวมแถวที่ไม่ผ่านเข้าโซนกักกัน
+12. [transform] column_filter — ตัดคอลัมน์ที่ไม่อยู่ใน schema
+13. [post_load] distribution — สรุปการกระจายของข้อมูล
+14. [post_load] quarantine_breakdown — สรุปเหตุผลที่กักกัน
+15. [post_load] copdq — ประเมินมูลค่าความเสียหาย (COPDQ)
+16. [post_load] freshness — วัดความสดใหม่ของข้อมูล
+17. [post_load] quality_score — คำนวณคะแนนคุณภาพและ anomaly ของอัตรากักกัน
+18. [post_load] ai_advisory — วิเคราะห์ด้วย AI และเสนอกฎ
+19. [post_load] operational_impact — คะแนนผลกระทบเชิงปฏิบัติการแบบถ่วงน้ำหนัก
+20. [post_load] report — บันทึกผลลง Elasticsearch
+total: 20 stages
