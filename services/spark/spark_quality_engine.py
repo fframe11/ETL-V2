@@ -1705,157 +1705,20 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
 
     
 
-    # ─── DYNAMIC RULES Layer 2: IQR Value Range Outlier Detection ─────────────
-    outlier_df = None
-    value_range_profile = {}
-    try:
-        from dynamic_rules_engine import compute_value_range_rules, flag_outlier_rows
-        vr_config = rules.get("value_range", {})
-        vr_mode = vr_config.get("mode", "off") if isinstance(vr_config, dict) else "off"
-        
-        if vr_mode in ("auto", "adaptive"):
-            # Identify numeric columns from schema_spec
-            numeric_cols = [col for col, t in schema_spec.items() 
-                           if t in ("IntegerType", "DoubleType") and col in clean_df.columns]
-            
-            if numeric_cols:
-                iqr_mult = vr_config.get("iqr_multiplier", 1.5) if isinstance(vr_config, dict) else 1.5
-                value_range_profile = compute_value_range_rules(clean_df, numeric_cols, multiplier=iqr_mult)
-                
-                if value_range_profile:
-                    flagged_df = flag_outlier_rows(clean_df, value_range_profile)
-                    outlier_df = flagged_df.filter(F.col("_outlier_flag") == True) \
-                                          .withColumn("is_invalid", F.lit(True)) \
-                                          .withColumn("reject_reason", F.col("_outlier_details")) \
-                                          .drop("_outlier_flag", "_outlier_details")
-                    clean_df = flagged_df.filter((F.col("_outlier_flag") == False) | F.col("_outlier_flag").isNull()) \
-                                        .drop("_outlier_flag", "_outlier_details")
-                    
-                    outlier_count = outlier_df.count()
-                    if outlier_count > 0:
-                        print(f"[DYNAMIC RULES] IQR outlier detection flagged {outlier_count} rows as value outliers")
-                        remediation_logs.append(f"iqr_outliers_flagged_{outlier_count}")
-    except ImportError:
-        pass  # dynamic_rules_engine not available, skip outlier detection
-    except Exception as ore:
-        print(f"[DYNAMIC RULES] IQR outlier detection failed: {ore}. Continuing without outlier flagging.")
+    ctx = run_stages(["anomaly_iqr", "anomaly_zscore", "anomaly_induced", "quarantine_assembly"], ctx)
+    outlier_df, value_range_profile = ctx.outlier_df, ctx.value_range_profile
+    unsupervised_outlier_df, induced_outlier_df = ctx.unsupervised_outlier_df, ctx.induced_outlier_df
+    all_quarantined, all_quarantined_write = ctx.all_quarantined, ctx.all_quarantined_write
+    clean_df = ctx.clean_df
+    clean_count, quarantine_count, total_records = ctx.clean_count, ctx.quarantine_count, ctx.total_records
 
-    # ─── DYNAMIC RULES: Unsupervised Anomaly Detection (Z-score) ──────────────
-    unsupervised_outlier_df = None
-    try:
-        from dynamic_rules_engine import detect_unsupervised_anomalies
-        # Find numeric columns
-        numeric_cols = [col for col, t in schema_spec.items() 
-                       if t in ("IntegerType", "DoubleType") and col in clean_df.columns]
-        if numeric_cols:
-            flagged_unsupervised = detect_unsupervised_anomalies(clean_df, numeric_cols, threshold=3.0)
-            unsupervised_outlier_df = flagged_unsupervised.filter(F.col("_unsupervised_anomaly") == True) \
-                                                          .withColumn("is_invalid", F.lit(True)) \
-                                                          .withColumn("reject_reason", F.col("_unsupervised_anomaly_details")) \
-                                                          .drop("_unsupervised_anomaly", "_unsupervised_anomaly_details")
-            clean_df = flagged_unsupervised.filter((F.col("_unsupervised_anomaly") == False) | F.col("_unsupervised_anomaly").isNull()) \
-                                           .drop("_unsupervised_anomaly", "_unsupervised_anomaly_details")
-            
-            unsupervised_count = unsupervised_outlier_df.count()
-            if unsupervised_count > 0:
-                print(f"[DYNAMIC RULES] Unsupervised Z-score anomaly detection flagged {unsupervised_count} rows")
-                remediation_logs.append(f"unsupervised_anomalies_flagged_{unsupervised_count}")
-    except ImportError:
-        pass
-    except Exception as uae:
-        print(f"[DYNAMIC RULES] Unsupervised anomaly detection failed: {uae}. Continuing.")
 
-    # ─── DYNAMIC RULES: Induced Tree Rules ────────────────────────────────────
-    induced_outlier_df = None
-    try:
-        induced_config = rules.get("induced", {})
-        if induced_config:
-            # We will build a combined SQL filter expression from all induced rules
-            conditions = []
-            for rule_name, rule_data in induced_config.items():
-                cond = rule_data.get("condition")
-                if cond:
-                    conditions.append(f"({cond})")
-            
-            if conditions:
-                combined_sql_cond = " OR ".join(conditions)
-                print(f"[DYNAMIC ENGINE] Applying induced rules filter: {combined_sql_cond}")
-                
-                # Flag rows matching the induced conditions
-                flagged_induced = clean_df.withColumn(
-                    "_induced_anomaly", 
-                    F.expr(combined_sql_cond)
-                )
-                
-                induced_outlier_df = flagged_induced.filter(F.col("_induced_anomaly") == True) \
-                    .withColumn("is_invalid", F.lit(True)) \
-                    .withColumn("reject_reason", F.lit("induced_tree_rule_match")) \
-                    .drop("_induced_anomaly")
-                
-                clean_df = flagged_induced.filter((F.col("_induced_anomaly") == False) | F.col("_induced_anomaly").isNull()) \
-                    .drop("_induced_anomaly")
-                
-                induced_count = induced_outlier_df.count()
-                if induced_count > 0:
-                    print(f"[DYNAMIC ENGINE] Induced ML rules flagged {induced_count} rows")
-                    remediation_logs.append(f"induced_rules_flagged_{induced_count}")
-    except Exception as ie:
-        print(f"[DYNAMIC ENGINE] Induced rules execution failed: {ie}. Continuing.")
 
-    # Combine all quarantined records (null PKs + duplicates + outliers + unsupervised anomalies + induced anomalies)
-    all_quarantined = invalid_df.unionByName(duplicate_df, allowMissingColumns=True)
-    if unsupervised_outlier_df is not None:
-        try:
-            if unsupervised_outlier_df.count() > 0:
-                all_quarantined = all_quarantined.unionByName(unsupervised_outlier_df, allowMissingColumns=True)
-        except Exception:
-            pass
-    if outlier_df is not None:
-        try:
-            outlier_count_check = outlier_df.count()
-            if outlier_count_check > 0:
-                all_quarantined = all_quarantined.unionByName(outlier_df, allowMissingColumns=True)
-        except Exception:
-            pass
-    if induced_outlier_df is not None:
-        try:
-            if induced_outlier_df.count() > 0:
-                all_quarantined = all_quarantined.unionByName(induced_outlier_df, allowMissingColumns=True)
-        except Exception:
-            pass
-
-    # Add run_id partition structure to quarantined parquet
-    all_quarantined_write = all_quarantined.withColumn("run_id", F.lit(run_id)) \
-                                           .withColumn("rejected_at", F.current_timestamp())
-
-    # Cache and count before writing to avoid re-reading and partial failures
-    clean_df.cache()
-    all_quarantined_write.cache()
-
-    clean_count = clean_df.count()
-    quarantine_count = all_quarantined_write.count()
-    total_records = clean_count + quarantine_count
 
     print("Writing validated datasets to HDFS using Delta Lake...")
 
-    if schema_spec:
-        allowed_cols = list(schema_spec.keys())
-        if primary_key == "row_hash" and "row_hash" not in allowed_cols:
-            allowed_cols.append("row_hash")
-        for rule in rules.get("remediation_rules", []):
-            if rule.get("type") in ("standardize", "semantic_standardize", "auto_strategy"):
-                keep_orig = rule.get("keep_original", True)
-                if keep_orig:
-                    c_name = rule.get("column")
-                    out_col = rule.get("output_column", f"{c_name}_semantic" if rule.get("type") in ("semantic_standardize", "auto_strategy") else c_name)
-                    if out_col not in allowed_cols:
-                        allowed_cols.append(out_col)
-                        
-        extra_cols = [c for c in clean_df.columns if c not in allowed_cols]
-        if extra_cols:
-            print(f"[COLUMN FILTER] Stripping {len(extra_cols)} extra columns not in schema: {extra_cols}")
-            clean_df = clean_df.select([F.col(c) for c in clean_df.columns if c in allowed_cols])
-            remediation_logs.append(f"extra_columns_stripped_{len(extra_cols)}")
+    ctx = run_stages(["column_filter"], ctx)
+    clean_df = ctx.clean_df
 
     # Quarantine first, keyed by ingest_id: if the MERGE below fails, a retry of the same
     # ingestion replaces these rows instead of appending a second copy.
