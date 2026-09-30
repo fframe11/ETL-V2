@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>สรุปการเปลี่ยนแปลงระบบ ETL (SDOQAP)</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm 16mm 15mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Leelawadee UI", "Tahoma", sans-serif; font-size: 10.5pt; line-height: 1.55; color: #1b2430; }
+  h1 { font-size: 21pt; margin: 0 0 4pt; color: #0b3d66; }
+  h2 { font-size: 14pt; margin: 18pt 0 6pt; color: #0b3d66; border-bottom: 1.5pt solid #0b3d66; padding-bottom: 2pt; page-break-after: avoid; }
+  h3 { font-size: 11.5pt; margin: 12pt 0 4pt; color: #1b2430; page-break-after: avoid; }
+  p { margin: 4pt 0; }
+  .sub { color: #5a6775; margin-bottom: 10pt; }
+  .kpis { display: flex; gap: 8pt; margin: 10pt 0 4pt; }
+  .kpi { flex: 1; border: 1pt solid #c9d3de; border-radius: 4pt; padding: 7pt 8pt; background: #f4f8fc; }
+  .kpi b { display: block; font-size: 17pt; color: #0b3d66; line-height: 1.2; }
+  .kpi span { font-size: 8.5pt; color: #5a6775; }
+  table { width: 100%; border-collapse: collapse; margin: 6pt 0 8pt; font-size: 9.5pt; page-break-inside: auto; }
+  th, td { border: 0.75pt solid #c9d3de; padding: 3.5pt 6pt; vertical-align: top; text-align: left; }
+  th { background: #e8eff7; color: #0b3d66; }
+  td.n, th.n { text-align: right; white-space: nowrap; }
+  tr { page-break-inside: avoid; }
+  code { font-family: Consolas, "Courier New", monospace; font-size: 9pt; background: #eef1f5; padding: 0 2pt; border-radius: 2pt; }
+  pre { page-break-inside: avoid; font-family: Consolas, "Courier New", monospace; font-size: 8.8pt; background: #eef1f5; padding: 6pt 8pt; border-radius: 4pt; line-height: 1.4; white-space: pre-wrap; margin: 4pt 0 8pt; }
+  ul { margin: 3pt 0 6pt 16pt; padding: 0; }
+  li { margin: 1.5pt 0; }
+  .note { border-left: 3pt solid #c77d00; background: #fff7e8; padding: 5pt 9pt; margin: 6pt 0; }
+  .ok { color: #1a7f37; font-weight: bold; }
+  .cols { display: flex; gap: 10pt; }
+  .cols > div { flex: 1; }
+</style>
+</head>
+<body>
+
+<h1>สรุปการเปลี่ยนแปลงระบบ ETL (SDOQAP)</h1>
+<p class="sub">branch <code>restructure/monorepo</code> · ฐาน <code>bell</code> · อ้างอิง tag <code>report-snapshot-2026-09-30</code> · 34 commits</p>
+
+<div class="kpis">
+  <div class="kpi"><b>3,044 → 1,966</b><span>บรรทัดของ spark_quality_engine.py</span></div>
+  <div class="kpi"><b>21</b><span>stage ที่มีชื่อ เทสต์ และจับเวลาแยก</span></div>
+  <div class="kpi"><b>100%</b><span>recall ทั้ง 4 ชนิดปัญหา (precision 95.9%)</span></div>
+  <div class="kpi"><b>1M แถว</b><span>ประมวลผลสำเร็จ 414 วินาที</span></div>
+</div>
+
+<h2>1. ภาพรวม: ทำอะไรไปบ้าง</h2>
+<p>งานแบ่งเป็น 4 แผนตามผลรีวิวระบบ ETL และเกณฑ์การให้คะแนน (CLO5 55% และ CLO6 15%) โดยไม่แตะระบบ Dashboard (หน้า Dashboards/Query &amp; Metrics, <code>analytics.py</code>, Gold layer, Grafana, Kibana — ย้ายโฟลเดอร์ได้แต่ไม่แก้เนื้อหา)</p>
+<table>
+  <tr><th style="width:17%">แผน</th><th>สิ่งที่เปลี่ยน</th><th style="width:22%">เกณฑ์ที่รองรับ</th></tr>
+  <tr><td><b>A</b> โครงสร้างโฟลเดอร์</td><td>ย้ายเป็น monorepo มาตรฐาน: <code>services/</code> (api, spark, ui), <code>infra/</code>, <code>data/</code>, <code>scripts/</code>, <code>docs/</code> ลบไฟล์ซ้ำและโค้ดที่ไม่มีใครใช้ เพิ่ม <code>.env.example</code> และให้ CI รันเทสต์จริง</td><td>ระเบียบโครงการ</td></tr>
+  <tr><td><b>B</b> Extraction + Loading</td><td>แต่ละการนำเข้าได้ <code>ingest_id</code> และโฟลเดอร์ raw ของตัวเอง, ตารางสถานะรอบ <code>sdoqap_runs</code>, คิวต่อตาราง, กันไฟล์ซ้ำด้วย checksum, เขียน quarantine แบบรันซ้ำได้ก่อน MERGE, ย้าย raw ไป archive, ปิดช่องโหว่ความปลอดภัยของจุดนำเข้า</td><td>Extraction (10), Loading (5)</td></tr>
+  <tr><td><b>C</b> Transformation</td><td>แยก <code>run_quality_check</code> (~1,200 บรรทัด) เป็น 21 stage, รวมตัวคำนวณ similarity 4 ชุดเหลือชุดเดียว, เพิ่มกฎช่วงค่าตามธุรกิจ (score 0–100), ให้ Elasticsearch เป็นแหล่งความจริงเดียวของกฎและ schema</td><td>จำนวนกระบวนการ (15), Transformation (10)</td></tr>
+  <tr><td><b>D</b> หลักฐานตามเกณฑ์</td><td>สคริปต์วัด detection เทียบ ground truth, benchmark 10K–1M แถว, รายงานการใช้ประโยชน์ของข้อมูล, สำรวจแหล่งข้อมูล และตัวสร้างรายงาน <code>rubric-mapping.md</code> จากผลรันจริง</td><td>ทุกหัวข้อ รวม CLO6</td></tr>
+</table>
+
+<h2>2. ปัญหาที่พบในรีวิว และวิธีแก้</h2>
+<table>
+  <tr><th style="width:10%">ID</th><th style="width:30%">ปัญหา</th><th>วิธีแก้</th></tr>
+  <tr><td>F-D1</td><td>อัปโหลดซ้อนกันเขียนทับไฟล์ raw เดิม และ Spark ลบทั้งโฟลเดอร์เมื่อจบ → ข้อมูลหาย</td><td>โฟลเดอร์ <code>/data/raw/&lt;table&gt;/&lt;ingest_id&gt;/</code> ต่อการนำเข้าหนึ่งครั้ง, archive แทนการลบ, คิว FIFO ต่อตาราง</td></tr>
+  <tr><td>F-D3</td><td>API ตอบ "triggered" แม้ Spark ไม่ได้รัน (fallback สั่ง Popen ใน container ที่ไม่มี pyspark)</td><td>ลบ fallback ออก ถ้าเรียก daemon ไม่ได้ตอบ 503 และบันทึกสถานะ <code>TRIGGER_FAILED</code></td></tr>
+  <tr><td>F-S1</td><td>Trigger daemon เปิดพอร์ต 8099 ออก host ไม่มี auth</td><td>ปิดพอร์ตจาก host, เพิ่ม shared secret (<code>X-Trigger-Secret</code>) และตรวจชื่อตาราง</td></tr>
+  <tr><td>F-S2/S3</td><td>allowlist URL เป็น fail-open และตาม redirect ได้; เช็ก SELECT ดูแค่คำแรก</td><td>fail-closed, ตรวจทุก redirect hop, รัน SQL ใน transaction read-only พร้อม timeout และเพดานจำนวนแถว</td></tr>
+  <tr><td>F-S4</td><td>รหัสผ่าน Elasticsearch/pgAdmin ฝังใน compose และโค้ด</td><td>ต้องมาจาก <code>.env</code> (<code>${VAR:?}</code>) ส่วน Kibana/Grafana ไม่แตะตามขอบเขต</td></tr>
+  <tr><td>F-D4/D5</td><td>เขียน active ก่อน quarantine ไม่ atomic; lock หมดอายุ 15 นาทีไม่มี heartbeat</td><td>quarantine ก่อน MERGE (ลบตาม ingest_id แล้วเขียนใหม่), heartbeat ต่ออายุ lock ทุก 60 วินาที</td></tr>
+  <tr><td>F-D6</td><td>lock ไม่ว่าง → exit 0 → daemon เริ่ม remediation จากผลรอบเก่า</td><td>exit code เฉพาะ (75 = SKIPPED) และ daemon อ่านผลตาม <code>ingest_id</code> ของตัวเอง</td></tr>
+  <tr><td>F-D7</td><td>connector จำลองคืนจำนวนแถวปลอม 10,100</td><td>ติดป้าย "โหมดสาธิต" และไม่คืนตัวเลขที่ไม่ได้วัด</td></tr>
+  <tr><td>F-M1–M4</td><td><code>run_quality_check</code> ยาวเกิน, similarity ซ้ำ 4 ชุด, helper ซ้ำ, กฎ/schema มีสองแหล่ง</td><td>21 stage ใน <code>sdoqap/</code>, <code>SemanticMatcher</code> ชุดเดียว, <code>sdoqap.common</code>, ES เป็นแหล่งเดียว (ไฟล์ JSON เป็น seed)</td></tr>
+  <tr><td>F-T1/T2</td><td>CI ไม่รันเทสต์; เทสต์ของ Spark ถูกตัดออก</td><td>CI มี 3 job ใหม่: API pytest, UI vitest, Spark unit tests</td></tr>
+</table>
+
+<h2>3. โครงสร้างโฟลเดอร์ ก่อน → หลัง</h2>
+<div class="cols">
+<div>
+<h3>ก่อน (แบนที่ root)</h3>
+<pre>api/   spark/   ui/   tests/
+nginx/ grafana/ prometheus/ n8n/
+airflow/            (ไม่มี service ใช้)
+sample_data/ dummy_data/ stress test/
+user_inputs/
+*.xlsx *.csv *.txt *.md  (ปนที่ root)
+student_course_score_evaluation_dataset*
+  (2 ที่ ซ้ำกัน)
+scripts/ (ปนกับสคริปต์ซ้ำของ spark)</pre>
+</div>
+<div>
+<h3>หลัง (monorepo)</h3>
+<pre>services/ api/  spark/  ui/
+infra/    nginx/ grafana/ prometheus/
+          n8n/   swarm/
+data/     evaluation/ samples/
+          stress/ inputs/
+scripts/  ops/ windows/ evaluation/
+          dev/ maintenance/
+docs/     architecture/ requirements/
+          specs/ reports/ evaluation/
+root:     README, docker-compose.yml,
+          .env.example, *.bat</pre>
+</div>
+</div>
+<p>ย้ายเฉพาะ path ฝั่ง host — path ภายใน container (<code>/app</code>, <code>/opt/spark-apps</code> ฯลฯ) คงเดิม รายงานเก่าที่อ้าง <code>path:line</code> ตรวจได้ด้วย <code>check_citations.py --ref report-snapshot-2026-09-30</code></p>
+
+<h2>4. Activity ของเส้นทาง ETL หลังแก้</h2>
+<pre>ผู้ใช้/API        ตรวจสิทธิ์ → ตรวจชื่อตาราง → อ่านข้อมูล (จำกัดขนาด/allowlist/read-only)
+                  → checksum ซ้ำ? (ตอบ duplicate) → ตรวจคีย์หลักตาม registry
+                  → เขียน HDFS /data/raw/&lt;t&gt;/&lt;ingest_id&gt;/ → สร้างสถานะ QUEUED
+Trigger daemon    ตรวจ secret → คิวต่อตาราง (FIFO) → spark-submit --ingest-id
+Spark (21 stage)  lock+heartbeat → schema_align → schema_drift → auto_clean → validation
+                  → dedup → standardize → range_rules → anomaly (IQR/Z/induced)
+                  → quarantine_assembly → column_filter
+                  → เขียน quarantine (idempotent) → Delta MERGE active
+                  → distribution → breakdown → copdq → freshness → quality_score
+                  → ai_advisory → operational_impact → report (ES)
+หลังรัน           archive raw → (ถ้ามี quarantine) auto-remediation + ตรวจซ้ำ
+                  → ตั้งสถานะสุดท้ายหนึ่งครั้ง: SUCCEEDED / FAILED / SKIPPED</pre>
+
+<h2>5. ผลการวัดจากระบบจริง (ข้อมูลประเมิน 10,100 แถว)</h2>
+<h3>5.1 Detection เทียบ ground truth</h3>
+<table>
+  <tr><th>ชนิดปัญหา</th><th class="n">จริง</th><th class="n">ตรวจพบ</th><th class="n">อัตรา</th></tr>
+  <tr><td>Missing Score</td><td class="n">300</td><td class="n">300</td><td class="n">100%</td></tr>
+  <tr><td>Invalid Score Range</td><td class="n">200</td><td class="n">200</td><td class="n">100%</td></tr>
+  <tr><td>Study Hours Outlier</td><td class="n">100</td><td class="n">100</td><td class="n">100%</td></tr>
+  <tr><td>Duplicate</td><td class="n">100</td><td class="n">100</td><td class="n">100%</td></tr>
+</table>
+<table>
+  <tr><th>การตั้งค่า IQR</th><th class="n">precision</th><th class="n">recall</th><th class="n">accuracy</th><th class="n">false positive</th></tr>
+  <tr><td>ตัวคูณ 1.5</td><td class="n">0.874</td><td class="n">1.000</td><td class="n">0.990</td><td class="n">101</td></tr>
+  <tr><td>ตัวคูณ 3.0 (ใช้จริง)</td><td class="n">0.959</td><td class="n">1.000</td><td class="n">0.997</td><td class="n">30</td></tr>
+</table>
+<p>ที่ 1.5 ระบบจับนักศึกษาปกติที่เรียน 10–12 ชั่วโมงและคะแนน 38–51 เป็นความผิดปกติ ค่า IQR 3.0 เป็นค่าของ test case นี้เท่านั้น ไม่ใช่ค่าที่ถูกต้องสำหรับข้อมูลทุกประเภท แถวซ้ำ 100 แถวถูก <code>auto_clean</code> ตัดก่อนนับ (นับเป็น dropped ไม่อยู่ใน quarantine)</p>
+
+<h3>5.2 เวลาประมวลผลตามขนาดข้อมูล</h3>
+<table>
+  <tr><th class="n">แถว</th><th>สถานะ</th><th class="n">เวลาใน engine (วินาที)</th><th class="n">end-to-end (วินาที)</th></tr>
+  <tr><td class="n">10,000</td><td class="ok">SUCCEEDED</td><td class="n">66.2</td><td class="n">95</td></tr>
+  <tr><td class="n">100,000</td><td class="ok">SUCCEEDED</td><td class="n">85.5</td><td class="n">116</td></tr>
+  <tr><td class="n">500,000</td><td class="ok">SUCCEEDED</td><td class="n">203.4</td><td class="n">238</td></tr>
+  <tr><td class="n">1,000,000</td><td class="ok">SUCCEEDED</td><td class="n">414.2</td><td class="n">454</td></tr>
+</table>
+
+<h3>5.3 การนำข้อมูลไปใช้ และการพิสูจน์ว่า refactor ไม่เปลี่ยนผล</h3>
+<ul>
+  <li>ข้อมูลสะอาด 9,370 แถว → คะแนนเฉลี่ยรายวิชา, อัตราผ่าน 99.95%, การกระจายคะแนน, นักศึกษาที่ต้องติดตาม 5 คน (<code>docs/evaluation/d-utilization.md</code>)</li>
+  <li>Golden test ก่อน/หลังแยก stage: ตรงกันทุกตัวเลข (250 / 227 / 23 แถว และ breakdown ของ quarantine)</li>
+  <li>e2e: อัปโหลด 2 ไฟล์ติดกัน → ทั้งคู่ถูกประมวลผลต่อคิว ไม่ทับกัน, ไฟล์ซ้ำถูกตรวจพบ, raw ถูก archive</li>
+</ul>
+
+<h2>6. การทดสอบ</h2>
+<table>
+  <tr><th>ชุด</th><th class="n">จำนวน</th><th>รันที่</th></tr>
+  <tr><td>API (pytest)</td><td class="n">52</td><td>ใน container <code>api</code></td></tr>
+  <tr><td>Spark unit (21 stage, similarity, daemon, seed)</td><td class="n">60</td><td>ใน container <code>spark-master</code></td></tr>
+  <tr><td>UI (vitest)</td><td class="n">76</td><td>host (<code>npm test</code>)</td></tr>
+  <tr><td>สคริปต์ประเมิน + ตัวตรวจ citation</td><td class="n">21 + 10</td><td>host</td></tr>
+</table>
+
+<h2>7. สิ่งที่ทำต่างจากแผน และข้อจำกัดที่ทราบ</h2>
+<div class="note"><b>ต้องรู้ก่อนนำไปใช้</b></div>
+<ul>
+  <li><b>การนำเข้า HDFS/Spark ไม่มีฟอร์มในหน้า UI:</b> ฟังก์ชัน <code>handleCsvSubmit/handleApiSubmit/handleRdbmsSubmit</code> ในหน้า Ingestion ไม่ถูกเรียกเลย ฟอร์มทุกแท็บเรียกแค่เอนจินโต้ตอบ จึงสร้าง hook/component แสดงสถานะรอบ (<code>RunStatusLine</code>) ไว้แต่ยังไม่ต่อเข้าหน้านี้</li>
+  <li><b>สถานะ SUCCEEDED มาเร็วเกินไปในร่างแรก:</b> ตรวจพบตอน e2e แล้วแก้ให้ daemon ตั้งสถานะสุดท้ายหนึ่งครั้งหลังจบ remediation และการตรวจซ้ำ</li>
+  <li><b>ข้อความ log ของ daemon ต้องคงเดิม:</b> หน้า Ingestion อ่านสถานะจากข้อความใน log จึงคงถ้อยคำเดิมไว้</li>
+  <li><b>ค่า IQR:</b> ตั้ง 3.0 ตามแผน (ชั่วคราวเคยคงไว้ 1.5) และเก็บผลเปรียบเทียบทั้งสองค่าเป็นหลักฐาน</li>
+  <li><b>เอนจินโต้ตอบ:</b> ประเมินใน workspace ชั่วคราว เพื่อไม่ทับชุดข้อมูลและ state ที่ API ใช้อยู่ เอนจินนี้ยังใช้สถานะชุดเดียวร่วมกันทุกผู้ใช้</li>
+  <li><b>เทสต์ API 1 ข้อแก้ค่าที่คาด:</b> <code>test_multi_table_preview</code> จาก 10,000 เป็น 9,980 ตาม generator ที่เว้นทุก 500 คน ส่วนไฟล์ <code>dirty_dataset.csv</code> ที่ API ใช้อยู่เป็นชุดตัวอย่าง 1,030 แถว ต้อง mount ชุดต้นฉบับตอนรันเทสต์</li>
+  <li><b>ยังไม่ได้ตรวจบน GitHub Actions:</b> job ใหม่ทั้ง 3 ตัวรันได้ในเครื่องเท่านั้น; <code>ollama</code> ขึ้น unhealthy ตามเดิมเพราะ image ไม่มี <code>curl</code></li>
+  <li><b>CLO6 (15 คะแนน)</b> รายงานเป็นคำอธิบายนวัตกรรมที่มีอยู่แล้ว ยังไม่มีการวัดว่านวัตกรรมแต่ละตัวช่วยได้กี่ %</li>
+</ul>
+
+<h2>8. วิธีทดสอบซ้ำ (Git Bash ที่ <code>C:\ETL</code>)</h2>
+<pre>docker compose up -d                                     # รอ ~3 นาที
+bash scripts/ops/e2e_ingest_check.sh                     # Extraction
+bash scripts/evaluation/run_batch_evaluation.sh          # Transformation + ประโยชน์ข้อมูล
+python scripts/evaluation/run_scale_benchmark.py         # Loading ตามขนาด (รวม ~15 นาที)
+python scripts/evaluation/build_rubric_report.py         # สรุป docs/evaluation/rubric-mapping.md</pre>
+<p>รายงานเต็ม: <code>docs/evaluation/rubric-mapping.md</code> · รีวิวต้นทาง: <code>docs/etl-review/2026-09-30-etl-system-review.md</code></p>
+
+</body>
+</html>
