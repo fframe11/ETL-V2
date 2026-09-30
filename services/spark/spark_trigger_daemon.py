@@ -173,22 +173,27 @@ def try_auto_remediate(table_name, ingest_id):
         append_log(f"[ERROR] Auto-Remediation engine failed: {e}")
         return False
     if proc.returncode == 0:
-        append_log(f"[SYSTEM] Remediation rules saved. Re-validating '{table_name}'...")
+        append_log(f"[SYSTEM] Remediation successful. Re-validating table '{table_name}'...")
         return True
-    append_log(f"[SYSTEM] Auto-Remediation: no records could be fixed for '{table_name}'. Quarantine data retained.")
+    append_log(f"[SYSTEM] Auto-Remediation: No records could be fixed for '{table_name}'. Quarantine data retained.")
     return False
 
 
-def run_quality_job(table, ingest_id):
-    """Run one engine job, stream its log, and record the outcome in sdoqap_runs."""
+def run_quality_job(table, ingest_id, revalidation=False):
+    """Run one engine job, stream its log, and record the outcome in sdoqap_runs.
+    The [SYSTEM] wording is what ui/src/pages/Ingestion.jsx matches to show progress."""
     global stream_status, stream_start_time, stream_duration
     update_run_state(ingest_id, "RUNNING", started_at=_now())
     with stream_lock:
-        stream_logs.clear()
-        append_log(f"[SYSTEM] Starting Spark Quality Engine for '{table}' (ingest {ingest_id or 'legacy'})")
+        if revalidation:
+            append_log(f"[SYSTEM] Re-running Spark Quality Engine on remediated data for '{table}'")
+        else:
+            stream_logs.clear()
+            append_log(f"[SYSTEM] Starting Spark Quality Engine Rerun for table '{table}'")
+            append_log(f"[SYSTEM] Ingest id: {ingest_id or 'legacy (whole table folder)'}")
+            stream_start_time = time.time()
+            stream_duration = 300
         stream_status = "running"
-        stream_start_time = time.time()
-        stream_duration = 300
     proc = subprocess.Popen(build_submit_cmd(table, ingest_id), stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, text=True, bufsize=1)
     for line in iter(proc.stdout.readline, ""):
@@ -197,7 +202,10 @@ def run_quality_job(table, ingest_id):
     proc.wait()
     state = state_for_exit(proc.returncode)
     update_run_state(ingest_id, state, finished_at=_now(), exit_code=proc.returncode)
-    append_log(f"[SYSTEM] Spark Quality Engine finished for '{table}' (exit {proc.returncode}, {state})")
+    if revalidation:
+        append_log(f"[SYSTEM] Spark re-validation finished for table '{table}' (Exit code: {proc.returncode})")
+    else:
+        append_log(f"[SYSTEM] Spark Quality Engine finished for table '{table}' (Exit code: {proc.returncode})")
     return proc.returncode
 
 
@@ -211,7 +219,8 @@ def run_job_chain(table, ingest_id):
                 if code == EXIT_OK and table not in remediation_in_progress and try_auto_remediate(table, ingest_id):
                     remediation_in_progress.add(table)
                     try:
-                        run_quality_job(table, ingest_id)
+                        run_quality_job(table, ingest_id, revalidation=True)
+                        append_log(f"[SYSTEM] Remediation re-validation completed for table '{table}'")
                     finally:
                         remediation_in_progress.discard(table)
             except Exception as e:
