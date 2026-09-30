@@ -8,14 +8,14 @@ services:
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=true
-      - ELASTIC_PASSWORD=sdoqap_secure
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:?set ELASTIC_PASSWORD in .env}
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
     ports:
       - "${ES_HOST_PORT:-9200}:9200"
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -s -u elastic:sdoqap_secure http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      test: ["CMD-SHELL", "curl -s -u elastic:$${ELASTIC_PASSWORD} http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
       interval: 10s
       timeout: 5s
       retries: 15
@@ -126,7 +126,7 @@ services:
       - SPARK_MODE=master
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
       - ELASTICSEARCH_USER=${ELASTICSEARCH_USER:-elastic}
-      - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:-sdoqap_secure}
+      - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:?set ELASTICSEARCH_PASSWORD in .env}
       - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST:-elasticsearch}
       - ELASTICSEARCH_PORT=${ELASTICSEARCH_PORT:-9200}
       - HADOOP_USER_NAME=spark
@@ -171,7 +171,7 @@ services:
       - SPARK_WORKER_CORES=2
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
       - ELASTICSEARCH_USER=${ELASTICSEARCH_USER:-elastic}
-      - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:-sdoqap_secure}
+      - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:?set ELASTICSEARCH_PASSWORD in .env}
       - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST:-elasticsearch}
       - ELASTICSEARCH_PORT=${ELASTICSEARCH_PORT:-9200}
       - HADOOP_USER_NAME=spark
@@ -258,11 +258,11 @@ services:
         condition: service_healthy
     environment:
       - ELASTICSEARCH_USER=${ELASTICSEARCH_USER:-elastic}
-      - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:-sdoqap_secure}
+      - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:?set ELASTICSEARCH_PASSWORD in .env}
       - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST:-elasticsearch}
       - ELASTICSEARCH_PORT=${ELASTICSEARCH_PORT:-9200}
       - HOST=0.0.0.0
-      - ELASTICSEARCH_URL=http://${ELASTICSEARCH_USER:-elastic}:${ELASTICSEARCH_PASSWORD:-sdoqap_secure}@${ELASTICSEARCH_HOST:-elasticsearch}:${ELASTICSEARCH_PORT:-9200}
+      - ELASTICSEARCH_URL=http://${ELASTICSEARCH_USER:-elastic}:${ELASTICSEARCH_PASSWORD:?set ELASTICSEARCH_PASSWORD in .env}@${ELASTICSEARCH_HOST:-elasticsearch}:${ELASTICSEARCH_PORT:-9200}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - SPARK_MASTER_HOST=${SPARK_MASTER_HOST:-spark-master}
       - SPARK_MASTER_PORT=${SPARK_MASTER_PORT:-7077}
@@ -337,7 +337,7 @@ services:
     restart: unless-stopped
     environment:
       - PGADMIN_DEFAULT_EMAIL=${PGADMIN_EMAIL:-admin@admin.com}
-      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PASSWORD:-admin}
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PASSWORD:?set PGADMIN_PASSWORD in .env}
       - PGADMIN_CONFIG_SERVER_MODE=False
       - PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED=False
     ports:

@@ -172,7 +172,10 @@ export default function Ingestion() {
       if (res.ok) {
         const d = await res.json();
         if (d.profile) setProfilingData(d.profile);
-        setQuickUploadNotice(`เชื่อมต่อแหล่งข้อมูล [${sourceType}] ตาราง '${cleanTbl}' (${(d.rows_ingested ?? 0).toLocaleString()} แถว) และอัปเดตผลวิเคราะห์ System Auto-Profiling เรียบร้อยแล้ว`);
+        const rows = d.rows_ingested == null ? "" : ` (${d.rows_ingested.toLocaleString()} แถว)`;
+        setQuickUploadNotice(d.simulated
+          ? `โหมดสาธิต: ยังไม่ได้เชื่อมต่อ ${sourceType} จริง ระบบตรวจข้อมูลชุดที่โหลดไว้ '${cleanTbl}'${rows} แทน`
+          : `เชื่อมต่อแหล่งข้อมูล ${sourceType} ตาราง '${cleanTbl}'${rows} และตรวจข้อมูลแล้ว`);
       } else {
         const detail = await res.json().catch(() => null);
         setUploadError(friendlyApiError(detail?.detail, `เชื่อมต่อแหล่งข้อมูลไม่สำเร็จ (HTTP ${res.status})`))

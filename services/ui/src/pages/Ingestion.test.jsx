@@ -48,3 +48,17 @@ it("says the automatic checks need specific columns instead of reporting no prob
   expect(screen.queryByText(/ไม่พบปัญหา/)).toBeNull();
   expect(screen.queryByText("ค่าว่างและช่วงค่า")).toBeNull();
 });
+
+it("labels the interactive connector as a demo and shows no invented row count", async () => {
+  await renderPage(Ingestion, "/ingestion");
+  mockFetchByUrl([
+    ["/ingest-source", { status: 200, body: { simulated: true, rows_ingested: null, profile: null } }]
+  ]);
+  fireEvent.click(screen.getByRole("tab", { name: /ฐานข้อมูล/ }));
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: /ดึงข้อมูล RDBMS/ }));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+  expect(screen.getByText(/โหมดสาธิต/)).toBeTruthy();
+  expect(screen.queryByText(/\(0 แถว\)/)).toBeNull();
+});

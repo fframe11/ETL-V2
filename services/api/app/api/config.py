@@ -27,7 +27,7 @@ def get_elasticsearch_url():
         return es_url
     # Otherwise construct from components, using defaults where appropriate
     es_user = os.getenv("ELASTICSEARCH_USER", "elastic")
-    es_pass = os.getenv("ELASTICSEARCH_PASSWORD", "sdoqap_secure")
+    es_pass = get_required_env("ELASTICSEARCH_PASSWORD")
     es_host = os.getenv("ELASTICSEARCH_HOST", "localhost")
     es_port = os.getenv("ELASTICSEARCH_PORT", "9200")
     return f"http://{es_user}:{es_pass}@{es_host}:{es_port}"
@@ -55,7 +55,7 @@ def get_es_client() -> Elasticsearch:
 
     es_url = get_elasticsearch_url()
     try:
-        client = Elasticsearch(es_url, request_timeout=1)
+        client = Elasticsearch(es_url, request_timeout=int(os.getenv("ES_REQUEST_TIMEOUT", "10")))
         if client.ping():
             _es_client = client
             return _es_client

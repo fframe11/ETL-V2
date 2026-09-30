@@ -13,7 +13,12 @@ import requests
 from datetime import datetime, timedelta, timezone
 
 # Load environment variables
-ELASTICSEARCH_URL = os.getenv("ELASTICSEARCH_URL", "http://elastic:sdoqap_secure@elasticsearch:9200")
+ELASTICSEARCH_URL = os.getenv("ELASTICSEARCH_URL") or "http://{}:{}@{}:{}".format(
+    os.getenv("ELASTICSEARCH_USER", "elastic"),
+    os.environ["ELASTICSEARCH_PASSWORD"],
+    os.getenv("ELASTICSEARCH_HOST", "elasticsearch"),
+    os.getenv("ELASTICSEARCH_PORT", "9200"),
+)
 HDFS_HTTP_URL = os.getenv("HDFS_HTTP_URL", "http://namenode:9870")
 RETENTION_DAYS = int(os.getenv("RETENTION_DAYS", "30"))
 

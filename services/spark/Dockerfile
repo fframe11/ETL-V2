@@ -41,7 +41,7 @@ RUN chmod +x /docker-entrypoint-initdb.d/start_daemon.sh
 RUN spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1,org.elasticsearch:elasticsearch-spark-30_2.12:8.10.2 --version
 
 # Copy spark application scripts into the image
-COPY spark_quality_engine.py spark_gold_layer.py spark_trigger_daemon.py streaming_job.py rules_config.json reddit_stream.py dynamic_rules_engine.py ai_rule_advisor.py data_profile_store.py /opt/spark-apps/
+COPY spark_quality_engine.py spark_gold_layer.py spark_trigger_daemon.py streaming_job.py rules_config.json reddit_stream.py dynamic_rules_engine.py ai_rule_advisor.py data_profile_store.py trigger_core.py run_support.py /opt/spark-apps/
 
 # Restore default CMD from base image
 CMD ["/opt/bitnami/scripts/spark/run.sh"]

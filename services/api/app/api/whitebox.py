@@ -1573,12 +1573,15 @@ def ingest_from_connector(payload: Dict[str, Any]):
 
     prof = get_dataset_profile(table_name)
     state = _recompute_interactive_state()
+    # This interactive connector does not open a real connection; it re-profiles the
+    # dataset already loaded in the interactive engine. Say so, and never invent a count.
     return _clean_for_json({
         "status": "connected_and_profiled",
+        "simulated": True,
         "source_type": source_type,
         "table_name": table_name,
         "connection_uri": endpoint_or_host,
-        "rows_ingested": prof.get("total_rows", 10100),
+        "rows_ingested": prof.get("total_rows"),
         "profile": prof,
         "state": state
     })

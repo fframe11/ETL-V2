@@ -58,6 +58,7 @@ from datetime import datetime, timedelta, timezone
 import requests
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
+from run_support import EXIT_SKIPPED, Heartbeat, archive_paths, raw_read_path, should_optimize
 
 def get_elasticsearch_url():
     # Prefer full URL if provided via environment
@@ -228,6 +229,23 @@ def release_lock(table_name: str):
         print(f"[LOCK] Released lock for '{table_name}'.")
     except Exception as e:
         print(f"[LOCK] Failed to release lock: {e}")
+
+def renew_lock(table_name: str, run_id: str, minutes: int = 15) -> None:
+    """Push expires_at forward, but only while the lock still belongs to this run."""
+    from urllib.parse import urlparse
+    from datetime import timezone
+    parsed = urlparse(ELASTICSEARCH_URL)
+    auth = (parsed.username, parsed.password) if parsed.username else None
+    base_url = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+    body = {
+        "script": {
+            "source": "if (ctx._source.run_id == params.run_id) { ctx._source.expires_at = params.exp } else { ctx.op = 'noop' }",
+            "params": {"run_id": run_id,
+                       "exp": (datetime.now(timezone.utc) + timedelta(minutes=minutes)).isoformat()},
+        }
+    }
+    requests.post(f"{base_url}/sdoqap_run_locks/_update/{table_name}", json=body, auth=auth, timeout=5)
+
 
 # ─── DATA-DRIVEN STANDARDIZATION RULES (from Elasticsearch) ───────────────
 def _load_standardization_rules(table_name: str) -> dict:
@@ -1681,7 +1699,7 @@ def lock_protector(func):
     return wrapper
 
 @lock_protector
-def run_quality_check(table_name, primary_key, date_column, schema_spec, input_table_name=None):
+def run_quality_check(table_name, primary_key, date_column, schema_spec, input_table_name=None, ingest_id=None):
     if not input_table_name:
         input_table_name = table_name
 
@@ -1693,12 +1711,15 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
     if date_column:
         date_column = clean_column_name(date_column)
 
-    run_id = f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S_%f')}"
+    started_at = datetime.now(timezone.utc)
+    run_id = f"run_{started_at.strftime('%Y%m%d_%H%M%S_%f')}"
 
-    # ─── FIX 2A: Acquire distributed lock BEFORE starting Spark ───────────────
+    # Acquire the distributed lock before starting Spark. Returning (not sys.exit) here
+    # matters: lock_protector would otherwise release the lock held by the other run.
     if not acquire_lock(table_name, run_id, force=FORCE_LOCK):
-        print(f"[ABORT] Duplicate run blocked for '{table_name}'. Exiting cleanly.")
-        return None
+        print(f"[ABORT] Table '{table_name}' is locked by another run. Skipping.")
+        return "SKIPPED"
+    heartbeat = Heartbeat(60, lambda: renew_lock(table_name, run_id)).start()
 
     # ─── FIX 1B: Create Spark session, detect track, and configure Spark resources accordingly ────────
     spark = get_spark_session(f"SDOQAP_QualityCheck_{table_name}")
@@ -1733,22 +1754,22 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
     quality_threshold = resolve_rule_value(rules.get("quality_score_threshold"), 90.0)
     freshness_limit_hours = resolve_rule_value(rules.get("freshness_threshold_hours"), 48)
 
-    # Determine raw HDFS path using FileSystem API check
-    raw_path = f"{HDFS_URL}/data/raw/{table_name}"
-    try:
-        sc = spark.sparkContext
-        conf = sc._jsc.hadoopConfiguration()
-        URI = sc._gateway.jvm.java.net.URI
-        FileSystem = sc._gateway.jvm.org.apache.hadoop.fs.FileSystem
-        Path = sc._gateway.jvm.org.apache.hadoop.fs.Path
-        fs = FileSystem.get(URI(HDFS_URL), conf)
-        if fs.exists(Path(f"/data/raw/{input_table_name}")):
-            raw_path = f"{HDFS_URL}/data/raw/{input_table_name}"
-            print(f"[PATH] Resolved raw HDFS path to input folder: {raw_path}")
-        else:
-            print(f"[PATH] Input folder not found. Using canonical raw HDFS path: {raw_path}")
-    except Exception as e:
-        print(f"[PATH] HDFS check failed: {e}. Falling back to default: {raw_path}")
+    # Resolve which files this run reads: one ingestion's folder (normal path) or the
+    # whole table folder (manual CLI run without --ingest-id).
+    sc = spark.sparkContext
+    jvm = sc._gateway.jvm
+    fs = jvm.org.apache.hadoop.fs.FileSystem.get(jvm.java.net.URI(HDFS_URL), sc._jsc.hadoopConfiguration())
+    HPath = jvm.org.apache.hadoop.fs.Path
+
+    def hdfs_exists(p):
+        return fs.exists(HPath(p))
+
+    if ingest_id:
+        raw_path, recursive_read = raw_read_path(HDFS_URL, input_table_name, ingest_id, exists=hdfs_exists)
+    else:
+        source_table = input_table_name if hdfs_exists(f"/data/raw/{input_table_name}") else table_name
+        raw_path, recursive_read = raw_read_path(HDFS_URL, source_table)
+    print(f"[PATH] Reading raw input from {raw_path} (recursive={recursive_read})")
 
     active_path = f"{HDFS_URL}/data/active/{table_name}"
     staging_path = f"{HDFS_URL}/data/staging/{table_name}/run_id={run_id}"
@@ -1759,7 +1780,8 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
     try:
         # Load raw data from HDFS as strings to avoid inference issues (Bug 6)
         print(f"Reading raw CSV data from {raw_path}")
-        df = spark.read.option("header", "true").option("multiLine", "true").option("escape", "\"").option("quote", "\"").csv(raw_path)
+        df = spark.read.option("header", "true").option("multiLine", "true").option("escape", "\"").option("quote", "\"") \
+            .option("recursiveFileLookup", "true" if recursive_read else "false").csv(raw_path)
 
         # ─── GUARD: CSV Ingestion Safety Check (Goal 3) ───
         is_csv_input = "csv" in raw_path.lower()
@@ -1789,7 +1811,7 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
         if len(df.columns) == 0 or df.head(1) is None or len(df.head(1)) == 0:
             print(f"SKIPPED: '{table_name}' has 0 records or no columns. Nothing to process.")
             spark.stop()
-            sys.exit(0)
+            sys.exit(EXIT_SKIPPED)
 
         for col_name in df.columns:
             cleaned_col = clean_column_name(col_name)
@@ -2380,6 +2402,17 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
             clean_df = clean_df.select([F.col(c) for c in clean_df.columns if c in allowed_cols])
             remediation_logs.append(f"extra_columns_stripped_{len(extra_cols)}")
 
+    # Quarantine first, keyed by ingest_id: if the MERGE below fails, a retry of the same
+    # ingestion replaces these rows instead of appending a second copy.
+    from delta.tables import DeltaTable
+    quarantine_write_df = all_quarantined_write.withColumn("ingest_id", F.lit(ingest_id or run_id))
+    if ingest_id and DeltaTable.isDeltaTable(spark, quarantine_path):
+        quarantine_table = DeltaTable.forPath(spark, quarantine_path)
+        if "ingest_id" in quarantine_table.toDF().columns:
+            quarantine_table.delete(F.col("ingest_id") == F.lit(ingest_id))
+    quarantine_write_df.write.format("delta").mode("append").option("mergeSchema", "true") \
+        .partitionBy("run_id").save(quarantine_path)
+
     # Delta Lake MERGE (True Upsert)
     clean_df_for_upsert = clean_df.withColumn("run_id", F.lit(run_id))
     
@@ -2423,17 +2456,18 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
         sys.exit(1)
     # ─── Delta Maintenance (Optimize & Vacuum for scale-ready Day-2 Operations) ───
     try:
-        print("[DELTA MAINTENANCE] Running OPTIMIZE and ZORDER BY (row_hash)...")
-        spark.sql(f"OPTIMIZE delta.`{active_path}` ZORDER BY (row_hash)")
-        
-        print("[DELTA MAINTENANCE] Running VACUUM (RETAIN 168 HOURS)...")
-        spark.sql(f"VACUUM delta.`{active_path}` RETAIN 168 HOURS")
-        print("[DELTA MAINTENANCE] Delta Table optimized and vacuumed successfully.")
+        optimize_every = int(os.getenv("DELTA_OPTIMIZE_EVERY", "10"))
+        version = DeltaTable.forPath(spark, active_path).history(1).select("version").first()[0]
+        if should_optimize(version, optimize_every):
+            print(f"[DELTA MAINTENANCE] Version {version}: running OPTIMIZE ZORDER BY (row_hash) and VACUUM 168h...")
+            spark.sql(f"OPTIMIZE delta.`{active_path}` ZORDER BY (row_hash)")
+            spark.sql(f"VACUUM delta.`{active_path}` RETAIN 168 HOURS")
+        else:
+            print(f"[DELTA MAINTENANCE] Version {version}: skipped (runs every {optimize_every} versions).")
     except Exception as maint_err:
         print(f"[DELTA MAINTENANCE] Non-fatal maintenance error: {maint_err}")
 
     # Quarantined data written with run_id partition for traceability
-    all_quarantined_write.write.format("delta").mode("append").partitionBy("run_id").save(quarantine_path)
 
     # Release cached DataFrames from memory to prevent memory leaks and OOM
     clean_df.unpersist()
@@ -2801,8 +2835,13 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
     print(f"Weighted Operational Impact Score: {operational_impact_score:.2f}%")
 
     # Log operational run metrics to Elasticsearch
+    finished_at = datetime.now(timezone.utc)
     quality_run_doc = {
         "run_id": run_id,
+        "ingest_id": ingest_id,
+        "started_at": started_at.isoformat(),
+        "finished_at": finished_at.isoformat(),
+        "duration_seconds": round((finished_at - started_at).total_seconds(), 3),
         "table_name": table_name,
         "total_records": total_records,
         "clean_records": clean_count,
@@ -2839,6 +2878,7 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
 
     log_to_elasticsearch("sdoqap_lineage_runs", {
         "run_id": run_id,
+        "ingest_id": ingest_id,
         "source_table": f"raw-{table_name}",
         "target_table": f"active-{table_name}",
         "source_path": raw_path,
@@ -2849,6 +2889,7 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
 
     log_to_elasticsearch("sdoqap_pipeline_runs", {
         "run_id": run_id,
+        "ingest_id": ingest_id,
         "table_name": table_name,
         "state": "success" if quality_score >= quality_threshold else "warnings",
         "timestamp": datetime.now(timezone.utc).isoformat()
@@ -2869,24 +2910,24 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
         except Exception as gold_err:
             print(f"[DYNAMIC ENGINE] Local downstream trigger failed (non-fatal): {gold_err}")
 
-    # ─── HDFS Raw File Cleanup after Successful Run ──────────────────────────
+    # ─── Raw landing → archive (keep the source so any ingestion can be reprocessed) ───
     try:
-        cleanup_target = input_table_name or table_name
-        sc = spark.sparkContext
-        conf = sc._jsc.hadoopConfiguration()
-        URI = sc._gateway.jvm.java.net.URI
-        FileSystem = sc._gateway.jvm.org.apache.hadoop.fs.FileSystem
-        Path = sc._gateway.jvm.org.apache.hadoop.fs.Path
-        fs = FileSystem.get(URI(HDFS_URL), conf)
-        raw_dir_path = Path(f"/data/raw/{cleanup_target}")
-        if fs.exists(raw_dir_path):
-            if quarantine_count == 0:
-                print(f"[CLEANUP] Deleting raw HDFS source folder after successful quality check with 0 quarantine records: {raw_dir_path}")
+        if ingest_id:
+            src, dst = archive_paths(input_table_name, ingest_id)
+            if hdfs_exists(src):
+                fs.mkdirs(HPath(dst).getParent())
+                fs.rename(HPath(src), HPath(dst))
+                print(f"[ARCHIVE] Moved {src} -> {dst}")
+        else:
+            cleanup_target = input_table_name or table_name
+            raw_dir_path = HPath(f"/data/raw/{cleanup_target}")
+            if fs.exists(raw_dir_path) and quarantine_count == 0:
+                print(f"[CLEANUP] Legacy run: deleting raw folder with 0 quarantined records: {raw_dir_path}")
                 fs.delete(raw_dir_path, True)
-            else:
-                print(f"[CLEANUP] Retaining raw HDFS source folder since {quarantine_count} record(s) are quarantined for auto-remediation: {raw_dir_path}")
     except Exception as cleanup_err:
-        print(f"[CLEANUP] Warning: Failed to delete raw HDFS source folder: {cleanup_err}")
+        print(f"[ARCHIVE] Warning: could not archive raw input: {cleanup_err}")
+
+    heartbeat.stop()
 
     # FIX 2A: Release the distributed lock after all work is done
     release_lock(table_name)
@@ -2896,9 +2937,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Spark Quality Engine")
     parser.add_argument("table", nargs='?', default="users", help="Target table name")
     parser.add_argument("--force", action="store_true", help="Force lock acquisition, overriding existing locks")
+    parser.add_argument("--ingest-id", default=None, help="Process only /data/raw/<table>/<ingest_id> (set by the trigger daemon)")
     args = parser.parse_args()
     target_table = args.table
     FORCE_LOCK = args.force
+    INGEST_ID = args.ingest_id
 
     # Load canonical schema registry config from ES or default fallbacks
     spec = load_expected_schema(target_table)
@@ -2913,22 +2956,24 @@ if __name__ == "__main__":
                 matched_table_name = tbl
                 break
         
-        run_quality_check(matched_table_name, spec["primary_key"], spec["date_column"], spec["schema_spec"], input_table_name=target_table)
+        if run_quality_check(matched_table_name, spec["primary_key"], spec["date_column"], spec["schema_spec"],
+                             input_table_name=target_table, ingest_id=INGEST_ID) == "SKIPPED":
+            sys.exit(EXIT_SKIPPED)
     else:
         print(f"Table '{target_table}' not found in registry. Inferring configuration dynamically...")
         # Resolve configuration dynamically using the standard Spark session
         temp_spark = get_spark_session(f"SDOQAP_Infer_{target_table}")
 
-        raw_path = f"hdfs://namenode:9000/data/raw/{target_table}"
+        raw_path, recursive_read = raw_read_path(HDFS_URL, target_table, INGEST_ID)
         try:
             # 1. Read raw strings to preserve exact values
-            df_raw = temp_spark.read.option("header", "true").option("multiLine", "true").option("escape", "\"").option("quote", "\"").csv(raw_path)
+            df_raw = temp_spark.read.option("header", "true").option("multiLine", "true").option("escape", "\"").option("quote", "\"").option("recursiveFileLookup", "true" if recursive_read else "false").csv(raw_path)
 
             # ─── GUARD: Empty file protection in schema inference ───
             if len(df_raw.columns) == 0 or df_raw.head(1) is None or len(df_raw.head(1)) == 0:
                 print(f"SKIPPED: Raw data for '{target_table}' is empty. Nothing to infer.")
                 temp_spark.stop()
-                sys.exit(0)
+                sys.exit(EXIT_SKIPPED)
 
             for col_name in df_raw.columns:
                 cleaned_col = clean_column_name(col_name)
@@ -2936,7 +2981,7 @@ if __name__ == "__main__":
                     df_raw = df_raw.withColumnRenamed(col_name, cleaned_col)
 
             # 2. Read with inferSchema to get Spark's baseline guesses
-            df_infer = temp_spark.read.option("header", "true").option("inferSchema", "true").option("multiLine", "true").option("escape", "\"").option("quote", "\"").csv(raw_path)
+            df_infer = temp_spark.read.option("header", "true").option("inferSchema", "true").option("multiLine", "true").option("escape", "\"").option("quote", "\"").option("recursiveFileLookup", "true" if recursive_read else "false").csv(raw_path)
             for col_name in df_infer.columns:
                 cleaned_col = clean_column_name(col_name)
                 if col_name != cleaned_col:
@@ -3023,7 +3068,8 @@ if __name__ == "__main__":
             temp_spark.stop()
 
             # Now execute quality check with inferred schema
-            run_quality_check(target_table, primary_key, date_column, schema_spec)
+            if run_quality_check(target_table, primary_key, date_column, schema_spec, ingest_id=INGEST_ID) == "SKIPPED":
+                sys.exit(EXIT_SKIPPED)
 
         except Exception as infer_err:
             print(f"Failed to infer schema dynamically for '{target_table}': {infer_err}")
