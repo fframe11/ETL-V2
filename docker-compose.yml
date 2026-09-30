@@ -140,7 +140,6 @@ services:
     ports:
       - "8081:8080" # Spark Web UI (map to 8081 to avoid conflict)
       - "7077:7077"
-      - "8099:8099" # Spark Trigger Daemon
     healthcheck:
       test: ["CMD", "bash", "-c", "ps aux | grep -v grep | grep -q org.apache.spark.deploy.master.Master || exit 1"]
       interval: 10s

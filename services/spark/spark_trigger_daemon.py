@@ -22,10 +22,16 @@ stream_lock = threading.Lock()
 # to prevent infinite re-trigger loops (max 1 retry per table per ingestion)
 remediation_in_progress = set()
 
-# Concurrency Lock: tracks tables currently running a Spark Quality Engine rerun job
-# to prevent concurrent write transaction conflicts on Delta Lake
-running_rerun_jobs = set()
-running_jobs_lock = threading.Lock()
+from trigger_core import (EXIT_OK, TableJobQueue, build_submit_cmd, find_quality_run,
+                          is_authorized, state_for_exit, update_run_state, valid_name)
+
+# One engine run per table at a time; later requests queue instead of failing with 409.
+JOB_QUEUE = TableJobQueue()
+
+
+def _now():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
 
 def append_log(msg):
     stream_logs.append(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}")
@@ -128,121 +134,114 @@ def run_stream_job(subreddits, duration):
             active_spark_proc = None
         append_log("[SYSTEM] Streaming pipeline stopped.")
 
-class SparkTriggerHandler(BaseHTTPRequestHandler):
-    def _try_auto_remediate(self, table_name):
-        """Check if remediation is needed and spawn the auto-remediation engine.
+def try_auto_remediate(table_name, ingest_id):
+    """Ask the remediation engine for rules when this run quarantined rows.
+    Returns True when new rules were saved and the same ingestion should be re-validated."""
+    import requests as _req
+    from trigger_core import _es_base_and_auth
 
-        Called automatically after Spark Quality Engine finishes.
-        Queries ES for the latest quality run to check quarantine_count.
-        If quarantine records exist, spawns auto_remediation_engine.py.
-        On success (exit 0), re-triggers quality check with loop guard.
-        """
-        import requests as _req
-        from urllib.parse import urlparse
-
-        # ── 1. Query ES for the latest quality run ────────────────────────
-        es_url = os.getenv("ELASTICSEARCH_URL", "")
-        parsed = urlparse(es_url)
-        auth = (parsed.username, parsed.password) if parsed.username else None
-        base_url = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}" if parsed.username else es_url
-
-        if not base_url:
-            append_log("[REMEDIATION] Skipping: ELASTICSEARCH_URL not configured")
-            return
-
+    if ingest_id:
+        latest = find_quality_run(ingest_id)
+    else:
+        base, auth = _es_base_and_auth()
+        query = {"size": 1, "sort": [{"timestamp": {"order": "desc"}}],
+                 "query": {"term": {"table_name.keyword": table_name}}}
         try:
-            search_url = f"{base_url}/sdoqap_quality_runs/_search"
-            query = {
-                "size": 1,
-                "sort": [{"timestamp": {"order": "desc"}}],
-                "query": {"term": {"table_name.keyword": table_name}}
-            }
-            r = _req.post(search_url, json=query, auth=auth, timeout=5)
-            if r.status_code != 200:
-                append_log(f"[REMEDIATION] Skipping: ES query failed ({r.status_code})")
-                return
-
-            hits = r.json().get("hits", {}).get("hits", [])
-            if not hits:
-                append_log("[REMEDIATION] Skipping: No quality run found in ES")
-                return
-
-            latest = hits[0]["_source"]
-            quarantine_count = latest.get("quarantined_records", 0)
-            run_id = latest.get("run_id", "")
-
-            if quarantine_count == 0:
-                append_log(f"[REMEDIATION] No quarantined records for '{table_name}'. Skipping.")
-                return
-
-            append_log(f"[SYSTEM] 🔧 Auto-Remediation: {quarantine_count} quarantined records detected. Starting AI remediation...")
-
+            r = _req.post(f"{base}/sdoqap_quality_runs/_search", json=query, auth=auth, timeout=5)
+            hits = r.json().get("hits", {}).get("hits", []) if r.status_code == 200 else []
+            latest = hits[0]["_source"] if hits else None
         except Exception as e:
             append_log(f"[REMEDIATION] Skipping: ES check failed: {e}")
-            return
+            return False
+    if not latest:
+        append_log(f"[REMEDIATION] Skipping: no quality run found for '{table_name}' ({ingest_id or 'legacy'})")
+        return False
+    quarantine_count = latest.get("quarantined_records", 0)
+    if quarantine_count == 0:
+        append_log(f"[REMEDIATION] No quarantined records for '{table_name}'. Skipping.")
+        return False
 
-        # ── 2. Spawn auto_remediation_engine.py ──────────────────────────
-        remediation_cmd = [
-            "python", "-u", "/opt/spark-apps/auto_remediation_engine.py",
-            table_name, run_id
-        ]
+    append_log(f"[SYSTEM] Auto-Remediation: {quarantine_count} quarantined records detected. Starting AI remediation...")
+    cmd = ["python", "-u", "/opt/spark-apps/auto_remediation_engine.py", table_name, latest.get("run_id", "")]
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        for line in iter(proc.stdout.readline, ""):
+            if line:
+                append_log(f"[remediation] {line.strip()}")
+        proc.wait()
+    except Exception as e:
+        append_log(f"[ERROR] Auto-Remediation engine failed: {e}")
+        return False
+    if proc.returncode == 0:
+        append_log(f"[SYSTEM] Remediation rules saved. Re-validating '{table_name}'...")
+        return True
+    append_log(f"[SYSTEM] Auto-Remediation: no records could be fixed for '{table_name}'. Quarantine data retained.")
+    return False
 
-        try:
-            rem_proc = subprocess.Popen(
-                remediation_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1
-            )
-            for line in iter(rem_proc.stdout.readline, ""):
-                if line:
-                    append_log(f"[remediation] {line.strip()}")
-            rem_proc.wait()
 
-            if rem_proc.returncode == 0:
-                # Records were fixed — re-trigger quality check
-                append_log(f"[SYSTEM] ✅ Remediation successful. Re-validating table '{table_name}'...")
-                remediation_in_progress.add(table_name)
+def run_quality_job(table, ingest_id):
+    """Run one engine job, stream its log, and record the outcome in sdoqap_runs."""
+    global stream_status, stream_start_time, stream_duration
+    update_run_state(ingest_id, "RUNNING", started_at=_now())
+    with stream_lock:
+        stream_logs.clear()
+        append_log(f"[SYSTEM] Starting Spark Quality Engine for '{table}' (ingest {ingest_id or 'legacy'})")
+        stream_status = "running"
+        stream_start_time = time.time()
+        stream_duration = 300
+    proc = subprocess.Popen(build_submit_cmd(table, ingest_id), stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True, bufsize=1)
+    for line in iter(proc.stdout.readline, ""):
+        if line:
+            append_log(f"[spark] {line.strip()}")
+    proc.wait()
+    state = state_for_exit(proc.returncode)
+    update_run_state(ingest_id, state, finished_at=_now(), exit_code=proc.returncode)
+    append_log(f"[SYSTEM] Spark Quality Engine finished for '{table}' (exit {proc.returncode}, {state})")
+    return proc.returncode
 
-                # Re-run Spark quality engine on the remediated data
-                rerun_cmd = [
-                    "/opt/bitnami/spark/bin/spark-submit",
-                    "--master", "spark://spark-master:7077",
-                    "--conf", "spark.executorEnv.HADOOP_USER_NAME=spark",
-                    "--conf", "spark.executor.extraJavaOptions=-DHADOOP_USER_NAME=spark",
-                    "--conf", "spark.driver.extraJavaOptions=-DHADOOP_USER_NAME=spark",
-                    "--packages", "io.delta:delta-core_2.12:2.4.0",
-                    "/opt/spark-apps/spark_quality_engine.py",
-                    table_name
-                ]
 
-                with stream_lock:
-                    stream_status = "running"
-                    append_log(f"[SYSTEM] Re-running Spark Quality Engine on remediated data for '{table_name}'")
+def run_job_chain(table, ingest_id):
+    """Run this job, then any jobs queued for the same table, one after another."""
+    global stream_status
+    try:
+        while True:
+            try:
+                code = run_quality_job(table, ingest_id)
+                if code == EXIT_OK and table not in remediation_in_progress and try_auto_remediate(table, ingest_id):
+                    remediation_in_progress.add(table)
+                    try:
+                        run_quality_job(table, ingest_id)
+                    finally:
+                        remediation_in_progress.discard(table)
+            except Exception as e:
+                append_log(f"[ERROR] Spark Quality Engine run failed for '{table}': {e}")
+                update_run_state(ingest_id, "FAILED", finished_at=_now(), error=str(e))
+            has_next, ingest_id = JOB_QUEUE.next_or_release(table)
+            if not has_next:
+                break
+    finally:
+        with stream_lock:
+            stream_status = "idle"
 
-                rerun_proc = subprocess.Popen(
-                    rerun_cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    bufsize=1
-                )
-                for line in iter(rerun_proc.stdout.readline, ""):
-                    if line:
-                        append_log(f"[spark] {line.strip()}")
-                rerun_proc.wait()
-                append_log(f"[SYSTEM] Spark re-validation finished for table '{table_name}' (Exit code: {rerun_proc.returncode})")
-                remediation_in_progress.discard(table_name)
-            else:
-                append_log(f"[SYSTEM] ⚠️ Auto-Remediation: No records could be fixed for '{table_name}'. Quarantine data retained.")
 
-        except Exception as e:
-            append_log(f"[ERROR] Auto-Remediation engine failed: {e}")
-            remediation_in_progress.discard(table_name)
+class SparkTriggerHandler(BaseHTTPRequestHandler):
+    def _json(self, code, body):
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(body).encode("utf-8"))
+
+    def _authorized(self):
+        if is_authorized(self.headers, os.getenv("TRIGGER_SHARED_SECRET", "")):
+            return True
+        self._json(401, {"status": "error", "message": "Missing or invalid X-Trigger-Secret header"})
+        return False
 
     def do_GET(self):
         if self.path == "/stream/status":
+            if not self._authorized():
+                return
             with stream_lock:
                 elapsed = 0
                 remaining = 0
@@ -268,97 +267,23 @@ class SparkTriggerHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         global stream_thread, stream_status, stream_start_time, stream_duration
         if self.path == "/retry":
-            content_length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(content_length).decode("utf-8")
+            if not self._authorized():
+                return
             try:
-                data = json.loads(body)
-                table_name = data.get("table")
-                if not table_name:
-                    self.send_response(400)
-                    self.end_headers()
-                    self.wfile.write(b"Missing 'table' in payload")
-                    return
+                length = int(self.headers.get("Content-Length", 0))
+                data = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+            except ValueError:
+                return self._json(400, {"status": "error", "message": "Body must be JSON"})
+            table_name = data.get("table")
+            ingest_id = data.get("ingest_id")
+            if not valid_name(table_name) or (ingest_id is not None and not valid_name(ingest_id)):
+                return self._json(400, {"status": "error", "message": "Invalid 'table' or 'ingest_id'"})
+            if JOB_QUEUE.submit(table_name, ingest_id):
+                threading.Thread(target=run_job_chain, args=(table_name, ingest_id), daemon=True).start()
+                return self._json(202, {"status": "running", "table": table_name, "ingest_id": ingest_id})
+            return self._json(202, {"status": "queued", "table": table_name, "ingest_id": ingest_id,
+                                    "position": JOB_QUEUE.pending(table_name)})
 
-                with running_jobs_lock:
-                    if table_name in running_rerun_jobs:
-                        self.send_response(409)
-                        self.send_header("Content-Type", "application/json")
-                        self.end_headers()
-                        response = {"status": "error", "message": f"Spark job is already running for table '{table_name}'"}
-                        self.wfile.write(json.dumps(response).encode("utf-8"))
-                        return
-                    running_rerun_jobs.add(table_name)
-
-                print(f"[DAEMON] Triggering Spark rerun for table: {table_name}")
-                cmd = [
-                    "/opt/bitnami/spark/bin/spark-submit",
-                    "--master", "spark://spark-master:7077",
-                    "--conf", "spark.executorEnv.HADOOP_USER_NAME=spark",
-                    "--conf", "spark.executor.extraJavaOptions=-DHADOOP_USER_NAME=spark",
-                    "--conf", "spark.driver.extraJavaOptions=-DHADOOP_USER_NAME=spark",
-                    "--packages", "io.delta:delta-core_2.12:2.4.0",
-                    "/opt/spark-apps/spark_quality_engine.py",
-                    table_name
-                ]
-                
-                with stream_lock:
-                    stream_logs.clear()
-                    append_log(f"[SYSTEM] Starting Spark Quality Engine Rerun for table '{table_name}'")
-                    stream_status = "running"
-                    stream_start_time = time.time()
-                    stream_duration = 300
-                
-                def run_rerun_job(cmd_args, tbl):
-                    global stream_status
-                    try:
-                        proc = subprocess.Popen(
-                            cmd_args,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT,
-                            text=True,
-                            bufsize=1
-                        )
-                        for line in iter(proc.stdout.readline, ""):
-                            if line:
-                                append_log(f"[spark] {line.strip()}")
-                        proc.wait()
-                        append_log(f"[SYSTEM] Spark Quality Engine finished for table '{tbl}' (Exit code: {proc.returncode})")
-
-                        # ── Auto-Remediation Trigger ──────────────────────────
-                        # Only trigger if quality check succeeded (exit 0) and
-                        # this table is NOT already in a remediation cycle
-                        if proc.returncode == 0 and tbl not in remediation_in_progress:
-                            try:
-                                self._try_auto_remediate(tbl)
-                            except Exception as rem_err:
-                                append_log(f"[ERROR] Auto-Remediation trigger failed: {rem_err}")
-                        elif tbl in remediation_in_progress:
-                            # This was a re-validation after remediation — clear the guard
-                            remediation_in_progress.discard(tbl)
-                            append_log(f"[SYSTEM] Remediation re-validation completed for table '{tbl}'")
-
-                    except Exception as e:
-                        append_log(f"[ERROR] Spark Quality Engine run failed: {e}")
-                    finally:
-                        with running_jobs_lock:
-                            running_rerun_jobs.discard(tbl)
-                        with stream_lock:
-                            stream_status = "idle"
-                
-                t = threading.Thread(target=run_rerun_job, args=(cmd, table_name))
-                t.daemon = True
-                t.start()
-                
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                response = {"status": "success", "message": f"Spark job triggered for table '{table_name}'"}
-                self.wfile.write(json.dumps(response).encode("utf-8"))
-            except Exception as e:
-                self.send_response(500)
-                self.end_headers()
-                self.wfile.write(f"Error triggering job: {e}".encode("utf-8"))
-                
         elif self.path == "/gold/rebuild":
             try:
                 print("[DAEMON] Triggering Gold Layer rebuild...")
@@ -407,6 +332,8 @@ class SparkTriggerHandler(BaseHTTPRequestHandler):
                 self.wfile.write(f"Error triggering Gold Layer rebuild: {e}".encode("utf-8"))
                 
         elif self.path == "/stream/start":
+            if not self._authorized():
+                return
             content_length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(content_length).decode("utf-8")
             try:
@@ -436,6 +363,8 @@ class SparkTriggerHandler(BaseHTTPRequestHandler):
                 self.wfile.write(f"Error starting streaming job: {e}".encode("utf-8"))
                 
         elif self.path == "/stream/stop":
+            if not self._authorized():
+                return
             with stream_lock:
                 if stream_status != "running":
                     self.send_response(400)
