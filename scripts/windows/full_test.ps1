@@ -28,7 +28,7 @@ function Run-RedditStream {
   Write-Host "Ensuring 'kafka-python' is installed on host..."
   python -m pip install kafka-python --quiet 2>$null
   Write-Host "Running Reddit ingestion..."
-  python "$PSScriptRoot/scripts/reddit_stream.py"
+  python "$PSScriptRoot/../../services/spark/reddit_stream.py"
 }
 
 function Check-SparkRunning {

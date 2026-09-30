@@ -84,7 +84,7 @@ def setup_hdfs(spark):
         fs.mkdirs(raw_dir)
         
     # Upload local benchmark_dataset.csv to HDFS
-    benchmark_local_path = "/opt/spark-apps/tests/benchmark_dataset.csv"
+    benchmark_local_path = "/opt/spark-apps/tests/integration/benchmark_dataset.csv"
     if not os.path.exists(benchmark_local_path):
         benchmark_local_path = os.path.join(os.path.dirname(__file__), "benchmark_dataset.csv")
         

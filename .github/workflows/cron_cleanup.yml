@@ -13,5 +13,5 @@ jobs:
 
       - name: Run cleanup script
         run: |
-          chmod +x ./scripts/cleanup_failed_runs.sh
-          ./scripts/cleanup_failed_runs.sh
+          chmod +x ./scripts/ops/cleanup_failed_runs.sh
+          ./scripts/ops/cleanup_failed_runs.sh

@@ -11,7 +11,7 @@ os.environ["PYTHONUTF8"] = "1"
 os.environ["PYTHONIOENCODING"] = "utf-8"
 
 # Add parent path to import spark_quality_engine
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from pyspark.sql import SparkSession
 from spark_quality_engine import apply_dsl_remediation_rules

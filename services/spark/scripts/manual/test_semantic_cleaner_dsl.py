@@ -3,7 +3,7 @@ import sys
 from pyspark.sql import SparkSession
 
 # Ensure project and package paths are accessible
-spark_dir = os.path.dirname(os.path.abspath(__file__))
+spark_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if spark_dir not in sys.path:
     sys.path.insert(0, spark_dir)
 

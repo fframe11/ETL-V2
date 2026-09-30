@@ -19,6 +19,23 @@ router = APIRouter(tags=["system"])
 # api/app/api/system.py -> api/app -> api -> /app in the container
 APP_ROOT = Path(__file__).resolve().parents[2]
 
+def _load_route_alert():
+    """alert_router lives with the Spark code (single copy); the api container
+    mounts it at /opt/spark-apps, local dev finds it at ../../../spark."""
+    import sys
+    candidates = [
+        "/opt/spark-apps",
+        os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "spark")),
+    ]
+    for c in candidates:
+        if os.path.isfile(os.path.join(c, "alert_router.py")):
+            if c not in sys.path:
+                sys.path.insert(0, c)
+            break
+    from alert_router import route_alert
+    return route_alert
+
+
 # Global executor to avoid thread join blocks on request exit
 executor = ThreadPoolExecutor(max_workers=20)
 
@@ -276,9 +293,9 @@ def trigger_system_cleanup(_user: str = Depends(require_session)):
     """Trigger the automated storage retention and cleanup script asynchronously."""
     def run_cleanup():
         try:
-            script_path = "/app/scripts/data_retention_cleanup.py"
+            script_path = "/app/scripts/ops/data_retention_cleanup.py"
             if not os.path.exists(script_path):
-                script_path = "scripts/data_retention_cleanup.py"
+                script_path = "scripts/ops/data_retention_cleanup.py"
             subprocess.run(["python", script_path], timeout=180, check=True)
             print("[CLEANUP JOB] Finished successfully.")
         except Exception as e:
@@ -408,9 +425,7 @@ def trigger_alert_routing(payload: dict):
 
             # Route individual alert
             try:
-                import sys
-                sys.path.append(str(APP_ROOT / "scripts"))
-                from scripts.alert_router import route_alert
+                route_alert = _load_route_alert()
                 route_alert(title, message, severity)
             except Exception as e:
                 print(f"[ALERT ENDPOINT ERROR] {e}")
@@ -421,9 +436,7 @@ def trigger_alert_routing(payload: dict):
         raise HTTPException(status_code=400, detail="Missing 'title' or 'message' in payload")
 
     try:
-        import sys
-        sys.path.append(str(APP_ROOT / "scripts"))
-        from scripts.alert_router import route_alert
+        route_alert = _load_route_alert()
         route_alert(title, message, severity)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to route alert: {str(e)}")

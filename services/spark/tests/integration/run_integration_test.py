@@ -12,7 +12,7 @@ if sys.platform.startswith("win"):
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 # Ensure project root is on PYTHONPATH for imports
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..")))
 try:
     from api.app.api.config import get_required_env
 except ModuleNotFoundError:
@@ -61,7 +61,7 @@ def run_cmd(args):
 def setup_hdfs():
     print("Setting up HDFS benchmark dataset using docker HDFS commands...")
     # 1. Copy local file to namenode container
-    run_cmd(["docker", "cp", "spark/tests/benchmark_dataset.csv", "sdoqap-namenode:/tmp/benchmark_dataset.csv"])
+    run_cmd(["docker", "cp", "services/spark/tests/integration/benchmark_dataset.csv", "sdoqap-namenode:/tmp/benchmark_dataset.csv"])
     
     # 2. Create directories on HDFS
     run_cmd(["docker", "exec", "-t", "-e", "HADOOP_USER_NAME=root", "sdoqap-namenode", "hdfs", "dfs", "-mkdir", "-p", "/data/raw/benchmark_test"])

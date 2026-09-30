@@ -7,7 +7,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
 # Ensure path is accessible
-spark_dir = os.path.dirname(os.path.abspath(__file__))
+spark_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, spark_dir)
 
 from semantic_cleaner import SemanticCleanerV2

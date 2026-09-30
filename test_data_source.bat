@@ -202,7 +202,7 @@ echo.
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "Write-Host '[INGEST] Starting background Reddit stream ingestion...'; ^
-   $ingestProc = Start-Process python -ArgumentList '-u scripts/reddit_stream.py %subreddits%' -NoNewWindow -PassThru; ^
+   $ingestProc = Start-Process python -ArgumentList '-u services/spark/reddit_stream.py %subreddits%' -NoNewWindow -PassThru; ^
    Write-Host '[SPARK] Starting background Spark streaming job...'; ^
    $sparkProc = Start-Process docker -ArgumentList 'exec -t sdoqap-spark-master spark-submit --master spark://spark-master:7077 /opt/spark-apps/streaming_job.py' -NoNewWindow -PassThru; ^
    Write-Host '[SYSTEM] Ingestion and processing running in real-time...'; ^

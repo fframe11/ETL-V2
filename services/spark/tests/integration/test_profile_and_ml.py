@@ -4,7 +4,7 @@ import math
 import unittest
 
 # Add spark path to sys.path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F

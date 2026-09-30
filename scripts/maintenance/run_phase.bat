@@ -151,7 +151,7 @@ docker compose exec -T namenode hdfs dfs -mkdir -p /data/active/users
 docker compose exec -T namenode hdfs dfs -mkdir -p /data/quarantine/users
 echo.
 echo Copying mock data (users.csv) to HDFS container...
-docker cp spark/users.csv sdoqap-namenode:/tmp/users.csv
+docker cp services/spark/users.csv sdoqap-namenode:/tmp/users.csv
 echo Loading mock data into HDFS raw location...
 docker compose exec -T namenode hdfs dfs -put -f /tmp/users.csv /data/raw/users/users.csv
 echo.
