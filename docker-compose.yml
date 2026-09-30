@@ -332,6 +332,7 @@ services:
       - sdoqap_network
 
   pgadmin:
+    profiles: ["tools"]
     image: dpage/pgadmin4:latest
     container_name: sdoqap-pgadmin
     restart: unless-stopped
@@ -351,6 +352,7 @@ services:
       - sdoqap_network
 
   ollama:
+    profiles: ["ai"]
     image: ollama/ollama:latest
     container_name: sdoqap-ollama
     restart: always
@@ -414,6 +416,7 @@ services:
         limits:
           memory: 128M
   zookeeper:
+    profiles: ["streaming"]
     image: confluentinc/cp-zookeeper:7.5.0
     container_name: sdoqap-zookeeper
     restart: always
@@ -433,6 +436,7 @@ services:
       - sdoqap_network
 
   kafka:
+    profiles: ["streaming"]
     image: confluentinc/cp-kafka:7.5.0
     container_name: sdoqap-kafka
     restart: always

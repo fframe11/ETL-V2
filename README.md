@@ -44,6 +44,10 @@ username: admin
 password: admin
 ```
 
+### โหมดเบา
+
+ค่าเริ่มต้นใน `.env` คือ `COMPOSE_PROFILES=streaming,ai,tools` (เปิดครบ) ถ้าไม่ใช้ Reddit stream, AI ในเครื่อง หรือ pgAdmin ให้ลบชื่อนั้นออก เช่น `COMPOSE_PROFILES=` จะไม่เปิด kafka, zookeeper, ollama และ pgadmin ประหยัด RAM ตาม limit ใน compose ได้ราว 6.9 GB (ollama 6 GB + kafka 512 MB + zookeeper 384 MB)
+
 ## Test ด้วย Dataset หรือ API
 
 หลังระบบเปิดแล้ว ให้รัน:
