@@ -88,7 +88,8 @@ def test_multi_table_preview():
     data = preview_multi_tables()
     assert "table_a" in data
     assert "table_b" in data
-    assert data["table_a"]["total_rows"] == 10000
+    # _generate_demo_demographics leaves every 500th student out (20 of 10,000) so the demo has unmatched keys.
+    assert data["table_a"]["total_rows"] == 9980
     assert data["table_b"]["total_rows"] == 10100
     assert "studentId" in data["table_a"]["columns"]
     assert "student_id" in data["table_b"]["columns"]

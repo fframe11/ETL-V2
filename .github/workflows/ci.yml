@@ -30,3 +30,42 @@ jobs:
 
       - name: Check UI manifest
         run: test -f services/ui/package.json && test -f services/ui/package-lock.json
+
+  api-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install API dependencies
+        working-directory: services/api
+        run: |
+          pip install -r requirements.txt pandas pyarrow openpyxl xlrd psycopg2-binary pytest
+      - name: Run API tests
+        working-directory: services/api
+        env:
+          SESSION_SECRET_KEY: ci-only-secret
+          ADMIN_USERNAME: ci
+          ADMIN_PASSWORD: ci
+          ELASTICSEARCH_HOST: localhost
+          ELASTICSEARCH_PORT: "9200"
+          ELASTICSEARCH_USER: elastic
+          ELASTICSEARCH_PASSWORD: ci
+          EVAL_DATASET_ZIP: ${{ github.workspace }}/data/evaluation/student_course_score_evaluation_dataset.zip
+        run: python -m pytest -q
+
+  ui-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install and test UI
+        working-directory: services/ui
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: "true"
+        run: |
+          npm ci
+          npm test
