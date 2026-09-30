@@ -1,76 +1,32 @@
 == 1. two different files back-to-back (used to overwrite each other)
-Traceback (most recent call last):
-  File "<string>", line 1, in <module>
-    import sys,json;print(json.loads(sys.argv[1]).get('ingest_id',''))
-                          ~~~~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\THIN\AppData\Local\Python\pythoncore-3.14-64\Lib\json\__init__.py", line 352, in loads
-    return _default_decoder.decode(s)
-           ~~~~~~~~~~~~~~~~~~~~~~~^^^
-  File "C:\Users\THIN\AppData\Local\Python\pythoncore-3.14-64\Lib\json\decoder.py", line 345, in decode
-    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
-               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\THIN\AppData\Local\Python\pythoncore-3.14-64\Lib\json\decoder.py", line 363, in raw_decode
-    raise JSONDecodeError("Expecting value", s, err.value) from None
-json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
-Traceback (most recent call last):
-  File "<string>", line 1, in <module>
-    import sys,json;print(json.loads(sys.argv[1]).get('ingest_id',''))
-                          ~~~~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\THIN\AppData\Local\Python\pythoncore-3.14-64\Lib\json\__init__.py", line 352, in loads
-    return _default_decoder.decode(s)
-           ~~~~~~~~~~~~~~~~~~~~~~~^^^
-  File "C:\Users\THIN\AppData\Local\Python\pythoncore-3.14-64\Lib\json\decoder.py", line 345, in decode
-    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
-               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\THIN\AppData\Local\Python\pythoncore-3.14-64\Lib\json\decoder.py", line 363, in raw_decode
-    raise JSONDecodeError("Expecting value", s, err.value) from None
-json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
-A: Internal Server Error
-B: Internal Server Error
-FAIL ingest ids
+A: {"status":"queued","ingest_id":"20260930T170322-d40c27ae","run_state":"QUEUED","spark_triggered":true,"daemon_status":"running","message":"Data landed in HDFS for 'e2e_ingest_1790787802' and queued for the quality check (ingest 20260930T170322-d40c27ae)."}
+B: {"status":"queued","ingest_id":"20260930T170323-3a636e2f","run_state":"QUEUED","spark_triggered":true,"daemon_status":"queued","message":"Data landed in HDFS for 'e2e_ingest_1790787802' and queued for the quality check (ingest 20260930T170323-3a636e2f)."}
+PASS distinct ingest ids
 == 2. same file again -> duplicate
-C: {"status":"duplicate","ingest_id":"20260930T165207-caa1f70e","run_state":"QUEUED","spark_triggered":false,"message":"This exact file was already ingested for 'e2e_ingest_1790787127' (ingest 20260930T165207-caa1f70e, QUEUED). POST /api/v1/pipeline/retry/20260930T165207-caa1f70e reprocesses it."}
+C: {"status":"duplicate","ingest_id":"20260930T170322-d40c27ae","run_state":"RUNNING","spark_triggered":false,"message":"This exact file was already ingested for 'e2e_ingest_1790787802' (ingest 20260930T170322-d40c27ae, RUNNING). POST /api/v1/pipeline/retry/20260930T170322-d40c27ae reprocesses it."}
 PASS duplicate detected
 == 3. wait for both runs to finish (queued one after the other)
-Traceback (most recent call last):
-  File "<string>", line 1, in <module>
-    import sys,json;print(json.load(sys.stdin).get('state'))
-                          ~~~~~~~~~^^^^^^^^^^^
-  File "C:\Users\THIN\AppData\Local\Python\pythoncore-3.14-64\Lib\json\__init__.py", line 298, in load
-    return loads(fp.read(),
-        cls=cls, object_hook=object_hook,
-        parse_float=parse_float, parse_int=parse_int,
-        parse_constant=parse_constant, object_pairs_hook=object_pairs_hook, **kw)
-  File "C:\Users\THIN\AppData\Local\Python\pythoncore-3.14-64\Lib\json\__init__.py", line 352, in loads
-    return _default_decoder.decode(s)
-           ~~~~~~~~~~~~~~~~~~~~~~~^^^
-  File "C:\Users\THIN\AppData\Local\Python\pythoncore-3.14-64\Lib\json\decoder.py", line 345, in decode
-    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
-               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\THIN\AppData\Local\Python\pythoncore-3.14-64\Lib\json\decoder.py", line 363, in raw_decode
-    raise JSONDecodeError("Expecting value", s, err.value) from None
-json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
-Traceback (most recent call last):
-  File "<string>", line 1, in <module>
-    import sys,json;print(json.load(sys.stdin).get('state'))
-                          ~~~~~~~~~^^^^^^^^^^^
-  File "C:\Users\THIN\AppData\Local\Python\pythoncore-3.14-64\Lib\json\__init__.py", line 298, in load
-    return loads(fp.read(),
-        cls=cls, object_hook=object_hook,
-        parse_float=parse_float, parse_int=parse_int,
-        parse_constant=parse_constant, object_pairs_hook=object_pairs_hook, **kw)
-  File "C:\Users\THIN\AppData\Local\Python\pythoncore-3.14-64\Lib\json\__init__.py", line 352, in loads
-    return _default_decoder.decode(s)
-           ~~~~~~~~~~~~~~~~~~~~~~~^^^
-  File "C:\Users\THIN\AppData\Local\Python\pythoncore-3.14-64\Lib\json\decoder.py", line 345, in decode
-    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
-               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\THIN\AppData\Local\Python\pythoncore-3.14-64\Lib\json\decoder.py", line 363, in raw_decode
-    raise JSONDecodeError("Expecting value", s, err.value) from None
-json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
-  t=10s A= B=
-FAIL states A= B=
+  t=10s A=RUNNING B=QUEUED
+  t=20s A=RUNNING B=QUEUED
+  t=30s A=RUNNING B=QUEUED
+  t=40s A=RUNNING B=QUEUED
+  t=50s A=RUNNING B=QUEUED
+  t=60s A=RUNNING B=QUEUED
+  t=70s A=RUNNING B=QUEUED
+  t=80s A=RUNNING B=QUEUED
+  t=90s A=SUCCEEDED B=QUEUED
+  t=100s A=SUCCEEDED B=QUEUED
+  t=110s A=SUCCEEDED B=RUNNING
+  t=120s A=SUCCEEDED B=RUNNING
+  t=130s A=SUCCEEDED B=RUNNING
+  t=140s A=SUCCEEDED B=RUNNING
+  t=150s A=SUCCEEDED B=RUNNING
+  t=160s A=SUCCEEDED B=RUNNING
+  t=170s A=SUCCEEDED B=SUCCEEDED
+PASS both processed
 == 4. both raw folders archived, none deleted
-drwxrwxrwx   - spark spark          0 2026-09-30 16:52 /data/raw/e2e_ingest_1790787127/20260930T165207-caa1f70e
-drwxrwxrwx   - spark spark          0 2026-09-30 16:52 /data/raw/e2e_ingest_1790787127/20260930T165210-db018f28
+drwxrwxrwx   - spark spark          0 2026-09-30 17:03 /data/archive/e2e_ingest_1790787802/20260930T170322-d40c27ae
+drwxrwxrwx   - spark spark          0 2026-09-30 17:03 /data/archive/e2e_ingest_1790787802/20260930T170323-3a636e2f
 == 5. processing time recorded per ingestion
+  20260930T170323-3a636e2f 239 25 59.088
+  20260930T170322-d40c27ae 241 31 60.248
