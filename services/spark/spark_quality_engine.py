@@ -1689,31 +1689,9 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
         sys.exit(1)
 
     ctx.df = df
-    ctx = run_stages(["schema_drift"], ctx)
-    df, drift_detected, drift_details = ctx.df, ctx.drift_detected, ctx.drift_details
-
-    ctx.df = df
-    ctx = run_stages(["auto_clean", "validation", "dedup", "standardize_dates", "standardize_categories"], ctx)
-    df, remediation_logs, auto_clean = ctx.df, ctx.remediation_logs, ctx.auto_clean
-    df_with_status, invalid_df, valid_df = ctx.df_with_status, ctx.invalid_df, ctx.valid_df
-    valid_df_with_id, valid_dedup_with_id = ctx.valid_df_with_id, ctx.valid_dedup_with_id
-    clean_df, duplicate_df = ctx.clean_df, ctx.duplicate_df
-    pk_cols = ctx.pk_cols
-
-
-    
-
-    
-
-    ctx = run_stages(["anomaly_iqr", "anomaly_zscore", "anomaly_induced", "quarantine_assembly"], ctx)
-    outlier_df, value_range_profile = ctx.outlier_df, ctx.value_range_profile
-    unsupervised_outlier_df, induced_outlier_df = ctx.unsupervised_outlier_df, ctx.induced_outlier_df
-    all_quarantined, all_quarantined_write = ctx.all_quarantined, ctx.all_quarantined_write
-    clean_df = ctx.clean_df
-    clean_count, quarantine_count, total_records = ctx.clean_count, ctx.quarantine_count, ctx.total_records
-
-
-
+    ctx = run_stages([n for n in plan.TRANSFORM if n != "column_filter"], ctx)
+    clean_df, all_quarantined_write, pk_cols = ctx.clean_df, ctx.all_quarantined_write, ctx.pk_cols
+    quarantine_count = ctx.quarantine_count
 
     print("Writing validated datasets to HDFS using Delta Lake...")
 
@@ -1792,17 +1770,8 @@ def run_quality_check(table_name, primary_key, date_column, schema_spec, input_t
     all_quarantined_write.unpersist()
 
     ctx.metrics["started_at"] = started_at
-    ctx.clean_df, ctx.all_quarantined = clean_df, all_quarantined
     ctx = run_stages(plan.POST_LOAD, ctx)
     quality_score = ctx.metrics["quality_score"]
-
-
-
-
-
-
-
-
 
     # ─── Track 3: Downstream Event-Driven Trigger ─────────────────────────────
     if quality_score >= quality_threshold:
