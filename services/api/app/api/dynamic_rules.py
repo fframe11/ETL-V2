@@ -77,30 +77,21 @@ def _resolve_rules_path() -> str:
 
 
 def _load_rules_config() -> dict:
-    """Load and parse the rules configuration, syncing with Elasticsearch sdoqap_rules_registry."""
-    config = {}
-    path = None
-    try:
-        path = _resolve_rules_path()
-        with open(path, "r", encoding="utf-8") as fh:
-            config = json.load(fh)
-    except Exception as exc:
-        logger.warning("Failed to read local rules_config.json: %s", exc)
-
-    # Sync from ES sdoqap_rules_registry
+    """ES (sdoqap_rules_registry) is the source of truth once seeded; the JSON file is
+    only read when the index does not exist yet (fresh install before seeding)."""
     try:
         es = _get_es()
         if es.indices.exists(index="sdoqap_rules_registry"):
-            res = es.search(index="sdoqap_rules_registry", body={"query": {"match_all": {}}, "size": 100})
-            hits = res.get("hits", {}).get("hits", [])
-            for h in hits:
-                tbl = h["_id"]
-                config[tbl] = h["_source"]
-            logger.info("Successfully loaded and synced rules config from Elasticsearch sdoqap_rules_registry.")
+            res = es.search(index="sdoqap_rules_registry", body={"query": {"match_all": {}}, "size": 1000})
+            return {h["_id"]: h["_source"] for h in res.get("hits", {}).get("hits", [])}
     except Exception as exc:
-        logger.warning("Failed to sync rules config from ES: %s. Using disk fallback.", exc)
-        
-    return config
+        logger.warning("Failed to read rules from ES: %s. Falling back to rules_config.json.", exc)
+    try:
+        with open(_resolve_rules_path(), "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception as exc:
+        logger.warning("Failed to read local rules_config.json: %s", exc)
+        return {}
 
 
 def _save_rules_config(config: dict) -> None:
