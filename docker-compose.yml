@@ -216,7 +216,7 @@ services:
       - "${N8N_PORT}:5678"
     volumes:
       - n8n_data:/home/node/.n8n
-      - ./stress test:/stress_test
+      - ./data/stress:/stress_test
     deploy:
       resources:
         limits:
@@ -250,8 +250,8 @@ services:
     volumes:
       - ./scripts:/app/scripts:ro
       - ./services/spark:/opt/spark-apps
-      - ./services/api/student_course_score_evaluation_dataset:/app/student_course_score_evaluation_dataset
-      - ./student_course_score_evaluation_dataset.zip:/app/seed/student_course_score_evaluation_dataset.zip:ro
+      - ./data/evaluation/student_course_score_evaluation_dataset:/app/student_course_score_evaluation_dataset
+      - ./data/evaluation/student_course_score_evaluation_dataset.zip:/app/seed/student_course_score_evaluation_dataset.zip:ro
 
     restart: always
     depends_on:
@@ -318,8 +318,8 @@ services:
       - "${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - "./stress test/import_sales.sql:/docker-entrypoint-initdb.d/import_sales.sql:ro"
-      - "./stress test/100000 Sales Records.csv:/tmp/sales_records.csv:ro"
+      - "./data/stress/import_sales.sql:/docker-entrypoint-initdb.d/import_sales.sql:ro"
+      - "./data/stress/100000 Sales Records.csv:/tmp/sales_records.csv:ro"
     deploy:
       resources:
         limits:

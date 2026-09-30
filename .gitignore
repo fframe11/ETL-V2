@@ -19,16 +19,16 @@ secrets/
 
 # Large local datasets
 /*.csv
-stress test/*.csv
-stress test/**/*.csv
-!stress test/Olist Brazilian E-Commerce/olist_products_dataset.csv
-dummy_data/
+data/stress/*.csv
+data/stress/**/*.csv
+!data/stress/Olist Brazilian E-Commerce/olist_products_dataset.csv
+data/samples/formats/*.csv
 services/spark/spark-warehouse/
 services/spark/derby.log
-user_inputs/datasets/*
-!user_inputs/datasets/README.md
-user_inputs/apis/*
-!user_inputs/apis/README.md
+data/inputs/datasets/*
+!data/inputs/datasets/README.md
+data/inputs/apis/*
+!data/inputs/apis/README.md
 
 # Build/dependency outputs
 services/ui/node_modules/
@@ -65,4 +65,4 @@ services/ui/src/test/text-report.json
 .superpowers/
 
 # Interactive-engine runtime output (bind-mounted into the api container)
-services/api/student_course_score_evaluation_dataset/output_runs/
+data/evaluation/student_course_score_evaluation_dataset/output_runs/

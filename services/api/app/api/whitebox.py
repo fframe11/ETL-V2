@@ -74,6 +74,7 @@ def _resolve_dataset_dir() -> str:
         os.path.join(os.getcwd(), "student_course_score_evaluation_dataset"),
         os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "student_course_score_evaluation_dataset")),
         os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "student_course_score_evaluation_dataset")),
+        os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..", "data", "evaluation", "student_course_score_evaluation_dataset")),
         "/app/student_course_score_evaluation_dataset",
         "/tmp/student_course_score_evaluation_dataset"
     ]

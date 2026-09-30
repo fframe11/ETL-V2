@@ -1,7 +1,7 @@
 """Generate a synthetic student-scores CSV with a known number of injected problems, plus its answer key.
 
-Usage: python sample_data/generate_student_scores.py
-Output: sample_data/student_scores_sample.csv, sample_data/student_scores_answer_key.csv
+Usage: python data/samples/student_scores/generate_student_scores.py
+Output: data/samples/student_scores/student_scores_sample.csv, data/samples/student_scores/student_scores_answer_key.csv
 Standard library only, fixed seed, so every run produces the same files.
 """
 import csv

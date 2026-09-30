@@ -11,15 +11,15 @@ echo   Use this script after start_system.bat has started the platform.
 echo.
 echo   Dataset input:
 echo     Put CSV files in this project folder, then type the file name.
-echo     You can also put CSV files in user_inputs\datasets.
+echo     You can also put CSV files in data\inputs\datasets.
 echo.
 echo   API input:
 echo     Select API mode and paste/type the API URL in this terminal.
 echo =======================================================================
 echo.
 
-if not exist "user_inputs\datasets" mkdir "user_inputs\datasets"
-if not exist "user_inputs\apis" mkdir "user_inputs\apis"
+if not exist "data\inputs\datasets" mkdir "data\inputs\datasets"
+if not exist "data\inputs\apis" mkdir "data\inputs\apis"
 
 if not exist ".env" (
     echo [ERROR] .env file not found. Run scripts\maintenance\install_sdoqap.bat first.
@@ -80,11 +80,11 @@ echo =======================================================================
 echo Place your CSV file in:
 echo   this project folder ^(same level as this script^)
 echo or:
-echo   user_inputs\datasets
+echo   data\inputs\datasets
 echo.
 echo You may enter either:
 echo   - file name only: orders.csv
-echo   - file name from user_inputs\datasets: orders.csv
+echo   - file name from data\inputs\datasets: orders.csv
 echo   - full path: C:\path\to\orders.csv
 echo.
 set /p table_name="Enter table name for HDFS/Spark (example: orders): "
@@ -102,11 +102,11 @@ if "%dataset_file%"=="" (
 )
 
 set "input_file=%dataset_file%"
-if not exist "%input_file%" set "input_file=user_inputs\datasets\%dataset_file%"
+if not exist "%input_file%" set "input_file=data\inputs\datasets\%dataset_file%"
 
 if not exist "%input_file%" (
     echo [ERROR] File not found: %dataset_file%
-    echo Put the file in this project folder, put it in user_inputs\datasets, or enter a full path.
+    echo Put the file in this project folder, put it in data\inputs\datasets, or enter a full path.
     pause
     goto menu
 )
@@ -128,7 +128,7 @@ echo   API URL Test
 echo =======================================================================
 echo The script downloads the API response and converts JSON array/object data
 echo to CSV when possible. The output is saved in:
-echo   user_inputs\apis
+echo   data\inputs\apis
 echo.
 echo Paste/type your API URL directly in this terminal.
 echo.
@@ -146,7 +146,7 @@ if "%api_url%"=="" (
     goto menu
 )
 
-set "api_output=user_inputs\apis\%table_name%.csv"
+set "api_output=data\inputs\apis\%table_name%.csv"
 set "SDOQAP_API_URL=%api_url%"
 set "SDOQAP_API_OUTPUT=%api_output%"
 

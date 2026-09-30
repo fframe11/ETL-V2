@@ -2,7 +2,7 @@
 
 `student_scores_sample.csv` — synthetic course scores (1,030 rows, 250 students), not real people.
 `student_scores_answer_key.csv` — the zone every row should land in, and why.
-Regenerate both with `python sample_data/generate_student_scores.py` (fixed seed, same output every time).
+Regenerate both with `python data/samples/student_scores/generate_student_scores.py` (fixed seed, same output every time).
 
 ## Injected problems
 
@@ -25,5 +25,5 @@ Verified against the real engine: 1,030 / 1,030 rows land in the zone the answer
 
 Uploading replaces the dataset currently loaded in the interactive engine (one dataset at a time).
 To go back to the original evaluation dataset, delete
-`api/student_course_score_evaluation_dataset/dirty_dataset.csv` and restart the api container —
-it is restored from `student_course_score_evaluation_dataset.zip`.
+`data/evaluation/student_course_score_evaluation_dataset/dirty_dataset.csv` and restart the api container —
+it is restored from `data/evaluation/student_course_score_evaluation_dataset.zip`.
