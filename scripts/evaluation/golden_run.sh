@@ -21,7 +21,7 @@ if echo "$RESP" | grep -q '"status":"duplicate"'; then
 fi
 echo "ingest $ID"
 S=""
-for i in $(seq 1 90); do
+for i in $(seq 1 360); do
   S=$(curl -s "$HOST/api/v1/pipeline/runs/$ID" | python -c "import sys,json;print(json.load(sys.stdin).get('state'))")
   case "$S" in QUEUED|RUNNING) sleep 10;; *) break;; esac
 done

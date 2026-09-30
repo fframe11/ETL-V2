@@ -1,0 +1,30 @@
+[
+  {
+    "rows": 10000,
+    "table": "bench_10000",
+    "state": "FAILED",
+    "end_to_end_seconds": 1,
+    "error": ""
+  },
+  {
+    "rows": 100000,
+    "table": "bench_100000",
+    "state": "FAILED",
+    "end_to_end_seconds": 1,
+    "error": ""
+  },
+  {
+    "rows": 500000,
+    "table": "bench_500000",
+    "state": "FAILED",
+    "end_to_end_seconds": 1,
+    "error": ""
+  },
+  {
+    "rows": 1000000,
+    "table": "bench_1000000",
+    "state": "FAILED",
+    "end_to_end_seconds": 1,
+    "error": ""
+  }
+]
