@@ -53,5 +53,6 @@ def profile(rows, key_cols=("student_id", "course", "semester"), score_col="scor
 
 
 if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8")  # Windows consoles default to cp874/cp1252
     with open(sys.argv[1], newline="", encoding="utf-8") as f:
         print(json.dumps(profile(list(csv.DictReader(f))), indent=2, ensure_ascii=False))

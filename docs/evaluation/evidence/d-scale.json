@@ -2,41 +2,29 @@
   {
     "rows": 10000,
     "table": "bench_10000",
-    "state": "SUCCEEDED",
-    "duration_seconds": 66.172,
-    "end_to_end_seconds": 95,
-    "total_records": 10000,
-    "quarantined_records": 630,
-    "error": null
+    "state": "FAILED",
+    "end_to_end_seconds": 1,
+    "error": ""
   },
   {
     "rows": 100000,
     "table": "bench_100000",
-    "state": "SUCCEEDED",
-    "duration_seconds": 85.487,
-    "end_to_end_seconds": 116,
-    "total_records": 99100,
-    "quarantined_records": 6238,
-    "error": null
+    "state": "FAILED",
+    "end_to_end_seconds": 1,
+    "error": ""
   },
   {
     "rows": 500000,
     "table": "bench_500000",
-    "state": "SUCCEEDED",
-    "duration_seconds": 203.369,
-    "end_to_end_seconds": 238,
-    "total_records": 495100,
-    "quarantined_records": 31184,
-    "error": null
+    "state": "FAILED",
+    "end_to_end_seconds": 1,
+    "error": ""
   },
   {
     "rows": 1000000,
     "table": "bench_1000000",
-    "state": "SUCCEEDED",
-    "duration_seconds": 414.215,
-    "end_to_end_seconds": 454,
-    "total_records": 990100,
-    "quarantined_records": 62373,
-    "error": null
+    "state": "FAILED",
+    "end_to_end_seconds": 1,
+    "error": ""
   }
 ]

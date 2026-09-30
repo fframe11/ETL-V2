@@ -5,7 +5,7 @@ WHITE BOX SEMI-AUTOMATED ETL: EMPIRICAL BENCHMARK EVALUATION
 [Step 1: Ingestion & Profiling]
 Total Ingested Rows:    10,100
 Total Columns:          8
-Profiling completed in: 12.41 ms
+Profiling completed in: 18.27 ms
 Summary of Profiled Anomalies:
   - null_issues: {'score': 305}
   - range_anomalies: {'score': '-10.0 -> 150.0'}
@@ -57,7 +57,7 @@ Generated 5 explainable rules with concrete 'Why?' rationale:
     * Verifies data ingestion pipeline meets daily batch timeliness SLAs.
 
 [Step 4 & 5: Transformation & 3-Way Segregation]
-Execution runtime:           522.0 ms
+Execution runtime:           881.16 ms
 Total Ingested:              10,100
 Clean Data (Valid):          9,400 rows (Ready for Analytics)
 Human Review Queue:          100 rows (Study Hours Outliers)

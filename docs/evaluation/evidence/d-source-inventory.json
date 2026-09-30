@@ -158,19 +158,19 @@
     },
     {
       "path": "data/evaluation/student_course_score_evaluation_dataset/output_runs/clean_dataset_run.csv",
-      "bytes": 74970,
+      "bytes": 83205,
       "rows": 915,
       "columns": 10
     },
     {
       "path": "data/evaluation/student_course_score_evaluation_dataset/output_runs/quarantine_lake_run.csv",
-      "bytes": 11557,
+      "bytes": 10877,
       "rows": 95,
       "columns": 10
     },
     {
       "path": "data/evaluation/student_course_score_evaluation_dataset/output_runs/review_queue_run.csv",
-      "bytes": 2579,
+      "bytes": 2319,
       "rows": 20,
       "columns": 10
     },
@@ -270,17 +270,17 @@
   "ingestions": {
     "by_source": {
       "file": {
-        "ingestions": 12,
-        "succeeded": 10,
-        "bytes": 115632844
+        "ingestions": 14,
+        "succeeded": 12,
+        "bytes": 115687340
       }
     },
-    "total_bytes": 115632844
+    "total_bytes": 115687340
   },
   "quality_runs": {
-    "tables": 20,
-    "runs": 166,
-    "records_processed": 3555974,
+    "tables": 21,
+    "runs": 169,
+    "records_processed": 3566454,
     "largest_run": 990100
   }
 }

@@ -5,6 +5,7 @@ import base64
 import csv
 import json
 import os
+import sys
 import urllib.request
 from collections import defaultdict
 from urllib.parse import urlparse
@@ -74,6 +75,7 @@ def _es_search_all(es_url, index):
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8")  # Windows consoles default to cp874/cp1252
     p = argparse.ArgumentParser()
     p.add_argument("--es-url", default=None)
     a = p.parse_args()

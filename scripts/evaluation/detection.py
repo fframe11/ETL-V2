@@ -3,6 +3,7 @@ Usage: python scripts/evaluation/detection.py --dirty D.csv --ground-truth G.csv
 import argparse
 import csv
 import json
+import sys
 from collections import Counter, defaultdict
 
 ERROR_TYPES = ("Missing Score", "Invalid Score Range", "Study Hours Outlier", "Duplicate")
@@ -68,6 +69,7 @@ def _read(path):
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8")  # Windows consoles default to cp874/cp1252
     p = argparse.ArgumentParser()
     for name in ("--dirty", "--ground-truth", "--active", "--quarantine"):
         p.add_argument(name, required=True)
