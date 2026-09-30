@@ -1,0 +1,18 @@
+{
+  "ingest_id": "20260930T170725-d6e1ab5b",
+  "run_id": "run_20260930_170846_315597",
+  "total_records": 250,
+  "clean_records": 227,
+  "quarantined_records": 23,
+  "quarantine_breakdown": {
+    "score=-10_0 (expected [37_0500, 107_0500])": 4,
+    "score=-5_0 (expected [37_0500, 107_0500])": 2,
+    "| study_hours=54 (expected [-4_5000, 15_5000])": 2,
+    "| study_hours=38 (expected [-4_5000, 15_5000])": 1,
+    "| study_hours=35 (expected [-4_5000, 15_5000])": 1,
+    "| study_hours=56 (expected [-4_5000, 15_5000])": 1,
+    "null_value_in_score": 12
+  },
+  "duration_seconds": 59.158,
+  "stage_seconds": null
+}
