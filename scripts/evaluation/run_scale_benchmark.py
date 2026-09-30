@@ -10,6 +10,7 @@ Needs the stack running; run from the repo root.
 import base64
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -19,6 +20,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 OUT = os.path.join(ROOT, "docs", "evaluation", "evidence", "d-scale.json")
 ES = f"http://localhost:{os.getenv('ES_HOST_PORT', '9200')}"
 TEMPLATE_TABLE = "student_course_scores"
+# On Windows a bare "bash" resolves to the WSL launcher in System32, not Git Bash.
+BASH = shutil.which("bash") or "bash"
 
 
 def _api_env(name):
@@ -50,8 +53,8 @@ def run_size(n, password):
     os.makedirs(os.path.dirname(out_json), exist_ok=True)
     copy_registry(table, password)
     started = time.time()
-    env = dict(os.environ, PYTHONUTF8="1", PATH=os.path.dirname(sys.executable) + os.pathsep + os.environ.get("PATH", ""))
-    proc = subprocess.run(["bash", "scripts/evaluation/golden_run.sh", table, csv_path, out_json],
+    env = dict(os.environ, PYTHONUTF8="1", PYTHON=sys.executable)
+    proc = subprocess.run([BASH, "scripts/evaluation/golden_run.sh", table, csv_path, out_json],
                           capture_output=True, text=True, cwd=ROOT, env=env, stdin=subprocess.DEVNULL)
     elapsed = round(time.time() - started)
     if proc.returncode != 0:
