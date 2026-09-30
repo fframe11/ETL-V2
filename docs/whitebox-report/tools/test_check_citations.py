@@ -4,11 +4,12 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from check_citations import check, check_excerpts  # noqa: E402
+from check_citations import check, check_excerpts, read_source_lines  # noqa: E402
 
 ROOT = Path.cwd()
+REF = "report-snapshot-2026-09-30"
 SRC = "api/app/api/whitebox.py"
-src_lines = (ROOT / SRC).read_text(encoding="utf-8").splitlines()
+src_lines = read_source_lines(SRC, ROOT, REF)
 
 
 def write_md(text):
@@ -24,7 +25,7 @@ def fence(header, body_lines):
 
 def test_verbatim_excerpt_passes():
     md = write_md(fence(f"# {SRC}:1-3", src_lines[0:3]))
-    problems, count = check_excerpts(md, ROOT)
+    problems, count = check_excerpts(md, ROOT, REF)
     assert count == 1 and problems == [], problems
 
 
@@ -32,33 +33,33 @@ def test_edited_excerpt_fails():
     body = list(src_lines[0:3])
     body[1] = body[1] + " edited"
     md = write_md(fence(f"# {SRC}:1-3", body))
-    problems, count = check_excerpts(md, ROOT)
+    problems, count = check_excerpts(md, ROOT, REF)
     assert count == 1 and len(problems) == 1, problems
 
 
 def test_wrong_range_fails():
     md = write_md(fence(f"# {SRC}:2-4", src_lines[0:3]))
-    problems, _ = check_excerpts(md, ROOT)
+    problems, _ = check_excerpts(md, ROOT, REF)
     assert len(problems) == 1, problems
 
 
 def test_js_comment_header_is_recognised():
     js = "ui/src/utils/currency.js"
-    js_lines = (ROOT / js).read_text(encoding="utf-8").splitlines()
+    js_lines = read_source_lines(js, ROOT, REF)
     md = write_md("```js\n// " + js + ":1-2\n" + "\n".join(js_lines[0:2]) + "\n```\n")
-    problems, count = check_excerpts(md, ROOT)
+    problems, count = check_excerpts(md, ROOT, REF)
     assert count == 1 and problems == [], problems
 
 
 def test_plain_code_block_is_ignored():
     md = write_md("```python\nprint('not an excerpt')\n```\n")
-    problems, count = check_excerpts(md, ROOT)
+    problems, count = check_excerpts(md, ROOT, REF)
     assert count == 0 and problems == []
 
 
 def test_citation_check_still_works():
     md = write_md(f"see `{SRC}:1` and `{SRC}:999999`")
-    problems, count = check(md, ROOT)
+    problems, count = check(md, ROOT, REF)
     assert count == 2 and len(problems) == 1, problems
 
 
@@ -79,7 +80,7 @@ def test_four_backtick_wrapper_content_is_not_an_excerpt():
         "````\n"  # Closes the 4-backtick wrapper (4 backticks, nothing else)
     )
     md = write_md(text)
-    problems, count = check_excerpts(md, ROOT)
+    problems, count = check_excerpts(md, ROOT, REF)
     # Fixed code: wrapper stays open until final ````, inner ``` is content, count=0
     # Broken code: would close wrapper at inner ```, wrongly extract as excerpt, count=1
     assert count == 0 and problems == [], f"count={count}, problems={problems}"
@@ -107,10 +108,22 @@ def test_real_excerpt_after_wrapper_is_still_checked():
         "```\n"
     )
     md = write_md(text)
-    problems, count = check_excerpts(md, ROOT)
+    problems, count = check_excerpts(md, ROOT, REF)
     # After wrapper closes, the real excerpt is found and checked
     # count=1 (one real excerpt), len(problems)=1 (one content mismatch due to "edited")
     assert count == 1 and len(problems) == 1, f"count={count}, problems={problems}"
+
+
+def test_missing_file_at_ref_is_reported():
+    md = write_md("see `api/does_not_exist.py:1`")
+    problems, count = check(md, ROOT, REF)
+    assert count == 1 and len(problems) == 1 and "file not found" in problems[0], problems
+
+
+def test_working_tree_mode_without_ref():
+    md = write_md("see `docs/whitebox-report/tools/check_citations.py:1`")
+    problems, count = check(md, ROOT)
+    assert count == 1 and problems == [], problems
 
 
 if __name__ == "__main__":

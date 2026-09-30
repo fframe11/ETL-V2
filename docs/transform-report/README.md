@@ -1,5 +1,7 @@
 # รายงาน Transform: กฎทำงานยังไง และทำให้เป็น White Box
 
+> citation แบบ `path:line` ในรายงานนี้อ้างถึงโค้ดที่ git tag `report-snapshot-2026-09-30` (ก่อนย้ายเป็น monorepo) ตรวจด้วย `python docs/whitebox-report/tools/check_citations.py --ref report-snapshot-2026-09-30 <ไฟล์>`
+
 ## งานนี้ตอบอะไร
 
 โจทย์จากเพื่อน (คัดลอกตามที่ได้รับ):

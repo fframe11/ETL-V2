@@ -1,5 +1,7 @@
 # 00. ภาพรวมระบบทั้งหมด (System Overview)
 
+> citation แบบ `path:line` ในรายงานนี้อ้างถึงโค้ดที่ git tag `report-snapshot-2026-09-30` (ก่อนย้ายเป็น monorepo) ตรวจด้วย `python docs/whitebox-report/tools/check_citations.py --ref report-snapshot-2026-09-30 <ไฟล์>`
+
 > ผู้ใช้เห็นส่วนนี้ที่: ทุกหน้าในเมนู (Home, Data Ingestion, Expectations & Alerts, Jobs & Pipelines, Workspace Exports, Dashboards, Query & Metrics, Catalog, Audit Trail) · โค้ดหลัก: `docker-compose.yml:1-460`, `api/main.py:1-121`
 
 ## 1. คำตอบ 30 วินาที

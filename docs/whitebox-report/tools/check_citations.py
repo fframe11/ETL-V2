@@ -1,11 +1,26 @@
 """Checks that every `path:line` / `path:start-end` citation in the report
 points at lines that exist. Run from the repo root.
 
-Usage: python docs/whitebox-report/tools/check_citations.py docs/whitebox-report/*.md
+Usage: python docs/whitebox-report/tools/check_citations.py [--ref report-snapshot-2026-09-30] docs/whitebox-report/*.md
 """
 import re
+import subprocess
 import sys
 from pathlib import Path
+
+
+def read_source_lines(rel_path, root, ref=None):
+    """Lines of a cited file, from the working tree or from a git ref (None if absent).
+    Report citations were written against tag report-snapshot-2026-09-30; after the
+    monorepo move those paths only exist at that tag."""
+    if ref:
+        res = subprocess.run(["git", "show", f"{ref}:{rel_path}"], capture_output=True,
+                             text=True, encoding="utf-8", errors="replace", check=False)
+        return res.stdout.splitlines() if res.returncode == 0 else None
+    target = root / rel_path
+    if not target.is_file():
+        return None
+    return target.read_text(encoding="utf-8", errors="replace").splitlines()
 
 CITATION = re.compile(
     r"`((?:api|spark|ui|tests|docs|scripts)/[\w./-]+\.(?:py|jsx|js|json|css|yml|md)):(\d+)(?:-(\d+))?`"
@@ -16,7 +31,7 @@ EXCERPT_HEADER = re.compile(
 )
 
 
-def check_excerpts(md_path: Path, root: Path):
+def check_excerpts(md_path: Path, root: Path, ref=None):
     """A fenced block whose first line is `# path:a-b` or `// path:a-b` must
     contain exactly source lines a..b (trailing whitespace ignored).
 
@@ -61,11 +76,11 @@ def check_excerpts(md_path: Path, root: Path):
         if header:
             count += 1
             rel, start, end = header.group(1), int(header.group(2)), int(header.group(3))
-            target = root / rel
-            if not target.is_file():
+            source = read_source_lines(rel, root, ref)
+            if source is None:
                 problems.append(f"BAD {md_path}: excerpt {rel}:{start}-{end} — file not found")
             else:
-                src = target.read_text(encoding="utf-8", errors="replace").splitlines()[start - 1:end]
+                src = source[start - 1:end]
                 body = lines[i + 2:j]
                 if [s.rstrip() for s in body] != [s.rstrip() for s in src]:
                     problems.append(f"BAD {md_path}: excerpt {rel}:{start}-{end} does not match the source")
@@ -73,17 +88,17 @@ def check_excerpts(md_path: Path, root: Path):
     return problems, count
 
 
-def check(md_path: Path, root: Path):
+def check(md_path: Path, root: Path, ref=None):
     problems, count = [], 0
     for match in CITATION.finditer(md_path.read_text(encoding="utf-8")):
         count += 1
         rel, start, end = match.group(1), int(match.group(2)), match.group(3)
         end = int(end) if end else start
-        target = root / rel
-        if not target.is_file():
+        source = read_source_lines(rel, root, ref)
+        if source is None:
             problems.append(f"BAD {md_path}: {match.group(0)} — file not found")
             continue
-        total = len(target.read_text(encoding="utf-8", errors="replace").splitlines())
+        total = len(source)
         if start < 1 or end < start or end > total:
             problems.append(f"BAD {md_path}: {match.group(0)} — file has {total} lines")
     return problems, count
@@ -91,14 +106,20 @@ def check(md_path: Path, root: Path):
 
 def main(argv):
     root = Path.cwd()
-    files = [Path(a) for a in argv[1:]]
+    args = list(argv[1:])
+    ref = None
+    if "--ref" in args:
+        i = args.index("--ref")
+        ref = args[i + 1]
+        del args[i:i + 2]
+    files = [Path(a) for a in args]
     if not files:
         print("usage: check_citations.py <markdown files>")
         return 2
     all_problems, total, excerpts = [], 0, 0
     for f in files:
-        problems, count = check(f, root)
-        e_problems, e_count = check_excerpts(f, root)
+        problems, count = check(f, root, ref)
+        e_problems, e_count = check_excerpts(f, root, ref)
         all_problems += problems + e_problems
         total += count
         excerpts += e_count

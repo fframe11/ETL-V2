@@ -80,5 +80,5 @@ SDOQAP is a modular, containerized data platform (Docker Compose) that ingests d
 ## 4. Related Documents
 
 - Root [`README.md`](../README.md) — setup and day-to-day usage (`start_system.bat`, `test_data_source.bat`).
-- [`docs/folder_structure.md`](folder_structure.md) — repository layout.
-- [`docs/schema_drift_governance.md`](schema_drift_governance.md) — schema drift workflow detail.
+- [`docs/architecture/folder_structure.md`](folder_structure.md) — repository layout.
+- [`docs/architecture/schema_drift_governance.md`](schema_drift_governance.md) — schema drift workflow detail.

@@ -84,7 +84,7 @@ Enter CSV file name or full path: orders.csv
 หรือจะวางไฟล์ไว้ใน:
 
 ```text
-user_inputs/datasets/
+data/inputs/datasets/
 ```
 
 แล้วพิมพ์ชื่อไฟล์อย่างเดียวก็ได้เช่นกัน:
@@ -113,7 +113,7 @@ Enter API URL: https://example.com/api/data
 script จะ download API response, แปลงเป็น CSV เท่าที่ทำได้ แล้วเก็บไว้ที่:
 
 ```text
-user_inputs/apis/<table_name>.csv
+data/inputs/apis/<table_name>.csv
 ```
 
 รูปแบบ API ที่รองรับ:
@@ -143,7 +143,7 @@ user_inputs/apis/<table_name>.csv
 ถ้าต้องการกำหนด primary key, date column หรือ expected schema ให้เพิ่ม config ใน:
 
 ```text
-spark/schema_registry.json
+services/spark/schema_registry.json
 ```
 
 ตัวอย่าง:
@@ -237,10 +237,10 @@ repo ตั้งค่า ignore ไว้แล้วสำหรับ:
 
 - `.env`
 - root-level CSV เช่น `orders.csv`
-- `user_inputs/datasets/*`
-- `user_inputs/apis/*`
-- `n8n/credentials.json`
-- `n8n/database.sqlite`
+- `data/inputs/datasets/*`
+- `data/inputs/apis/*`
+- `infra/n8n/credentials.json`
+- `infra/n8n/database.sqlite`
 - dataset ใหญ่ใน `stress test/`
 
 ## ปิดระบบ
@@ -261,7 +261,7 @@ docker compose down -v
 
 สามารถกำหนดเกณฑ์ตัดสินคุณภาพข้อมูลแยกตามรายตารางได้ใน:
 ```text
-spark/rules_config.json
+services/spark/rules_config.json
 ```
 หากต้องการเปิด/ปิด หรือกำหนดระดับความรุนแรง (severity: critical/warning) หรือเกณฑ์ขั้นต่ำของคุณภาพที่รับได้ (`quality_score_threshold`) สามารถปรับเปลี่ยนที่ไฟล์นี้ได้ทันทีโดยไม่ต้องแก้โค้ดหลักของ Spark
 
@@ -269,7 +269,7 @@ spark/rules_config.json
 
 ระบบมาพร้อมกับสคริปต์รันการทดสอบระบบและคุณภาพแบบอัตโนมัติ (Automated Pipeline Validation) สามารถรันจากฝั่ง Host ได้โดยตรง:
 ```cmd
-python spark/tests/run_integration_test.py
+python services/spark/tests/integration/run_integration_test.py
 ```
 สคริปต์นี้จะอัปโหลดชุดข้อมูลจำลอง `benchmark_dataset.csv` (30 แถว มีข้อบกพร่องสะสม 10 แถว) และทดสอบความเสถียรของ Lock, Data Casting, Quarantine logic และส่งสรุปผลการพยากรณ์รวมทั้งบันทึกข้อมูลและตรวจสอบความถูกต้องกลับจาก Elasticsearch โดยอัตโนมัติ
 
@@ -301,3 +301,7 @@ GET http://localhost:8002/api/v1/lineage/{table_name}/trust-check
 ## License
 
 MIT © 2024-2026 fframe11
+
+## โครงสร้างโฟลเดอร์
+
+ดู [docs/architecture/folder_structure.md](docs/architecture/folder_structure.md) — สรุป: `services/` (api, spark, ui), `infra/` (nginx, grafana, prometheus, n8n), `data/`, `scripts/`, `docs/`
