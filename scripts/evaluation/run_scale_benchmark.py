@@ -70,13 +70,16 @@ def run_size(n, password):
 def main(argv):
     sizes = [int(a) for a in argv[1:]] or [10000, 100000, 500000, 1000000]
     password = _api_env("ELASTICSEARCH_PASSWORD")
-    results = []
+    results = {}
+    if os.path.isfile(OUT):
+        with open(OUT, encoding="utf-8") as f:
+            results = {e["rows"]: e for e in json.load(f)}
     for n in sizes:
         entry = run_size(n, password)
-        results.append(entry)
+        results[n] = entry
         print(json.dumps(entry, ensure_ascii=False), flush=True)
         with open(OUT, "w", encoding="utf-8") as f:
-            json.dump(results, f, indent=2, ensure_ascii=False)
+            json.dump([results[k] for k in sorted(results)], f, indent=2, ensure_ascii=False)
 
 
 if __name__ == "__main__":

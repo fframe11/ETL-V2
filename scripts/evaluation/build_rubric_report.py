@@ -21,8 +21,13 @@ def _sources(ev):
     lines = ["| ชนิด | แหล่งข้อมูล | จุดเข้า | โค้ด |", "|---|---|---|---|"]
     lines += [f"| {c['type']} | {c['name']} | `{c['endpoint']}` | `{c['code']}` |" for c in inv["connectors"]]
     files = inv.get("dataset_files", [])
-    rows = sum(f.get("rows", 0) for f in files)
-    lines += ["", f"ไฟล์ข้อมูลใน `data/`: {len(files):,} ไฟล์ รวม {rows:,} แถว (นับเฉพาะ CSV)"]
+    scale = [f for f in files if f["path"].startswith("data/evaluation/scale/")]
+    derived = [f for f in files if f["path"].startswith("data/evaluation/output/")]
+    sources = [f for f in files if f not in scale and f not in derived]
+    lines += ["",
+              f"ไฟล์ข้อมูลต้นทางใน `data/`: {len(sources):,} ไฟล์ รวม {sum(f.get('rows', 0) for f in sources):,} แถว (นับเฉพาะ CSV)",
+              f"ชุดขยายสำหรับ benchmark (สำเนาซ้ำของชุดประเมินชุดเดียว ไม่ใช่ข้อมูลใหม่): {len(scale):,} ไฟล์ "
+              f"รวม {sum(f.get('rows', 0) for f in scale):,} แถว"]
     q = inv.get("quality_runs")
     if q:
         lines.append(f"ประมวลผลผ่าน Spark แล้ว {q['runs']:,} รอบ จาก {q['tables']:,} ตาราง รวม {q['records_processed']:,} แถว "
@@ -99,6 +104,10 @@ def _loading(ev):
         lines.append(f"- รอบประเมิน: รับเข้า {run['total_records']:,} แถว → active {run['clean_records']:,} + quarantine "
                      f"{run['quarantined_records']:,} ({'ครบถ้วน' if total == run['total_records'] else 'ไม่ครบ'}), "
                      f"เวลาใน engine {run['duration_seconds']} วินาที")
+        before = ev.get("d-profile-before")
+        if before and before["rows"] != run["total_records"]:
+            lines.append(f"- ไฟล์ต้นทางมี {before['rows']:,} แถว ส่วนต่าง {before['rows'] - run['total_records']:,} แถวคือแถวคีย์ซ้ำที่ `auto_clean` ตัดทิ้งก่อนนับ "
+                         "(ไม่ถูกเก็บใน quarantine) — ตัวตรวจ detection นับว่าเป็น `dropped`")
     else:
         lines.append(_missing("bash scripts/evaluation/run_batch_evaluation.sh"))
     scale = ev.get("d-scale")

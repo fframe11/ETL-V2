@@ -1,9 +1,9 @@
 == 1. two different files back-to-back (used to overwrite each other)
-A: {"status":"queued","ingest_id":"20260930T170322-d40c27ae","run_state":"QUEUED","spark_triggered":true,"daemon_status":"running","message":"Data landed in HDFS for 'e2e_ingest_1790787802' and queued for the quality check (ingest 20260930T170322-d40c27ae)."}
-B: {"status":"queued","ingest_id":"20260930T170323-3a636e2f","run_state":"QUEUED","spark_triggered":true,"daemon_status":"queued","message":"Data landed in HDFS for 'e2e_ingest_1790787802' and queued for the quality check (ingest 20260930T170323-3a636e2f)."}
+A: {"status":"queued","ingest_id":"20260930T181535-9e8fc104","run_state":"QUEUED","spark_triggered":true,"daemon_status":"running","message":"Data landed in HDFS for 'e2e_ingest_1790792135' and queued for the quality check (ingest 20260930T181535-9e8fc104)."}
+B: {"status":"queued","ingest_id":"20260930T181536-5ea88812","run_state":"QUEUED","spark_triggered":true,"daemon_status":"queued","message":"Data landed in HDFS for 'e2e_ingest_1790792135' and queued for the quality check (ingest 20260930T181536-5ea88812)."}
 PASS distinct ingest ids
 == 2. same file again -> duplicate
-C: {"status":"duplicate","ingest_id":"20260930T170322-d40c27ae","run_state":"RUNNING","spark_triggered":false,"message":"This exact file was already ingested for 'e2e_ingest_1790787802' (ingest 20260930T170322-d40c27ae, RUNNING). POST /api/v1/pipeline/retry/20260930T170322-d40c27ae reprocesses it."}
+C: {"status":"duplicate","ingest_id":"20260930T181535-9e8fc104","run_state":"RUNNING","spark_triggered":false,"message":"This exact file was already ingested for 'e2e_ingest_1790792135' (ingest 20260930T181535-9e8fc104, RUNNING). POST /api/v1/pipeline/retry/20260930T181535-9e8fc104 reprocesses it."}
 PASS duplicate detected
 == 3. wait for both runs to finish (queued one after the other)
   t=10s A=RUNNING B=QUEUED
@@ -13,20 +13,18 @@ PASS duplicate detected
   t=50s A=RUNNING B=QUEUED
   t=60s A=RUNNING B=QUEUED
   t=70s A=RUNNING B=QUEUED
-  t=80s A=RUNNING B=QUEUED
-  t=90s A=SUCCEEDED B=QUEUED
-  t=100s A=SUCCEEDED B=QUEUED
+  t=80s A=SUCCEEDED B=RUNNING
+  t=90s A=SUCCEEDED B=RUNNING
+  t=100s A=SUCCEEDED B=RUNNING
   t=110s A=SUCCEEDED B=RUNNING
   t=120s A=SUCCEEDED B=RUNNING
   t=130s A=SUCCEEDED B=RUNNING
   t=140s A=SUCCEEDED B=RUNNING
-  t=150s A=SUCCEEDED B=RUNNING
-  t=160s A=SUCCEEDED B=RUNNING
-  t=170s A=SUCCEEDED B=SUCCEEDED
+  t=150s A=SUCCEEDED B=SUCCEEDED
 PASS both processed
 == 4. both raw folders archived, none deleted
-drwxrwxrwx   - spark spark          0 2026-09-30 17:03 /data/archive/e2e_ingest_1790787802/20260930T170322-d40c27ae
-drwxrwxrwx   - spark spark          0 2026-09-30 17:03 /data/archive/e2e_ingest_1790787802/20260930T170323-3a636e2f
+drwxrwxrwx   - spark spark          0 2026-09-30 18:15 /data/archive/e2e_ingest_1790792135/20260930T181535-9e8fc104
+drwxrwxrwx   - spark spark          0 2026-09-30 18:15 /data/archive/e2e_ingest_1790792135/20260930T181536-5ea88812
 == 5. processing time recorded per ingestion
-  20260930T170323-3a636e2f 239 25 59.088
-  20260930T170322-d40c27ae 241 31 60.248
+  20260930T181536-5ea88812 239 25 58.291
+  20260930T181535-9e8fc104 241 31 51.953

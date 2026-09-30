@@ -23,8 +23,9 @@ fi
 echo "ingest $ID"
 S=""
 for i in $(seq 1 360); do
-  S=$(curl -s "$HOST/api/v1/pipeline/runs/$ID" | "$PY" -c "import sys,json;print(json.load(sys.stdin).get('state'))")
-  case "$S" in QUEUED|RUNNING) sleep 10;; *) break;; esac
+  # The API can answer slowly or with a non-JSON error while Spark is busy: treat that as "unknown", keep polling.
+  S=$(curl -s --max-time 30 "$HOST/api/v1/pipeline/runs/$ID" | "$PY" -c "import sys,json;print(json.load(sys.stdin).get('state'))" 2>/dev/null || echo UNKNOWN)
+  case "$S" in QUEUED|RUNNING|UNKNOWN|"") sleep 10;; *) break;; esac
 done
 echo "state $S"
 [ "$S" = "SUCCEEDED" ] || { echo "run did not succeed"; rm -f "$JAR"; exit 1; }

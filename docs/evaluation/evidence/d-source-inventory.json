@@ -1,0 +1,286 @@
+{
+  "connectors": [
+    {
+      "type": "file",
+      "name": "CSV / Excel upload",
+      "endpoint": "POST /api/v1/pipeline/ingest/csv",
+      "code": "services/api/app/api/pipeline.py"
+    },
+    {
+      "type": "api",
+      "name": "REST API (JSON/CSV) + data.go.th resolver",
+      "endpoint": "POST /api/v1/pipeline/ingest/api",
+      "code": "services/api/app/api/pipeline.py"
+    },
+    {
+      "type": "rdbms",
+      "name": "PostgreSQL (read-only SELECT)",
+      "endpoint": "POST /api/v1/pipeline/ingest/rdbms",
+      "code": "services/api/app/api/pipeline.py"
+    },
+    {
+      "type": "stream",
+      "name": "Reddit → Kafka → Spark Structured Streaming",
+      "endpoint": "POST /api/v1/pipeline/ingest/reddit",
+      "code": "services/spark/streaming_job.py"
+    }
+  ],
+  "dataset_files": [
+    {
+      "path": "data/evaluation/course_analytics_summary.xlsx",
+      "bytes": 12303
+    },
+    {
+      "path": "data/evaluation/student_course_score_evaluation_dataset.zip",
+      "bytes": 245449
+    },
+    {
+      "path": "data/evaluation/original/clean_dataset.csv",
+      "bytes": 530915,
+      "rows": 10000,
+      "columns": 7
+    },
+    {
+      "path": "data/evaluation/original/dirty_dataset.csv",
+      "bytes": 604936,
+      "rows": 10100,
+      "columns": 8
+    },
+    {
+      "path": "data/evaluation/original/ground_truth.csv",
+      "bytes": 219033,
+      "rows": 10100,
+      "columns": 4
+    },
+    {
+      "path": "data/evaluation/output/active.csv",
+      "bytes": 402778,
+      "rows": 9370,
+      "columns": 7
+    },
+    {
+      "path": "data/evaluation/output/bench_10000.json",
+      "bytes": 1815
+    },
+    {
+      "path": "data/evaluation/output/bench_100000.json",
+      "bytes": 1835
+    },
+    {
+      "path": "data/evaluation/output/bench_1000000.json",
+      "bytes": 1861
+    },
+    {
+      "path": "data/evaluation/output/bench_500000.json",
+      "bytes": 1853
+    },
+    {
+      "path": "data/evaluation/output/quarantine.csv",
+      "bytes": 50241,
+      "rows": 630,
+      "columns": 8
+    },
+    {
+      "path": "data/evaluation/scale/dirty_10000.csv",
+      "bytes": 608877,
+      "rows": 10000,
+      "columns": 8
+    },
+    {
+      "path": "data/evaluation/scale/dirty_100000.csv",
+      "bytes": 6826802,
+      "rows": 100000,
+      "columns": 8
+    },
+    {
+      "path": "data/evaluation/scale/dirty_1000000.csv",
+      "bytes": 71711454,
+      "rows": 1000000,
+      "columns": 8
+    },
+    {
+      "path": "data/evaluation/scale/dirty_500000.csv",
+      "bytes": 35662848,
+      "rows": 500000,
+      "columns": 8
+    },
+    {
+      "path": "data/evaluation/scale/ground_truth_10000.csv",
+      "bytes": 226148,
+      "rows": 10000,
+      "columns": 4
+    },
+    {
+      "path": "data/evaluation/scale/ground_truth_100000.csv",
+      "bytes": 2825835,
+      "rows": 100000,
+      "columns": 4
+    },
+    {
+      "path": "data/evaluation/scale/ground_truth_1000000.csv",
+      "bytes": 30626379,
+      "rows": 1000000,
+      "columns": 4
+    },
+    {
+      "path": "data/evaluation/scale/ground_truth_500000.csv",
+      "bytes": 15180425,
+      "rows": 500000,
+      "columns": 4
+    },
+    {
+      "path": "data/evaluation/student_course_score_evaluation_dataset/clean_dataset.csv",
+      "bytes": 530915,
+      "rows": 10000,
+      "columns": 7
+    },
+    {
+      "path": "data/evaluation/student_course_score_evaluation_dataset/course_analytics_summary.xlsx",
+      "bytes": 12303
+    },
+    {
+      "path": "data/evaluation/student_course_score_evaluation_dataset/dirty_dataset.csv",
+      "bytes": 57464,
+      "rows": 1030,
+      "columns": 7
+    },
+    {
+      "path": "data/evaluation/student_course_score_evaluation_dataset/ground_truth.csv",
+      "bytes": 219033,
+      "rows": 10100,
+      "columns": 4
+    },
+    {
+      "path": "data/evaluation/student_course_score_evaluation_dataset/student_demographics.csv",
+      "bytes": 481488,
+      "rows": 9980,
+      "columns": 4
+    },
+    {
+      "path": "data/evaluation/student_course_score_evaluation_dataset/output_runs/clean_dataset_run.csv",
+      "bytes": 74970,
+      "rows": 915,
+      "columns": 10
+    },
+    {
+      "path": "data/evaluation/student_course_score_evaluation_dataset/output_runs/quarantine_lake_run.csv",
+      "bytes": 11557,
+      "rows": 95,
+      "columns": 10
+    },
+    {
+      "path": "data/evaluation/student_course_score_evaluation_dataset/output_runs/review_queue_run.csv",
+      "bytes": 2579,
+      "rows": 20,
+      "columns": 10
+    },
+    {
+      "path": "data/evaluation/student_course_score_evaluation_dataset/output_runs/unified_multitable_dataset.csv",
+      "bytes": 100989,
+      "rows": 1030,
+      "columns": 10
+    },
+    {
+      "path": "data/evaluation/student_course_score_evaluation_dataset/output_runs/workflow_state.json",
+      "bytes": 580
+    },
+    {
+      "path": "data/inputs/datasets/customer_churn_100k.csv",
+      "bytes": 4995712,
+      "rows": 100000,
+      "columns": 12
+    },
+    {
+      "path": "data/samples/Churn_Modelling.csv",
+      "bytes": 684858,
+      "rows": 10000,
+      "columns": 14
+    },
+    {
+      "path": "data/samples/customer_churn_dataset-training-master.csv",
+      "bytes": 23448754,
+      "rows": 440833,
+      "columns": 12
+    },
+    {
+      "path": "data/samples/dirty_course_scores_demo.csv",
+      "bytes": 7557,
+      "rows": 250,
+      "columns": 5
+    },
+    {
+      "path": "data/samples/global_ecommerce_sales.csv",
+      "bytes": 287829,
+      "rows": 2000,
+      "columns": 15
+    },
+    {
+      "path": "data/samples/formats/sample.avro",
+      "bytes": 245
+    },
+    {
+      "path": "data/samples/formats/sample.csv",
+      "bytes": 38,
+      "rows": 2,
+      "columns": 3
+    },
+    {
+      "path": "data/samples/formats/sample.json",
+      "bytes": 122
+    },
+    {
+      "path": "data/samples/formats/sample.parquet",
+      "bytes": 2659
+    },
+    {
+      "path": "data/samples/formats/sample.xml",
+      "bytes": 228
+    },
+    {
+      "path": "data/samples/grocery/grocery-วิชยุตม์ แก้วเงิน-B6703844.xlsx",
+      "bytes": 27662
+    },
+    {
+      "path": "data/samples/grocery/grocery_raw_sales_data (1).xlsx",
+      "bytes": 20234
+    },
+    {
+      "path": "data/samples/grocery/grocery_raw_sales_data.xlsx",
+      "bytes": 20234
+    },
+    {
+      "path": "data/samples/student_scores/student_scores_answer_key.csv",
+      "bytes": 41133,
+      "rows": 1030,
+      "columns": 6
+    },
+    {
+      "path": "data/samples/student_scores/student_scores_sample.csv",
+      "bytes": 54439,
+      "rows": 1030,
+      "columns": 6
+    },
+    {
+      "path": "data/stress/Olist Brazilian E-Commerce/olist_products_dataset.csv",
+      "bytes": 2379446,
+      "rows": 32951,
+      "columns": 9
+    }
+  ],
+  "ingestions": {
+    "by_source": {
+      "file": {
+        "ingestions": 12,
+        "succeeded": 10,
+        "bytes": 115632844
+      }
+    },
+    "total_bytes": 115632844
+  },
+  "quality_runs": {
+    "tables": 20,
+    "runs": 166,
+    "records_processed": 3555974,
+    "largest_run": 990100
+  }
+}
