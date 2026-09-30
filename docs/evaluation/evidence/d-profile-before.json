@@ -1,0 +1,24 @@
+{
+  "rows": 10100,
+  "null_counts": {
+    "dirty_row_id": 0,
+    "record_id": 0,
+    "student_id": 0,
+    "course": 0,
+    "score": 305,
+    "semester": 0,
+    "study_hours": 0,
+    "updated_at": 0
+  },
+  "invalid_score": 204,
+  "duplicate_rows": 100,
+  "study_hours_outliers": 100,
+  "study_hours_fences": [
+    -2.0,
+    12.0
+  ],
+  "score_min": -10.0,
+  "score_max": 150.0,
+  "study_hours_min": 1.0,
+  "study_hours_max": 60.0
+}
