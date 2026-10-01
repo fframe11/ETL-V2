@@ -48,3 +48,8 @@
 | T8.3 | approve แล้ว registry ใน ES เปลี่ยน | PASS | registry ของ qa_scores มี qa_extra_col หลัง approve proposal จริง |
 | T8.4 | reject-all / approve-all | SKIP | มี proposal PENDING ของตาราง student_course_scores (ไม่ใช่ของ qa_*) ค้างอยู่ คำสั่งนี้กระทบทุกตาราง จึงไม่รัน |
 | T8.5 | acknowledge drift (ทดสอบซ้ำของ T7.5) | PASS | run ที่มี drift จริง: acknowledge 200, pending_schema_proposals=0 |
+| T9.1 | catalog + preview raw/active/quarantine | FAIL | catalog 27 ตาราง มี qa_scores; preview raw 200, active 200 แต่ quarantine 500: F-10 ValueError 'Out of range float values are not JSON compliant' (NaN ในแถวที่ถูกกักกัน) t9-quarantine-preview-500.txt |
+| T9.2 | preview raw อ่าน landing ล่าสุด (D-3) | PASS | 200 หลังแก้ให้อ่าน /data/archive ด้วย (engine ย้าย raw ไป archive หลัง SUCCEEDED; รอบแรกของ G2 ยังพลาดกรณีนี้ แก้แล้ว commit c2f81e6) |
+| T9.3 | export active/quarantine/raw + records จำนวนแถวสอดคล้อง | PASS | active csv 227 = records 227, quarantine csv 50 = 50 (สะสม 23+27 จาก 2 run), raw 1030, limit=5 ได้ 5 แถว (active 227 > clean 223 ของ run ล่าสุดเพราะ MERGE สะสมข้าม run) |
+| T9.4 | gold export + 404 | FAIL | daily-quality/error-patterns/financial-impact 200, metric ที่ไม่มี 404 แต่ schema-drift?days=14/30/90 = 500 ข้อความว่าง (ข้อมูลเก่ากว่า 90 วัน; 404 ที่ตั้งใจถูก except Exception กลืนเป็น 500: F-11) days=400 ได้ 200 |
+| T9.5 | ลบตาราง qa_* (ต้อง login, ล้าง HDFS) | PASS | anon 401, ลบ 200, ไม่เหลือใน raw/active/quarantine, ..%2Fetc 404; พบ F-12 ระหว่างทดสอบและแก้แล้ว (0889d47): การลบเดิมทิ้ง /data/archive และเอกสารใน sdoqap_runs ทำให้ตารางที่ลบแล้วยัง preview ได้และ ingest ไฟล์เดิมซ้ำไม่ได้ (duplicate) |
