@@ -117,6 +117,9 @@ def get_gold_financial_impact(days: int = 30):
     except Exception as e:
         return {**default_data, "error": str(e), "source": "error"}
 
+# The UI and /api/v1/export/gold/{metric} name this metric "schema-drift" (index
+# sdoqap_gold_schema_drift); "-history" is kept for existing callers.
+@router.get("/api/v1/gold/schema-drift")
 @router.get("/api/v1/gold/schema-drift-history")
 def get_gold_schema_drift_history(days: int = 30):
     """Return schema drift event history from Gold Layer."""
