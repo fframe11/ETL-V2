@@ -19,6 +19,9 @@ jobs:
           GRAFANA_PORT=3002
           N8N_PORT=5678
           API_PORT=8002
+          ELASTIC_PASSWORD=ci
+          ELASTICSEARCH_PASSWORD=ci
+          PGADMIN_PASSWORD=ci
           EOF
 
       - name: Validate Docker Compose file
