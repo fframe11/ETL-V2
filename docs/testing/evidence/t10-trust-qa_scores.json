@@ -1,0 +1,1 @@
+{"table":"qa_scores","is_safe_to_consume":false,"quality_score":89.2,"quality_threshold":90.0,"last_run_id":"run_20261001_131931_258185","last_run_at":"2026-10-01T13:20:52.454868+00:00","quarantined_records":27,"clean_records":223,"pending_schema_proposals":0,"reason":"Quality score 89.20% is below threshold 90.0%.","recommendation":"HALT_INGEST"}

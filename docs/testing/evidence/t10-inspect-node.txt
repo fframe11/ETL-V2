@@ -1,0 +1,3 @@
+GET /lineage/inspect/qa_scores/{raw,active,quarantine} -> 200, but sample_data is empty and metadata is estimated:
+  file_count = max(1, total_records // 1000), dir_size_mb = total_records * 0.0012 (lineage.py), not read from HDFS
+  raw node path points at /data/raw/<table>/<ingest_id> which the engine already moved to /data/archive
