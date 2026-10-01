@@ -27,3 +27,6 @@
 | T3.1 | allowlist/SSRF/scheme guard -> 400 | PASS | 5 URL = 400 ทั้งหมด; D-1: โค้ด fail-closed แต่ .env.example/README ยังบอกว่า 'ไม่ตั้งค่า = ยอมทุก host' |
 | T3.2 | ingest data.go.th -> SUCCEEDED (50 แถว) | FAIL | queued -> SUCCEEDED ได้ แต่ total_records=11 ไม่ใช่ 50 เพราะ resource นี้มี 11 ระเบียนทั้งหมด (ยืนยันกับ data.go.th total=11; ข้อกำหนดของแผนผิด = D-5, ระบบทำงานถูก) t3-gov-record-count.txt |
 | T3.3 | API ซ้ำ -> duplicate | PASS | status=duplicate, ingest id เดิม, spark_triggered=false |
+| T4.1 | RDBMS ingest -> SUCCEEDED (500 แถว) | PASS | qa_sales_db total=500 clean=500 score=100, 60s |
+| T4.2 | host นอก allowlist / db_type ไม่รองรับ -> 400 | PASS | evil.example 400; mysql 400 'Only postgresql is currently supported' (UI มีตัวเลือก MySQL/SQL Server ให้ตรวจใน T13.3) |
+| T4.3 | SQL ไม่ใช่ SELECT แก้ข้อมูลไม่ได้ | PASS | DROP/DELETE/multi-statement 400, SELECT INTO ตอบ 502 (ถูกปฏิเสธ แต่ควรเป็น 4xx); qa_sales ยัง 500 แถว, ไม่มี qa_copy |
