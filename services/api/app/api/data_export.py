@@ -366,7 +366,8 @@ def delete_table(table_name: str, _user: str = Depends(require_session)):
     es = get_es()
     
     # 1. Delete from HDFS
-    layers = ["/data/raw", "/data/active", "/data/quarantine"]
+    # /data/archive holds the raw landing of every finished ingestion (the engine moves it there).
+    layers = ["/data/raw", "/data/active", "/data/quarantine", "/data/archive"]
     deleted_layers = []
     for layer in layers:
         hdfs_path = f"{layer}/{table_name}"
@@ -381,6 +382,7 @@ def delete_table(table_name: str, _user: str = Depends(require_session)):
     # 2. Delete Elasticsearch entries
     indices_to_clean = {
         "sdoqap_quality_runs": "table_name.keyword",
+        "sdoqap_runs": "table_name.keyword",
         "sdoqap_pipeline_runs": "table_name.keyword",
         "sdoqap_schema_drifts": "table_name.keyword",
         "sdoqap_schema_proposals": "table_name.keyword",
