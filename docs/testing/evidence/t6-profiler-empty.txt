@@ -1,0 +1,1 @@
+profiles: source=no_index, sdoqap_dynamic_rules_log absent after 6 ingests; dynamic_rules_engine.py:467 writes it only when computed_rules is non-empty
