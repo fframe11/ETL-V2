@@ -1,0 +1,6 @@
+file rows                        : 1030
+distinct student_id              : 250
+distinct student_id+course+sem   : 1000
+engine total_records (qa_scores) : 250   (schema registry primary_key = student_id, date_column = updated_at)
+engine total_records (qa_scores_xlsx, first 200 rows): 153
+first 200 rows distinct student_id: 153

@@ -1,0 +1,1 @@
+{'run_id': 'run_20261001_124251_361679', 'table_name': 'qa_scores', 'total_records': 250, 'clean_records': 227, 'quarantined_records': 23, 'quality_score': 90.8}

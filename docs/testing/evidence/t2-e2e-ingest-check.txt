@@ -1,0 +1,51 @@
+== 1. two different files back-to-back (used to overwrite each other)
+A: {"status":"queued","ingest_id":"20261001T125954-7dbb3173","run_state":"QUEUED","spark_triggered":true,"daemon_status":"running","message":"Data landed in HDFS for 'e2e_ingest_1790859593' and queued for the quality check (ingest 20261001T125954-7dbb3173)."}
+B: {"status":"queued","ingest_id":"20261001T125954-dd1afdfa","run_state":"QUEUED","spark_triggered":true,"daemon_status":"queued","message":"Data landed in HDFS for 'e2e_ingest_1790859593' and queued for the quality check (ingest 20261001T125954-dd1afdfa)."}
+PASS distinct ingest ids
+== 2. same file again -> duplicate
+C: {"status":"duplicate","ingest_id":"20261001T125954-7dbb3173","run_state":"RUNNING","spark_triggered":false,"message":"This exact file was already ingested for 'e2e_ingest_1790859593' (ingest 20261001T125954-7dbb3173, RUNNING). POST /api/v1/pipeline/retry/20261001T125954-7dbb3173 reprocesses it."}
+PASS duplicate detected
+== 3. wait for both runs to finish (queued one after the other)
+  t=10s A=RUNNING B=QUEUED
+  t=20s A=RUNNING B=QUEUED
+  t=30s A=RUNNING B=QUEUED
+  t=40s A=RUNNING B=QUEUED
+  t=50s A=RUNNING B=QUEUED
+  t=60s A=RUNNING B=QUEUED
+  t=70s A=RUNNING B=QUEUED
+  t=80s A=RUNNING B=QUEUED
+  t=90s A=RUNNING B=QUEUED
+  t=100s A=RUNNING B=QUEUED
+  t=110s A=RUNNING B=QUEUED
+  t=120s A=RUNNING B=QUEUED
+  t=130s A=RUNNING B=QUEUED
+  t=140s A=SUCCEEDED B=RUNNING
+  t=150s A=SUCCEEDED B=RUNNING
+  t=160s A=SUCCEEDED B=RUNNING
+  t=170s A=SUCCEEDED B=RUNNING
+  t=180s A=SUCCEEDED B=RUNNING
+  t=190s A=SUCCEEDED B=RUNNING
+  t=200s A=SUCCEEDED B=RUNNING
+  t=210s A=SUCCEEDED B=RUNNING
+  t=220s A=SUCCEEDED B=RUNNING
+  t=230s A=SUCCEEDED B=RUNNING
+  t=240s A=SUCCEEDED B=RUNNING
+  t=250s A=SUCCEEDED B=RUNNING
+  t=260s A=SUCCEEDED B=RUNNING
+  t=270s A=SUCCEEDED B=RUNNING
+  t=280s A=SUCCEEDED B=RUNNING
+  t=290s A=SUCCEEDED B=RUNNING
+  t=300s A=SUCCEEDED B=RUNNING
+  t=310s A=SUCCEEDED B=RUNNING
+  t=320s A=SUCCEEDED B=RUNNING
+  t=330s A=SUCCEEDED B=RUNNING
+  t=340s A=SUCCEEDED B=RUNNING
+  t=350s A=SUCCEEDED B=RUNNING
+  t=360s A=SUCCEEDED B=SUCCEEDED
+PASS both processed
+== 4. both raw folders archived, none deleted
+drwxrwxrwx   - spark spark          0 2026-10-01 12:59 /data/archive/e2e_ingest_1790859593/20261001T125954-7dbb3173
+drwxrwxrwx   - spark spark          0 2026-10-01 12:59 /data/archive/e2e_ingest_1790859593/20261001T125954-dd1afdfa
+== 5. processing time recorded per ingestion
+  20261001T125954-dd1afdfa 239 25 206.142
+  20261001T125954-7dbb3173 241 31 85.795

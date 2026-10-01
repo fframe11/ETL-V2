@@ -83,10 +83,15 @@ command -v cygpath >/dev/null 2>&1 && QA_TMP="$(cygpath -m "$QA_TMP")"
 JAR="$QA_TMP/session.jar"
 EVID="$ROOT/docs/testing/evidence"; mkdir -p "$EVID"
 REPORT="$ROOT/docs/testing/2026-10-01-real-use-test-report.md"
+QX="$EVID/tmp/qa_scores_x.xlsx"   # generated test workbook (gitignored); mkdir -p "$EVID/tmp" before use
 CALLS="$EVID/route-calls.log"   # one line per API call: METHOD PATH STATUS (input of route_coverage.py)
 
 # Git Bash would rewrite container paths such as /data/raw into C:/Program Files/Git/data/raw.
 docker() { MSYS_NO_PATHCONV=1 command docker "$@"; }
+
+# The host Python has no pandas; run Python snippets in the api container (pandas, openpyxl),
+# with the repo mounted at /work. Paths passed in must therefore be repo-relative or under /work.
+pyc() { MSYS_NO_PATHCONV=1 command docker compose -f "$ROOT/docker-compose.yml" run --rm --no-deps -T -v "$ROOT:/work" -w /work api python "$@"; }
 
 envval() { grep -E "^$1=" "$ROOT/.env" | head -1 | cut -d= -f2- | tr -d '\r'; }
 redact() { sed -E 's#(://[^:/@ ]+:)[^@/ ]+@#\1***@#g'; }
@@ -348,8 +353,9 @@ Expected: `HTTP 200`, `"status":"duplicate"`, `ingest_id` เท่ากับ 
 
 ```bash
 source scripts/qa/lib.sh
-python -c "import pandas as pd,sys; pd.read_csv(sys.argv[1]).head(200).to_excel(sys.argv[2], index=False)" "$ROOT/data/samples/student_scores/student_scores_sample.csv" "$QA_TMP/qa_scores_x.xlsx"
-RES=$(apij POST /api/v1/pipeline/ingest/csv -F table_name=qa_scores_xlsx -F "file=@$QA_TMP/qa_scores_x.xlsx"); echo "$RES"
+mkdir -p "$EVID/tmp"
+pyc -c "import pandas as pd; pd.read_csv('data/samples/student_scores/student_scores_sample.csv').head(200).to_excel('docs/testing/evidence/tmp/qa_scores_x.xlsx', index=False)"
+RES=$(apij POST /api/v1/pipeline/ingest/csv -F table_name=qa_scores_xlsx -F "file=@$QX"); echo "$RES"
 wait_run "$(echo "$RES" | jget ingest_id)" 600 && last_quality qa_scores_xlsx
 ```
 Expected: `queued` → `SUCCEEDED`, `total_records` = `200`
@@ -389,7 +395,7 @@ Expected: ทุกบรรทัดผลเป็น `PASS ...` ไม่ม�
 ```bash
 source scripts/qa/lib.sh
 KEY=$(envval INGEST_SERVICE_KEY)
-curl -s -w '\nHTTP %{http_code}\n' -H "X-Service-Key: $KEY" -F table_name=qa_scores_svc -F "file=@$QA_TMP/qa_scores_x.xlsx" "$BASE/api/v1/pipeline/ingest/csv"
+curl -s -w '\nHTTP %{http_code}\n' -H "X-Service-Key: $KEY" -F table_name=qa_scores_svc -F "file=@$QX" "$BASE/api/v1/pipeline/ingest/csv"
 ```
 Expected: `HTTP 202` (ไม่ต้องมี cookie)
 

@@ -15,3 +15,12 @@
 | T1.4 | logout ล้าง session | PASS | logout 200, หลังจากนั้น /auth/me 401 |
 | T1.5 | webhook secret / service key | PASS | ไม่มี/ผิด secret 401, X-Webhook-Secret และ Bearer 200, ingest ไม่มีคีย์/คีย์ผิด 401 |
 | T1.6 | services/status ไม่รั่ว credential | FAIL | F-1: ตอบ URL ของ Elasticsearch ที่มีรหัสผ่านฝังอยู่โดยไม่ต้อง login (t1-status-credential-count.txt = 1) |
+| T2.1 | อัปโหลด CSV -> queued -> SUCCEEDED | PASS | ingest 20261001T124234-aebbeeba, 115s |
+| T2.2 | ข้อมูลลง HDFS raw/active/quarantine | FAIL | active+quarantine มีข้อมูล แต่ /data/raw/qa_scores/<id> หายไปหลัง SUCCEEDED: engine ย้ายไป /data/archive/<table>/<id>/ ตามดีไซน์ (ข้อกำหนดของแผนล้าสมัย = D-4) |
+| T2.3 | ผลใน ES ตรงจำนวนแถว (1030) | FAIL | F-2: total_records=250 (clean 227, quarantine 23) engine เดา primary_key=student_id แต่ไฟล์มี student_id ไม่ซ้ำ 250 ตัว (key จริงคือ student_id+course+semester = 1000) แถวถูก MERGE ทับกันเงียบๆ ดู t2-pk-collapse.txt |
+| T2.4 | ไฟล์ซ้ำ -> duplicate | PASS | HTTP 200, duplicate, ingest id เดิม, spark_triggered=false |
+| T2.5 | Excel -> CSV -> SUCCEEDED (200 แถว) | FAIL | แปลง Excel และ run SUCCEEDED ได้ แต่ total_records=153 แทน 200 สาเหตุเดียวกับ F-2 (153 = student_id ไม่ซ้ำใน 200 แถวแรก) |
+| T2.6 | input ไม่ดี -> 400 ไม่มีขยะใน HDFS | PASS | ไฟล์ว่าง/../etc/ชื่อมีช่องว่าง = 400 ทั้งหมด, ไม่มีโฟลเดอร์ขยะ |
+| T2.7 | ขาดคอลัมน์ primary key -> 400 | PASS | golden_student_scores: missing primary key ['student_id'] |
+| T2.8 | e2e_ingest_check (concurrent/dup/queue) | PASS | t2-e2e-ingest-check.txt (PASS 3 ข้อ; สร้างตาราง e2e_ingest_<ts> ที่ไม่ขึ้นต้น qa_ ค้างไว้) |
+| T2.9 | service key ingest | PASS | HTTP 202 ไม่มี cookie, ตาราง qa_scores_svc |

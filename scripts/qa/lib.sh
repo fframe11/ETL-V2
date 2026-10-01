@@ -9,10 +9,15 @@ command -v cygpath >/dev/null 2>&1 && QA_TMP="$(cygpath -m "$QA_TMP")"
 JAR="$QA_TMP/session.jar"
 EVID="$ROOT/docs/testing/evidence"; mkdir -p "$EVID"
 REPORT="$ROOT/docs/testing/2026-10-01-real-use-test-report.md"
+QX="$EVID/tmp/qa_scores_x.xlsx"   # generated test workbook (gitignored); mkdir -p "$EVID/tmp" before use
 CALLS="$EVID/route-calls.log"   # one line per API call: METHOD PATH STATUS (input of route_coverage.py)
 
 # Git Bash would rewrite container paths such as /data/raw into C:/Program Files/Git/data/raw.
 docker() { MSYS_NO_PATHCONV=1 command docker "$@"; }
+
+# The host Python has no pandas; run Python snippets in the api container (pandas, openpyxl),
+# with the repo mounted at /work. Paths passed in must therefore be repo-relative or under /work.
+pyc() { MSYS_NO_PATHCONV=1 command docker compose -f "$ROOT/docker-compose.yml" run --rm --no-deps -T -v "$ROOT:/work" -w /work api python "$@"; }
 
 envval() { grep -E "^$1=" "$ROOT/.env" | head -1 | cut -d= -f2- | tr -d '\r'; }
 redact() { sed -E 's#(://[^:/@ ]+:)[^@/ ]+@#\1***@#g'; }
