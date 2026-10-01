@@ -94,3 +94,66 @@
 | T14B.5 | whitebox profile/upload, preview-zone, state | PASS | profile/upload 1030 แถว 6 คอลัมน์, preview-zone ทั้ง 4 โซน (10100/9400/100/600), search ไม่เจอ 0 แถว, Tukey 1.5 -> review 154 แล้วคืน 3.0 -> 100 |
 | T14B.6 | whitebox execute, ingest-source, AI context | PASS | execute ด้วยบริบทเริ่มต้น (5 กฎ) ได้ 9,400/100/600 ตรงกับ ground truth (ส่ง '{}' ได้แค่ 3 กฎ -> 9,900/100/100 ตามที่ API ออกแบบ), execute ไม่มี rules 422, ingest-source ตอบ simulated=true rows=10100, AI context POST 200; คืนชุดข้อมูลเดิมแล้ว |
 | T14B.7 | เรียกครบทุกเส้น API (route_coverage) | PASS | routes=94 OK=88 REACHED=3 AUTH_ONLY=2 UNTESTED=1; 6 เส้นที่ไม่ OK อธิบายได้ทั้งหมด: reject-all(ไม่ได้เรียก)/approve-all(401) และ system/cleanup(401) = SKIP ที่มีเหตุผล (T8.4/T12.7); export/reddit 404 และ reddit/stop 400 = ผลต่อเนื่องจาก F-3/สตรีมจบเอง; remediations/{id}/resolve 404 = ไม่ได้แก้ ticket จริงของเจ้าของ (route-coverage.md) |
+
+## สรุป
+
+รวม 88 ข้อ: **PASS 66 · FAIL 18 · SKIP 4**
+
+- สภาพแวดล้อม: 2026-10-01, stack ทั้ง 16 container (`COMPOSE_PROFILES=streaming,ai,tools`), ทดสอบก่อน commit `50d3959`
+- ผลที่ FAIL ส่วนใหญ่ **ไม่ใช่ความล้มเหลวของระบบทั้งหมด** แต่แบ่งเป็น 3 กลุ่ม: (ก) บั๊กจริงของระบบ (ตาราง Findings F-*), (ข) ข้อกำหนดของแผนที่ไม่ตรงกับพฤติกรรมที่ออกแบบไว้ (D-4, D-5: ลงเป็น FAIL ตามกฎ "ห้ามแก้ Expected ให้ตรงผลจริง"), (ค) ผลต่อเนื่องจากข้อเดียวกัน (F-2 ทำให้ T2.3, T2.5 ล้มพร้อมกัน; F-5 ทำให้ T6.2, T6.3 ล้มพร้อมกัน)
+- SKIP 4 ข้อ มีเหตุผลทุกข้อ: `approve-all`/`reject-all` (T8.4, T14B.3b) กระทบ proposal ของตารางอื่นที่ไม่ใช่ `qa_*`; retention cleanup (T12.7) เพราะมีข้อมูลเก่ากว่า 30 วัน; responsive (T13.11) เพราะ pane เบราว์เซอร์ไม่ได้แสดง วัดขนาดไม่ได้
+- ประตู coverage: เรียกครบ **94/94 เส้น API** ที่ระบบมี (88 เส้นสำเร็จ, 6 เส้นอธิบายได้ทั้งหมด) ดู `docs/testing/evidence/route-coverage.md`
+
+## แก้ไขระหว่างการทดสอบ (commit แล้ว)
+
+| ที่พบ | แก้ |
+|---|---|
+| หน้า Export แท็บ Gold เรียก `/gold/schema-drift` ที่ไม่มี | เพิ่ม alias (G1) |
+| preview/download ของ raw layer 404 กับตารางที่ ingest ผ่าน API | อ่าน landing ล่าสุดจาก `/data/raw` และ `/data/archive` (G2) |
+| n8n/Grafana เรียก API โดยไม่มีคีย์ | ส่ง `X-Service-Key` / `X-Webhook-Secret` / `Authorization: Bearer` (G3-G5) |
+| คีย์ Groq ที่บันทึกในหน้า Rules ไม่ถูกใช้ที่ AI context | อ่านจาก ES ก่อน env (G6) |
+| โมเดล `llama-3.3-70b-versatile` ไม่มีบน Groq แล้ว | ค่าเริ่มต้นเป็น `openai/gpt-oss-120b` ทั้งโค้ด UI, rules_config และ ES registry |
+| F-12: ลบตารางแล้วเหลือ `/data/archive` และ `sdoqap_runs` ทำให้ตารางที่ลบยัง preview ได้ และ ingest ไฟล์เดิมซ้ำไม่ได้ (duplicate) | การลบล้างทั้งสองที่ |
+
+## Findings (ยังไม่ได้แก้)
+
+ระดับ: **สูง** = ข้อมูลหาย/ผลผิด/ความปลอดภัย · **กลาง** = ฟีเจอร์ใช้ไม่ได้หรือแสดงผลผิด · **ต่ำ** = เล็กน้อย/เอกสาร
+
+| ID | ระดับ | พบที่ | รายละเอียด | หลักฐาน |
+|---|---|---|---|---|
+| F-1 | สูง (ความปลอดภัย) | T1.6 | `GET /api/v1/services/status` ไม่ต้อง login และคืน URL ของ Elasticsearch พร้อมรหัสผ่านฝังอยู่ | t1-status-credential-count.txt |
+| R-2 | สูง (ความปลอดภัย) | T1.2 | `GET /api/v1/whitebox/run-all` ไม่ต้อง login แต่รัน pipeline ทั้งชุดและเขียนไฟล์ผลลัพธ์ (ฝั่ง POST ต้อง login) | ผล T1.2 |
+| F-2 | สูง (ข้อมูลหาย) | T2.3, T2.5 | engine เดา primary key เป็น `student_id` ทั้งที่คีย์จริงคือ `student_id+course+semester` แถว 1030 ถูก MERGE เหลือ 250 โดยไม่เตือน (Excel 200 -> 153) | t2-pk-collapse.txt |
+| F-5 | สูง (ผลผิด) | T6.2, T6.3 | trust-check อ่านเกณฑ์จาก `/spark/rules_config.json` ซึ่งไม่มีใน container จึงใช้ 90.0 เสมอ ตอบ "ปลอดภัย" ทั้งที่เกณฑ์รายตารางที่ engine ใช้จริงคือ 97 | t6-trustcheck-threshold.txt |
+| F-20 | สูง (ข้อมูลหาย) | T13.3 | UI อัปโหลดไฟล์เข้า `/whitebox/upload-csv` เท่านั้น ไม่มี Spark run และไฟล์ที่มีคอลัมน์นักศึกษาจะเขียนทับ `dirty_dataset.csv` (ชุดประเมินที่ใช้เป็นเกณฑ์) 10,100 -> 13 แถว | t13-ui-upload-effects.txt |
+| F-10 | สูง | T9.1 | preview ของ layer `quarantine` ตอบ 500 (`Out of range float values are not JSON compliant`) เมื่อมี NaN ในแถวที่ถูกกักกัน ซึ่งเป็นกรณีปกติ | t9-quarantine-preview-500.txt |
+| F-3 | กลาง | T5.2, T5.3 | สตรีม Reddit: Kafka ได้ข้อมูลแต่ Spark เริ่มที่ latest offset หลัง producer ส่งชุดแรกแล้ว จึงไม่มี Parquet และ export/reddit เป็น 404 | t5-reddit-stream.txt |
+| F-4 | กลาง | T6.1 | หน้า Column Profiler ว่างทุกตาราง เพราะ index `sdoqap_dynamic_rules_log` ไม่เคยถูกสร้าง | t6-profiler-empty.txt |
+| F-11 | กลาง | T9.4 | `/export/gold/<metric>` ตอบ 500 (ข้อความว่าง) แทน 404 เมื่อไม่มีข้อมูลในช่วงวัน เพราะ HTTPException ถูก `except Exception` กลืน | ผล T9.4 |
+| F-13 | กลาง | T10.4 | `/lineage/inspect/.../<node>` ตอบค่าประมาณ (ไฟล์/ขนาดคำนวณจากจำนวนแถว, ระบุ raw เป็น Parquet) และไม่มีตัวอย่างแถวใน raw/active | t10-inspect-node.txt |
+| F-16 | กลาง | T12.6 | n8n 2.27 ปฏิเสธ `jsonBody` ของ 5 node (Relay Ingest API/RDBMS, Send Failure Alert, Route Remediation/Quality Alert) ว่าไม่ใช่ JSON: ingest ผ่าน webhook และ alert จาก n8n ไม่ทำงาน (กำลังทำเป็นงานแยก) | T12.6 |
+| F-19 | กลาง | T13.3 | แท็บ Database/API/Stream ใน UI เป็นตัวเชื่อมจำลอง (ขึ้น 'โหมดสาธิต') เรียก ingest จริงจาก UI ไม่ได้ | t13-ui-notes.txt |
+| F-22 | กลาง | T13.7 | `/executive/overview` ส่ง missing/duplicate/invalid pct = 0.0 ทั้งที่กักกัน 169,385 แถว | t13-ui-notes.txt |
+| F-23 | กลาง | T13.7 | ตัวกรอง Time และ Business Area บน Dashboard ไม่เปลี่ยนตัวเลขใดๆ | t13-ui-notes.txt |
+| F-8 | กลาง | T6 | `PUT /rules/<table>` และการลบตารางเขียน `rules_config.json` ใหม่ทั้งไฟล์จาก ES registry: คอมเมนต์หาย, ค่าที่แก้ในไฟล์ย้อนกลับ, ตารางอื่นโผล่เพิ่ม (ไฟล์กับ ES เป็นสองแหล่งความจริงที่ไม่ตรงกัน) | ผล T6 |
+| F-14 | กลาง | T11.5 | `/whitebox/benchmark` ตอบ `status: PASSED` ทั้งที่ recall ของ Missing Score เหลือ 3.33% เมื่อชุดข้อมูลที่โหลดไม่ใช่ชุดที่ตรงกับ ground truth | ผล T11.5 |
+| F-6 | กลาง | T6.4 | `POST /rules/ai-proposals/reset` ('Generate') ไม่เรียก LLM คืนข้อเสนอตัวอย่างที่เขียนตายตัวในโค้ด (`is_example: true`) ส่วน advisor จริงไม่เคยสร้าง index `sdoqap_ai_rule_proposals` | ผล T6.4 |
+| F-7 | ต่ำ | T6.4 | approve ข้อเสนอตัวอย่างตอบ "approved and merged" แต่ไม่ได้ merge อะไร | ผล T6.4 |
+| F-9 | ต่ำ | T7.5 | `POST /pipeline/acknowledge/<run ที่ไม่มี>` ตอบ 200 และสร้างเอกสารขยะใน `sdoqap_acknowledged_runs` (คาด 404) | ผล T7.5 |
+| F-15 | ต่ำ | T12.1 | เมื่อคีย์ Groq มาจาก `.env` การกดบันทึกในหน้า Rules เขียนเอกสารเป็น key ว่าง/disabled แต่ GET ยังแสดง enabled จาก env จึงปิดจาก UI ไม่ได้ | ผล T12.1 |
+| F-17 | ต่ำ | T13.2 | ป้าย LIVE INGESTION CHANNELS ไม่ตามสถานะจริง (Reddit ขึ้น INGESTING ทั้งที่ idle) | t13-ui-notes.txt |
+| F-18 | ต่ำ | T13.5 | คอลัมน์ Duration ในประวัติ run แสดง '-' ทุกแถว | t13-ui-notes.txt |
+| F-21 | ต่ำ | T13.8 | Analytics 'รูปแบบข้อผิดพลาด' ป้ายเป็น 'Unknown' เกือบทั้งหมด | t13-ui-notes.txt |
+| F-24 | ต่ำ | T14.4 | `run_scale_benchmark.py` มี UnicodeDecodeError (cp874) จากเธรดอ่าน output บนคอนโซลภาษาไทย ไม่กระทบผล | t14-scale-10000.txt |
+| T4-note | ต่ำ | T4.3 | `SELECT * INTO` ตอบ 502 (ถูกฐานข้อมูลปฏิเสธ) ควรเป็น 4xx | ผล T4.3 |
+| D-1 | ต่ำ (เอกสาร) | T3.1 | `.env.example`/README บอกว่า API host ใดก็ได้ถ้าไม่ตั้ง `API_INGEST_ALLOWED_HOSTS` แต่โค้ด fail-closed | `services/api/app/api/ingest_guards.py` |
+| D-4 | ต่ำ (แผน) | T2.2 | แผนคาดว่าไฟล์ raw อยู่ที่ `/data/raw/<table>/<id>` หลัง SUCCEEDED แต่ engine ย้ายไป `/data/archive` ตามดีไซน์ | ผล T2.2 |
+| D-5 | ต่ำ (แผน) | T3.2 | แผนคาดว่า data.go.th ได้ 50 แถว แต่ชุดข้อมูลนั้นมี 11 ระเบียนทั้งหมด (ยืนยันกับต้นทาง) | t3-gov-record-count.txt |
+
+ข้อที่แผนคาดว่าจะพบแต่ **ไม่พบ** (ไม่ลงเป็น Finding): R-1 (`/standardize/rollback` ตอบ 500 เมื่อไม่มี backup) เพราะตอนทดสอบมี backup อยู่จึงตอบ 200
+
+## ของที่ค้างหลังการทดสอบ (ตั้งใจเก็บไว้)
+
+- Kafka topic `reddit_raw` ที่สร้างตอนทดสอบสตรีม
+- ตาราง/ข้อมูลของ `qa_*` และ `e2e_ingest_1790859593` **ลบหมดแล้ว** (HDFS, Elasticsearch ทุก index, Postgres) ตารางเดิมของเจ้าของไม่ถูกแตะ ยกเว้น `bench_10000` ที่สคริปต์ scale สร้างซ้ำตามออกแบบ
+- n8n `Schedule Daily Cleanup` 02:00 จะรันเองแล้ว (แก้ให้ส่งคีย์ถูกต้อง) และจะลบเอกสาร ES ที่เก่ากว่า 30 วัน (35 รายการใน `sdoqap_quality_runs` ตอนทดสอบ) กับไฟล์ HDFS เก่า ถ้าไม่ต้องการให้ปิดสวิตช์ใน n8n ก่อน
