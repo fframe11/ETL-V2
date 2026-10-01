@@ -1,0 +1,6 @@
+../bitnami/spark/python/pyspark/broadcast.py:38
+  /opt/bitnami/spark/python/pyspark/broadcast.py:38: DeprecationWarning: typing.io is deprecated, import directly from typing instead. typing.io will be removed in Python 3.12.
+    from typing.io import BinaryIO  # type: ignore[import]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+60 passed, 1 warning in 44.06s

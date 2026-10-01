@@ -1,0 +1,28 @@
+sdoqap-api Up 59 seconds (healthy)
+sdoqap-datanode Up 8 minutes (healthy)
+sdoqap-elasticsearch Up 7 hours (healthy)
+sdoqap-grafana Up 2 hours (healthy)
+sdoqap-kafka Up 7 hours (healthy)
+sdoqap-kibana Up 7 hours (healthy)
+sdoqap-n8n Up 2 hours (healthy)
+sdoqap-namenode Up 8 minutes (healthy)
+sdoqap-nginx Up 7 hours (healthy)
+sdoqap-ollama Up About an hour (healthy)
+sdoqap-pgadmin Up 7 hours
+sdoqap-postgres Up 7 hours (healthy)
+sdoqap-spark-master Up 8 minutes (healthy)
+sdoqap-spark-worker Up 8 minutes (healthy)
+sdoqap-ui Up 59 seconds (healthy)
+sdoqap-zookeeper Up 7 hours (healthy)
+---
+HDFS Namenode online
+HDFS Datanode online
+Elasticsearch online
+Kibana online
+Grafana online
+n8n Orchestrator online
+Spark Master online
+Spark Worker online
+Kafka Broker online
+Postgres DB online
+REST Ingestion API online
