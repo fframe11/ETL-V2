@@ -2,3 +2,4 @@ PUT /rules/qa_scores quality_score_threshold static 97.0 -> stored in rules_conf
 retry run: engine used it (sdoqap_quality_runs effective_quality_threshold 90.0 -> 97.0)
 GET /lineage/qa_scores/trust-check: quality_threshold=90.0, is_safe_to_consume=True for quality_score 90.8 (should be 97.0 / False)
 cause: lineage.py:321 reads ../../../spark/rules_config.json = /spark/rules_config.json inside the api container (not mounted; real path /opt/spark-apps), falls back to 90.0
+F-8 note: PUT /rules rewrites rules_config.json from the ES registry (model values revert to llama-3.3, _comment lost, bench_* added); ES registry docs still hold llama-3.3-70b-versatile

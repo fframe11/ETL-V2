@@ -38,3 +38,8 @@
 | T6.3 | กฎใหม่ถูกใช้ในรอบ retry | FAIL | engine ใช้เกณฑ์ 97.0 จริง (effective_quality_threshold 90.0->97.0) แต่ trust-check ตอบ is_safe_to_consume=True ทั้งที่ score 90.8 < 97: F-5 (API อ่านไฟล์ที่ path /spark/rules_config.json ซึ่งไม่มีใน container) |
 | T6.4 | AI proposals generate/approve/reject | PASS | Groq key+model ตั้งไว้, reset 200, list 3 รายการ แต่ is_example=true (ข้อเสนอตายตัวในโค้ด ไม่ได้มาจาก LLM; ไม่มี index sdoqap_ai_rule_proposals), approve/reject 200 และหายจาก pending, id ปลอม 404; F-7: approve ข้อเสนอตัวอย่างตอบ 'approved and merged' แต่ไม่ได้ merge อะไร |
 | T6.5 | standardization queue + rollback | PASS | คิวว่าง, id ปลอม approve/reject/override = 404, rollback 200 restored_from backup ล่าสุด (approve/override/reject กับรายการจริงทดสอบที่ T14B.4) |
+| T7.1 | list runs + pagination + deep page 400 | PASS | total 285, ขอ size=5 ได้ 5, page=3000 -> 400 |
+| T7.2 | run detail / 404 | PASS | state SUCCEEDED, source file, size 54439 ตรงไฟล์, checksum ครบ; ingest ที่ไม่มี 404 |
+| T7.3 | retry -> SUCCEEDED (ต้อง login) | PASS | anon 401, หลัง retry state RUNNING แล้ว SUCCEEDED ใน 75s, retry run ที่ไม่มี 404 |
+| T7.4 | quality list/by table | PASS | รายการเรียงล่าสุดก่อน (qa_scores, qa_sales_db, qa_gov); /quality/qa_scores มีรอบล่าสุด |
+| T7.5 | acknowledge drift | FAIL | F-9: POST /pipeline/acknowledge/does-not-exist ตอบ 200 (คาด 404) และสร้างเอกสารขยะใน sdoqap_acknowledged_runs (ลบแล้ว); กรณี run ที่มี drift จริงทดสอบซ้ำที่ T8.5 |
