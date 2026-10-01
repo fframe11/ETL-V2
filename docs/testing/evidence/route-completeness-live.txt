@@ -35,3 +35,9 @@ HTTP 200
 ollama health: healthy (healthcheck changed to: ollama list); model not pulled (needs owner OK, ~2 GB)
 --- step 1/7
 GROQ_API_KEY missing in .env: owner must create it; steps 1 and 7 NOT done
+--- step 7 (2026-10-01T19:30:41+07:00)
+settings: key present: True | enabled: True | model: llama-3.3-70b-versatile
+groq llama-3.3 HTTP 404
+groq gpt-oss-120b HTTP 200
+ai-context: available: True | live: True | engine: Groq openai/gpt-oss-120b
+finding: default model llama-3.3-70b-versatile no longer exists on Groq for this key (404); available: openai/gpt-oss-120b, openai/gpt-oss-20b. Defaults in system.py, RulesConfig.jsx, spark advisor still name llama-3.3; saving settings with the default model would fail validation (400). NOT fixed here.
