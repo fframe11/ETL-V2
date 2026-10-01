@@ -28,6 +28,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, B
 from pydantic import BaseModel, Field
 
 from .auth import require_session
+from .config import get_es_client
 
 logger = logging.getLogger(__name__)
 
@@ -1590,7 +1591,27 @@ def ingest_from_connector(payload: Dict[str, Any]):
 _AI_CONTEXT_CACHE: Dict[str, Dict[str, Any]] = {}
 
 
+def _saved_groq_setting():
+    """(key, enabled) saved from the Rules page via POST /api/v1/system/settings, or None
+    when nothing is saved or Elasticsearch is unreachable."""
+    try:
+        es = get_es_client()
+        if not es.indices.exists(index="sdoqap_settings"):
+            return None
+        doc = es.get(index="sdoqap_settings", id="global").get("_source", {})
+    except Exception:
+        return None
+    key = str(doc.get("groq_api_key") or "").strip()
+    return (key, bool(doc.get("groq_enabled"))) if key else None
+
+
 def _get_groq_api_key() -> str:
+    # Same order as services/spark/ai_rule_advisor.py: the saved setting wins (and can
+    # switch the LLM off), then the environment.
+    saved = _saved_groq_setting()
+    if saved:
+        key, enabled = saved
+        return key if enabled else ""
     k = os.getenv("GROQ_API_KEY", "").strip()
     if k:
         return k
