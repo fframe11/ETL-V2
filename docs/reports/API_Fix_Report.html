@@ -52,22 +52,22 @@
 <div class="meta">
   <span><b>วันที่:</b> 1 ตุลาคม 2569 (2026-10-01)</span>
   <span><b>Branch:</b> new-optimizer</span>
-  <span><b>ช่วง commit:</b> e1a9e60 ถึง 61e972e (ต่อจาก 2313091)</span>
+  <span><b>ช่วง commit:</b> e1a9e60 ถึง f768305 (ต่อจาก 2313091)</span>
   <span><b>ระบบ:</b> FastAPI (api), Spark, n8n, Grafana, React (ui)</span>
 </div>
 
 <h2>1. สรุปสำหรับผู้บริหาร</h2>
-<p>ตรวจ API ครบ 94 เส้น (method + path) เทียบกับผู้เรียกจริง ได้แก่ หน้าเว็บ n8n และ Grafana แล้วทดสอบการใช้งานจริงบน stack ที่รันอยู่ พบปัญหาของ API ที่ต้องแก้ 17 รายการ ทั้งหมดแก้แล้วและพิสูจน์บนระบบจริง ปัญหาที่ร้ายแรงที่สุดคือ <b>รหัสผ่าน Elasticsearch รั่วทาง API สาธารณะ</b> และ <b>trust-check ตอบ "ปลอดภัย" ผิด</b> เพราะอ่านเกณฑ์จากไฟล์ที่ไม่มีใน container</p>
+<p>ตรวจ API ครบ 94 เส้น (method + path) เทียบกับผู้เรียกจริง ได้แก่ หน้าเว็บ n8n และ Grafana แล้วทดสอบการใช้งานจริงบน stack ที่รันอยู่ พบปัญหาของ API ที่ต้องแก้ 18 รายการ (หลังลบเส้นที่ซ้ำ 3 เส้นแล้วเหลือ 91 เส้น) ทั้งหมดแก้แล้วและพิสูจน์บนระบบจริง ปัญหาที่ร้ายแรงที่สุดคือ <b>รหัสผ่าน Elasticsearch รั่วทาง API สาธารณะ</b> และ <b>trust-check ตอบ "ปลอดภัย" ผิด</b> เพราะอ่านเกณฑ์จากไฟล์ที่ไม่มีใน container</p>
 <div class="cards">
-  <div class="card"><div class="n">94</div><div class="l">เส้น API ที่ตรวจ (เรียกสำเร็จ 88, ที่เหลืออธิบายได้ทั้งหมด)</div></div>
-  <div class="card"><div class="n">17</div><div class="l">ปัญหาของ API ที่แก้แล้ว</div></div>
-  <div class="card"><div class="n">52 → 192</div><div class="l">จำนวน test ของ API (เพิ่ม 140 ตัว)</div></div>
+  <div class="card"><div class="n">91</div><div class="l">เส้น API ปัจจุบัน (ตรวจเดิม 94 ลบเส้นซ้ำ 3 เส้น)</div></div>
+  <div class="card"><div class="n">18</div><div class="l">ปัญหาของ API ที่แก้แล้ว</div></div>
+  <div class="card"><div class="n">52 → 202</div><div class="l">จำนวน test ของ API (เพิ่ม 150 ตัว)</div></div>
   <div class="card"><div class="n">0</div><div class="l">container ที่ไม่ healthy หลังแก้ทั้งหมด</div></div>
 </div>
-<div class="note"><b>ผลกระทบต่อผู้ใช้ API ที่ต้องรู้:</b> (1) <code>GET /whitebox/run-all</code> ต้อง login แล้ว (2) ฟิลด์ <code>url</code> ของ Elasticsearch ใน <code>/services/status</code> ไม่มีรหัสผ่านแล้ว (3) <code>/rules/profiles/{table}</code> ตอบรูปแบบใหม่ (4) การลบตารางล้างข้อมูลมากขึ้น รายละเอียดในหัวข้อ 4 และ 5</div>
+<div class="note"><b>ผลกระทบต่อผู้ใช้ API ที่ต้องรู้:</b> (1) <code>GET /whitebox/run-all</code> ต้อง login แล้ว (2) ฟิลด์ <code>url</code> ของ Elasticsearch ใน <code>/services/status</code> ไม่มีรหัสผ่านแล้ว (3) <code>/rules/profiles/{table}</code> ตอบรูปแบบใหม่ (4) การลบตารางล้างข้อมูลมากขึ้น (5) ลบเส้นซ้ำ 3 เส้น และ <code>?force=true</code> ของ ai-context ต้อง login รายละเอียดในหัวข้อ 4 และ 5</div>
 
 <h2>2. วิธีตรวจและสิ่งที่ค้นพบ</h2>
-<p>ตรวจสองชั้น ชั้นแรก <b>ตรวจโค้ด:</b> ไล่ route ทั้งหมดใน <span class="mono">services/api</span> เทียบกับคำเรียกของ UI, n8n และ Grafana จากนั้นเขียน contract test 81 คู่ (caller → route) ชั้นที่สอง <b>ทดสอบบนระบบจริง:</b> เรียกทุกเส้นผ่าน helper ที่บันทึกคำเรียกลงล็อก แล้วใช้ <span class="mono">scripts/qa/route_coverage.py</span> เทียบกับ <span class="mono">openapi.json</span> เพื่อพิสูจน์ว่าเรียกครบ</p>
+<p>ผลตรวจด้านล่างวัดตอนที่ยังมี 94 เส้น ตรวจสองชั้น ชั้นแรก <b>ตรวจโค้ด:</b> ไล่ route ทั้งหมดใน <span class="mono">services/api</span> เทียบกับคำเรียกของ UI, n8n และ Grafana จากนั้นเขียน contract test 81 คู่ (caller → route) ชั้นที่สอง <b>ทดสอบบนระบบจริง:</b> เรียกทุกเส้นผ่าน helper ที่บันทึกคำเรียกลงล็อก แล้วใช้ <span class="mono">scripts/qa/route_coverage.py</span> เทียบกับ <span class="mono">openapi.json</span> เพื่อพิสูจน์ว่าเรียกครบ</p>
 <table>
   <thead><tr><th style="width:11%">ผล</th><th>จำนวนเส้น</th><th>ความหมาย</th></tr></thead>
   <tbody>
@@ -97,6 +97,7 @@
     <tr><td>F-4</td><td><span class="tag t-mid">กลาง</span></td><td><code>/rules/profiles/{table}</code> ว่างเสมอ และรูปแบบ response ไม่ตรงที่ UI อ่าน</td><td>อ่านจาก quality run ล่าสุด (engine บันทึก <code>null_profile</code> เพิ่ม) ตอบรูปแบบ <code>null_profile</code>, <code>value_ranges</code></td><td class="mono">128706c</td></tr>
     <tr><td>F-8</td><td><span class="tag t-mid">กลาง</span></td><td>การบันทึกกฎเขียน <code>rules_config.json</code> ใหม่ทั้งไฟล์จาก Elasticsearch (คอมเมนต์หาย ค่าที่แก้ย้อนกลับ) และการลบตารางไม่เคยลบบล็อกออกจากไฟล์</td><td>บันทึกเฉพาะตารางที่เปลี่ยน ทั้งในไฟล์และ registry และลบบล็อกของตารางที่ถูกลบ</td><td class="mono">ee04297, 4e16a1d</td></tr>
     <tr><td>F-14</td><td><span class="tag t-mid">กลาง</span></td><td><code>/whitebox/benchmark</code> ตอบ <code>PASSED</code> ทั้งที่ recall ต่ำ เมื่อโหลดไฟล์อื่นที่ไม่ใช่ชุดประเมิน</td><td>ตอบ <code>NOT_APPLICABLE</code> พร้อมข้อความ เมื่อใช้ไฟล์อัปโหลด</td><td class="mono">847fa1c</td></tr>
+    <tr><td>F-25</td><td><span class="tag t-mid">กลาง</span></td><td>เส้นซ้ำ 3 เส้น (<code>proposals/simulate</code>, <code>POST /health</code>, <code>POST /whitebox/ai-context-explanations</code>) และ <code>GET /whitebox/ai-context-explanations?force=true</code> สั่งเรียก LLM ได้โดยไม่ต้อง login (ใช้โควตา Groq ได้)</td><td>ลบ 3 เส้นที่ซ้ำ (ฟังก์ชันยังเรียกได้ทาง path ที่เหลือ) และ <code>force=true</code> ต้อง login ส่วนการอ่านข้อความที่แคชไว้ยังเปิดสาธารณะ</td><td class="mono">f768305</td></tr>
   </tbody>
 </table>
 
@@ -179,12 +180,16 @@
     <tr><td><code>POST /api/v1/whitebox/upload-csv</code></td><td>เขียนทับ <code>dirty_dataset.csv</code></td><td>เขียน <code>working_dataset.csv</code> ตั้ง <code>dataset_source: "upload"</code></td></tr>
     <tr><td><code>POST /api/v1/whitebox/state</code></td><td>–</td><td>รับ <code>dataset_source</code> เป็น <code>"evaluation"</code> หรือ <code>"upload"</code></td></tr>
     <tr><td><code>GET /api/v1/whitebox/benchmark</code></td><td><code>PASSED</code> แม้ใช้ชุดข้อมูลอื่น</td><td><code>NOT_APPLICABLE</code> เมื่อโหลดไฟล์อัปโหลด</td></tr>
+    <tr><td><code>GET /api/v1/whitebox/ai-context-explanations</code></td><td><code>?force=true</code> เรียกได้โดยไม่ login (เรียก LLM ทุกครั้ง)</td><td><code>force=true</code> ต้อง login (401 ถ้าไม่ login) การอ่านข้อความที่แคชไว้ยังไม่ต้อง login</td></tr>
+    <tr><td><code>POST /api/v1/whitebox/ai-context-explanations</code></td><td>มี (ซ้ำกับ GET แต่ต้อง login)</td><td><b>ลบแล้ว</b> (405) ใช้ GET พร้อม <code>?force=true</code> ตอน login</td></tr>
+    <tr><td><code>POST /api/v1/schema/proposals/simulate</code></td><td>มี (ฟังก์ชันเดียวกับ <code>/proposals/create</code>)</td><td><b>ลบแล้ว</b> (404) ใช้ <code>/proposals/create</code> (ข้อมูลที่ส่งเหมือนเดิม)</td></tr>
+    <tr><td><code>POST /health</code></td><td>มี (ผูกคู่กับ GET)</td><td><b>ลบแล้ว</b> (405) ใช้ <code>GET /health</code> หรือ <code>/healthz</code></td></tr>
   </tbody>
 </table>
 
 <h2>6. หลักฐานการทดสอบ</h2>
 <h3>6.1 ชุด test อัตโนมัติ</h3>
-<p>ก่อนเริ่มงานชุด test ของ API มี 52 ตัว (9 ไฟล์) ปัจจุบัน 192 ตัว (22 ไฟล์) ทั้งหมดผ่าน ไฟล์ใหม่:</p>
+<p>ก่อนเริ่มงานชุด test ของ API มี 52 ตัว (8 ไฟล์) ปัจจุบัน 202 ตัว (23 ไฟล์) ทั้งหมดผ่าน ไฟล์ใหม่:</p>
 <table>
   <thead><tr><th style="width:42%">ไฟล์</th><th style="width:9%">จำนวน</th><th>ครอบคลุม</th></tr></thead>
   <tbody>
@@ -200,6 +205,7 @@
     <tr><td class="mono">test_whitebox_upload_keeps_evaluation_data.py</td><td>6</td><td>ไม่ทับชุดประเมิน, สลับ dataset_source, benchmark N/A</td></tr>
     <tr><td class="mono">test_column_profiles.py</td><td>5</td><td>รูปแบบ response ของ profile</td></tr>
     <tr><td class="mono">test_rules_save_scope.py</td><td>6</td><td>บันทึกเฉพาะตาราง ไฟล์และ registry</td></tr>
+    <tr><td class="mono">test_removed_duplicate_routes.py</td><td>10</td><td>เส้นซ้ำหายไป เส้นที่ใช้แทนยังอยู่ และ <code>force=true</code> ต้อง login</td></tr>
   </tbody>
 </table>
 <p>ชุดอื่นที่เกี่ยวข้องผ่านทั้งหมดเช่นกัน: Spark unit 81 · UI 81 · scripts 20 · evaluation 21 (งานฝั่ง Spark และ n8n ที่เกี่ยวข้องอยู่ในหัวข้อ 7)</p>
@@ -227,6 +233,9 @@
   <li><b>alert ถี่:</b> node "Query Sales Records" ของ n8n ล้มทุก 30 นาที เพราะไม่มี credential Postgres (ล้มก่อนหน้าแล้ว) และตอนนี้ส่ง alert ระดับ critical ถึง API ทุกรอบ ต้องสร้าง credential ใน n8n</li>
 </ul>
 
+<h3>เส้นที่ไม่มีผู้เรียกในโปรเจกต์</h3>
+<p>จากการค้นโค้ดทุกที่ (UI, n8n, Grafana, compose, สคริปต์, Spark, CI) พบเส้นที่ไม่มีใครเรียกอยู่ 9 เส้น (หลังลบเส้นซ้ำ) ไม่ได้ลบเพราะอาจมีผู้เรียกจากภายนอก และบางเส้นยังมีประโยชน์เรียกด้วยมือ: <code>POST /pipeline/acknowledge/{run_id}</code>, <code>GET /pipeline/{run_id}</code>, <code>POST /rules/ai-proposals/reset</code>, <code>POST /standardize/rollback</code>, <code>POST /whitebox/profile/upload</code>, <code>GET /whitebox/context/default</code>, <code>GET /whitebox/run-all</code>, <code>GET /gold/schema-drift-history</code> (ชื่อเดิม เก็บไว้เพื่อความเข้ากันได้) และ <code>GET /</code> นอกจากนี้ <code>/performance/metrics</code>, <code>/lineage/{table}</code>, <code>/lineage/inspect/…</code> และ <code>/quality/{table}</code> ใช้เฉพาะสคริปต์ ไม่ใช่หน้าเว็บ</p>
+
 <h3>ปัญหาของ API ที่ยังไม่ได้แก้</h3>
 <table>
   <thead><tr><th style="width:7%">ID</th><th style="width:7%">ระดับ</th><th>รายละเอียด</th></tr></thead>
@@ -241,6 +250,6 @@
   </tbody>
 </table>
 
-<p class="foot">เอกสารนี้สรุปจากรายงานทดสอบการใช้งานจริง (<span class="mono">docs/testing/2026-10-01-real-use-test-report.md</span>) และ commit ในช่วง e1a9e60 ถึง 61e972e แผนงานที่เกี่ยวข้องอยู่ที่ <span class="mono">docs/superpowers/plans/2026-10-01-api-route-completeness.md</span> และ <span class="mono">2026-10-01-real-use-feature-test.md</span></p>
+<p class="foot">เอกสารนี้สรุปจากรายงานทดสอบการใช้งานจริง (<span class="mono">docs/testing/2026-10-01-real-use-test-report.md</span>) และ commit ในช่วง e1a9e60 ถึง f768305 แผนงานที่เกี่ยวข้องอยู่ที่ <span class="mono">docs/superpowers/plans/2026-10-01-api-route-completeness.md</span> และ <span class="mono">2026-10-01-real-use-feature-test.md</span></p>
 </body>
 </html>
