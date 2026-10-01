@@ -1,0 +1,2 @@
+qa_scores proposals: 1
+{"id": "H3ye96ABTUgHyZv475aS", "run_id": "run_20261001_131931_258185", "table_name": "qa_scores", "current_schema": {"student_id": "IntegerType", "course": "StringType", "semester": "StringType", "score": "DoubleType", "study_hours": "IntegerType", "updated_at": "TimestampType", "qa_extra_col": "StringType"}, "proposed_schema": {"student_id": "IntegerType", "course": "StringType", "semester": "StringType", "score": "DoubleType", "study_hours": "IntegerType", "updated_at": "TimestampType", "qa_ex

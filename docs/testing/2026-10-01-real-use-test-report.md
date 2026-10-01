@@ -43,3 +43,8 @@
 | T7.3 | retry -> SUCCEEDED (ต้อง login) | PASS | anon 401, หลัง retry state RUNNING แล้ว SUCCEEDED ใน 75s, retry run ที่ไม่มี 404 |
 | T7.4 | quality list/by table | PASS | รายการเรียงล่าสุดก่อน (qa_scores, qa_sales_db, qa_gov); /quality/qa_scores มีรอบล่าสุด |
 | T7.5 | acknowledge drift | FAIL | F-9: POST /pipeline/acknowledge/does-not-exist ตอบ 200 (คาด 404) และสร้างเอกสารขยะใน sdoqap_acknowledged_runs (ลบแล้ว); กรณี run ที่มี drift จริงทดสอบซ้ำที่ T8.5 |
+| T8.1 | คอลัมน์ใหม่ -> drift proposal PENDING | PASS | proposal ของ qa_scores ระบุ qa_extra_col, trust-check ตอบ HALT_INGEST pending=1 (t8-proposal.txt) |
+| T8.2 | simulate + approve/reject + 404 | PASS | simulate 2 ครั้ง 200, approve 200 (APPROVED), reject 200 (REJECTED), id ปลอม 404 |
+| T8.3 | approve แล้ว registry ใน ES เปลี่ยน | PASS | registry ของ qa_scores มี qa_extra_col หลัง approve proposal จริง |
+| T8.4 | reject-all / approve-all | SKIP | มี proposal PENDING ของตาราง student_course_scores (ไม่ใช่ของ qa_*) ค้างอยู่ คำสั่งนี้กระทบทุกตาราง จึงไม่รัน |
+| T8.5 | acknowledge drift (ทดสอบซ้ำของ T7.5) | PASS | run ที่มี drift จริง: acknowledge 200, pending_schema_proposals=0 |
