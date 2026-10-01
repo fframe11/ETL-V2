@@ -1,0 +1,5 @@
+stream start/status/stop: OK (status running -> idle, elapsed/remaining counted)
+kafka topic reddit_raw created, 25 messages (real r/python posts) readable by kafka-console-consumer
+spark streaming: "Initial offsets: {reddit_raw:{0:25}}" (starts at LATEST after the producer already published), numInputRows=0 in every batch
+hdfs /data/reddit/parquet: 0 parquet files after the run -> GET /api/v1/export/reddit has nothing to serve
+streaming_job.py reads with .option("subscribe","reddit_raw") and no startingOffsets (default 'latest')

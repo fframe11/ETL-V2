@@ -30,3 +30,6 @@
 | T4.1 | RDBMS ingest -> SUCCEEDED (500 แถว) | PASS | qa_sales_db total=500 clean=500 score=100, 60s |
 | T4.2 | host นอก allowlist / db_type ไม่รองรับ -> 400 | PASS | evil.example 400; mysql 400 'Only postgresql is currently supported' (UI มีตัวเลือก MySQL/SQL Server ให้ตรวจใน T13.3) |
 | T4.3 | SQL ไม่ใช่ SELECT แก้ข้อมูลไม่ได้ | PASS | DROP/DELETE/multi-statement 400, SELECT INTO ตอบ 502 (ถูกปฏิเสธ แต่ควรเป็น 4xx); qa_sales ยัง 500 แถว, ไม่มี qa_copy |
+| T5.1 | start/status stream | PASS | start 200, status running (elapsed/remaining ถูกต้อง) แล้ว idle เมื่อครบ 40s; topic reddit_raw ถูกสร้าง |
+| T5.2 | parquet ใน HDFS + ข้อความใน Kafka | FAIL | Kafka: 25 ข้อความจริงจาก r/python อ่านได้ แต่ HDFS /data/reddit/parquet มี 0 ไฟล์: F-3 Spark เริ่มที่ latest offset (25) หลัง producer ส่งชุดแรกไปแล้ว numInputRows=0 ทุก batch (streaming_job.py ไม่ตั้ง startingOffsets) t5-reddit-stream.txt |
+| T5.3 | export/reddit + stop | FAIL | export/reddit และ preview/reddit = 404 (ไม่มี parquet ต่อเนื่องจาก F-3); stop ตอบ 400 'No active streaming job' เพราะสตรีมจบเองแล้ว (ถูกต้อง) |
