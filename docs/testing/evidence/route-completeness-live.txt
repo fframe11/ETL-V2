@@ -1,0 +1,37 @@
+# Route completeness live verification 2026-10-01T17:52:41+07:00
+commit: d82e1d9
+login HTTP 200
+G1 gold/schema-drift HTTP 200
+queued 20261001T105938-40454499
+G2 raw preview HTTP 200
+G2 raw download lines: 1031
+--- step 4
+n8n has INGEST_SERVICE_KEY
+n8n has ALERT_WEBHOOK_SECRET
+n8n has TRIGGER_SHARED_SECRET
+n8n has ELASTICSEARCH_PASSWORD
+{"cluster_name":"docker-cluster","status
+{"status": "running", "subreddits": "", "duration": 300, "el
+grafana bearer -> alert HTTP 200
+SDOQAP Alert Router Webhook Bearer
+email receiver None
+cleanup without key : 401
+cleanup wrong key   : 401
+alert without secret: 401
+run SUCCEEDED after ~105s
+--- finding (not fixed here): sample 1030 rows -> total_records 250
+engine inferred primary_key=student_id for qa_route_probe; sample has 250 distinct student_id (1000 distinct student_id+course+semester), so the MERGE keeps 250 rows
+--- step 5 (n8n -> api alert)
+n8n exec 1016 (Every 15 Minutes, 11:00 UTC): Fetch Recent Quality Runs OK -> Basic auth header for Elasticsearch works
+n8n exec 1020 (11:15 UTC): Fetch + Filter OK, 'Route Quality Alert' FAILED before sending: NodeOperationError: The value in the "JSON Body" field is not valid JSON (Unexpected token '$' in '"title": $json.title')
+n8n exec 1021: error workflow 'Send Failure Alert' failed the same way
+cause: jsonBody is '={ "title": $json.title ... }' (not '={{ ... }}'); n8n 2.27 treats it as literal JSON text. Same pattern in Relay Ingest API / Relay Ingest RDBMS / Send Failure Alert / Route Remediation Alert / Route Quality Alert. Not a key problem; NOT fixed in this plan.
+api log: 3x POST /api/v1/system/alert 200 from Grafana (172.19.0.6): 2 real Grafana alert rules + 1 test with Bearer secret; 0 from n8n (172.19.0.8)
+pre-existing: n8n executions since 10:15 UTC error with: Credential id c711aa48-... does not exist for type postgres (node 'Query Sales Records')
+--- step 6
+{"status":"success","message":"Table 'qa_route_probe' and all associated metadata deleted successfully.","hdfs_deleted_layers":["raw","active","quarantine"]}
+HTTP 200
+--- step 8
+ollama health: healthy (healthcheck changed to: ollama list); model not pulled (needs owner OK, ~2 GB)
+--- step 1/7
+GROQ_API_KEY missing in .env: owner must create it; steps 1 and 7 NOT done
