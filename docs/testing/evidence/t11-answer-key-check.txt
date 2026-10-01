@@ -1,0 +1,7 @@
+answer key rows: 1030 | matched: 1030
+rows in a different zone than expected: 0
+all rows in the expected zone
+expected_zone  zone      
+CLEAN          CLEAN         915
+QUARANTINE     QUARANTINE     95
+REVIEW         REVIEW         20

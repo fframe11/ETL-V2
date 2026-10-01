@@ -975,6 +975,7 @@ Expected: `200` ทั้งสาม; profile มีสถิติต่อค
 
 ```bash
 source scripts/qa/lib.sh
+mkdir -p "$EVID/tmp" && cp "$ROOT/data/evaluation/student_course_score_evaluation_dataset/dirty_dataset.csv" "$EVID/tmp/dirty_dataset_orig.csv"   # สำรองก่อน เพราะ upload-csv เขียนทับ dirty_dataset.csv และต้องใช้สำเนานี้คืนค่าตอนท้าย
 api POST /api/v1/whitebox/upload-csv -F "file=@$ROOT/data/samples/student_scores/student_scores_sample.csv"
 api POST /api/v1/whitebox/run-all -H 'Content-Type: application/json' -d '{}' | tee "$EVID/t11-runall.txt" | tail -c 1500
 ```
@@ -1014,7 +1015,7 @@ Expected: preview แสดงตาราง (เช่น demographics + score
 
 ```bash
 source scripts/qa/lib.sh
-api POST /api/v1/whitebox/upload-csv -F "file=@$ROOT/data/evaluation/student_course_score_evaluation_dataset/dirty_dataset.csv"
+api POST /api/v1/whitebox/upload-csv -F "file=@$EVID/tmp/dirty_dataset_orig.csv"
 apij GET /api/v1/whitebox/profile | head -c 200
 ```
 Expected: `HTTP 200` และ profile กลับเป็นชุดประเมินเดิม (10,100 แถว)
@@ -1361,7 +1362,7 @@ apij POST /api/v1/whitebox/recommend-rules | python -c "import sys,json; print(j
 apij POST /api/v1/whitebox/execute -H 'Content-Type: application/json' -d @"$QA_TMP/execute_body.json" | python -c "import sys,json; d=json.load(sys.stdin); print(d['total_rows_ingested'], d['clean_rows'], d['review_rows'], d['quarantine_rows'])"
 echo "execute without rules: $(code POST /api/v1/whitebox/execute -H 'Content-Type: application/json' -d '{}')"
 apij POST /api/v1/whitebox/ingest-source -H 'Content-Type: application/json' -d '{"source_type":"RDBMS","table_name":"qa_conn","connection_uri":"postgres"}' | python -c "import sys,json; d=json.load(sys.stdin); print(d['status'], '| simulated:', d['simulated'], '| rows:', d['rows_ingested'])"
-api POST /api/v1/whitebox/upload-csv -F "file=@$ROOT/data/evaluation/student_course_score_evaluation_dataset/dirty_dataset.csv" | tail -1
+api POST /api/v1/whitebox/upload-csv -F "file=@$EVID/tmp/dirty_dataset_orig.csv" | tail -1
 apij POST '/api/v1/whitebox/ai-context-explanations?force=true' | python -c "import sys,json; d=json.load(sys.stdin); print('available:', d['available'], '| live:', d['ai_live_generated'], '| engine:', d['engine'])"
 ```
 Expected: execute ได้ `10100 9400 100 600` (ถ้าต่างให้ลง FAIL พร้อมตัวเลขจริง); `execute without rules: 422` (ขาด field `rules`); ingest-source ได้ `connected_and_profiled | simulated: True | rows: 10100` (ตัวเชื่อมนี้ไม่ได้ต่อแหล่งจริง ระบบต้องบอกเองว่า simulated); upload คืนชุดเดิมได้ `HTTP 200`; AI context ได้ `available: True | live: True | engine: Groq openai/gpt-oss-120b` (ถ้าเจ้าของยืนยันว่าไม่ใช้ Groq จะเป็น `live: False | engine: SDOQAP rule-based summary` ซึ่งถูกต้องสำหรับกรณีนั้น ถ้ามีคีย์แต่ `live: False` ให้ลง FAIL พร้อม `docker compose logs --tail 30 api | grep "AI Context LLM fallback"`)

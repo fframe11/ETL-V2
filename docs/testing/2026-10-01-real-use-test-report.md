@@ -58,3 +58,9 @@
 | T10.3 | gold rebuild (ต้อง login, idempotent) | PASS | anon 401, rebuild 200; รอบแรกเพิ่มข้อมูลวันนี้ (daily 37->41, errors 89->246, impact 10->15, drift 2->3) รอบสองจำนวนเท่าเดิมทุก index |
 | T10.4 | lineage + inspect node + 404 | FAIL | lineage/ตาราง 404 ถูกต้อง, inspect 200 ทุก node แต่ F-13: sample_data ว่างใน raw/active และ metadata เป็นค่าประมาณจากจำนวนแถว (active '1 files 0.27 MB' แต่ HDFS จริง 12 ไฟล์ 41,846 bytes; raw ถูกระบุเป็น Parquet ทั้งที่เป็น CSV) t10-inspect-node.txt |
 | T10.5 | trust-check สอดคล้องกับเกณฑ์ | PASS | ฟิลด์ครบ (is_safe_to_consume, quality_score, quality_threshold, pending_schema_proposals, recommendation) และ is_safe สอดคล้องกับ score>=threshold & pending=0; เกณฑ์ที่ใช้ยังไม่ตามค่ารายตาราง = F-5 (T6.2) |
+| T11.1 | ประเมินกับ ground truth (9400/100/600, P/R 100%) | PASS | Clean 9,400 / Review 100 / Quarantine 600, recall และ precision 100% ทุกหมวด (t11-whitebox-eval.txt) |
+| T11.2 | profile/state/context | PASS | 200 ทั้งสาม; profile 10,100 แถว 8 คอลัมน์ (score null 305, min -10, max 150); state dataset_name เป็นชื่อเก่า 'student_scores_sample' จากการอัปโหลดครั้งก่อน (stale label) |
+| T11.3 | run-all บนตัวอย่าง -> 915/20/95 | PASS | execution_result total 1030, clean 915, review 20, quarantine 95 (t11-runall.txt) |
+| T11.4 | รายแถวตรง answer key | PASS | 1030/1030 แถวอยู่โซนที่คาด ผิด 0 (เทียบด้วย dirty_row_id) t11-answer-key-check.txt |
+| T11.5 | recommend-rules/benchmark/downstream/AI context | PASS | 200 ทั้งหมด; AI context ใช้ Groq จริง (live=True, engine Groq openai/gpt-oss-120b); F-14: benchmark ตอบ status=PASSED ทั้งที่ recall Missing Score 3.33% เพราะเทียบชุดตัวอย่าง 1030 แถวกับ ground truth ของชุด 10,100 แถว |
+| T11.6 | multi-table preview/analyze/join | PASS | preview 2 ตาราง (demographics 9,980 / scores 1,030), analyze ANALYSIS_COMPLETE, join JOIN_COMPLETED 1030 แถว matched 1030 unmatched 0 |
