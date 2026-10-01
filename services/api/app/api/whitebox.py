@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 
 import pandas as pd
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form, Body
 from pydantic import BaseModel, Field
 
 from .auth import require_session
@@ -1771,8 +1771,11 @@ def _build_dynamic_context_fallback(
 
 
 @router.get("/ai-context-explanations")
-@router.post("/ai-context-explanations", dependencies=[Depends(require_session)])
-def generate_ai_context_explanations(force: bool = False):
+def generate_ai_context_explanations(request: Request, force: bool = False):
+    # Reading the cached text is public; ?force=true calls the LLM again on every request,
+    # so it needs a session (it used to be reachable anonymously through this GET).
+    if force:
+        require_session(request)
     state = _recompute_interactive_state()
     dataset_name = str(state.get("dataset_name") or "student_course_scores")
     # _recompute_interactive_state stores its counts under "metrics"; this used to

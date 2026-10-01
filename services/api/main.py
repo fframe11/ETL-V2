@@ -99,7 +99,6 @@ def read_portal():
     }
 
 @app.get("/health")
-@app.post("/health")
 def health_check_legacy():
     health = {
         "status": "healthy",

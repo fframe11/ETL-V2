@@ -14,7 +14,7 @@
 
 - **ทำแผน [`2026-10-01-api-route-completeness.md`](2026-10-01-api-route-completeness.md) ให้จบก่อนเริ่มแผนนี้** (แก้ route ที่ขาด, เติมคีย์ของผู้เรียก n8n/Grafana, จัดการคีย์ LLM และสร้าง `scripts/qa/route_coverage.py` ที่ Task 14B ใช้)
 - Stack ต้องรันอยู่แล้ว (`docker compose ps`) UI+API ที่ `http://localhost` (nginx :80) API ตรงที่ `http://localhost:8002` Grafana `:3002` Kibana `:5601` n8n `:5678` pgAdmin `:5050`
-- **ต้องเรียกครบทุกเส้น API (94 เส้น: method + path; 93 เส้นเดิม + alias `GET /api/v1/gold/schema-drift` ที่แผน api-route-completeness เพิ่ม)** helper `api`/`apij`/`code`/`anon`/`direct` บันทึกทุกคำเรียกลง `docs/testing/evidence/route-calls.log` คำเรียกด้วย `curl` ตรงไม่ถูกนับ ดังนั้นทุกเส้นต้องถูกเรียกผ่าน helper อย่างน้อยหนึ่งครั้ง Task 14B ตรวจด้วย `route_coverage.py`
+- **ต้องเรียกครบทุกเส้น API (91 เส้น: method + path; 93 เส้นเดิม + alias `GET /api/v1/gold/schema-drift` ที่แผน api-route-completeness เพิ่ม - 3 เส้นซ้ำที่ลบแล้ว: `POST /schema/proposals/simulate`, `POST /health`, `POST /whitebox/ai-context-explanations`)** helper `api`/`apij`/`code`/`anon`/`direct` บันทึกทุกคำเรียกลง `docs/testing/evidence/route-calls.log` คำเรียกด้วย `curl` ตรงไม่ถูกนับ ดังนั้นทุกเส้นต้องถูกเรียกผ่าน helper อย่างน้อยหนึ่งครั้ง Task 14B ตรวจด้วย `route_coverage.py`
 - **ห้าม** `docker compose down -v`, ห้ามลบข้อมูลที่ไม่ได้สร้างเอง ตารางทดสอบทั้งหมดต้องขึ้นต้นด้วย `qa_` และลบได้เฉพาะตาราง `qa_*`
 - ทุก step ที่รันคำสั่ง bash เริ่มด้วย `source scripts/qa/lib.sh` (แต่ละคำสั่งเป็น shell ใหม่)
 - Credential อ่านจาก `.env` ผ่าน `envval NAME` เท่านั้น ห้ามพิมพ์ลงรายงานหรือ evidence ไฟล์ evidence ที่อาจมี URL พร้อมรหัสต้องผ่าน `redact`
@@ -42,7 +42,7 @@
 | Ops: settings, alert webhook, remediation, Grafana, Kibana, n8n, retention | `/system/*`, Grafana, n8n | 12 |
 | UI walkthrough ทุกหน้า | เบราว์เซอร์ | 13 |
 | Resilience (container หยุด), scale smoke | docker, benchmark | 14 |
-| เส้น API ที่ task อื่นไม่ได้เรียก + ประตูตรวจว่าเรียกครบ 94 เส้น | `/`, `/health*`, `/pipeline/{run_id}`, `/schema/proposals/create`, `/standardize/*`, `/whitebox/*`, `route_coverage.py` | 14B |
+| เส้น API ที่ task อื่นไม่ได้เรียก + ประตูตรวจว่าเรียกครบ 91 เส้น | `/`, `/health*`, `/pipeline/{run_id}`, `/schema/proposals/create`, `/standardize/*`, `/whitebox/*`, `route_coverage.py` | 14B |
 | Cleanup + รายงานสรุป | — | 15 |
 
 ## File Structure
@@ -773,15 +773,15 @@ Expected: มี proposal ≥ 1 ของ `qa_scores` สถานะ `PENDING` 
 
 ```bash
 source scripts/qa/lib.sh
-api POST /api/v1/schema/proposals/simulate -H 'Content-Type: application/json' -d '{"table_name":"qa_scores","column_name":"qa_sim_a"}'
-api POST /api/v1/schema/proposals/simulate -H 'Content-Type: application/json' -d '{"table_name":"qa_scores","column_name":"qa_sim_b"}'
+api POST /api/v1/schema/proposals/create -H 'Content-Type: application/json' -d '{"table_name":"qa_scores","column_name":"qa_sim_a"}'
+api POST /api/v1/schema/proposals/create -H 'Content-Type: application/json' -d '{"table_name":"qa_scores","column_name":"qa_sim_b"}'
 IDS=$(apij GET /api/v1/schema/proposals | python -c "import sys,json; print(' '.join(p['id'] for p in json.load(sys.stdin)['proposals'] if p.get('table_name')=='qa_scores' and p.get('status')=='PENDING' and 'qa_sim' in str(p)))")
 set -- $IDS; echo "ids: $IDS"
 api POST "/api/v1/schema/proposals/$1/approve"
 api POST "/api/v1/schema/proposals/$2/reject"
 api POST "/api/v1/schema/proposals/not-a-real-id/approve"
 ```
-Expected: simulate สองครั้งได้ `HTTP 200`; approve และ reject ได้ `HTTP 200` และสถานะเปลี่ยนเป็น `APPROVED`/`REJECTED`; id ปลอมได้ `404` (ถ้า field `id` ไม่ใช่ชื่อที่ API ใช้จริง ให้ดู key จากไฟล์ `t8-proposal.txt` แล้วใช้ key นั้น)
+Expected: create สองครั้งได้ `HTTP 200`; approve และ reject ได้ `HTTP 200` และสถานะเปลี่ยนเป็น `APPROVED`/`REJECTED`; id ปลอมได้ `404` (ถ้า field `id` ไม่ใช่ชื่อที่ API ใช้จริง ให้ดู key จากไฟล์ `t8-proposal.txt` แล้วใช้ key นั้น)
 
 - [ ] **Step 4: approve แล้ว registry ใน ES เปลี่ยนจริง**
 
@@ -795,7 +795,7 @@ Expected: หลัง approve proposal ที่เป็น drift จริง
 
 ```bash
 source scripts/qa/lib.sh
-api POST /api/v1/schema/proposals/simulate -H 'Content-Type: application/json' -d '{"table_name":"qa_scores","column_name":"qa_sim_c"}'
+api POST /api/v1/schema/proposals/create -H 'Content-Type: application/json' -d '{"table_name":"qa_scores","column_name":"qa_sim_c"}'
 api POST /api/v1/schema/proposals/reject-all
 apij GET /api/v1/schema/proposals | python -c "import sys,json; print('pending left:', sum(1 for p in json.load(sys.stdin)['proposals'] if p.get('status')=='PENDING'))"
 ```
@@ -815,7 +815,7 @@ Expected: `HTTP 200` (อัปเดตผล T7.5)
 ```bash
 source scripts/qa/lib.sh
 qa_record T8.1 "คอลัมน์ใหม่ -> drift proposal PENDING" PASS "t8-proposal.txt"
-qa_record T8.2 "simulate + approve/reject + 404" PASS "-"
+qa_record T8.2 "create + approve/reject + 404" PASS "-"
 qa_record T8.3 "approve แล้ว registry ใน ES เปลี่ยน" PASS "-"
 qa_record T8.4 "reject-all" PASS "-"
 git add docs/testing && git commit -m "test(qa): task 8 schema governance results"
@@ -1289,9 +1289,9 @@ git add docs/testing && git commit -m "test(qa): task 14 resilience and scale re
 
 ```bash
 source scripts/qa/lib.sh
-for r in "GET /" "GET /health" "POST /health" "GET /healthz"; do set -- $r; printf '%-13s %s\n' "$r" "$(direct "$1" "$2")"; done
+for r in "GET /" "GET /health" "GET /healthz"; do set -- $r; printf '%-13s %s\n' "$r" "$(direct "$1" "$2")"; done
 ```
-Expected: ทั้งสี่บรรทัด `200`
+Expected: ทั้งสามบรรทัด `200` (`POST /health` ถูกลบแล้ว ตอบ 405)
 
 - [ ] **Step 2: รายละเอียดของ run เดียว**
 
@@ -1363,7 +1363,7 @@ apij POST /api/v1/whitebox/execute -H 'Content-Type: application/json' -d @"$QA_
 echo "execute without rules: $(code POST /api/v1/whitebox/execute -H 'Content-Type: application/json' -d '{}')"
 apij POST /api/v1/whitebox/ingest-source -H 'Content-Type: application/json' -d '{"source_type":"RDBMS","table_name":"qa_conn","connection_uri":"postgres"}' | python -c "import sys,json; d=json.load(sys.stdin); print(d['status'], '| simulated:', d['simulated'], '| rows:', d['rows_ingested'])"
 api POST /api/v1/whitebox/upload-csv -F "file=@$EVID/tmp/dirty_dataset_orig.csv" | tail -1
-apij POST '/api/v1/whitebox/ai-context-explanations?force=true' | python -c "import sys,json; d=json.load(sys.stdin); print('available:', d['available'], '| live:', d['ai_live_generated'], '| engine:', d['engine'])"
+apij GET '/api/v1/whitebox/ai-context-explanations?force=true' | python -c "import sys,json; d=json.load(sys.stdin); print('available:', d['available'], '| live:', d['ai_live_generated'], '| engine:', d['engine'])"
 ```
 Expected: execute ได้ `10100 9400 100 600` (ถ้าต่างให้ลง FAIL พร้อมตัวเลขจริง); `execute without rules: 422` (ขาด field `rules`); ingest-source ได้ `connected_and_profiled | simulated: True | rows: 10100` (ตัวเชื่อมนี้ไม่ได้ต่อแหล่งจริง ระบบต้องบอกเองว่า simulated); upload คืนชุดเดิมได้ `HTTP 200`; AI context ได้ `available: True | live: True | engine: Groq openai/gpt-oss-120b` (ถ้าเจ้าของยืนยันว่าไม่ใช้ Groq จะเป็น `live: False | engine: SDOQAP rule-based summary` ซึ่งถูกต้องสำหรับกรณีนั้น ถ้ามีคีย์แต่ `live: False` ให้ลง FAIL พร้อม `docker compose logs --tail 30 api | grep "AI Context LLM fallback"`)
 
@@ -1385,10 +1385,10 @@ python scripts/qa/route_coverage.py --openapi "$API_DIRECT/openapi.json" --calls
 tail -1 "$EVID/route-coverage.md"
 grep -E '^\| (UNTESTED|AUTH_ONLY|REACHED) ' "$EVID/route-coverage.md"
 ```
-Expected: `exit 0` และบรรทัดสรุป `routes=94 OK=<n> REACHED=<m> AUTH_ONLY=0 UNTESTED=0` เกณฑ์ตัดสิน:
+Expected: `exit 0` และบรรทัดสรุป `routes=91 OK=<n> REACHED=<m> AUTH_ONLY=0 UNTESTED=0` เกณฑ์ตัดสิน:
 - `UNTESTED` หรือ `AUTH_ONLY` ที่ยอมรับได้มีเฉพาะเส้นที่ถูก SKIP อย่างมีเหตุผลใน task ก่อนหน้า: `POST /api/v1/system/cleanup` (T12.7 มีข้อมูลเก่ากว่า 30 วัน), `POST /api/v1/schema/proposals/approve-all` และ `reject-all` (มี proposal ของคนอื่นค้าง), `POST /api/v1/pipeline/ingest/reddit` และ `.../reddit/stop` (Task 5 SKIP) ถ้าเหลือเฉพาะเส้นเหล่านี้ให้ลง `PASS` พร้อมรายชื่อเส้นและเหตุผลใน note เส้นอื่นที่เหลือ = `FAIL`
 - ทุกบรรทัด `REACHED` (handler ตอบแต่ไม่เคยสำเร็จ) ต้องอธิบายได้ใน note เช่น `POST /api/v1/standardize/rollback` ที่ตอบ 500 เมื่อไม่มี backup (Finding R-1) หรือ `POST /api/v1/system/remediations/{ticket_id}/resolve` ที่ได้ 404 เพราะไม่มี ticket จริง ถ้าอธิบายไม่ได้ให้ลง Finding
-- ถ้า `routes` ไม่เท่ากับ `94` แปลว่ามี route เพิ่มหรือหายจากตอนเขียนแผน ให้จดจำนวนจริงและรายชื่อที่ต่างลง note (ไม่ใช่ FAIL ในตัวเอง)
+- ถ้า `routes` ไม่เท่ากับ `91` แปลว่ามี route เพิ่มหรือหายจากตอนเขียนแผน ให้จดจำนวนจริงและรายชื่อที่ต่างลง note (ไม่ใช่ FAIL ในตัวเอง)
 
 - [ ] **Step 9: บันทึกผลและ commit**
 

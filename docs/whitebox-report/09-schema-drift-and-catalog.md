@@ -295,7 +295,7 @@ def create_schema_proposal(payload: dict = None, _user: str = Depends(require_se
 
 | บรรทัด | ทำอะไร |
 |---|---|
-| 386-387 | ผูกทั้ง `/proposals/create` และ `/proposals/simulate` เข้ากับฟังก์ชันเดียวกันด้านล่าง — ไม่มีความต่างในพฤติกรรมระหว่างสอง path นี้เลย |
+| 386-387 | ผูกทั้ง `/proposals/create` และ `/proposals/simulate` เข้ากับฟังก์ชันเดียวกันด้านล่าง — ไม่มีความต่างในพฤติกรรมระหว่างสอง path นี้เลย (ภายหลังลบ `/proposals/simulate` ออกแล้ว เหลือ `/proposals/create`) |
 | 391-394 | อ่านค่าจาก payload ถ้าไม่ส่งมาใช้ค่าเริ่มต้นตายตัว (`student_course_scores`/`gpa_weighted`/`DoubleType`/`new_column`) — ค่าเหล่านี้**ไม่ได้ตรวจสอบกับ schema จริงของตารางที่ระบุเลย** |
 
 **บล็อกที่ 7 — endpoint อนุมัติ: เขียนทับ registry ทั้งชุดโดยไม่เช็คความรุนแรง**

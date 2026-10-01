@@ -10,7 +10,7 @@
 
 ผู้ใช้ไม่เห็นปุ่ม "อธิบายด้วย AI" ในหน้า Ingestion อีกต่อไป (ถอดออกในคอมมิต `3d55699` เพราะเคยแสดงตัวเลขปลอมที่ไม่ตรงกับข้อมูลจริง — ดูข้อ 7) สิ่งที่ยังเห็นได้คือ:
 
-- endpoint `GET/POST /api/v1/whitebox/ai-context-explanations` คืนคำอธิบายเป็นข้อความภาษาไทยพร้อมฟิลด์ `ai_live_generated` (จริง/เท็จ) และ `model` (ชื่อโมเดลหรือ `null`) บอกตรงๆ ว่าข้อความชุดนั้นมาจากโมเดลจริงหรือไม่
+- endpoint `GET /api/v1/whitebox/ai-context-explanations` (เดิมมี POST ซ้ำอีกตัว ลบแล้ว; `?force=true` ต้อง login) คืนคำอธิบายเป็นข้อความภาษาไทยพร้อมฟิลด์ `ai_live_generated` (จริง/เท็จ) และ `model` (ชื่อโมเดลหรือ `null`) บอกตรงๆ ว่าข้อความชุดนั้นมาจากโมเดลจริงหรือไม่
 - หน้า Rules & Governance → AI Proposals เรียก `GET /api/v1/rules/ai-proposals` แสดงรายการข้อเสนอเปลี่ยนกฎที่รอการอนุมัติ พร้อมปุ่ม "อนุมัติ" / "ปฏิเสธ" (เรียก `POST .../approve` และ `.../reject`) — ผู้ใช้เห็นแค่ผลลัพธ์ปลายทาง (ข้อเสนอ, เหตุผล, ค่าความเชื่อมั่น) ไม่เห็นว่าเบื้องหลังเป็นการเรียกโมเดลจริง หรือเป็นกฎเงื่อนไขคงที่ที่จับรูปแบบข้อความ `reject_reason`
 - ในรอบงาน Spark ที่เปิด `ai_advisor.enabled` ไว้ (ดู [บทที่ 02](02-spark-batch-quality-engine.md) และ [บทที่ 04](04-adaptive-rules-and-drift.md)) `remediation_logs` ของรอบนั้นอาจมีข้อความ `ai_advisor_triggered_confidence_<n>` หรือ `decision_tree_induced_<n>_rules_auc_<n>` เป็นร่องรอยเดียวที่บอกว่าเลเยอร์นี้ทำงาน
 

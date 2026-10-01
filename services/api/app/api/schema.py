@@ -384,7 +384,6 @@ def reject_all_proposals(user: str = Depends(require_session)):
 
 
 @router.post("/proposals/create")
-@router.post("/proposals/simulate")
 def create_schema_proposal(payload: dict = None, _user: str = Depends(require_session)):
     """Register a new PENDING schema evolution proposal in Elasticsearch for governance review."""
     payload = payload or {}
