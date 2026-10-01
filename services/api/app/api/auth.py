@@ -69,13 +69,20 @@ def require_session(request: Request) -> str:
 
 
 def require_webhook_secret(request: Request) -> None:
-    """FastAPI dependency for machine-to-machine webhooks (e.g. Grafana alerting) that
-    cannot perform a browser login. Checks the X-Webhook-Secret header against
-    ALERT_WEBHOOK_SECRET."""
-    provided = request.headers.get("X-Webhook-Secret")
+    """FastAPI dependency for machine-to-machine webhooks that cannot perform a browser
+    login. The caller proves it knows ALERT_WEBHOOK_SECRET either in the X-Webhook-Secret
+    header (n8n) or as "Authorization: Bearer <secret>" (Grafana 10's webhook contact
+    point can set an Authorization header but not a custom one)."""
     expected = _required_env("ALERT_WEBHOOK_SECRET")
+    provided = request.headers.get("X-Webhook-Secret")
+    if not provided:
+        scheme, _, token = (request.headers.get("Authorization") or "").partition(" ")
+        provided = token.strip() if scheme.lower() == "bearer" else ""
     if not provided or not hmac.compare_digest(provided, expected):
-        raise HTTPException(status_code=401, detail="Missing or invalid X-Webhook-Secret header.")
+        raise HTTPException(
+            status_code=401,
+            detail="Missing or invalid webhook secret (X-Webhook-Secret or Authorization: Bearer).",
+        )
 
 
 def require_session_or_service_key(request: Request) -> str:

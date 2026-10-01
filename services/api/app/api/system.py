@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from .config import get_es_client
-from .auth import require_session, require_webhook_secret
+from .auth import require_session, require_session_or_service_key, require_webhook_secret
 
 router = APIRouter(tags=["system"])
 
@@ -288,21 +288,22 @@ def get_system_activity(limit: int = 15):
             "message": f"Failed to retrieve logs from Elasticsearch: {str(e)}"
         }]
 
-@router.post("/api/v1/system/cleanup")
-def trigger_system_cleanup(_user: str = Depends(require_session)):
-    """Trigger the automated storage retention and cleanup script asynchronously."""
-    def run_cleanup():
-        try:
-            script_path = "/app/scripts/ops/data_retention_cleanup.py"
-            if not os.path.exists(script_path):
-                script_path = "scripts/ops/data_retention_cleanup.py"
-            subprocess.run(["python", script_path], timeout=180, check=True)
-            print("[CLEANUP JOB] Finished successfully.")
-        except Exception as e:
-            print(f"[CLEANUP JOB ERROR] {e}")
+def _run_retention_cleanup():
+    try:
+        script_path = "/app/scripts/ops/data_retention_cleanup.py"
+        if not os.path.exists(script_path):
+            script_path = "scripts/ops/data_retention_cleanup.py"
+        subprocess.run(["python", script_path], timeout=180, check=True)
+        print("[CLEANUP JOB] Finished successfully.")
+    except Exception as e:
+        print(f"[CLEANUP JOB ERROR] {e}")
 
-    thread = threading.Thread(target=run_cleanup, daemon=True)
-    thread.start()
+
+@router.post("/api/v1/system/cleanup")
+def trigger_system_cleanup(_user: str = Depends(require_session_or_service_key)):
+    """Trigger the storage retention cleanup script asynchronously. Called by a logged-in
+    user (session cookie) and by n8n's daily schedule (X-Service-Key)."""
+    threading.Thread(target=_run_retention_cleanup, daemon=True).start()
     return {"status": "triggered", "message": "Retention cleanup job started in background."}
 
 class SettingsPayload(BaseModel):
