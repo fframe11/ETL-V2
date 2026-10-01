@@ -1,0 +1,33 @@
+[
+  {
+    "rows": 10000,
+    "table": "bench_10000",
+    "state": "SUCCEEDED",
+    "duration_seconds": 86.311,
+    "end_to_end_seconds": 126,
+    "total_records": 10000,
+    "quarantined_records": 630,
+    "error": null
+  },
+  {
+    "rows": 100000,
+    "table": "bench_100000",
+    "state": "FAILED",
+    "end_to_end_seconds": 1,
+    "error": ""
+  },
+  {
+    "rows": 500000,
+    "table": "bench_500000",
+    "state": "FAILED",
+    "end_to_end_seconds": 1,
+    "error": ""
+  },
+  {
+    "rows": 1000000,
+    "table": "bench_1000000",
+    "state": "FAILED",
+    "end_to_end_seconds": 1,
+    "error": ""
+  }
+]

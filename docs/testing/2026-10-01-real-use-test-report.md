@@ -82,3 +82,7 @@
 | T13.9 | Catalog | PASS | แสดง proposal ที่ค้างจริง 1 รายการ (student_course_scores gpa_weighted) ตรงกับ API, มีปุ่มอนุมัติ/ปฏิเสธและช่องตั้งค่า PRIMARY KEY/PARTITION DATE; ไม่ได้กดอนุมัติ/ปฏิเสธ proposal จริงของตารางอื่น |
 | T13.10 | Audit Trail | PASS | โหลดครบขั้น 0-5 ตัวเลข multi-table (9,980 / 10,100 แถว, key match 99.8%) ตรงกับ T11; ไม่ได้ทดสอบ Human Review Queue |
 | T13.11 | Guide + responsive | SKIP | /guide และ /guideline โหลดเนื้อหาได้; responsive วัดไม่ได้เพราะ pane เบราว์เซอร์ไม่ได้แสดง (innerWidth=0) ไม่ขอลงผลที่ไม่ได้ตรวจ |
+| T14.1 | Spark worker ล่ม -> สถานะชัดเจน, retry ได้ | PASS | ระหว่าง worker หยุด run ค้าง RUNNING ไม่หายเงียบ (error=None) และ Spark Worker ขึ้น offline; หลัง worker กลับ run ไปต่อเองจน SUCCEEDED (110s) ไม่ต้อง retry |
+| T14.2 | Postgres ล่ม -> error อ่านเข้าใจ ไม่มีขยะ | PASS | 502 'PostgreSQL fetch failed: could not translate host name' ไม่มี traceback, ไม่มีโฟลเดอร์ qa_resil_db ใน /data/raw และไม่มีเอกสาร run ค้าง |
+| T14.3 | restart api แล้ว nginx กลับมาเอง | PASS | กลับมา 200 ผ่าน nginx ภายใน ~10s โดยไม่แตะ nginx; ทั้ง 16 container healthy (รวม ollama) |
+| T14.4 | scale 10k | PASS | bench_10000 SUCCEEDED 86.3s (end-to-end 126s) เทียบค่าเดิม 66.2s = 1.3x (<2x), 10,000 แถว/กักกัน 630 ตรงค่าเดิม; หมายเหตุ F-24: สคริปต์มี UnicodeDecodeError (cp874) จากเธรดอ่าน output บนคอนโซลไทย ไม่กระทบผล; รันแล้วคืนไฟล์ที่ track (d-scale.json, bench_10000.json, schema_registry.json) ด้วย git checkout (t14-scale-10000*.{txt,json}) |
