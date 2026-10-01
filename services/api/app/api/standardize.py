@@ -228,5 +228,7 @@ def rollback_rules_config(_user: str = Depends(require_session)):
         os.remove(latest_backup)
         
         return {"message": "Rollback executed successfully.", "restored_from": os.path.basename(latest_backup)}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Rollback failed: {str(e)}")
