@@ -100,6 +100,30 @@ def stream_hdfs_file_raw(path: str):
         raise HTTPException(status_code=500, detail=f"HDFS stream exception: {str(e)}")
 
 
+def resolve_raw_csv_path(table_name: str) -> str:
+    """Newest raw landing of a table. /pipeline/ingest/* writes each ingestion to
+    /data/raw/<table>/<ingest_id>/<table>.csv; the scheduled n8n flows still write the
+    older /data/raw/<table>/<table>.csv. Whichever was written last is the raw layer."""
+    base = f"/data/raw/{table_name}"
+    url = f"http://namenode:9870/webhdfs/v1{base}?op=LISTSTATUS&user.name=spark"
+    try:
+        r = requests.get(url, timeout=5)
+    except requests.RequestException as e:
+        raise HTTPException(status_code=503, detail=f"HDFS namenode is unreachable: {e}")
+    entries = r.json().get("FileStatuses", {}).get("FileStatus", []) if r.status_code == 200 else []
+    landings = [
+        e for e in entries
+        if (e["type"] == "DIRECTORY" and not e["pathSuffix"].startswith(("_", ".")))
+        or e["pathSuffix"] == f"{table_name}.csv"
+    ]
+    if not landings:
+        raise HTTPException(status_code=404, detail=f"Raw dataset file not found for table '{table_name}'")
+    newest = max(landings, key=lambda e: e.get("modificationTime", 0))
+    if newest["type"] == "DIRECTORY":
+        return f"{base}/{newest['pathSuffix']}/{table_name}.csv"
+    return f"{base}/{table_name}.csv"
+
+
 def _with_partition_columns(df: pd.DataFrame, relative_path: str) -> pd.DataFrame:
     """Restore Hive-style partition values (e.g. run_id=...) that Spark keeps in folder names, not in the file."""
     for segment in unquote(relative_path).split("/")[:-1]:
@@ -420,21 +444,10 @@ def get_dataset_preview(layer: str, table_name: str):
     validate_table_name(table_name)
     try:
         if layer == "raw":
-            # Read first few lines of CSV
-            file_path = f"/data/raw/{table_name}/{table_name}.csv"
-            webhdfs_url = f"http://namenode:9870/webhdfs/v1{file_path}?op=OPEN&user.name=spark"
-            r = requests.get(webhdfs_url, allow_redirects=False, timeout=10)
-            if r.status_code == 307:
-                redirect_url = r.headers["Location"]
-                redirect_url = redirect_url.replace("localhost:", "datanode:").replace("127.0.0.1:", "datanode:")
-                r2 = requests.get(redirect_url, timeout=10)
-                if r2.status_code == 200:
-                    df = pd.read_csv(io.StringIO(r2.text), nrows=10)
-                    return {"columns": list(df.columns), "rows": df.to_dict(orient="records")}
-            elif r.status_code == 200:
-                df = pd.read_csv(io.StringIO(r.text), nrows=10)
-                return {"columns": list(df.columns), "rows": df.to_dict(orient="records")}
-            raise HTTPException(status_code=404, detail="Raw CSV file not found")
+            content = read_hdfs_file(resolve_raw_csv_path(table_name))
+            df = pd.read_csv(io.BytesIO(content), nrows=10)
+            # to_json turns blank cells (NaN) into null; a plain dict would fail to serialise.
+            return {"columns": list(df.columns), "rows": json.loads(df.to_json(orient="records"))}
             
         elif layer in ("active", "quarantine"):
             folder_path = f"/data/{layer}/{table_name}"
@@ -527,21 +540,9 @@ def search_dataset_records(layer: str, table_name: str, search: str = "", run_id
 
 @router.get("/raw/{table_name}")
 def export_raw_data(table_name: str):
-    """Download the raw CSV file directly from HDFS raw storage."""
+    """Download the newest raw CSV landing of a table from HDFS raw storage."""
     validate_table_name(table_name)
-    file_path = f"/data/raw/{table_name}/{table_name}.csv"
-    
-    # Fast check if file exists
-    check_url = f"http://namenode:9870/webhdfs/v1{file_path}?op=GETFILESTATUS&user.name=spark"
-    try:
-        r = requests.get(check_url, timeout=5)
-        if r.status_code != 200:
-            raise HTTPException(status_code=404, detail=f"Raw dataset file not found for table '{table_name}'")
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+    file_path = resolve_raw_csv_path(table_name)
     return StreamingResponse(
         stream_hdfs_file_raw(file_path),
         media_type="text/csv",
