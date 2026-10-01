@@ -68,3 +68,38 @@ def test_grafana_container_receives_the_alert_secret():
     compose = _read("docker-compose.yml")
     grafana = compose.split("\n  grafana:\n", 1)[1].split("\n  postgres:\n", 1)[0]
     assert "- ALERT_WEBHOOK_SECRET=${ALERT_WEBHOOK_SECRET}" in grafana
+
+
+def _json_bodies():
+    return [(n["name"], n["parameters"]["jsonBody"]) for n in _http_nodes()
+            if n["parameters"].get("specifyBody") == "json" and "jsonBody" in n["parameters"]]
+
+
+def test_every_n8n_json_body_is_valid_for_n8n_2():
+    # n8n 2.x: a body starting with "=" is an expression and must be written "={{ ... }}"; a bare
+    # "={ "k": $json.x }" is read as literal text and fails with "not valid JSON". Bodies without
+    # "=" must be plain valid JSON.
+    bad = []
+    for name, body in _json_bodies():
+        if body.startswith("="):
+            if not (body.startswith("={{") and body.rstrip().endswith("}}")):
+                bad.append(f"{name}: expression must be ={{{{ ... }}}}")
+        else:
+            try:
+                json.loads(body)
+            except ValueError:
+                bad.append(f"{name}: not valid JSON")
+    assert bad == []
+
+
+def test_json_body_expressions_still_send_the_fields_the_api_expects():
+    bodies = dict(_json_bodies())
+    for field in ("table_name", "url", "headers", "api_key"):
+        assert f"{field}: $json.{field}" in bodies["Relay Ingest API"]
+    for field in ("table_name", "db_type", "host", "port", "username", "password", "database", "query"):
+        assert f"{field}: $json.{field}" in bodies["Relay Ingest RDBMS"]
+    for name in ("Route Remediation Alert", "Route Quality Alert"):
+        for field in ("title", "message", "severity"):
+            assert f"{field}: $json.{field}" in bodies[name]
+    failure = bodies["Send Failure Alert"]
+    assert "n8n Ingestion Pipeline Failure" in failure and "critical" in failure and "execution?.error?.message" in failure

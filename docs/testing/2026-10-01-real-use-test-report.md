@@ -115,7 +115,7 @@
 | โมเดล `llama-3.3-70b-versatile` ไม่มีบน Groq แล้ว | ค่าเริ่มต้นเป็น `openai/gpt-oss-120b` ทั้งโค้ด UI, rules_config และ ES registry |
 | F-12: ลบตารางแล้วเหลือ `/data/archive` และ `sdoqap_runs` ทำให้ตารางที่ลบยัง preview ได้ และ ingest ไฟล์เดิมซ้ำไม่ได้ (duplicate) | การลบล้างทั้งสองที่ |
 
-## Findings (แก้แล้ว: F-1, R-2, F-5, F-10, F-11, F-2, F-14, F-20, F-3, F-4, F-8 นอกนั้นยังไม่ได้แก้)
+## Findings (แก้แล้ว: F-1, R-2, F-5, F-10, F-11, F-2, F-14, F-20, F-3, F-4, F-8, F-16 นอกนั้นยังไม่ได้แก้)
 
 ระดับ: **สูง** = ข้อมูลหาย/ผลผิด/ความปลอดภัย · **กลาง** = ฟีเจอร์ใช้ไม่ได้หรือแสดงผลผิด · **ต่ำ** = เล็กน้อย/เอกสาร
 
@@ -131,7 +131,7 @@
 | F-4 | กลาง · **แก้แล้ว** | T6.1 | หน้า Column Profiler ว่างทุกตาราง เพราะ index `sdoqap_dynamic_rules_log` ไม่เคยถูกสร้าง | t6-profiler-empty.txt |
 | F-11 | กลาง · **แก้แล้ว** | T9.4 | `/export/gold/<metric>` ตอบ 500 (ข้อความว่าง) แทน 404 เมื่อไม่มีข้อมูลในช่วงวัน เพราะ HTTPException ถูก `except Exception` กลืน | ผล T9.4 |
 | F-13 | กลาง | T10.4 | `/lineage/inspect/.../<node>` ตอบค่าประมาณ (ไฟล์/ขนาดคำนวณจากจำนวนแถว, ระบุ raw เป็น Parquet) และไม่มีตัวอย่างแถวใน raw/active | t10-inspect-node.txt |
-| F-16 | กลาง | T12.6 | n8n 2.27 ปฏิเสธ `jsonBody` ของ 5 node (Relay Ingest API/RDBMS, Send Failure Alert, Route Remediation/Quality Alert) ว่าไม่ใช่ JSON: ingest ผ่าน webhook และ alert จาก n8n ไม่ทำงาน (กำลังทำเป็นงานแยก) | T12.6 |
+| F-16 | กลาง · **แก้แล้ว** | T12.6 | n8n 2.27 ปฏิเสธ `jsonBody` ของ 5 node (Relay Ingest API/RDBMS, Send Failure Alert, Route Remediation/Quality Alert) ว่าไม่ใช่ JSON: ingest ผ่าน webhook และ alert จาก n8n ไม่ทำงาน (กำลังทำเป็นงานแยก) | T12.6 |
 | F-19 | กลาง | T13.3 | แท็บ Database/API/Stream ใน UI เป็นตัวเชื่อมจำลอง (ขึ้น 'โหมดสาธิต') เรียก ingest จริงจาก UI ไม่ได้ | t13-ui-notes.txt |
 | F-22 | กลาง | T13.7 | `/executive/overview` ส่ง missing/duplicate/invalid pct = 0.0 ทั้งที่กักกัน 169,385 แถว | t13-ui-notes.txt |
 | F-23 | กลาง | T13.7 | ตัวกรอง Time และ Business Area บน Dashboard ไม่เปลี่ยนตัวเลขใดๆ | t13-ui-notes.txt |
@@ -165,3 +165,4 @@
 - F-3: สตรีม Reddit อ่านจาก earliest เมื่อยังไม่มี checkpoint (ทดสอบ: Kafka 56 ข้อความ = Elasticsearch 56 เอกสาร และรอบสองต่อจากจุดเดิมไม่ซ้ำ) ผลข้างเคียงจากการทดสอบ: มี index `reddit` ใน Elasticsearch และไฟล์ Parquet ของ r/python ใน HDFS แล้ว (ข้อมูลโพสต์สาธารณะจริง)
 - F-4: Column Profiler อ่านจาก quality run ล่าสุด (engine เพิ่ม `null_profile` ในทุก run) ตารางที่ ingest ก่อนการแก้นี้จะมีเฉพาะช่วงค่า IQR จนกว่าจะ ingest/retry ใหม่
 - F-8: การบันทึกกฎ (PUT /rules, อนุมัติข้อเสนอ AI, มาตรฐานข้อมูล, ลบตาราง) อัปเดตเฉพาะตารางที่เปลี่ยนทั้งในไฟล์และ Elasticsearch (rollback ยังเขียนทั้งไฟล์) พบบั๊กซ่อนอยู่ด้วย: การลบตารางไม่เคยลบบล็อกออกจาก `rules_config.json` (ลบเอกสารใน ES ก่อนแล้วโหลดจาก ES จึงไม่เจอ) แก้แล้ว และ normalize ไฟล์ให้ตรงรูปแบบที่ API เขียน (ข้อมูลเหมือนเดิม)
+- F-16: 5 node ของ n8n ใช้ `={{ JSON.stringify({...}) }}` แล้ว พิสูจน์บนระบบจริง: webhook ingest จาก Postgres (500 แถว, T12.6 ผ่านแล้ว) และจาก REST API (11 แถว), alert คุณภาพจากรอบ 15 นาที และ alert ความล้มเหลวจาก error workflow ถึง API ด้วย 200 (node "Route Remediation Alert" ใช้ body เดียวกับ alert คุณภาพ ไม่ได้ทดสอบแยก) URL ของ webhook คือ `/webhook/1/webhooktrigger/ingest` ยังเหลือ: node "Query Sales Records" ล้มทุก 30 นาทีเพราะใน n8n ไม่มี credential Postgres (id c711aa48-...) ซึ่งต้องสร้างใน n8n เอง (ล้มมาก่อนการทดสอบนี้) และทำให้ alert ความล้มเหลวถูกส่งทุก 30 นาที

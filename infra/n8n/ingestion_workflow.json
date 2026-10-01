@@ -65,7 +65,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"table_name\": $json.table_name,\n  \"url\": $json.url,\n  \"headers\": $json.headers,\n  \"api_key\": $json.api_key\n}",
+        "jsonBody": "={{ JSON.stringify({ table_name: $json.table_name, url: $json.url, headers: $json.headers, api_key: $json.api_key }) }}",
         "options": {}
       },
       "id": "relay-ingest-api-node",
@@ -102,7 +102,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"table_name\": $json.table_name,\n  \"db_type\": $json.db_type,\n  \"host\": $json.host,\n  \"port\": $json.port,\n  \"username\": $json.username,\n  \"password\": $json.password,\n  \"database\": $json.database,\n  \"query\": $json.query\n}",
+        "jsonBody": "={{ JSON.stringify({ table_name: $json.table_name, db_type: $json.db_type, host: $json.host, port: $json.port, username: $json.username, password: $json.password, database: $json.database, query: $json.query }) }}",
         "options": {}
       },
       "id": "relay-ingest-rdbms-node",
@@ -419,7 +419,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"title\": \"n8n Ingestion Pipeline Failure\",\n  \"message\": \"Workflow execution failed in node: \" + ($json.execution?.error?.message || \"Unknown error\"),\n  \"severity\": \"critical\"\n}",
+        "jsonBody": "={{ JSON.stringify({ title: 'n8n Ingestion Pipeline Failure', message: 'Workflow execution failed in node: ' + ($json.execution?.error?.message || 'Unknown error'), severity: 'critical' }) }}",
         "options": {}
       },
       "id": "send-failure-alert-node",
@@ -497,7 +497,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"title\": $json.title,\n  \"message\": $json.message,\n  \"severity\": $json.severity\n}",
+        "jsonBody": "={{ JSON.stringify({ title: $json.title, message: $json.message, severity: $json.severity }) }}",
         "options": {}
       },
       "id": "route-remediation-alert-node",
@@ -575,7 +575,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"title\": $json.title,\n  \"message\": $json.message,\n  \"severity\": $json.severity\n}",
+        "jsonBody": "={{ JSON.stringify({ title: $json.title, message: $json.message, severity: $json.severity }) }}",
         "options": {}
       },
       "id": "route-quality-alert-node",
