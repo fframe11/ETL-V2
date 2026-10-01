@@ -115,21 +115,21 @@
 | โมเดล `llama-3.3-70b-versatile` ไม่มีบน Groq แล้ว | ค่าเริ่มต้นเป็น `openai/gpt-oss-120b` ทั้งโค้ด UI, rules_config และ ES registry |
 | F-12: ลบตารางแล้วเหลือ `/data/archive` และ `sdoqap_runs` ทำให้ตารางที่ลบยัง preview ได้ และ ingest ไฟล์เดิมซ้ำไม่ได้ (duplicate) | การลบล้างทั้งสองที่ |
 
-## Findings (ยังไม่ได้แก้)
+## Findings (F-1, R-2, F-5, F-10, F-11 แก้แล้วใน commit ถัดจากรายงานนี้ นอกนั้นยังไม่ได้แก้)
 
 ระดับ: **สูง** = ข้อมูลหาย/ผลผิด/ความปลอดภัย · **กลาง** = ฟีเจอร์ใช้ไม่ได้หรือแสดงผลผิด · **ต่ำ** = เล็กน้อย/เอกสาร
 
 | ID | ระดับ | พบที่ | รายละเอียด | หลักฐาน |
 |---|---|---|---|---|
-| F-1 | สูง (ความปลอดภัย) | T1.6 | `GET /api/v1/services/status` ไม่ต้อง login และคืน URL ของ Elasticsearch พร้อมรหัสผ่านฝังอยู่ | t1-status-credential-count.txt |
-| R-2 | สูง (ความปลอดภัย) | T1.2 | `GET /api/v1/whitebox/run-all` ไม่ต้อง login แต่รัน pipeline ทั้งชุดและเขียนไฟล์ผลลัพธ์ (ฝั่ง POST ต้อง login) | ผล T1.2 |
+| F-1 | สูง (ความปลอดภัย) · **แก้แล้ว** | T1.6 | `GET /api/v1/services/status` ไม่ต้อง login และคืน URL ของ Elasticsearch พร้อมรหัสผ่านฝังอยู่ | t1-status-credential-count.txt |
+| R-2 | สูง (ความปลอดภัย) · **แก้แล้ว** | T1.2 | `GET /api/v1/whitebox/run-all` ไม่ต้อง login แต่รัน pipeline ทั้งชุดและเขียนไฟล์ผลลัพธ์ (ฝั่ง POST ต้อง login) | ผล T1.2 |
 | F-2 | สูง (ข้อมูลหาย) | T2.3, T2.5 | engine เดา primary key เป็น `student_id` ทั้งที่คีย์จริงคือ `student_id+course+semester` แถว 1030 ถูก MERGE เหลือ 250 โดยไม่เตือน (Excel 200 -> 153) | t2-pk-collapse.txt |
-| F-5 | สูง (ผลผิด) | T6.2, T6.3 | trust-check อ่านเกณฑ์จาก `/spark/rules_config.json` ซึ่งไม่มีใน container จึงใช้ 90.0 เสมอ ตอบ "ปลอดภัย" ทั้งที่เกณฑ์รายตารางที่ engine ใช้จริงคือ 97 | t6-trustcheck-threshold.txt |
+| F-5 | สูง (ผลผิด) · **แก้แล้ว** | T6.2, T6.3 | trust-check อ่านเกณฑ์จาก `/spark/rules_config.json` ซึ่งไม่มีใน container จึงใช้ 90.0 เสมอ ตอบ "ปลอดภัย" ทั้งที่เกณฑ์รายตารางที่ engine ใช้จริงคือ 97 | t6-trustcheck-threshold.txt |
 | F-20 | สูง (ข้อมูลหาย) | T13.3 | UI อัปโหลดไฟล์เข้า `/whitebox/upload-csv` เท่านั้น ไม่มี Spark run และไฟล์ที่มีคอลัมน์นักศึกษาจะเขียนทับ `dirty_dataset.csv` (ชุดประเมินที่ใช้เป็นเกณฑ์) 10,100 -> 13 แถว | t13-ui-upload-effects.txt |
-| F-10 | สูง | T9.1 | preview ของ layer `quarantine` ตอบ 500 (`Out of range float values are not JSON compliant`) เมื่อมี NaN ในแถวที่ถูกกักกัน ซึ่งเป็นกรณีปกติ | t9-quarantine-preview-500.txt |
+| F-10 | สูง · **แก้แล้ว** | T9.1 | preview ของ layer `quarantine` ตอบ 500 (`Out of range float values are not JSON compliant`) เมื่อมี NaN ในแถวที่ถูกกักกัน ซึ่งเป็นกรณีปกติ | t9-quarantine-preview-500.txt |
 | F-3 | กลาง | T5.2, T5.3 | สตรีม Reddit: Kafka ได้ข้อมูลแต่ Spark เริ่มที่ latest offset หลัง producer ส่งชุดแรกแล้ว จึงไม่มี Parquet และ export/reddit เป็น 404 | t5-reddit-stream.txt |
 | F-4 | กลาง | T6.1 | หน้า Column Profiler ว่างทุกตาราง เพราะ index `sdoqap_dynamic_rules_log` ไม่เคยถูกสร้าง | t6-profiler-empty.txt |
-| F-11 | กลาง | T9.4 | `/export/gold/<metric>` ตอบ 500 (ข้อความว่าง) แทน 404 เมื่อไม่มีข้อมูลในช่วงวัน เพราะ HTTPException ถูก `except Exception` กลืน | ผล T9.4 |
+| F-11 | กลาง · **แก้แล้ว** | T9.4 | `/export/gold/<metric>` ตอบ 500 (ข้อความว่าง) แทน 404 เมื่อไม่มีข้อมูลในช่วงวัน เพราะ HTTPException ถูก `except Exception` กลืน | ผล T9.4 |
 | F-13 | กลาง | T10.4 | `/lineage/inspect/.../<node>` ตอบค่าประมาณ (ไฟล์/ขนาดคำนวณจากจำนวนแถว, ระบุ raw เป็น Parquet) และไม่มีตัวอย่างแถวใน raw/active | t10-inspect-node.txt |
 | F-16 | กลาง | T12.6 | n8n 2.27 ปฏิเสธ `jsonBody` ของ 5 node (Relay Ingest API/RDBMS, Send Failure Alert, Route Remediation/Quality Alert) ว่าไม่ใช่ JSON: ingest ผ่าน webhook และ alert จาก n8n ไม่ทำงาน (กำลังทำเป็นงานแยก) | T12.6 |
 | F-19 | กลาง | T13.3 | แท็บ Database/API/Stream ใน UI เป็นตัวเชื่อมจำลอง (ขึ้น 'โหมดสาธิต') เรียก ingest จริงจาก UI ไม่ได้ | t13-ui-notes.txt |

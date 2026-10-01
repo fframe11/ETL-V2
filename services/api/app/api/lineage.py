@@ -8,6 +8,7 @@ router = APIRouter(
 )
 
 from .config import get_elasticsearch_url, get_es_client
+from .dynamic_rules import _load_rules_config
 
 @router.get("/{table_name}")
 def get_table_lineage(table_name: str):
@@ -308,6 +309,34 @@ def get_node_inspection(table_name: str, node_id: str):
 
 
 # ─── FIX 3B: Pull-Based Lineage Export API (Trust-Check) ──────────────────────
+DEFAULT_QUALITY_THRESHOLD = 90.0
+
+
+def _threshold_value(entry):
+    """quality_score_threshold is a flat number or {"mode": ..., "base_value": ...}."""
+    if isinstance(entry, dict):
+        entry = entry.get("base_value")
+    return float(entry) if isinstance(entry, (int, float)) and not isinstance(entry, bool) else None
+
+
+def _configured_threshold(table_name: str) -> float:
+    """Threshold from the rules registry (Elasticsearch, falling back to rules_config.json):
+    the table override on top of _default, then 90.0 when nothing is configured."""
+    try:
+        rules = _load_rules_config()
+    except Exception as e:
+        print(f"[TRUST CHECK] Error loading rules: {e}")
+        return DEFAULT_QUALITY_THRESHOLD
+    table = rules.get(table_name, {}).get("quality_score_threshold")
+    default = rules.get("_default", {}).get("quality_score_threshold")
+    if isinstance(table, dict) and isinstance(default, dict):
+        table = {**default, **table}
+    value = _threshold_value(table)
+    if value is None:
+        value = _threshold_value(default)
+    return DEFAULT_QUALITY_THRESHOLD if value is None else value
+
+
 @router.get("/{table_name}/trust-check")
 def get_table_trust_check(table_name: str):
     """
@@ -317,22 +346,6 @@ def get_table_trust_check(table_name: str):
     es = get_es_client()
     import json
     
-    # 1. Load rules config to check quality threshold
-    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "spark", "rules_config.json")
-    quality_threshold = 90.0
-    if os.path.exists(config_path):
-        try:
-            with open(config_path, "r") as f:
-                rules = json.load(f)
-            table_rules = rules.get(table_name, {})
-            raw_threshold = table_rules.get("quality_score_threshold", rules.get("_default", {}).get("quality_score_threshold", 90.0))
-            # Root Cause Fix: quality_score_threshold is a nested dict in the current
-            # rules_config.json format ({"mode": ..., "base_value": ...}), not a flat
-            # number — comparing quality_score >= a dict below would raise TypeError.
-            quality_threshold = raw_threshold.get("base_value", 90.0) if isinstance(raw_threshold, dict) else raw_threshold
-        except Exception as e:
-            print(f"[TRUST CHECK] Error loading rules_config.json: {e}")
-
     # 2. Query Elasticsearch for the latest quality run of the table
     latest_run = None
     if es.indices.exists(index="sdoqap_quality_runs"):
@@ -358,6 +371,12 @@ def get_table_trust_check(table_name: str):
             "reason": "No quality runs found for this table.",
             "recommendation": "HALT_INGEST"
         }
+
+    # The engine records the threshold it applied on every run; that is what the score was
+    # judged against. Without it (older runs) use the table's configured threshold.
+    quality_threshold = _threshold_value(latest_run.get("effective_quality_threshold"))
+    if quality_threshold is None:
+        quality_threshold = _configured_threshold(table_name)
 
     # 3. Query Elasticsearch for any PENDING schema proposals for this table
     pending_proposals_count = 0

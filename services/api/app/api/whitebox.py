@@ -1126,7 +1126,8 @@ def execute_multi_table_join(payload: MultiTableJoinPayload):
 # ---------------------------------------------------------------------------
 # 7. One-Click Full Pipeline Orchestrator (Auto-Ready / Instant Demo Mode)
 # ---------------------------------------------------------------------------
-@router.get("/run-all")
+# Runs the whole pipeline and writes the output files, so GET needs a session too.
+@router.get("/run-all", dependencies=[Depends(require_session)])
 @router.post("/run-all", dependencies=[Depends(require_session)])
 def run_all_stages():
     """

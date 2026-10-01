@@ -54,12 +54,11 @@ def get_services_status():
                 continue
         return "offline"
 
-    es_user = os.getenv("ELASTICSEARCH_USER", "elastic")
-    es_pass = os.getenv("ELASTICSEARCH_PASSWORD", "sdoqap_secure")
+    # This endpoint is public (the login page footer reads it): links must never embed credentials.
     services = {
         "HDFS Namenode": {"host": "namenode", "port": 9870, "url": "http://localhost:9870"},
         "HDFS Datanode": {"host": "datanode", "port": 9864, "url": None},
-        "Elasticsearch": {"host": "elasticsearch", "port": 9200, "url": f"http://{es_user}:{es_pass}@localhost:9200"},
+        "Elasticsearch": {"host": "elasticsearch", "port": 9200, "url": f"http://localhost:{os.getenv('ES_HOST_PORT', '9200')}"},
         "Kibana": {"host": "kibana", "port": 5601, "url": "http://localhost:5601"},
         "Grafana": {"host": "grafana", "port": 3000, "url": "http://localhost:3002"},
         "n8n Orchestrator": {"host": "n8n", "port": 5678, "url": "http://localhost:5678"},

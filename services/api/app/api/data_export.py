@@ -443,6 +443,12 @@ def delete_table(table_name: str, _user: str = Depends(require_session)):
     }
 
 
+def _records_json_safe(df: pd.DataFrame) -> list:
+    """Rows as plain JSON values: NaN/Infinity/NaT become null and timestamps ISO strings.
+    to_dict(orient="records") keeps NaN, which makes the response invalid JSON (HTTP 500)."""
+    return json.loads(df.to_json(orient="records", date_format="iso"))
+
+
 @router.get("/preview/{layer}/{table_name}")
 def get_dataset_preview(layer: str, table_name: str):
     """Get a 10-row JSON preview of the dataset from HDFS raw, active, or quarantine layers."""
@@ -451,15 +457,14 @@ def get_dataset_preview(layer: str, table_name: str):
         if layer == "raw":
             content = read_hdfs_file(resolve_raw_csv_path(table_name))
             df = pd.read_csv(io.BytesIO(content), nrows=10)
-            # to_json turns blank cells (NaN) into null; a plain dict would fail to serialise.
-            return {"columns": list(df.columns), "rows": json.loads(df.to_json(orient="records"))}
+            return {"columns": list(df.columns), "rows": _records_json_safe(df)}
             
         elif layer in ("active", "quarantine"):
             folder_path = f"/data/{layer}/{table_name}"
             try:
                 df = read_parquet_folder_to_df(folder_path)
                 preview_df = df.head(10)
-                return {"columns": list(preview_df.columns), "rows": preview_df.to_dict(orient="records")}
+                return {"columns": list(preview_df.columns), "rows": _records_json_safe(preview_df)}
             except HTTPException as he:
                 if he.status_code == 404:
                     cols = load_registered_schema_columns(table_name)
@@ -472,7 +477,7 @@ def get_dataset_preview(layer: str, table_name: str):
             df = read_parquet_folder_to_df(folder_path)
             df["subreddit"] = table_name
             preview_df = df.head(10)
-            return {"columns": list(preview_df.columns), "rows": preview_df.to_dict(orient="records")}
+            return {"columns": list(preview_df.columns), "rows": _records_json_safe(preview_df)}
             
         else:
             raise HTTPException(status_code=400, detail="Invalid layer name")
@@ -673,5 +678,7 @@ def export_gold_metric(metric: str, days: int = 14):
             media_type="text/csv",
             headers={"Content-Disposition": f"attachment; filename=gold_{metric}_{days}d.csv"}
         )
+    except HTTPException:
+        raise  # e.g. the 404 above: not an Elasticsearch failure
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Elasticsearch metrics export error: {str(e)}")
