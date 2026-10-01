@@ -100,28 +100,31 @@ def stream_hdfs_file_raw(path: str):
         raise HTTPException(status_code=500, detail=f"HDFS stream exception: {str(e)}")
 
 
-def resolve_raw_csv_path(table_name: str) -> str:
-    """Newest raw landing of a table. /pipeline/ingest/* writes each ingestion to
-    /data/raw/<table>/<ingest_id>/<table>.csv; the scheduled n8n flows still write the
-    older /data/raw/<table>/<table>.csv. Whichever was written last is the raw layer."""
-    base = f"/data/raw/{table_name}"
-    url = f"http://namenode:9870/webhdfs/v1{base}?op=LISTSTATUS&user.name=spark"
+def _list_hdfs_dir(path: str):
+    """Entries of an HDFS folder via WebHDFS; [] when the folder does not exist."""
+    url = f"http://namenode:9870/webhdfs/v1{path}?op=LISTSTATUS&user.name=spark"
     try:
         r = requests.get(url, timeout=5)
     except requests.RequestException as e:
         raise HTTPException(status_code=503, detail=f"HDFS namenode is unreachable: {e}")
-    entries = r.json().get("FileStatuses", {}).get("FileStatus", []) if r.status_code == 200 else []
-    landings = [
-        e for e in entries
-        if (e["type"] == "DIRECTORY" and not e["pathSuffix"].startswith(("_", ".")))
-        or e["pathSuffix"] == f"{table_name}.csv"
-    ]
+    return r.json().get("FileStatuses", {}).get("FileStatus", []) if r.status_code == 200 else []
+
+
+def resolve_raw_csv_path(table_name: str) -> str:
+    """Newest raw landing of a table. /pipeline/ingest/* writes each ingestion to
+    /data/raw/<table>/<ingest_id>/<table>.csv and, once the quality run succeeds, the engine
+    moves that folder to /data/archive/<table>/<ingest_id>/. The scheduled n8n flows still
+    write the older /data/raw/<table>/<table>.csv. Whichever was written last is the raw layer."""
+    landings = []
+    for base in (f"/data/raw/{table_name}", f"/data/archive/{table_name}"):
+        for e in _list_hdfs_dir(base):
+            if e["type"] == "DIRECTORY" and not e["pathSuffix"].startswith(("_", ".")):
+                landings.append((e.get("modificationTime", 0), f"{base}/{e['pathSuffix']}/{table_name}.csv"))
+            elif base.startswith("/data/raw/") and e["pathSuffix"] == f"{table_name}.csv":
+                landings.append((e.get("modificationTime", 0), f"{base}/{table_name}.csv"))
     if not landings:
         raise HTTPException(status_code=404, detail=f"Raw dataset file not found for table '{table_name}'")
-    newest = max(landings, key=lambda e: e.get("modificationTime", 0))
-    if newest["type"] == "DIRECTORY":
-        return f"{base}/{newest['pathSuffix']}/{table_name}.csv"
-    return f"{base}/{table_name}.csv"
+    return max(landings)[1]
 
 
 def _with_partition_columns(df: pd.DataFrame, relative_path: str) -> pd.DataFrame:

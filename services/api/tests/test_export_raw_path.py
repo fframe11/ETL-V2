@@ -27,12 +27,17 @@ def listing(*entries):
     ]}})
 
 
-def hdfs_lists(monkeypatch, response):
-    monkeypatch.setattr(data_export.requests, "get", lambda url, **kwargs: response)
+def hdfs_lists(monkeypatch, raw=None, archive=None):
+    """WebHDFS answers per folder: /data/raw/<t> and /data/archive/<t>; missing means 404."""
+    def get(url, **kwargs):
+        if "/data/archive/" in url:
+            return archive or FakeResponse(404)
+        return raw or FakeResponse(404)
+    monkeypatch.setattr(data_export.requests, "get", get)
 
 
 def test_newest_ingest_folder_wins(monkeypatch):
-    hdfs_lists(monkeypatch, listing(
+    hdfs_lists(monkeypatch, raw=listing(
         ("20261001T010000-aaaaaaaa", "DIRECTORY", 100),
         ("20261001T020000-bbbbbbbb", "DIRECTORY", 200),
     ))
@@ -40,7 +45,7 @@ def test_newest_ingest_folder_wins(monkeypatch):
 
 
 def test_legacy_file_is_used_when_it_was_written_last(monkeypatch):
-    hdfs_lists(monkeypatch, listing(
+    hdfs_lists(monkeypatch, raw=listing(
         ("20261001T010000-aaaaaaaa", "DIRECTORY", 100),
         ("scores.csv", "FILE", 300),
     ))
@@ -48,12 +53,30 @@ def test_legacy_file_is_used_when_it_was_written_last(monkeypatch):
 
 
 def test_table_written_only_by_the_scheduled_flows_still_resolves(monkeypatch):
-    hdfs_lists(monkeypatch, listing(("gov_data.csv", "FILE", 5), ("_SUCCESS", "FILE", 9)))
+    hdfs_lists(monkeypatch, raw=listing(("gov_data.csv", "FILE", 5), ("_SUCCESS", "FILE", 9)))
     assert data_export.resolve_raw_csv_path("gov_data") == "/data/raw/gov_data/gov_data.csv"
 
 
+def test_finished_run_is_read_from_the_archive_the_engine_moved_it_to(monkeypatch):
+    # After a successful run the quality engine renames /data/raw/<t>/<id> to /data/archive/<t>/<id>.
+    hdfs_lists(monkeypatch, archive=listing(
+        ("20261001T010000-aaaaaaaa", "DIRECTORY", 100),
+        ("20261001T020000-bbbbbbbb", "DIRECTORY", 200),
+    ))
+    assert data_export.resolve_raw_csv_path("scores") == "/data/archive/scores/20261001T020000-bbbbbbbb/scores.csv"
+
+
+def test_an_in_flight_landing_beats_an_older_archived_one(monkeypatch):
+    hdfs_lists(
+        monkeypatch,
+        raw=listing(("20261001T030000-cccccccc", "DIRECTORY", 300)),
+        archive=listing(("20261001T020000-bbbbbbbb", "DIRECTORY", 200)),
+    )
+    assert data_export.resolve_raw_csv_path("scores") == "/data/raw/scores/20261001T030000-cccccccc/scores.csv"
+
+
 def test_unknown_table_is_404(monkeypatch):
-    hdfs_lists(monkeypatch, FakeResponse(404))
+    hdfs_lists(monkeypatch)
     with pytest.raises(HTTPException) as err:
         data_export.resolve_raw_csv_path("nope")
     assert err.value.status_code == 404
