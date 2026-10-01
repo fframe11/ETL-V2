@@ -115,7 +115,7 @@
 | โมเดล `llama-3.3-70b-versatile` ไม่มีบน Groq แล้ว | ค่าเริ่มต้นเป็น `openai/gpt-oss-120b` ทั้งโค้ด UI, rules_config และ ES registry |
 | F-12: ลบตารางแล้วเหลือ `/data/archive` และ `sdoqap_runs` ทำให้ตารางที่ลบยัง preview ได้ และ ingest ไฟล์เดิมซ้ำไม่ได้ (duplicate) | การลบล้างทั้งสองที่ |
 
-## Findings (แก้แล้ว: F-1, R-2, F-5, F-10, F-11, F-2, F-14, F-20, F-3, F-4 นอกนั้นยังไม่ได้แก้)
+## Findings (แก้แล้ว: F-1, R-2, F-5, F-10, F-11, F-2, F-14, F-20, F-3, F-4, F-8 นอกนั้นยังไม่ได้แก้)
 
 ระดับ: **สูง** = ข้อมูลหาย/ผลผิด/ความปลอดภัย · **กลาง** = ฟีเจอร์ใช้ไม่ได้หรือแสดงผลผิด · **ต่ำ** = เล็กน้อย/เอกสาร
 
@@ -135,7 +135,7 @@
 | F-19 | กลาง | T13.3 | แท็บ Database/API/Stream ใน UI เป็นตัวเชื่อมจำลอง (ขึ้น 'โหมดสาธิต') เรียก ingest จริงจาก UI ไม่ได้ | t13-ui-notes.txt |
 | F-22 | กลาง | T13.7 | `/executive/overview` ส่ง missing/duplicate/invalid pct = 0.0 ทั้งที่กักกัน 169,385 แถว | t13-ui-notes.txt |
 | F-23 | กลาง | T13.7 | ตัวกรอง Time และ Business Area บน Dashboard ไม่เปลี่ยนตัวเลขใดๆ | t13-ui-notes.txt |
-| F-8 | กลาง | T6 | `PUT /rules/<table>` และการลบตารางเขียน `rules_config.json` ใหม่ทั้งไฟล์จาก ES registry: คอมเมนต์หาย, ค่าที่แก้ในไฟล์ย้อนกลับ, ตารางอื่นโผล่เพิ่ม (ไฟล์กับ ES เป็นสองแหล่งความจริงที่ไม่ตรงกัน) | ผล T6 |
+| F-8 | กลาง · **แก้แล้ว** | T6 | `PUT /rules/<table>` และการลบตารางเขียน `rules_config.json` ใหม่ทั้งไฟล์จาก ES registry: คอมเมนต์หาย, ค่าที่แก้ในไฟล์ย้อนกลับ, ตารางอื่นโผล่เพิ่ม (ไฟล์กับ ES เป็นสองแหล่งความจริงที่ไม่ตรงกัน) | ผล T6 |
 | F-14 | กลาง · **แก้แล้ว** | T11.5 | `/whitebox/benchmark` ตอบ `status: PASSED` ทั้งที่ recall ของ Missing Score เหลือ 3.33% เมื่อชุดข้อมูลที่โหลดไม่ใช่ชุดที่ตรงกับ ground truth | ผล T11.5 |
 | F-6 | กลาง | T6.4 | `POST /rules/ai-proposals/reset` ('Generate') ไม่เรียก LLM คืนข้อเสนอตัวอย่างที่เขียนตายตัวในโค้ด (`is_example: true`) ส่วน advisor จริงไม่เคยสร้าง index `sdoqap_ai_rule_proposals` | ผล T6.4 |
 | F-7 | ต่ำ | T6.4 | approve ข้อเสนอตัวอย่างตอบ "approved and merged" แต่ไม่ได้ merge อะไร | ผล T6.4 |
@@ -164,3 +164,4 @@
 - หลังอัปโหลดไฟล์จากหน้า Ingestion เอนจิน Audit Trail จะทำงานกับไฟล์นั้นต่อ (บันทึกข้ามการรีสตาร์ท) ถ้าต้องการกลับไปชุดประเมิน ใช้ `POST /api/v1/whitebox/state` ด้วย `{"dataset_source":"evaluation"}` (ยังไม่มีปุ่มบนหน้าจอ)
 - F-3: สตรีม Reddit อ่านจาก earliest เมื่อยังไม่มี checkpoint (ทดสอบ: Kafka 56 ข้อความ = Elasticsearch 56 เอกสาร และรอบสองต่อจากจุดเดิมไม่ซ้ำ) ผลข้างเคียงจากการทดสอบ: มี index `reddit` ใน Elasticsearch และไฟล์ Parquet ของ r/python ใน HDFS แล้ว (ข้อมูลโพสต์สาธารณะจริง)
 - F-4: Column Profiler อ่านจาก quality run ล่าสุด (engine เพิ่ม `null_profile` ในทุก run) ตารางที่ ingest ก่อนการแก้นี้จะมีเฉพาะช่วงค่า IQR จนกว่าจะ ingest/retry ใหม่
+- F-8: การบันทึกกฎ (PUT /rules, อนุมัติข้อเสนอ AI, มาตรฐานข้อมูล, ลบตาราง) อัปเดตเฉพาะตารางที่เปลี่ยนทั้งในไฟล์และ Elasticsearch (rollback ยังเขียนทั้งไฟล์) พบบั๊กซ่อนอยู่ด้วย: การลบตารางไม่เคยลบบล็อกออกจาก `rules_config.json` (ลบเอกสารใน ES ก่อนแล้วโหลดจาก ES จึงไม่เจอ) แก้แล้ว และ normalize ไฟล์ให้ตรงรูปแบบที่ API เขียน (ข้อมูลเหมือนเดิม)

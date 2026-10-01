@@ -94,8 +94,14 @@ def _load_rules_config() -> dict:
         return {}
 
 
-def _save_rules_config(config: dict) -> None:
-    """Atomically write *config* back to rules_config.json with file locking and sync to Elasticsearch sdoqap_rules_registry."""
+def _save_rules_config(config: dict, tables=None) -> None:
+    """Write rules to rules_config.json (atomic, file-locked, versioned backup) and sync them to
+    the Elasticsearch registry that the API and the engine read.
+
+    *config* is the full registry view. Pass the names of the tables that actually changed in
+    *tables*: only those are updated in the file (every other table, the _comment and any
+    hand edit stay as they are) and in Elasticsearch. Without *tables* (rollback) the whole
+    config replaces the file."""
     path = None
     try:
         import time
@@ -135,8 +141,22 @@ def _save_rules_config(config: dict) -> None:
                 except Exception as backup_err:
                     logger.warning("Failed to create versioned rules backup: %s", backup_err)
 
+            to_write = config
+            if tables is not None:
+                try:
+                    with open(path, "r", encoding="utf-8") as fh:
+                        on_disk = json.load(fh)
+                    if isinstance(on_disk, dict):
+                        for name in tables:
+                            if name in config:
+                                on_disk[name] = config[name]
+                            else:
+                                on_disk.pop(name, None)
+                        to_write = on_disk
+                except (OSError, ValueError) as read_err:
+                    logger.warning("Could not merge into the existing rules file (%s); writing the full config.", read_err)
             with open(path, "w", encoding="utf-8") as fh:
-                json.dump(config, fh, indent=2, ensure_ascii=False)
+                json.dump(to_write, fh, indent=2, ensure_ascii=False)
                 fh.write("\n")
         finally:
             if acquired:
@@ -153,7 +173,8 @@ def _save_rules_config(config: dict) -> None:
         if not es.indices.exists(index="sdoqap_rules_registry"):
             es.indices.create(index="sdoqap_rules_registry")
             
-        for table_name, table_rules in config.items():
+        to_sync = config.items() if tables is None else [(n, config[n]) for n in tables if n in config]
+        for table_name, table_rules in to_sync:
             if table_name == "_comment":
                 continue
             es.index(index="sdoqap_rules_registry", id=table_name, document=table_rules)
@@ -541,7 +562,7 @@ def approve_proposal(proposal_id: str, _user: str = Depends(require_session)) ->
                     promoted_count += 1
 
             if promoted_count > 0:
-                _save_rules_config(config)
+                _save_rules_config(config, tables=[target_table])
                 logger.info(
                     "AI proposal '%s' approved — successfully merged %d rules for table '%s'.",
                     proposal_id,
@@ -714,7 +735,7 @@ def update_rules_for_table(table_name: str, body: Dict[str, Any], user: str = De
     existing.update(body)
     config[table_name] = existing
 
-    _save_rules_config(config)
+    _save_rules_config(config, tables=[table_name])
 
     logger.info("Rules updated for table '%s' by '%s': %s", table_name, user, body)
 

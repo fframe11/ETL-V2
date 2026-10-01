@@ -415,10 +415,11 @@ def delete_table(table_name: str, _user: str = Depends(require_session)):
         from .dynamic_rules import _resolve_rules_path, _load_rules_config, _save_rules_config
         rules_path = _resolve_rules_path()
         if os.path.exists(rules_path):
+            # The registry doc was deleted above, so the loaded config may no longer contain
+            # the table; the file's copy is removed regardless.
             config = _load_rules_config()
-            if table_name in config:
-                del config[table_name]
-                _save_rules_config(config)
+            config.pop(table_name, None)
+            _save_rules_config(config, tables=[table_name])
     except Exception as e:
         print(f"[DELETE TABLE] Failed to remove table from rules_config.json: {e}")
         

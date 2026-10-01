@@ -62,7 +62,7 @@ def _update_memory_registry(table_name: str, col_name: str, raw_val: str, approv
         norm_key = str(raw_val).lower().strip()
         categories[norm_key] = approved_cat
         
-        _save_rules_config(config)
+        _save_rules_config(config, tables=[table_name])
         print(f"[API GOVERNANCE] Updated memory mapping for {table_name}.{col_name}: '{norm_key}' -> '{approved_cat}'")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update rules configuration: {str(e)}")

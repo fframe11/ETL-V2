@@ -53,3 +53,23 @@ def test_the_run_registry_is_cleared_so_the_same_file_can_be_ingested_again(monk
     # file "duplicate" of data that no longer exists.
     _, es, _ = delete(monkeypatch)
     assert ("sdoqap_runs", {"table_name.keyword": "scores"}) in es.cleaned
+
+
+def test_the_table_block_is_removed_from_rules_config_json_even_though_the_registry_doc_is_gone(tmp_path, monkeypatch):
+    # delete_table removes the Elasticsearch registry doc first, so the rules loaded afterwards no
+    # longer contain the table; the file must be cleaned anyway.
+    import json
+
+    rules_file = tmp_path / "rules_config.json"
+    rules_file.write_text(json.dumps({"_comment": "keep", "scores": {"x": 1}, "other": {"y": 2}}), encoding="utf-8")
+    es = RecordingES()
+    es.create = lambda index: None
+    es.index = lambda index, id, document: None
+    monkeypatch.setattr(data_export, "get_es", lambda: es)
+    monkeypatch.setattr(data_export.requests, "delete", lambda url, **kw: Response())
+    monkeypatch.setattr(dynamic_rules, "_resolve_rules_path", lambda: str(rules_file))
+    monkeypatch.setattr(dynamic_rules, "_get_es", lambda: es)
+    monkeypatch.setattr(dynamic_rules, "_load_rules_config", lambda: {"other": {"y": 2}})  # registry without "scores"
+    monkeypatch.setattr(schema, "SCHEMA_REGISTRY_PATH", "/nonexistent/schema_registry.json")
+    data_export.delete_table("scores", _user="test")
+    assert json.loads(rules_file.read_text(encoding="utf-8")) == {"_comment": "keep", "other": {"y": 2}}
