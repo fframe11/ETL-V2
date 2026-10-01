@@ -42,6 +42,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from run_support import EXIT_SKIPPED, Heartbeat, archive_paths, raw_read_path, should_optimize
 from sdoqap.common.names import clean_column_name, normalize_name
+from sdoqap.common.keys import infer_primary_key
 from sdoqap.common.es import es_base_and_auth
 from sdoqap.semantic.similarity import char_ngrams, hybrid_similarity, ngram_cosine
 from sdoqap.common.ship import ship_package
@@ -1889,20 +1890,10 @@ if __name__ == "__main__":
 
             columns = list(schema_spec.keys())
 
-            # 1. Infer Primary Key
-            primary_key = None
-            # Look for exact match first
-            for col in columns:
-                if col.lower() == "id" or col.lower() == f"{target_table}_id" or col.lower() == f"{target_table}id":
-                    primary_key = col
-                    break
-            # Look for sub-string match
-            if not primary_key:
-                for col in columns:
-                    if "id" in col.lower():
-                        primary_key = col
-                        break
-            # Default to row_hash if no natural ID found
+            # 1. Infer Primary Key: an id-like column (or id + text/date columns) that is
+            # actually (almost) unique in the data; a name alone collapsed rows before.
+            primary_key = infer_primary_key(df_infer, target_table)
+            # Default to row_hash if no unique key was found
             if not primary_key:
                 primary_key = "row_hash"
                 schema_spec["row_hash"] = "StringType"
