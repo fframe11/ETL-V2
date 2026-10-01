@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from sdoqap.common.profile import null_profile
 from sdoqap.pipeline.registry import stage
 
 
@@ -39,6 +40,8 @@ def build_quality_run_doc(ctx, finished_at):
     doc["effective_freshness_threshold"] = ctx.freshness_limit_hours
     if ctx.value_range_profile:
         doc["value_range_profile"] = ctx.value_range_profile
+    if ctx.null_profile:
+        doc["null_profile"] = ctx.null_profile
     # Inject tracked fallback rate metrics
     fallback = ctx.pop_fallback_metrics()
     if fallback:
@@ -49,6 +52,10 @@ def build_quality_run_doc(ctx, finished_at):
 @stage("report", "บันทึกผลลง Elasticsearch", "post_load")
 def report(ctx):
     now = datetime.now(timezone.utc)
+    try:
+        ctx.null_profile = null_profile(ctx.df, ctx.pk_cols, ctx.rules)
+    except Exception as exc:  # the profile is informational; never fail a finished run over it
+        print(f"[PROFILE] Null profile skipped: {exc}")
     doc = build_quality_run_doc(ctx, finished_at=now)
     ctx.log_es("sdoqap_quality_runs", doc)
     ctx.log_es("sdoqap_lineage_runs", {

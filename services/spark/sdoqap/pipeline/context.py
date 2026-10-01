@@ -43,6 +43,7 @@ class RunContext:
     drift_detected: bool = False
     drift_details: dict = field(default_factory=dict)
     value_range_profile: dict = field(default_factory=dict)
+    null_profile: dict = field(default_factory=dict)
     remediation_logs: list = field(default_factory=list)
     auto_clean: bool = True
     clean_count: int = 0

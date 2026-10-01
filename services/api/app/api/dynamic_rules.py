@@ -204,14 +204,50 @@ def _get_es() -> Elasticsearch:
 #  COLUMN PROFILES (from Dynamic Rules Engine logs)
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _latest_run_profile(es, table_name: str):
+    """Profile stored on the table's newest quality run (null rates and IQR bounds per
+    column, written by the Spark report stage), shaped the way the Rules page reads it."""
+    try:
+        if not es.indices.exists(index="sdoqap_quality_runs"):
+            return None
+        res = es.search(
+            index="sdoqap_quality_runs",
+            body={
+                "query": {"term": {"table_name.keyword": {"value": table_name, "case_insensitive": True}}},
+                "sort": [{"timestamp": {"order": "desc"}}],
+                "size": 1,
+            },
+        )
+        hits = res.get("hits", {}).get("hits", [])
+    except Exception as exc:
+        logger.warning("Could not read the latest quality run for %s: %s", table_name, exc)
+        return None
+    run = hits[0]["_source"] if hits else None
+    if not run or not (run.get("null_profile") or run.get("value_range_profile")):
+        return None
+    result = {
+        "table": table_name,
+        "run_id": run.get("run_id"),
+        "timestamp": run.get("timestamp"),
+        "source": "sdoqap_quality_runs",
+    }
+    if run.get("null_profile"):
+        result["null_profile"] = run["null_profile"]
+    if run.get("value_range_profile"):
+        result["value_ranges"] = run["value_range_profile"]
+    return result
+
+
 @router.get("/profiles/{table_name}", summary="Get column profiles for a table")
 def get_column_profiles(table_name: str) -> dict:
-    """Query Elasticsearch for the latest dynamic-rule computation for
-    ``table_name`` and return the null-rate and value-range profiles.
-
-    Source index: ``sdoqap_dynamic_rules_log``
-    """
+    """Null-rate and value-range profile of ``table_name``: from its newest quality run
+    (``sdoqap_quality_runs``), else from the latest dynamic-rule computation
+    (``sdoqap_dynamic_rules_log``)."""
     es = _get_es()
+
+    from_run = _latest_run_profile(es, table_name)
+    if from_run:
+        return from_run
 
     if not es.indices.exists(index=ES_INDEX_DYNAMIC_RULES_LOG):
         return {

@@ -115,7 +115,7 @@
 | โมเดล `llama-3.3-70b-versatile` ไม่มีบน Groq แล้ว | ค่าเริ่มต้นเป็น `openai/gpt-oss-120b` ทั้งโค้ด UI, rules_config และ ES registry |
 | F-12: ลบตารางแล้วเหลือ `/data/archive` และ `sdoqap_runs` ทำให้ตารางที่ลบยัง preview ได้ และ ingest ไฟล์เดิมซ้ำไม่ได้ (duplicate) | การลบล้างทั้งสองที่ |
 
-## Findings (แก้แล้ว: F-1, R-2, F-5, F-10, F-11, F-2, F-14, F-20 นอกนั้นยังไม่ได้แก้)
+## Findings (แก้แล้ว: F-1, R-2, F-5, F-10, F-11, F-2, F-14, F-20, F-3, F-4 นอกนั้นยังไม่ได้แก้)
 
 ระดับ: **สูง** = ข้อมูลหาย/ผลผิด/ความปลอดภัย · **กลาง** = ฟีเจอร์ใช้ไม่ได้หรือแสดงผลผิด · **ต่ำ** = เล็กน้อย/เอกสาร
 
@@ -127,8 +127,8 @@
 | F-5 | สูง (ผลผิด) · **แก้แล้ว** | T6.2, T6.3 | trust-check อ่านเกณฑ์จาก `/spark/rules_config.json` ซึ่งไม่มีใน container จึงใช้ 90.0 เสมอ ตอบ "ปลอดภัย" ทั้งที่เกณฑ์รายตารางที่ engine ใช้จริงคือ 97 | t6-trustcheck-threshold.txt |
 | F-20 | สูง (ข้อมูลหาย) · **แก้แล้ว** | T13.3 | UI อัปโหลดไฟล์เข้า `/whitebox/upload-csv` เท่านั้น ไม่มี Spark run และไฟล์ที่มีคอลัมน์นักศึกษาจะเขียนทับ `dirty_dataset.csv` (ชุดประเมินที่ใช้เป็นเกณฑ์) 10,100 -> 13 แถว | t13-ui-upload-effects.txt |
 | F-10 | สูง · **แก้แล้ว** | T9.1 | preview ของ layer `quarantine` ตอบ 500 (`Out of range float values are not JSON compliant`) เมื่อมี NaN ในแถวที่ถูกกักกัน ซึ่งเป็นกรณีปกติ | t9-quarantine-preview-500.txt |
-| F-3 | กลาง | T5.2, T5.3 | สตรีม Reddit: Kafka ได้ข้อมูลแต่ Spark เริ่มที่ latest offset หลัง producer ส่งชุดแรกแล้ว จึงไม่มี Parquet และ export/reddit เป็น 404 | t5-reddit-stream.txt |
-| F-4 | กลาง | T6.1 | หน้า Column Profiler ว่างทุกตาราง เพราะ index `sdoqap_dynamic_rules_log` ไม่เคยถูกสร้าง | t6-profiler-empty.txt |
+| F-3 | กลาง · **แก้แล้ว** | T5.2, T5.3 | สตรีม Reddit: Kafka ได้ข้อมูลแต่ Spark เริ่มที่ latest offset หลัง producer ส่งชุดแรกแล้ว จึงไม่มี Parquet และ export/reddit เป็น 404 | t5-reddit-stream.txt |
+| F-4 | กลาง · **แก้แล้ว** | T6.1 | หน้า Column Profiler ว่างทุกตาราง เพราะ index `sdoqap_dynamic_rules_log` ไม่เคยถูกสร้าง | t6-profiler-empty.txt |
 | F-11 | กลาง · **แก้แล้ว** | T9.4 | `/export/gold/<metric>` ตอบ 500 (ข้อความว่าง) แทน 404 เมื่อไม่มีข้อมูลในช่วงวัน เพราะ HTTPException ถูก `except Exception` กลืน | ผล T9.4 |
 | F-13 | กลาง | T10.4 | `/lineage/inspect/.../<node>` ตอบค่าประมาณ (ไฟล์/ขนาดคำนวณจากจำนวนแถว, ระบุ raw เป็น Parquet) และไม่มีตัวอย่างแถวใน raw/active | t10-inspect-node.txt |
 | F-16 | กลาง | T12.6 | n8n 2.27 ปฏิเสธ `jsonBody` ของ 5 node (Relay Ingest API/RDBMS, Send Failure Alert, Route Remediation/Quality Alert) ว่าไม่ใช่ JSON: ingest ผ่าน webhook และ alert จาก n8n ไม่ทำงาน (กำลังทำเป็นงานแยก) | T12.6 |
@@ -162,3 +162,5 @@
 
 - ตัวเลขที่คาดของ T2.3 เปลี่ยนจาก 1,030 เป็น **1,000** (1,030 แถวมี 30 แถวซ้ำ student_id+course+semester ที่ตั้งใจใส่ไว้ และถูกรวมตาม primary key) และ T2.5 (Excel 200 แถว) จะได้ตามจำนวน key ที่ไม่ซ้ำจริงของ 200 แถวนั้น
 - หลังอัปโหลดไฟล์จากหน้า Ingestion เอนจิน Audit Trail จะทำงานกับไฟล์นั้นต่อ (บันทึกข้ามการรีสตาร์ท) ถ้าต้องการกลับไปชุดประเมิน ใช้ `POST /api/v1/whitebox/state` ด้วย `{"dataset_source":"evaluation"}` (ยังไม่มีปุ่มบนหน้าจอ)
+- F-3: สตรีม Reddit อ่านจาก earliest เมื่อยังไม่มี checkpoint (ทดสอบ: Kafka 56 ข้อความ = Elasticsearch 56 เอกสาร และรอบสองต่อจากจุดเดิมไม่ซ้ำ) ผลข้างเคียงจากการทดสอบ: มี index `reddit` ใน Elasticsearch และไฟล์ Parquet ของ r/python ใน HDFS แล้ว (ข้อมูลโพสต์สาธารณะจริง)
+- F-4: Column Profiler อ่านจาก quality run ล่าสุด (engine เพิ่ม `null_profile` ในทุก run) ตารางที่ ingest ก่อนการแก้นี้จะมีเฉพาะช่วงค่า IQR จนกว่าจะ ingest/retry ใหม่

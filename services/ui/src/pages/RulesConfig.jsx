@@ -1143,7 +1143,7 @@ export default function RulesConfig() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {profileLoading ? (
                       <div className="gs-empty">Loading profiler bounds...</div>
-                    ) : profileData ? (
+                    ) : (profileData?.null_profile || Object.keys(profileData?.value_ranges || {}).length > 0) ? (
                       <>
                         <div style={{ fontSize: "11px", color: "var(--text-muted)", background: "var(--bg-primary)", padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--border-color)", fontFamily: 'var(--font-mono)' }}>
                           Run ID: <strong>{profileData.run_id}</strong> | Timestamp: {profileData.timestamp ? new Date(profileData.timestamp).toLocaleString() : '-'}

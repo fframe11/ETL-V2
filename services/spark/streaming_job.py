@@ -5,6 +5,16 @@ from pyspark.sql import functions as F
 # Spark session
 HDFS_URL = "hdfs://namenode:9000"
 
+KAFKA_OPTIONS = {
+    "kafka.bootstrap.servers": "kafka:9092",
+    "subscribe": "reddit_raw",
+    # Only used while a query has no checkpoint (afterwards it resumes where it stopped).
+    # "latest" skipped everything the producer sent before Spark started.
+    "startingOffsets": "earliest",
+    # A recreated topic makes old checkpoint offsets disappear; keep running instead of failing.
+    "failOnDataLoss": "false",
+}
+
 def run_streaming_job():
     spark = SparkSession.builder \
         .appName("RedditStreaming") \
@@ -25,8 +35,7 @@ def run_streaming_job():
         # Read from Kafka
         kafka_df = spark.readStream \
             .format("kafka") \
-            .option("kafka.bootstrap.servers", "kafka:9092") \
-            .option("subscribe", "reddit_raw") \
+            .options(**KAFKA_OPTIONS) \
             .load()
 
         # Convert binary value to string and parse JSON
