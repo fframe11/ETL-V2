@@ -93,6 +93,10 @@ contactPoints:
           url: http://api:8000/api/v1/system/alert
           method: POST
           contentType: application/json
+          # The API rejects alerts without ALERT_WEBHOOK_SECRET. Grafana 10 webhooks cannot
+          # send a custom header, so the secret travels as "Authorization: Bearer <secret>".
+          authorization_scheme: Bearer
+          authorization_credentials: $ALERT_WEBHOOK_SECRET
         disableResolveMessage: false
 
 policies:

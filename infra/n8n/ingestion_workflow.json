@@ -166,6 +166,15 @@
       "parameters": {
         "method": "POST",
         "url": "http://spark-master:8099/retry",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Trigger-Secret",
+              "value": "={{ $env.TRIGGER_SHARED_SECRET }}"
+            }
+          ]
+        },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "{\"table\": \"products\"}",
@@ -236,6 +245,15 @@
       "parameters": {
         "method": "POST",
         "url": "http://spark-master:8099/retry",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Trigger-Secret",
+              "value": "={{ $env.TRIGGER_SHARED_SECRET }}"
+            }
+          ]
+        },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "{\"table\": \"gov_data\"}",
@@ -313,6 +331,15 @@
       "parameters": {
         "method": "POST",
         "url": "http://spark-master:8099/retry",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Trigger-Secret",
+              "value": "={{ $env.TRIGGER_SHARED_SECRET }}"
+            }
+          ]
+        },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "{\"table\": \"sales_records\"}",
@@ -349,6 +376,15 @@
       "parameters": {
         "method": "POST",
         "url": "http://api:8000/api/v1/system/cleanup",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Service-Key",
+              "value": "={{ $env.INGEST_SERVICE_KEY }}"
+            }
+          ]
+        },
         "options": {}
       },
       "id": "trigger-api-cleanup-node",
@@ -372,6 +408,15 @@
       "parameters": {
         "method": "POST",
         "url": "http://api:8000/api/v1/system/alert",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Webhook-Secret",
+              "value": "={{ $env.ALERT_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={\n  \"title\": \"n8n Ingestion Pipeline Failure\",\n  \"message\": \"Workflow execution failed in node: \" + ($json.execution?.error?.message || \"Unknown error\"),\n  \"severity\": \"critical\"\n}",
@@ -404,6 +449,15 @@
       "parameters": {
         "method": "POST",
         "url": "http://elasticsearch:9200/sdoqap_upstream_remediations/_search",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Basic ' + ('elastic:' + $env.ELASTICSEARCH_PASSWORD).base64Encode() }}"
+            }
+          ]
+        },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "{\n  \"query\": {\n    \"range\": {\n      \"timestamp\": {\n        \"gte\": \"now-1h\"\n      }\n    }\n  }\n}",
@@ -432,6 +486,15 @@
       "parameters": {
         "method": "POST",
         "url": "http://api:8000/api/v1/system/alert",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Webhook-Secret",
+              "value": "={{ $env.ALERT_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={\n  \"title\": $json.title,\n  \"message\": $json.message,\n  \"severity\": $json.severity\n}",
@@ -464,6 +527,15 @@
       "parameters": {
         "method": "POST",
         "url": "http://elasticsearch:9200/sdoqap_quality_runs/_search",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Basic ' + ('elastic:' + $env.ELASTICSEARCH_PASSWORD).base64Encode() }}"
+            }
+          ]
+        },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "{\n  \"query\": {\n    \"range\": {\n      \"timestamp\": {\n        \"gte\": \"now-15m\"\n      }\n    }\n  }\n}",
@@ -492,6 +564,15 @@
       "parameters": {
         "method": "POST",
         "url": "http://api:8000/api/v1/system/alert",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Webhook-Secret",
+              "value": "={{ $env.ALERT_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={\n  \"title\": $json.title,\n  \"message\": $json.message,\n  \"severity\": $json.severity\n}",

@@ -289,6 +289,9 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
+      # Read by the provisioned webhook contact point (alert_rules.yaml) and sent as
+      # "Authorization: Bearer ..." to POST /api/v1/system/alert.
+      - ALERT_WEBHOOK_SECRET=${ALERT_WEBHOOK_SECRET}
     volumes:
       - ./infra/grafana/provisioning:/etc/grafana/provisioning
     deploy:
