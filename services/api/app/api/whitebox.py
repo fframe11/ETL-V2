@@ -109,6 +109,9 @@ def _resolve_output_dir() -> str:
         return out
 
 OUTPUT_DIR = _resolve_output_dir()
+# A file uploaded from the UI lives here, never in dirty_dataset.csv: that file is the shipped
+# evaluation dataset (ground truth, benchmark, tests) and must not be overwritten by a user.
+WORKING_DATASET_PATH = os.path.join(OUTPUT_DIR, "working_dataset.csv")
 UNIFIED_DATASET_PATH = os.path.join(OUTPUT_DIR, "unified_multitable_dataset.csv")
 CLEAN_DATASET_PATH = os.path.join(EVAL_DATASET_DIR, "clean_dataset.csv")
 SEED_DATASET_ZIP = os.environ.get("EVAL_DATASET_ZIP", "/app/seed/student_course_score_evaluation_dataset.zip")
@@ -325,10 +328,11 @@ def get_dataset_profile(dataset_name: str = "student_course_score"):
     if dataset_name in _LATEST_PROFILING:
         return _LATEST_PROFILING[dataset_name]
 
-    if not os.path.isfile(DIRTY_DATASET_PATH):
-        raise HTTPException(status_code=404, detail=f"Dirty dataset not found at {DIRTY_DATASET_PATH}")
+    dataset_path = _dataset_path()
+    if not os.path.isfile(dataset_path):
+        raise HTTPException(status_code=404, detail=f"Dirty dataset not found at {dataset_path}")
 
-    df = pd.read_csv(DIRTY_DATASET_PATH)
+    df = pd.read_csv(dataset_path)
     profile = _compute_profile(df, dataset_name)
     _LATEST_PROFILING[dataset_name] = profile
     return profile
@@ -607,10 +611,11 @@ def execute_pipeline(payload: ExecuteRulesPayload):
     start_time = time.time()
     dataset_name = payload.dataset_name
 
-    if not os.path.isfile(DIRTY_DATASET_PATH):
-        raise HTTPException(status_code=404, detail=f"Dirty dataset not found at {DIRTY_DATASET_PATH}")
+    dataset_path = _dataset_path()
+    if not os.path.isfile(dataset_path):
+        raise HTTPException(status_code=404, detail=f"Dirty dataset not found at {dataset_path}")
 
-    df = pd.read_csv(DIRTY_DATASET_PATH)
+    df = pd.read_csv(dataset_path)
     total_raw_rows = len(df)
 
     # Initialize tracking columns
@@ -737,6 +742,12 @@ def evaluate_ground_truth():
     Compares the White-Box pipeline output against ground_truth.csv.
     Calculates empirical Detection Rate, Recall, Precision, and Confusion Matrix.
     """
+    if _dataset_path() != DIRTY_DATASET_PATH:
+        return {
+            "status": "NOT_APPLICABLE",
+            "message": "The benchmark compares against the ground truth of the evaluation dataset, "
+                       "but the loaded dataset is an uploaded file. Switch back to the evaluation dataset to run it.",
+        }
     if not os.path.isfile(GROUND_TRUTH_PATH):
         raise HTTPException(status_code=404, detail=f"Ground truth file not found at {GROUND_TRUTH_PATH}")
 
@@ -942,11 +953,11 @@ def preview_multi_tables():
     """
     Returns metadata and sample rows of Source Table A (Demographics) and Source Table B (Scores).
     """
-    if not os.path.exists(DEMOGRAPHICS_DATASET_PATH) or not os.path.exists(DIRTY_DATASET_PATH):
+    if not os.path.exists(DEMOGRAPHICS_DATASET_PATH) or not os.path.exists(_dataset_path()):
         raise HTTPException(status_code=404, detail="Required multi-table source datasets not found.")
 
     df_a = pd.read_csv(DEMOGRAPHICS_DATASET_PATH)
-    df_b = pd.read_csv(DIRTY_DATASET_PATH)
+    df_b = pd.read_csv(_dataset_path())
 
     return _clean_for_json({
         "table_a": {
@@ -974,11 +985,11 @@ def analyze_multi_table_relationship(payload: Optional[MultiTableAnalyzePayload]
     - Infers Cardinality (1 Student -> Many Scores)
     - Prepares recommendations for the User Confirmation Gate (No silent auto-joins).
     """
-    if not os.path.exists(DEMOGRAPHICS_DATASET_PATH) or not os.path.exists(DIRTY_DATASET_PATH):
+    if not os.path.exists(DEMOGRAPHICS_DATASET_PATH) or not os.path.exists(_dataset_path()):
         raise HTTPException(status_code=404, detail="Source tables not found for multi-table analysis.")
 
     df_a = pd.read_csv(DEMOGRAPHICS_DATASET_PATH)
-    df_b = pd.read_csv(DIRTY_DATASET_PATH)
+    df_b = pd.read_csv(_dataset_path())
 
     # 1. Schema differences (Naming comparison)
     schema_mappings = []
@@ -1077,11 +1088,11 @@ def execute_multi_table_join(payload: MultiTableJoinPayload):
     """
     start_time = time.time()
 
-    if not os.path.exists(DEMOGRAPHICS_DATASET_PATH) or not os.path.exists(DIRTY_DATASET_PATH):
+    if not os.path.exists(DEMOGRAPHICS_DATASET_PATH) or not os.path.exists(_dataset_path()):
         raise HTTPException(status_code=404, detail="Source tables not found.")
 
     df_a = pd.read_csv(DEMOGRAPHICS_DATASET_PATH)
-    df_b = pd.read_csv(DIRTY_DATASET_PATH)
+    df_b = pd.read_csv(_dataset_path())
 
     # 1. Date standardization on Table A
     if payload.standardize_dates and "enrollmentDate" in df_a.columns:
@@ -1178,6 +1189,7 @@ from fastapi.responses import FileResponse
 
 _WORKFLOW_STATE: Dict[str, Any] = {
     "dataset_name": "student_course_scores",
+    "dataset_source": "evaluation",  # "evaluation" = dirty_dataset.csv, "upload" = WORKING_DATASET_PATH
     "selected_findings": {"range": True, "duplicate": True, "outlier": True},
     "min_score": 0.0,
     "max_score": 100.0,
@@ -1227,6 +1239,13 @@ def _load_workflow_state() -> None:
 _load_workflow_state()
 
 
+def _dataset_path() -> str:
+    """The dataset the interactive engine currently works on."""
+    if _WORKFLOW_STATE.get("dataset_source") == "upload" and os.path.isfile(WORKING_DATASET_PATH):
+        return WORKING_DATASET_PATH
+    return DIRTY_DATASET_PATH
+
+
 def _normalize_selected_findings(val: Any) -> Dict[str, bool]:
     if isinstance(val, dict):
         return {
@@ -1254,10 +1273,11 @@ def _recompute_interactive_state() -> Dict[str, Any]:
     using the current _WORKFLOW_STATE parameters, persists the 3 CSV files on disk,
     and returns the complete live metrics for /ingestion, /rules, /pipeline, /export, and /dashboard.
     """
-    if not os.path.isfile(DIRTY_DATASET_PATH):
+    dataset_path = _dataset_path()
+    if not os.path.isfile(dataset_path):
         return _WORKFLOW_STATE
 
-    df = pd.read_csv(DIRTY_DATASET_PATH)
+    df = pd.read_csv(dataset_path)
     total_rows = int(len(df))
 
     # Apply any inline row value edits from Pipeline table first
@@ -1420,6 +1440,12 @@ def get_workflow_state():
 
 @router.post("/state", dependencies=[Depends(require_session)])
 def update_workflow_state(payload: Dict[str, Any] = Body(default_factory=dict)):
+    if "dataset_source" in payload:
+        source = payload["dataset_source"]
+        if source in ("evaluation", "upload") and source != _WORKFLOW_STATE.get("dataset_source"):
+            _WORKFLOW_STATE["dataset_source"] = source
+            _LATEST_PROFILING.clear()
+        payload = {k: v for k, v in payload.items() if k != "dataset_source"}
     for k, v in payload.items():
         if k in _WORKFLOW_STATE:
             if k == "selected_findings":
@@ -1471,7 +1497,7 @@ def preview_zone_records(zone: str, limit: int = 20, search: str = "", error_typ
     _recompute_interactive_state()
     zone_lower = zone.lower()
     if zone_lower in ("raw", "all"):
-        fpath = DIRTY_DATASET_PATH
+        fpath = _dataset_path()
     elif zone_lower == "clean":
         fpath = os.path.join(OUTPUT_DIR, "clean_dataset_run.csv")
     elif zone_lower == "review":
@@ -1526,7 +1552,9 @@ async def upload_csv_dataset(
     if _is_supported_schema(df_up.columns):
         if "dirty_row_id" not in df_up.columns:
             df_up.insert(0, "dirty_row_id", range(1, len(df_up) + 1))
-        df_up.to_csv(DIRTY_DATASET_PATH, index=False)
+        df_up.to_csv(WORKING_DATASET_PATH, index=False)
+        _WORKFLOW_STATE["dataset_source"] = "upload"
+        _save_workflow_state()
         _LATEST_PROFILING.clear()
         prof = get_dataset_profile(clean_tbl)
         state = _recompute_interactive_state()

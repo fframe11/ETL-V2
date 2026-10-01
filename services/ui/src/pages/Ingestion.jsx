@@ -4,6 +4,7 @@ import { postApi } from "../hooks/useApi";
 import TileCard from "../components/ui/TileCard";
 import { PageHeader, LearnMore, NextStepLink } from "../components/ui";
 import { friendlyApiError } from "../utils/apiError";
+import RunStatusLine from "../components/RunStatusLine";
 import "./Ingestion.css";
 
 // Must match QUALITY_ENGINE_COLUMNS in api/app/api/whitebox.py.
@@ -134,6 +135,8 @@ export default function Ingestion() {
   const [rawSearchResults, setRawSearchResults] = useState(null);
   const [quickUploadNotice, setQuickUploadNotice] = useState("");
   const [uploadError, setUploadError] = useState("");
+  const [queuedRun, setQueuedRun] = useState(null);
+  const [queueError, setQueueError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const handleInspectFindingRows = async (findingKey, zone, errorType) => {
     if (expandedFinding === findingKey) {
@@ -205,6 +208,26 @@ export default function Ingestion() {
     setQuickUploadNotice("");
   };
 
+  // The interactive engine above only profiles the file in memory. This sends the same file
+  // to the Spark pipeline (raw landing -> quality run), which is what fills the data layers.
+  const queueInPipeline = async (file, tableName) => {
+    try {
+      const fd = new FormData();
+      fd.append("table_name", tableName);
+      fd.append("file", file);
+      const res = await fetch("/api/v1/pipeline/ingest/csv", { method: "POST", body: fd });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        setQueueError(`ส่งเข้าคิวตรวจคุณภาพไม่สำเร็จ: ${friendlyApiError(body?.detail, `HTTP ${res.status}`)}`);
+      } else {
+        setQueuedRun({ ingestId: body?.ingest_id, duplicate: body?.status === "duplicate" });
+      }
+    } catch (err) {
+      console.error("Failed to queue the pipeline run:", err);
+      setQueueError("ส่งเข้าคิวตรวจคุณภาพไม่สำเร็จ: ไม่สามารถติดต่อเซิร์ฟเวอร์ได้");
+    }
+  };
+
   const uploadCsvFile = async (file, tableName) => {
     if (!file) {
       setUploadError("กรุณาเลือกไฟล์ก่อน");
@@ -215,6 +238,8 @@ export default function Ingestion() {
     setProfilingLoading(true);
     setUploadError("");
     setQuickUploadNotice("");
+    setQueuedRun(null);
+    setQueueError("");
     setCsvFile(file);
     setPrimaryDatasetName(cleanName);
     setCsvTableName(cleanName);
@@ -229,6 +254,7 @@ export default function Ingestion() {
         if (upData.profile) setProfilingData(upData.profile);
         setQuickUploadNotice(`นำเข้า '${file.name}' แล้ว (${(upData.rows_ingested ?? 0).toLocaleString()} แถว)`);
         handleRescanProfile();
+        await queueInPipeline(file, cleanName);
       } else {
         const detail = await upRes.json().catch(() => null);
         setUploadError(friendlyApiError(detail?.detail, `นำเข้าไฟล์ไม่สำเร็จ (HTTP ${upRes.status})`));
@@ -818,6 +844,14 @@ export default function Ingestion() {
         {uploadError && (
           <div className="ing-notice ing-notice-error" role="alert">
             <Icon name="alert" /> {uploadError}
+          </div>
+        )}
+        {queuedRun && (queuedRun.duplicate
+          ? <p className="ing-notice ing-notice-ok">เคยนำเข้าไฟล์นี้แล้ว (รอบ {queuedRun.ingestId}) จึงไม่ส่งตรวจซ้ำ</p>
+          : <RunStatusLine ingestId={queuedRun.ingestId} />)}
+        {queueError && (
+          <div className="ing-notice ing-notice-error" role="alert">
+            <Icon name="alert" /> {queueError}
           </div>
         )}
       </section>

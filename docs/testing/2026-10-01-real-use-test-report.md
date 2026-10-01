@@ -115,7 +115,7 @@
 | โมเดล `llama-3.3-70b-versatile` ไม่มีบน Groq แล้ว | ค่าเริ่มต้นเป็น `openai/gpt-oss-120b` ทั้งโค้ด UI, rules_config และ ES registry |
 | F-12: ลบตารางแล้วเหลือ `/data/archive` และ `sdoqap_runs` ทำให้ตารางที่ลบยัง preview ได้ และ ingest ไฟล์เดิมซ้ำไม่ได้ (duplicate) | การลบล้างทั้งสองที่ |
 
-## Findings (F-1, R-2, F-5, F-10, F-11 แก้แล้วใน commit ถัดจากรายงานนี้ นอกนั้นยังไม่ได้แก้)
+## Findings (แก้แล้ว: F-1, R-2, F-5, F-10, F-11, F-2, F-14, F-20 นอกนั้นยังไม่ได้แก้)
 
 ระดับ: **สูง** = ข้อมูลหาย/ผลผิด/ความปลอดภัย · **กลาง** = ฟีเจอร์ใช้ไม่ได้หรือแสดงผลผิด · **ต่ำ** = เล็กน้อย/เอกสาร
 
@@ -123,9 +123,9 @@
 |---|---|---|---|---|
 | F-1 | สูง (ความปลอดภัย) · **แก้แล้ว** | T1.6 | `GET /api/v1/services/status` ไม่ต้อง login และคืน URL ของ Elasticsearch พร้อมรหัสผ่านฝังอยู่ | t1-status-credential-count.txt |
 | R-2 | สูง (ความปลอดภัย) · **แก้แล้ว** | T1.2 | `GET /api/v1/whitebox/run-all` ไม่ต้อง login แต่รัน pipeline ทั้งชุดและเขียนไฟล์ผลลัพธ์ (ฝั่ง POST ต้อง login) | ผล T1.2 |
-| F-2 | สูง (ข้อมูลหาย) | T2.3, T2.5 | engine เดา primary key เป็น `student_id` ทั้งที่คีย์จริงคือ `student_id+course+semester` แถว 1030 ถูก MERGE เหลือ 250 โดยไม่เตือน (Excel 200 -> 153) | t2-pk-collapse.txt |
+| F-2 | สูง (ข้อมูลหาย) · **แก้แล้ว** | T2.3, T2.5 | engine เดา primary key เป็น `student_id` ทั้งที่คีย์จริงคือ `student_id+course+semester` แถว 1030 ถูก MERGE เหลือ 250 โดยไม่เตือน (Excel 200 -> 153) | t2-pk-collapse.txt |
 | F-5 | สูง (ผลผิด) · **แก้แล้ว** | T6.2, T6.3 | trust-check อ่านเกณฑ์จาก `/spark/rules_config.json` ซึ่งไม่มีใน container จึงใช้ 90.0 เสมอ ตอบ "ปลอดภัย" ทั้งที่เกณฑ์รายตารางที่ engine ใช้จริงคือ 97 | t6-trustcheck-threshold.txt |
-| F-20 | สูง (ข้อมูลหาย) | T13.3 | UI อัปโหลดไฟล์เข้า `/whitebox/upload-csv` เท่านั้น ไม่มี Spark run และไฟล์ที่มีคอลัมน์นักศึกษาจะเขียนทับ `dirty_dataset.csv` (ชุดประเมินที่ใช้เป็นเกณฑ์) 10,100 -> 13 แถว | t13-ui-upload-effects.txt |
+| F-20 | สูง (ข้อมูลหาย) · **แก้แล้ว** | T13.3 | UI อัปโหลดไฟล์เข้า `/whitebox/upload-csv` เท่านั้น ไม่มี Spark run และไฟล์ที่มีคอลัมน์นักศึกษาจะเขียนทับ `dirty_dataset.csv` (ชุดประเมินที่ใช้เป็นเกณฑ์) 10,100 -> 13 แถว | t13-ui-upload-effects.txt |
 | F-10 | สูง · **แก้แล้ว** | T9.1 | preview ของ layer `quarantine` ตอบ 500 (`Out of range float values are not JSON compliant`) เมื่อมี NaN ในแถวที่ถูกกักกัน ซึ่งเป็นกรณีปกติ | t9-quarantine-preview-500.txt |
 | F-3 | กลาง | T5.2, T5.3 | สตรีม Reddit: Kafka ได้ข้อมูลแต่ Spark เริ่มที่ latest offset หลัง producer ส่งชุดแรกแล้ว จึงไม่มี Parquet และ export/reddit เป็น 404 | t5-reddit-stream.txt |
 | F-4 | กลาง | T6.1 | หน้า Column Profiler ว่างทุกตาราง เพราะ index `sdoqap_dynamic_rules_log` ไม่เคยถูกสร้าง | t6-profiler-empty.txt |
@@ -136,7 +136,7 @@
 | F-22 | กลาง | T13.7 | `/executive/overview` ส่ง missing/duplicate/invalid pct = 0.0 ทั้งที่กักกัน 169,385 แถว | t13-ui-notes.txt |
 | F-23 | กลาง | T13.7 | ตัวกรอง Time และ Business Area บน Dashboard ไม่เปลี่ยนตัวเลขใดๆ | t13-ui-notes.txt |
 | F-8 | กลาง | T6 | `PUT /rules/<table>` และการลบตารางเขียน `rules_config.json` ใหม่ทั้งไฟล์จาก ES registry: คอมเมนต์หาย, ค่าที่แก้ในไฟล์ย้อนกลับ, ตารางอื่นโผล่เพิ่ม (ไฟล์กับ ES เป็นสองแหล่งความจริงที่ไม่ตรงกัน) | ผล T6 |
-| F-14 | กลาง | T11.5 | `/whitebox/benchmark` ตอบ `status: PASSED` ทั้งที่ recall ของ Missing Score เหลือ 3.33% เมื่อชุดข้อมูลที่โหลดไม่ใช่ชุดที่ตรงกับ ground truth | ผล T11.5 |
+| F-14 | กลาง · **แก้แล้ว** | T11.5 | `/whitebox/benchmark` ตอบ `status: PASSED` ทั้งที่ recall ของ Missing Score เหลือ 3.33% เมื่อชุดข้อมูลที่โหลดไม่ใช่ชุดที่ตรงกับ ground truth | ผล T11.5 |
 | F-6 | กลาง | T6.4 | `POST /rules/ai-proposals/reset` ('Generate') ไม่เรียก LLM คืนข้อเสนอตัวอย่างที่เขียนตายตัวในโค้ด (`is_example: true`) ส่วน advisor จริงไม่เคยสร้าง index `sdoqap_ai_rule_proposals` | ผล T6.4 |
 | F-7 | ต่ำ | T6.4 | approve ข้อเสนอตัวอย่างตอบ "approved and merged" แต่ไม่ได้ merge อะไร | ผล T6.4 |
 | F-9 | ต่ำ | T7.5 | `POST /pipeline/acknowledge/<run ที่ไม่มี>` ตอบ 200 และสร้างเอกสารขยะใน `sdoqap_acknowledged_runs` (คาด 404) | ผล T7.5 |
@@ -157,3 +157,8 @@
 - Kafka topic `reddit_raw` ที่สร้างตอนทดสอบสตรีม
 - ตาราง/ข้อมูลของ `qa_*` และ `e2e_ingest_1790859593` **ลบหมดแล้ว** (HDFS, Elasticsearch ทุก index, Postgres) ตารางเดิมของเจ้าของไม่ถูกแตะ ยกเว้น `bench_10000` ที่สคริปต์ scale สร้างซ้ำตามออกแบบ
 - n8n `Schedule Daily Cleanup` 02:00 จะรันเองแล้ว (แก้ให้ส่งคีย์ถูกต้อง) และจะลบเอกสาร ES ที่เก่ากว่า 30 วัน (35 รายการใน `sdoqap_quality_runs` ตอนทดสอบ) กับไฟล์ HDFS เก่า ถ้าไม่ต้องการให้ปิดสวิตช์ใน n8n ก่อน
+
+## หมายเหตุหลังแก้ F-2 / F-20
+
+- ตัวเลขที่คาดของ T2.3 เปลี่ยนจาก 1,030 เป็น **1,000** (1,030 แถวมี 30 แถวซ้ำ student_id+course+semester ที่ตั้งใจใส่ไว้ และถูกรวมตาม primary key) และ T2.5 (Excel 200 แถว) จะได้ตามจำนวน key ที่ไม่ซ้ำจริงของ 200 แถวนั้น
+- หลังอัปโหลดไฟล์จากหน้า Ingestion เอนจิน Audit Trail จะทำงานกับไฟล์นั้นต่อ (บันทึกข้ามการรีสตาร์ท) ถ้าต้องการกลับไปชุดประเมิน ใช้ `POST /api/v1/whitebox/state` ด้วย `{"dataset_source":"evaluation"}` (ยังไม่มีปุ่มบนหน้าจอ)

@@ -62,3 +62,49 @@ it("labels the interactive connector as a demo and shows no invented row count",
   expect(screen.getByText(/โหมดสาธิต/)).toBeTruthy();
   expect(screen.queryByText(/\(0 แถว\)/)).toBeNull();
 });
+
+async function uploadFile(routes) {
+  const utils = await renderPage(Ingestion, "/ingestion");
+  const fn = mockFetchByUrl(routes);
+  const input = utils.container.querySelector('input[type="file"]');
+  const file = new File(["student_id,score\n1,80\n"], "scores.csv", { type: "text/csv" });
+  await act(async () => { fireEvent.change(input, { target: { files: [file] } }); });
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "นำเข้าและตรวจข้อมูล" }));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, 100)); });
+  return fn;
+}
+
+const UPLOAD_OK = ["/whitebox/upload-csv", { body: { rows_ingested: 1, profile: { total_rows: 1, total_columns: 2, columns_profile: {} } } }];
+
+it("also queues the uploaded file in the Spark pipeline and shows its run status", async () => {
+  const fn = await uploadFile([
+    UPLOAD_OK,
+    ["/pipeline/ingest/csv", { status: 202, body: { status: "queued", ingest_id: "I1", run_state: "QUEUED" } }],
+    ["/pipeline/runs/I1", { body: { state: "QUEUED" } }]
+  ]);
+  const queued = fn.mock.calls.filter(([url, opts]) => String(url).includes("/pipeline/ingest/csv") && opts?.method === "POST");
+  expect(queued).toHaveLength(1);
+  expect(queued[0][1].body.get("table_name")).toBe("scores");
+  expect(queued[0][1].body.get("file").name).toBe("scores.csv");
+  expect(screen.getByText(/สถานะรอบ: รอคิวตรวจ/)).toBeTruthy();
+});
+
+it("says so when the same file was already ingested instead of showing a run", async () => {
+  await uploadFile([
+    UPLOAD_OK,
+    ["/pipeline/ingest/csv", { status: 200, body: { status: "duplicate", ingest_id: "I1", run_state: "SUCCEEDED" } }]
+  ]);
+  expect(screen.getByText(/เคยนำเข้าไฟล์นี้แล้ว/)).toBeTruthy();
+  expect(screen.queryByText(/สถานะรอบ/)).toBeNull();
+});
+
+it("reports a pipeline failure without hiding the profile that was already computed", async () => {
+  await uploadFile([
+    UPLOAD_OK,
+    ["/pipeline/ingest/csv", { status: 400, body: { detail: "File is missing primary key column(s) ['student_id'] registered for 'scores'." } }]
+  ]);
+  expect(screen.getByRole("alert")).toHaveTextContent("ส่งเข้าคิวตรวจคุณภาพ");
+  expect(screen.getByText(/นำเข้า 'scores.csv' แล้ว/)).toBeTruthy();
+});
