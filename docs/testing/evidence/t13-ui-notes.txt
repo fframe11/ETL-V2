@@ -1,0 +1,12 @@
+Browser: built-in pane, http://localhost, login as the app admin (test creds from the user's pasted .env).
+Console errors during the whole walkthrough: only 401s from unauthenticated checks (/auth/me on the login page, the deliberate wrong login). No other errors.
+The pane was not displayed for part of the run (innerWidth=0, screenshots time out), so PNG evidence was not captured and the responsive check could not be measured.
+
+F-17 Home "LIVE INGESTION CHANNELS" badges do not follow real status (KAFKA REDDIT_STREAMING shows INGESTING while /pipeline/ingest/reddit/status = idle)
+F-18 Pipeline > run history: Duration column shows "-" for every run although quality runs carry duration_seconds
+F-19 Ingestion > Database / API / Stream tabs use the simulated connector (/whitebox/ingest-source): "โหมดสาธิต: ยังไม่ได้เชื่อมต่อ RDBMS จริง ..." so real /pipeline/ingest/{rdbms,api,reddit} cannot be reached from the UI
+F-20 Ingestion > File upload goes to /whitebox/upload-csv only: no Spark run is queued, and a file with student columns OVERWRITES data/evaluation/.../dirty_dataset.csv (10,100 -> 13 rows) (t13-ui-upload-effects.txt)
+F-21 Analytics > error patterns: source label is "Unknown" for nearly every cluster (clustering API returns source "Unknown")
+F-22 Dashboard > quality breakdown: missing/duplicate/invalid percentages are 0.0 while 169,385 rows are quarantined (/executive/overview data_quality_breakdown)
+F-23 Dashboard filters: Time (24h/7d/30d) and Business Area (sales) leave every number unchanged; only Severity changes the incident list (2 -> 0 for Critical)
+OK: login/logout redirect, wrong-login message, rules save with confirmation modal (93%), export layer/table preview of raw qa_scores, catalog list, audit trail page, guide pages

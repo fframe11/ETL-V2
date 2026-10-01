@@ -1,0 +1,6 @@
+UI Data Ingestion > File > upload of a 13-row CSV (qa_ui_file.csv):
+ - UI says "นำเข้า 'qa_ui_file.csv' แล้ว (13 แถว)" and shows a profile (correct)
+ - NO Spark run: sdoqap_runs / sdoqap_quality_runs / HDFS /data/raw have nothing for qa_ui_file
+ - POST /whitebox/upload-csv overwrote data/evaluation/student_course_score_evaluation_dataset/dirty_dataset.csv (10,100 -> 13 rows)
+   and the interactive engine now holds that dataset; restored from the saved copy afterwards
+UI Database / API tabs: "โหมดสาธิต: ยังไม่ได้เชื่อมต่อ RDBMS จริง ระบบตรวจข้อมูลชุดที่โหลดไว้ ... แทน" (simulated connector /whitebox/ingest-source)
