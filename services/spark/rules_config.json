@@ -42,7 +42,7 @@
     "ai_advisor": {
       "enabled": true,
       "trigger": "always",
-      "model": "llama-3.3-70b-versatile",
+      "model": "openai/gpt-oss-120b",
       "max_rows_to_analyze": 50,
       "confidence_threshold": 0.7
     },
@@ -209,7 +209,7 @@
     "ai_advisor": {
       "enabled": true,
       "trigger": "on_anomaly",
-      "model": "llama-3.3-70b-versatile",
+      "model": "openai/gpt-oss-120b",
       "max_rows_to_analyze": 50,
       "confidence_threshold": 0.7
     }
@@ -256,7 +256,7 @@
     "ai_advisor": {
       "enabled": true,
       "trigger": "on_anomaly",
-      "model": "llama-3.3-70b-versatile",
+      "model": "openai/gpt-oss-120b",
       "max_rows_to_analyze": 50,
       "confidence_threshold": 0.7
     }
@@ -321,7 +321,7 @@
     "ai_advisor": {
       "enabled": true,
       "trigger": "on_anomaly",
-      "model": "llama-3.3-70b-versatile",
+      "model": "openai/gpt-oss-120b",
       "max_rows_to_analyze": 50,
       "confidence_threshold": 0.7
     },
@@ -380,7 +380,7 @@
     "ai_advisor": {
       "enabled": true,
       "trigger": "on_anomaly",
-      "model": "llama-3.3-70b-versatile",
+      "model": "openai/gpt-oss-120b",
       "max_rows_to_analyze": 50,
       "confidence_threshold": 0.7
     }
@@ -427,7 +427,7 @@
     "ai_advisor": {
       "enabled": true,
       "trigger": "on_anomaly",
-      "model": "llama-3.3-70b-versatile",
+      "model": "openai/gpt-oss-120b",
       "max_rows_to_analyze": 50,
       "confidence_threshold": 0.7
     }
@@ -474,7 +474,7 @@
     "ai_advisor": {
       "enabled": true,
       "trigger": "on_anomaly",
-      "model": "llama-3.3-70b-versatile",
+      "model": "openai/gpt-oss-120b",
       "max_rows_to_analyze": 50,
       "confidence_threshold": 0.7
     }
@@ -521,7 +521,7 @@
     "ai_advisor": {
       "enabled": true,
       "trigger": "on_anomaly",
-      "model": "llama-3.3-70b-versatile",
+      "model": "openai/gpt-oss-120b",
       "max_rows_to_analyze": 50,
       "confidence_threshold": 0.7
     }
@@ -589,7 +589,7 @@
     "ai_advisor": {
       "enabled": true,
       "trigger": "on_anomaly",
-      "model": "llama-3.3-70b-versatile",
+      "model": "openai/gpt-oss-120b",
       "max_rows_to_analyze": 50,
       "confidence_threshold": 0.7
     },
@@ -655,7 +655,7 @@
     "ai_advisor": {
       "enabled": true,
       "trigger": "always",
-      "model": "llama-3.3-70b-versatile",
+      "model": "openai/gpt-oss-120b",
       "max_rows_to_analyze": 50,
       "confidence_threshold": 0.7
     },
@@ -703,7 +703,7 @@
     "ai_advisor": {
       "enabled": true,
       "trigger": "on_anomaly",
-      "model": "llama-3.3-70b-versatile",
+      "model": "openai/gpt-oss-120b",
       "max_rows_to_analyze": 50,
       "confidence_threshold": 0.7
     }
@@ -750,7 +750,7 @@
     "ai_advisor": {
       "enabled": true,
       "trigger": "on_anomaly",
-      "model": "llama-3.3-70b-versatile",
+      "model": "openai/gpt-oss-120b",
       "max_rows_to_analyze": 50,
       "confidence_threshold": 0.7
     }
@@ -797,7 +797,7 @@
     "ai_advisor": {
       "enabled": true,
       "trigger": "on_anomaly",
-      "model": "llama-3.3-70b-versatile",
+      "model": "openai/gpt-oss-120b",
       "max_rows_to_analyze": 50,
       "confidence_threshold": 0.7
     }
@@ -844,7 +844,7 @@
     "ai_advisor": {
       "enabled": true,
       "trigger": "on_anomaly",
-      "model": "llama-3.3-70b-versatile",
+      "model": "openai/gpt-oss-120b",
       "max_rows_to_analyze": 50,
       "confidence_threshold": 0.7
     }
@@ -891,7 +891,7 @@
     "ai_advisor": {
       "enabled": true,
       "trigger": "on_anomaly",
-      "model": "llama-3.3-70b-versatile",
+      "model": "openai/gpt-oss-120b",
       "max_rows_to_analyze": 50,
       "confidence_threshold": 0.7
     }

@@ -87,7 +87,7 @@ class AIRuleAdvisor:
         Groq API key.  Typically sourced from the
         ``GROQ_API_KEY`` environment variable.
     model : str
-        Groq model identifier (default ``'llama-3.3-70b-versatile'``).
+        Groq model identifier (default ``'openai/gpt-oss-120b'``).
     es_url : str | None
         Elasticsearch URL.  Falls back to ``ELASTICSEARCH_URL`` env var.
     """
@@ -159,7 +159,7 @@ class AIRuleAdvisor:
 
         # ── 1. Check Elasticsearch settings for Groq credentials ──────────────────
         groq_api_key = ""
-        groq_model = "llama-3.3-70b-versatile"
+        groq_model = "openai/gpt-oss-120b"
         groq_enabled = False
         
         try:
@@ -169,7 +169,7 @@ class AIRuleAdvisor:
                 if res_settings.status_code == 200:
                     settings_doc = res_settings.json().get("_source", {})
                     groq_api_key = settings_doc.get("groq_api_key", "").strip()
-                    groq_model = settings_doc.get("groq_model", "llama-3.3-70b-versatile").strip()
+                    groq_model = settings_doc.get("groq_model", "openai/gpt-oss-120b").strip()
                     groq_enabled = settings_doc.get("groq_enabled", False)
         except Exception as e:
             print(f"[AI_ADVISOR] Failed to load settings from ES: {e}")
@@ -177,7 +177,7 @@ class AIRuleAdvisor:
         # Fallback to env var if ES is down or empty
         if not groq_api_key:
             groq_api_key = os.getenv("GROQ_API_KEY", "").strip()
-            groq_model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
+            groq_model = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b").strip()
             groq_enabled = bool(groq_api_key)
 
         if not groq_enabled or not groq_api_key:
@@ -196,6 +196,7 @@ class AIRuleAdvisor:
             "Content-Type": "application/json",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
+        # A saved copy of the retired default maps to the current one.
         active_model = groq_model if (groq_model and groq_model != "llama-3.3-70b-versatile") else "openai/gpt-oss-120b"
         payload = {
             "model": active_model,

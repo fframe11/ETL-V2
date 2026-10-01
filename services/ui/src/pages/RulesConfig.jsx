@@ -222,7 +222,7 @@ export default function RulesConfig() {
 
   // Settings State Hooks
   const [groqApiKey, setGroqApiKey] = useState("");
-  const [groqModel, setGroqModel] = useState("llama-3.3-70b-versatile");
+  const [groqModel, setGroqModel] = useState("openai/gpt-oss-120b");
   const [groqEnabled, setGroqEnabled] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -235,7 +235,7 @@ export default function RulesConfig() {
       if (res.ok) {
         const data = await res.json();
         setGroqApiKey(data.groq_api_key_masked || "");
-        setGroqModel(data.groq_model || "llama-3.3-70b-versatile");
+        setGroqModel(data.groq_model || "openai/gpt-oss-120b");
         setGroqEnabled(data.groq_enabled || false);
       }
     } catch (err) {
@@ -1073,7 +1073,7 @@ export default function RulesConfig() {
                         <label>Model Selector</label>
                         <input
                           type="text"
-                          value={tableRules.ai_advisor?.model || "llama-3.3-70b-versatile"}
+                          value={tableRules.ai_advisor?.model || "openai/gpt-oss-120b"}
                           onChange={(e) => updateNestedKey("ai_advisor", "model", e.target.value)}
                         />
                       </div>
@@ -1375,8 +1375,8 @@ export default function RulesConfig() {
             <div className="gs-input-grp">
               <label>Model Version</label>
               <select value={groqModel} onChange={(e) => setGroqModel(e.target.value)}>
-                <option value="llama-3.3-70b-versatile">Groq Llama 3.3 70B (Recommended)</option>
-                <option value="llama-3.1-8b-instant">Groq Llama 3.1 8B (Instant)</option>
+                <option value="openai/gpt-oss-120b">Groq GPT-OSS 120B (Recommended)</option>
+                <option value="openai/gpt-oss-20b">Groq GPT-OSS 20B (Faster)</option>
               </select>
             </div>
 

@@ -308,7 +308,7 @@ def trigger_system_cleanup(_user: str = Depends(require_session_or_service_key))
 
 class SettingsPayload(BaseModel):
     groq_api_key: str
-    groq_model: str = "llama-3.3-70b-versatile"
+    groq_model: str = "openai/gpt-oss-120b"
     groq_enabled: bool = True
 
 @router.get("/api/v1/system/settings")
@@ -332,7 +332,7 @@ def get_system_settings():
         groq_api_key = os.getenv("GROQ_API_KEY", "").strip()
         if groq_api_key:
             api_key = groq_api_key
-            model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
+            model = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b").strip()
             enabled = True
 
     masked = ""
@@ -342,9 +342,12 @@ def get_system_settings():
         else:
             masked = "********"
 
+    # Groq retired the old default; a saved copy of it would fail the key check on re-save.
+    if model == "llama-3.3-70b-versatile":
+        model = "openai/gpt-oss-120b"
     return {
         "groq_api_key_masked": masked,
-        "groq_model": model if model else "llama-3.3-70b-versatile",
+        "groq_model": model if model else "openai/gpt-oss-120b",
         "groq_enabled": enabled
     }
 
@@ -378,7 +381,7 @@ def update_system_settings(payload: SettingsPayload, _user: str = Depends(requir
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
         payload_test = {
-            "model": doc["groq_model"] if doc["groq_model"] else "llama-3.3-70b-versatile",
+            "model": doc["groq_model"] if doc["groq_model"] else "openai/gpt-oss-120b",
             "messages": [{"role": "user", "content": "Hello"}],
             "max_tokens": 5
         }
