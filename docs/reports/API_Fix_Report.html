@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>รายงานการแก้ไข API ของ SDOQAP</title>
+<style>
+  @page { size: A4; margin: 16mm 14mm 16mm 14mm; }
+  :root {
+    --ink: #1b2430; --muted: #5b6675; --line: #d9dfe7; --head: #0f3d66;
+    --soft: #f3f6fa; --ok: #1a7f4b; --warn: #b26a00; --bad: #b3261e; --accent: #1d6fb8;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: "Leelawadee UI", "Tahoma", "Segoe UI", sans-serif; color: var(--ink); font-size: 10.5pt; line-height: 1.55; margin: 0; }
+  h1 { font-size: 22pt; color: var(--head); margin: 0 0 4px; line-height: 1.25; }
+  h2 { font-size: 14pt; color: var(--head); border-bottom: 2px solid var(--head); padding-bottom: 3px; margin: 22px 0 10px; page-break-after: avoid; }
+  h3 { font-size: 11.5pt; color: var(--head); margin: 16px 0 6px; page-break-after: avoid; }
+  p { margin: 5px 0 8px; }
+  .sub { color: var(--muted); font-size: 11pt; margin: 0 0 14px; }
+  .meta { display: flex; gap: 22px; flex-wrap: wrap; font-size: 9.5pt; color: var(--muted); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 7px 0; margin-bottom: 14px; }
+  .meta b { color: var(--ink); }
+  .cards { display: flex; gap: 10px; margin: 10px 0 14px; }
+  .card { flex: 1; background: var(--soft); border: 1px solid var(--line); border-radius: 6px; padding: 9px 11px; }
+  .card .n { font-size: 20pt; font-weight: 700; color: var(--head); line-height: 1.1; }
+  .card .l { font-size: 9pt; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-size: 9.3pt; }
+  th { background: var(--head); color: #fff; text-align: left; padding: 5px 7px; font-weight: 600; }
+  td { border-bottom: 1px solid var(--line); padding: 5px 7px; vertical-align: top; }
+  tr { page-break-inside: avoid; }
+  tbody tr:nth-child(even) td { background: #fafbfd; }
+  code, span.mono { font-family: "Consolas", "Courier New", monospace; font-size: 8.8pt; background: var(--soft); padding: 0 3px; border-radius: 3px; }
+  td.mono { font-family: "Consolas", "Courier New", monospace; font-size: 8.6pt; }
+  .tag { display: inline-block; font-size: 8.3pt; padding: 0 6px; border-radius: 9px; font-weight: 600; white-space: nowrap; }
+  .t-high { background: #fde8e6; color: var(--bad); }
+  .t-mid { background: #fff1d6; color: var(--warn); }
+  .t-low { background: #e8eef5; color: var(--muted); }
+  .t-ok { background: #def3e7; color: var(--ok); }
+  .note { border-left: 4px solid var(--accent); background: var(--soft); padding: 7px 11px; margin: 8px 0 12px; font-size: 9.8pt; }
+  .note.warn { border-left-color: var(--warn); background: #fff8ea; }
+  ul { margin: 4px 0 8px; padding-left: 20px; } li { margin: 2px 0; }
+  .fix { border: 1px solid var(--line); border-radius: 6px; padding: 8px 11px 4px; margin: 9px 0; page-break-inside: avoid; }
+  .fix h3 { margin-top: 0; }
+  .fix dl { margin: 0; display: grid; grid-template-columns: 82px 1fr; gap: 2px 8px; font-size: 9.6pt; }
+  .fix dt { color: var(--muted); } .fix dd { margin: 0 0 3px; }
+  .foot { color: var(--muted); font-size: 8.8pt; margin-top: 16px; border-top: 1px solid var(--line); padding-top: 6px; }
+  .pb { page-break-before: always; }
+</style>
+</head>
+<body>
+
+<h1>รายงานการแก้ไข API ของ SDOQAP</h1>
+<p class="sub">สิ่งที่พบ สาเหตุ วิธีแก้ และหลักฐานการทดสอบ จากการตรวจ API ทุกเส้นและการทดสอบใช้งานจริง</p>
+<div class="meta">
+  <span><b>วันที่:</b> 1 ตุลาคม 2569 (2026-10-01)</span>
+  <span><b>Branch:</b> new-optimizer</span>
+  <span><b>ช่วง commit:</b> e1a9e60 ถึง 61e972e (ต่อจาก 2313091)</span>
+  <span><b>ระบบ:</b> FastAPI (api), Spark, n8n, Grafana, React (ui)</span>
+</div>
+
+<h2>1. สรุปสำหรับผู้บริหาร</h2>
+<p>ตรวจ API ครบ 94 เส้น (method + path) เทียบกับผู้เรียกจริง ได้แก่ หน้าเว็บ n8n และ Grafana แล้วทดสอบการใช้งานจริงบน stack ที่รันอยู่ พบปัญหาของ API ที่ต้องแก้ 17 รายการ ทั้งหมดแก้แล้วและพิสูจน์บนระบบจริง ปัญหาที่ร้ายแรงที่สุดคือ <b>รหัสผ่าน Elasticsearch รั่วทาง API สาธารณะ</b> และ <b>trust-check ตอบ "ปลอดภัย" ผิด</b> เพราะอ่านเกณฑ์จากไฟล์ที่ไม่มีใน container</p>
+<div class="cards">
+  <div class="card"><div class="n">94</div><div class="l">เส้น API ที่ตรวจ (เรียกสำเร็จ 88, ที่เหลืออธิบายได้ทั้งหมด)</div></div>
+  <div class="card"><div class="n">17</div><div class="l">ปัญหาของ API ที่แก้แล้ว</div></div>
+  <div class="card"><div class="n">52 → 192</div><div class="l">จำนวน test ของ API (เพิ่ม 140 ตัว)</div></div>
+  <div class="card"><div class="n">0</div><div class="l">container ที่ไม่ healthy หลังแก้ทั้งหมด</div></div>
+</div>
+<div class="note"><b>ผลกระทบต่อผู้ใช้ API ที่ต้องรู้:</b> (1) <code>GET /whitebox/run-all</code> ต้อง login แล้ว (2) ฟิลด์ <code>url</code> ของ Elasticsearch ใน <code>/services/status</code> ไม่มีรหัสผ่านแล้ว (3) <code>/rules/profiles/{table}</code> ตอบรูปแบบใหม่ (4) การลบตารางล้างข้อมูลมากขึ้น รายละเอียดในหัวข้อ 4 และ 5</div>
+
+<h2>2. วิธีตรวจและสิ่งที่ค้นพบ</h2>
+<p>ตรวจสองชั้น ชั้นแรก <b>ตรวจโค้ด:</b> ไล่ route ทั้งหมดใน <span class="mono">services/api</span> เทียบกับคำเรียกของ UI, n8n และ Grafana จากนั้นเขียน contract test 81 คู่ (caller → route) ชั้นที่สอง <b>ทดสอบบนระบบจริง:</b> เรียกทุกเส้นผ่าน helper ที่บันทึกคำเรียกลงล็อก แล้วใช้ <span class="mono">scripts/qa/route_coverage.py</span> เทียบกับ <span class="mono">openapi.json</span> เพื่อพิสูจน์ว่าเรียกครบ</p>
+<table>
+  <thead><tr><th style="width:11%">ผล</th><th>จำนวนเส้น</th><th>ความหมาย</th></tr></thead>
+  <tbody>
+    <tr><td><span class="tag t-ok">OK</span></td><td>88</td><td>เรียกแล้วตอบ 2xx หรือ 3xx</td></tr>
+    <tr><td><span class="tag t-mid">REACHED</span></td><td>3</td><td>handler ตอบแต่ไม่สำเร็จ และมีเหตุผล: <code>export/reddit</code> 404 (ก่อนแก้ F-3), <code>reddit/stop</code> 400 (สตรีมจบเองแล้ว), <code>remediations/{id}/resolve</code> 404 (ไม่แก้ ticket จริงของเจ้าของ)</td></tr>
+    <tr><td><span class="tag t-mid">AUTH_ONLY / UNTESTED</span></td><td>3</td><td>ข้ามโดยตั้งใจเพราะกระทบข้อมูลของคนอื่น: <code>approve-all</code>, <code>reject-all</code>, <code>system/cleanup</code></td></tr>
+  </tbody>
+</table>
+
+<h2>3. สรุปการแก้ไขทั้งหมด (ตารางรวม)</h2>
+<p>ระดับ: <span class="tag t-high">สูง</span> ข้อมูลหาย ผลผิด หรือความปลอดภัย · <span class="tag t-mid">กลาง</span> ฟีเจอร์ใช้ไม่ได้หรือแสดงผลผิด · <span class="tag t-low">ต่ำ</span> เล็กน้อย</p>
+<table>
+  <thead><tr><th style="width:6%">ID</th><th style="width:7%">ระดับ</th><th style="width:30%">ปัญหา</th><th style="width:34%">การแก้</th><th>Commit</th></tr></thead>
+  <tbody>
+    <tr><td>F-1</td><td><span class="tag t-high">สูง</span></td><td><code>/services/status</code> คืน URL ของ Elasticsearch พร้อมรหัสผ่าน ให้ทุกคนโดยไม่ต้อง login</td><td>ลบรหัสผ่านออกจาก URL คงรูปแบบฟิลด์เดิม (UI ไม่ได้อ่านฟิลด์นี้)</td><td class="mono">a216b0f</td></tr>
+    <tr><td>R-2</td><td><span class="tag t-high">สูง</span></td><td><code>GET /whitebox/run-all</code> รัน pipeline ทั้งชุดและเขียนไฟล์ได้โดยไม่ต้อง login</td><td>บังคับ session ที่ GET เหมือน POST</td><td class="mono">a216b0f</td></tr>
+    <tr><td>F-5</td><td><span class="tag t-high">สูง</span></td><td>trust-check ใช้เกณฑ์ 90 เสมอ เพราะอ่านไฟล์ที่ path ไม่มีใน container จึงตอบ "ปลอดภัย" ผิด</td><td>ใช้เกณฑ์ที่ engine ใช้กับ run นั้นก่อน แล้วถอยไปอ่านจาก rules registry ใน Elasticsearch</td><td class="mono">a216b0f</td></tr>
+    <tr><td>F-10</td><td><span class="tag t-high">สูง</span></td><td>preview ของ quarantine ตอบ 500 เมื่อมีค่า NaN (กรณีปกติของแถวที่ถูกกักกัน)</td><td>แปลงแถวเป็น JSON ที่ปลอดภัย NaN/Infinity/NaT เป็น null</td><td class="mono">a216b0f</td></tr>
+    <tr><td>F-12</td><td><span class="tag t-high">สูง</span></td><td>ลบตารางแล้วเหลือ <code>/data/archive</code> และบันทึก run ทำให้ตารางที่ลบยัง preview ได้ และ ingest ไฟล์เดิมซ้ำไม่ได้ ("duplicate")</td><td>การลบล้าง archive และ <code>sdoqap_runs</code> ด้วย</td><td class="mono">0889d47</td></tr>
+    <tr><td>F-20</td><td><span class="tag t-high">สูง</span></td><td>อัปโหลดจาก UI เขียนทับ <code>dirty_dataset.csv</code> (ชุดประเมิน 10,100 แถวเหลือ 13) และไม่สร้าง Spark run</td><td>เก็บไฟล์อัปโหลดแยกที่ <code>working_dataset.csv</code> เพิ่มตัวสลับ <code>dataset_source</code> และให้ UI ส่งเข้า pipeline ด้วย</td><td class="mono">847fa1c</td></tr>
+    <tr><td>G2</td><td><span class="tag t-mid">กลาง</span></td><td>preview และดาวน์โหลด raw ตอบ 404 กับทุกตารางที่ ingest ผ่าน API (อ่าน path เก่า แล้วหลัง run จบ engine ย้ายไปไว้ใน archive)</td><td>หา landing ล่าสุดจากทั้ง <code>/data/raw</code> และ <code>/data/archive</code></td><td class="mono">5291a31, c2f81e6</td></tr>
+    <tr><td>G1</td><td><span class="tag t-mid">กลาง</span></td><td>หน้า Export แท็บ Gold เรียก <code>/gold/schema-drift</code> ที่ไม่มี (ได้ 404)</td><td>เพิ่ม alias เก็บ <code>/schema-drift-history</code> ไว้เหมือนเดิม</td><td class="mono">e1a9e60</td></tr>
+    <tr><td>G3–G5</td><td><span class="tag t-mid">กลาง</span></td><td>n8n และ Grafana เรียก cleanup, alert, Spark trigger และ Elasticsearch โดยไม่มีคีย์ จึงได้ 401</td><td>cleanup รับ <code>X-Service-Key</code>, alert รับ <code>Authorization: Bearer</code>, ผู้เรียกส่งคีย์จาก env</td><td class="mono">7e061aa, bccfa5b</td></tr>
+    <tr><td>G6</td><td><span class="tag t-mid">กลาง</span></td><td>คีย์ Groq ที่บันทึกจากหน้า Rules ไม่ถูกใช้โดย AI context</td><td>อ่านคีย์ที่บันทึกใน Elasticsearch ก่อน แล้วค่อย env</td><td class="mono">52e235e</td></tr>
+    <tr><td>–</td><td><span class="tag t-mid">กลาง</span></td><td>โมเดล <code>llama-3.3-70b-versatile</code> ไม่มีบน Groq แล้ว (404) การบันทึก settings ด้วยค่าเริ่มต้นจะล้ม</td><td>ค่าเริ่มต้นเป็น <code>openai/gpt-oss-120b</code> และแปลงค่าเก่าที่บันทึกไว้ตอนอ่าน</td><td class="mono">163aafb</td></tr>
+    <tr><td>F-11</td><td><span class="tag t-mid">กลาง</span></td><td><code>/export/gold/{metric}</code> ตอบ 500 ข้อความว่าง แทน 404 เมื่อไม่มีข้อมูล</td><td>ปล่อย HTTPException ผ่าน ไม่ถูก <code>except Exception</code> กลืน</td><td class="mono">a216b0f</td></tr>
+    <tr><td>F-4</td><td><span class="tag t-mid">กลาง</span></td><td><code>/rules/profiles/{table}</code> ว่างเสมอ และรูปแบบ response ไม่ตรงที่ UI อ่าน</td><td>อ่านจาก quality run ล่าสุด (engine บันทึก <code>null_profile</code> เพิ่ม) ตอบรูปแบบ <code>null_profile</code>, <code>value_ranges</code></td><td class="mono">128706c</td></tr>
+    <tr><td>F-8</td><td><span class="tag t-mid">กลาง</span></td><td>การบันทึกกฎเขียน <code>rules_config.json</code> ใหม่ทั้งไฟล์จาก Elasticsearch (คอมเมนต์หาย ค่าที่แก้ย้อนกลับ) และการลบตารางไม่เคยลบบล็อกออกจากไฟล์</td><td>บันทึกเฉพาะตารางที่เปลี่ยน ทั้งในไฟล์และ registry และลบบล็อกของตารางที่ถูกลบ</td><td class="mono">ee04297, 4e16a1d</td></tr>
+    <tr><td>F-14</td><td><span class="tag t-mid">กลาง</span></td><td><code>/whitebox/benchmark</code> ตอบ <code>PASSED</code> ทั้งที่ recall ต่ำ เมื่อโหลดไฟล์อื่นที่ไม่ใช่ชุดประเมิน</td><td>ตอบ <code>NOT_APPLICABLE</code> พร้อมข้อความ เมื่อใช้ไฟล์อัปโหลด</td><td class="mono">847fa1c</td></tr>
+  </tbody>
+</table>
+
+<h2>4. รายละเอียดการแก้ที่สำคัญ</h2>
+
+<div class="fix">
+  <h3>F-1 · รหัสผ่าน Elasticsearch รั่วทาง <code>/api/v1/services/status</code></h3>
+  <dl>
+    <dt>สาเหตุ</dt><dd>โค้ดประกอบ URL เป็น <code>http://elastic:&lt;password&gt;@localhost:9200</code> เพื่อใช้เป็นลิงก์ ทั้งที่ endpoint นี้เปิดสาธารณะ (หน้า login อ่านไปแสดงสถานะ)</dd>
+    <dt>วิธีแก้</dt><dd>URL เป็น <code>http://localhost:&lt;ES_HOST_PORT&gt;</code> ไม่มีข้อมูลรับรอง รูปแบบ <code>{status, url}</code> เหมือนเดิม UI ใช้เฉพาะ <code>status</code></dd>
+    <dt>พิสูจน์</dt><dd>เรียกแบบไม่ login ได้ <code>http://localhost:9200</code> และไม่เหลือ URL ที่ฝัง <code>user:password@</code></dd>
+    <dt>ควรทำต่อ</dt><dd>รหัสผ่านเคยเปิดเผยมาแล้ว ถ้าใช้นอกเครื่องทดสอบให้เปลี่ยน <code>ELASTIC_PASSWORD</code></dd>
+  </dl>
+</div>
+
+<div class="fix">
+  <h3>F-5 · trust-check ตัดสินด้วยเกณฑ์ที่ผิด</h3>
+  <dl>
+    <dt>สาเหตุ</dt><dd><code>lineage.py</code> อ่านเกณฑ์จาก <code>../../../spark/rules_config.json</code> ซึ่งใน container กลายเป็น <code>/spark/rules_config.json</code> (ไม่มี ไฟล์จริงอยู่ที่ <code>/opt/spark-apps</code>) จึงใช้ 90 เสมอ ขณะที่ engine ใช้เกณฑ์รายตาราง (เช่น 97) ผลคือคะแนน 90.8 ถูกตอบ "ปลอดภัย" ทั้งที่เกณฑ์จริงคือ 97</dd>
+    <dt>วิธีแก้</dt><dd>ลำดับการหาเกณฑ์: (1) <code>effective_quality_threshold</code> ที่ engine บันทึกไว้ใน run ล่าสุด (2) กฎของตารางทับ <code>_default</code> จาก rules registry ใน Elasticsearch (3) 90.0 เป็นทางเลือกสุดท้าย รองรับทั้งรูป <code>{"base_value": n}</code> และตัวเลขเดี่ยว</dd>
+    <dt>พิสูจน์</dt><dd>ตั้งเกณฑ์ 97 แล้ว retry ได้ <code>quality_threshold: 97.0</code>, <code>is_safe_to_consume: false</code>, <code>HALT_INGEST</code>, เหตุผล "Quality score 90.80% is below threshold 97.0%"</dd>
+    <dt>ข้อสังเกต</dt><dd>หลังเปลี่ยนเกณฑ์ ค่าที่แสดงจะเปลี่ยนเมื่อมี run ครั้งถัดไป เพราะคะแนนของ run เดิมถูกตัดสินด้วยเกณฑ์ตอนนั้น</dd>
+  </dl>
+</div>
+
+<div class="fix">
+  <h3>F-10 · preview ของ quarantine ตอบ 500</h3>
+  <dl>
+    <dt>สาเหตุ</dt><dd><code>to_dict(orient="records")</code> เก็บ NaN ไว้ ทำให้ response เป็น JSON ไม่ถูกต้อง (<code>Out of range float values are not JSON compliant</code>) แถวที่ถูกกักกันมักมีค่าว่าง จึงพังเกือบทุกตาราง</dd>
+    <dt>วิธีแก้</dt><dd>ฟังก์ชัน <code>_records_json_safe</code> ใช้ <code>to_json(date_format="iso")</code> ใช้กับ layer active, quarantine, reddit และ raw</dd>
+    <dt>พิสูจน์</dt><dd>ตารางทดสอบมีแถว <code>score</code> ว่าง 3 จาก 10 แถวที่ preview ตอบ 200 และค่าว่างเป็น <code>null</code></dd>
+  </dl>
+</div>
+
+<div class="fix">
+  <h3>F-12 · ลบตารางแล้วข้อมูลและบันทึกบางส่วนค้าง</h3>
+  <dl>
+    <dt>สาเหตุ</dt><dd>engine ย้ายไฟล์ raw ไป <code>/data/archive/&lt;table&gt;/&lt;ingest_id&gt;</code> หลัง run สำเร็จ แต่โค้ดลบล้างแค่ raw, active, quarantine และไม่แตะ <code>sdoqap_runs</code></dd>
+    <dt>ผลกระทบ</dt><dd>ตารางที่ลบแล้วยัง preview raw ได้ (เพราะ resolver อ่าน archive) และ ingest ไฟล์เดิมซ้ำไม่ได้ เพราะระบบเจอ checksum ที่ <code>SUCCEEDED</code> แล้วตอบ duplicate ชี้ไปที่ข้อมูลที่ไม่มีแล้ว</dd>
+    <dt>วิธีแก้</dt><dd>เพิ่ม <code>/data/archive</code> ในชั้นที่ลบ และเพิ่ม <code>sdoqap_runs</code> ในดัชนีที่ล้าง</dd>
+  </dl>
+</div>
+
+<div class="fix">
+  <h3>F-20 · อัปโหลดจากหน้า Ingestion (API: <code>/whitebox/upload-csv</code>, <code>/whitebox/state</code>, <code>/whitebox/benchmark</code>)</h3>
+  <dl>
+    <dt>สาเหตุ</dt><dd>ไฟล์ที่มีคอลัมน์นักศึกษาถูกเขียนทับที่ <code>dirty_dataset.csv</code> ซึ่งเป็นชุดประเมินที่ใช้เป็นเกณฑ์ (ground truth, benchmark, test) ผลคือ 10,100 แถวเหลือ 13 แถว</dd>
+    <dt>วิธีแก้ (API)</dt><dd>ไฟล์อัปโหลดเขียนที่ <code>working_dataset.csv</code> และตั้ง <code>dataset_source: "upload"</code> (บันทึกข้ามการรีสตาร์ท) ทุกจุดที่อ่านชุดข้อมูลใช้ <code>_dataset_path()</code> สลับกลับด้วย <code>POST /whitebox/state</code> ส่ง <code>{"dataset_source":"evaluation"}</code> ค่าอื่นถูกเมิน ถ้าไฟล์ทำงานหาย จะถอยไปใช้ชุดประเมิน</dd>
+    <dt>วิธีแก้ (UI)</dt><dd>หลังนำเข้าโปรไฟล์สำเร็จ หน้า Ingestion ส่งไฟล์เข้า <code>/pipeline/ingest/csv</code> ต่อ แสดงสถานะรอบ แจ้งกรณีไฟล์ซ้ำ หรือข้อผิดพลาดแยกจากผลโปรไฟล์</dd>
+    <dt>พิสูจน์</dt><dd>อัปโหลดจากหน้าจอจริง: ชุดประเมินยัง 10,100 แถว ไฟล์เหมือนต้นฉบับ, เกิด Spark run และ <code>SUCCEEDED</code>, benchmark ตอบ <code>NOT_APPLICABLE</code> ตอนใช้ไฟล์อัปโหลด และ <code>PASSED</code> 100% เมื่อสลับกลับ</dd>
+  </dl>
+</div>
+
+<div class="fix">
+  <h3>F-8 · การบันทึกกฎและไฟล์ <code>rules_config.json</code></h3>
+  <dl>
+    <dt>สาเหตุ</dt><dd>Elasticsearch (<code>sdoqap_rules_registry</code>) เป็นแหล่งจริง แต่ทุกครั้งที่บันทึก API เขียนไฟล์ใหม่ทั้งไฟล์จาก Elasticsearch ทำให้คอมเมนต์หาย ค่าที่แก้ในไฟล์ย้อนกลับ และตารางที่มีแต่ใน ES โผล่เพิ่ม และการลบตารางลบเอกสารใน ES ก่อน แล้วโหลดกฎจาก ES จึงไม่เจอตารางและข้ามการลบบล็อกในไฟล์</dd>
+    <dt>วิธีแก้</dt><dd><code>_save_rules_config(config, tables=[...])</code> อัปเดตเฉพาะตารางที่ระบุ ทั้งไฟล์และ registry (ใช้ใน <code>PUT /rules</code>, อนุมัติข้อเสนอ AI, มาตรฐานข้อมูล, ลบตาราง) rollback ไม่ส่ง <code>tables</code> จึงเขียนทั้งไฟล์ตามเดิม การลบตารางลบบล็อกในไฟล์เสมอ และจัดรูปแบบไฟล์ให้ตรงกับที่ API เขียน (ข้อมูลเหมือนเดิม)</dd>
+    <dt>พิสูจน์</dt><dd>บันทึกกฎของตารางทดสอบ ไฟล์เพิ่ม 6 บรรทัด ลบ 0 บรรทัด หลังลบตารางไฟล์เหมือน git ทุกไบต์</dd>
+  </dl>
+</div>
+
+<h2>5. การเปลี่ยนแปลงต่อผู้เรียก API (ก่อน → หลัง)</h2>
+<table>
+  <thead><tr><th style="width:27%">Endpoint</th><th style="width:33%">ก่อน</th><th>หลัง</th></tr></thead>
+  <tbody>
+    <tr><td><code>GET /api/v1/services/status</code></td><td><code>url</code> ของ Elasticsearch มี <code>user:password@</code></td><td><code>http://localhost:9200</code> ไม่มีข้อมูลรับรอง</td></tr>
+    <tr><td><code>GET /api/v1/gold/schema-drift</code></td><td>ไม่มี (404)</td><td>มี เป็น alias ของ <code>/schema-drift-history</code> (ตัวเดิมยังใช้ได้)</td></tr>
+    <tr><td><code>GET /api/v1/export/preview/raw/{t}</code>, <code>GET /export/raw/{t}</code></td><td>อ่านเฉพาะ <code>/data/raw/&lt;t&gt;/&lt;t&gt;.csv</code></td><td>อ่าน landing ล่าสุดจาก raw หรือ archive (ตัวที่เขียนล่าสุด)</td></tr>
+    <tr><td><code>GET /api/v1/export/preview/{active|quarantine|reddit}/{t}</code></td><td>500 เมื่อมี NaN</td><td>200 ค่าว่างเป็น <code>null</code> เวลาเป็น ISO</td></tr>
+    <tr><td><code>GET /api/v1/export/gold/{metric}</code></td><td>500 (ข้อความว่าง) เมื่อไม่มีข้อมูลในช่วงวัน</td><td>404 พร้อม "No gold metric records found in the last N days"</td></tr>
+    <tr><td><code>DELETE /api/v1/export/tables/{t}</code></td><td>ลบ raw, active, quarantine; ทิ้ง archive, <code>sdoqap_runs</code>, บล็อกในไฟล์ rules</td><td>ลบ archive, <code>sdoqap_runs</code> และบล็อกในไฟล์ rules ด้วย (<code>hdfs_deleted_layers</code> มี <code>archive</code>)</td></tr>
+    <tr><td><code>POST /api/v1/system/cleanup</code></td><td>รับเฉพาะ session cookie</td><td>รับ session หรือ <code>X-Service-Key</code> (สำหรับ n8n)</td></tr>
+    <tr><td><code>POST /api/v1/system/alert</code></td><td>รับเฉพาะ <code>X-Webhook-Secret</code></td><td>รับ <code>X-Webhook-Secret</code> หรือ <code>Authorization: Bearer</code> (สำหรับ Grafana)</td></tr>
+    <tr><td><code>GET /api/v1/system/settings</code>, <code>POST …/settings</code></td><td>โมเดลเริ่มต้น <code>llama-3.3-70b-versatile</code></td><td>เริ่มต้น <code>openai/gpt-oss-120b</code> ค่าเก่าที่บันทึกไว้ถูกแปลงตอนอ่าน</td></tr>
+    <tr><td><code>GET /api/v1/lineage/{t}/trust-check</code></td><td>เกณฑ์ 90 เสมอ</td><td>เกณฑ์ของ run ล่าสุด หรือค่ากำหนดของตาราง</td></tr>
+    <tr><td><code>GET /api/v1/rules/profiles/{t}</code></td><td><code>null_profiles</code>, <code>value_range_profiles</code> จาก index ที่ไม่มีข้อมูล</td><td><code>run_id</code>, <code>timestamp</code>, <code>null_profile</code>, <code>value_ranges</code> จาก quality run ล่าสุด (ไม่มีข้อมูลยังตอบ <code>profiles: []</code>)</td></tr>
+    <tr><td><code>PUT /api/v1/rules/{t}</code> และอีก 3 ตัวที่เขียนกฎ</td><td>เขียนไฟล์ใหม่ทั้งไฟล์</td><td>อัปเดตเฉพาะตารางนั้น</td></tr>
+    <tr><td><code>GET /api/v1/whitebox/run-all</code></td><td>เรียกได้โดยไม่ login</td><td>401 ถ้าไม่ login (POST ต้อง login เหมือนเดิม)</td></tr>
+    <tr><td><code>POST /api/v1/whitebox/upload-csv</code></td><td>เขียนทับ <code>dirty_dataset.csv</code></td><td>เขียน <code>working_dataset.csv</code> ตั้ง <code>dataset_source: "upload"</code></td></tr>
+    <tr><td><code>POST /api/v1/whitebox/state</code></td><td>–</td><td>รับ <code>dataset_source</code> เป็น <code>"evaluation"</code> หรือ <code>"upload"</code></td></tr>
+    <tr><td><code>GET /api/v1/whitebox/benchmark</code></td><td><code>PASSED</code> แม้ใช้ชุดข้อมูลอื่น</td><td><code>NOT_APPLICABLE</code> เมื่อโหลดไฟล์อัปโหลด</td></tr>
+  </tbody>
+</table>
+
+<h2>6. หลักฐานการทดสอบ</h2>
+<h3>6.1 ชุด test อัตโนมัติ</h3>
+<p>ก่อนเริ่มงานชุด test ของ API มี 52 ตัว (9 ไฟล์) ปัจจุบัน 192 ตัว (22 ไฟล์) ทั้งหมดผ่าน ไฟล์ใหม่:</p>
+<table>
+  <thead><tr><th style="width:42%">ไฟล์</th><th style="width:9%">จำนวน</th><th>ครอบคลุม</th></tr></thead>
+  <tbody>
+    <tr><td class="mono">test_route_contract.py</td><td>81</td><td>ทุกคำเรียกของ UI, n8n, Grafana ต้องตรงกับ route จริง</td></tr>
+    <tr><td class="mono">test_export_raw_path.py</td><td>8</td><td>หา landing ล่าสุดจาก raw และ archive, ค่าว่างเป็น null</td></tr>
+    <tr><td class="mono">test_machine_auth.py</td><td>10</td><td>cleanup รับ service key, alert รับ Bearer และปฏิเสธคีย์ผิด</td></tr>
+    <tr><td class="mono">test_groq_key_source.py, test_groq_settings_model.py</td><td>4 + 3</td><td>ลำดับที่มาของคีย์ Groq และโมเดลเริ่มต้น</td></tr>
+    <tr><td class="mono">test_delete_table.py</td><td>3</td><td>ลบ archive, run registry และบล็อกในไฟล์ rules</td></tr>
+    <tr><td class="mono">test_services_status_no_credentials.py</td><td>2</td><td>ไม่มีรหัสผ่านใน URL</td></tr>
+    <tr><td class="mono">test_trust_check_threshold.py</td><td>5</td><td>ลำดับการหาเกณฑ์ทั้ง 5 กรณี</td></tr>
+    <tr><td class="mono">test_preview_nan.py, test_gold_export_errors.py</td><td>3 + 3</td><td>NaN-safe, 404 vs 500</td></tr>
+    <tr><td class="mono">test_whitebox_run_all_auth.py</td><td>1</td><td>GET และ POST ต้อง login</td></tr>
+    <tr><td class="mono">test_whitebox_upload_keeps_evaluation_data.py</td><td>6</td><td>ไม่ทับชุดประเมิน, สลับ dataset_source, benchmark N/A</td></tr>
+    <tr><td class="mono">test_column_profiles.py</td><td>5</td><td>รูปแบบ response ของ profile</td></tr>
+    <tr><td class="mono">test_rules_save_scope.py</td><td>6</td><td>บันทึกเฉพาะตาราง ไฟล์และ registry</td></tr>
+  </tbody>
+</table>
+<p>ชุดอื่นที่เกี่ยวข้องผ่านทั้งหมดเช่นกัน: Spark unit 81 · UI 81 · scripts 20 · evaluation 21 (งานฝั่ง Spark และ n8n ที่เกี่ยวข้องอยู่ในหัวข้อ 7)</p>
+
+<h3>6.2 การพิสูจน์บนระบบจริง</h3>
+<p>ทุกข้อแก้ถูกทดสอบกับ stack ที่รันอยู่ ด้วยตารางทดสอบ <span class="mono">qa_*</span> ที่ลบทิ้งหลังทดสอบ รวมถึงเอกสารที่ค้างใน Elasticsearch (ตรวจซ้ำว่าเหลือ 0) และเคยทดสอบการอัปโหลดผ่านหน้าจอเบราว์เซอร์จริง หลักฐานดิบอยู่ที่ <span class="mono">docs/testing/evidence/</span> และรายงานฉบับเต็มที่ <span class="mono">docs/testing/2026-10-01-real-use-test-report.md</span> (88 ข้อ: ผ่าน 66 · ไม่ผ่าน 18 · ข้าม 4 ก่อนแก้)</p>
+
+<h2>7. งานที่เกี่ยวข้องซึ่งไม่ใช่ API (ผลต่อเนื่อง)</h2>
+<table>
+  <thead><tr><th style="width:7%">ID</th><th style="width:40%">ปัญหา</th><th>การแก้</th></tr></thead>
+  <tbody>
+    <tr><td>F-2</td><td>engine เดา primary key จากชื่อคอลัมน์ ไฟล์ตัวอย่าง 1,030 แถวเหลือ 250</td><td>ตรวจความไม่ซ้ำจากข้อมูลจริง (ต้อง 90% ขึ้นไป) ประกอบเป็น key ผสมได้ ตอนนี้ได้ 1,000 แถว (30 แถวที่เหลือคือแถวซ้ำที่ตั้งใจใส่ไว้) <span class="mono">22c1977</span></td></tr>
+    <tr><td>F-3</td><td>สตรีม Reddit ไม่เขียน Parquet เพราะเริ่มอ่านที่ offset ล่าสุด</td><td>เริ่มที่ <code>earliest</code> เมื่อไม่มี checkpoint <span class="mono">128706c</span></td></tr>
+    <tr><td>F-16</td><td>n8n ปฏิเสธ JSON body ของ 5 node ("not valid JSON") ทำให้ ingest ผ่าน webhook และ alert ไม่ถึง API</td><td>เขียนเป็น <code>={{ JSON.stringify({...}) }}</code> <span class="mono">61e972e</span></td></tr>
+  </tbody>
+</table>
+
+<h2>8. สิ่งที่ต้องทำ/ระวังหลังใช้งาน</h2>
+<ul>
+  <li><b>Rebuild image:</b> <code>docker compose up -d --build api ui</code> (ทำแล้วบนเครื่องนี้ สภาพแวดล้อมอื่นต้องทำเอง)</li>
+  <li><b>การลบตาราง</b> ตอนนี้ล้าง archive และบันทึก run ด้วย จึงลบแล้ว ingest ไฟล์เดิมซ้ำได้ แต่กู้ข้อมูลที่ลบไม่ได้</li>
+  <li><b>trust-check</b> หลังเปลี่ยนเกณฑ์ ค่าที่แสดงจะอัปเดตเมื่อมี run ถัดไป</li>
+  <li><b>หลังอัปโหลดไฟล์</b> เอนจิน Audit Trail ทำงานกับไฟล์นั้นต่อ ถ้าต้องการกลับชุดประเมิน ใช้ <code>POST /api/v1/whitebox/state</code> (ยังไม่มีปุ่มบนหน้าจอ)</li>
+  <li><b>cleanup รายวันของ n8n</b> (02:00 UTC) จะทำงานจริงแล้ว เพราะส่งคีย์ถูก มันลบเอกสาร Elasticsearch ที่เก่ากว่า 30 วันกับไฟล์ HDFS เก่า ถ้าไม่ต้องการ ให้ปิดตารางเวลานั้นใน n8n</li>
+  <li><b>alert ถี่:</b> node "Query Sales Records" ของ n8n ล้มทุก 30 นาที เพราะไม่มี credential Postgres (ล้มก่อนหน้าแล้ว) และตอนนี้ส่ง alert ระดับ critical ถึง API ทุกรอบ ต้องสร้าง credential ใน n8n</li>
+</ul>
+
+<h3>ปัญหาของ API ที่ยังไม่ได้แก้</h3>
+<table>
+  <thead><tr><th style="width:7%">ID</th><th style="width:7%">ระดับ</th><th>รายละเอียด</th></tr></thead>
+  <tbody>
+    <tr><td>F-13</td><td><span class="tag t-mid">กลาง</span></td><td><code>/lineage/inspect/{t}/{node}</code> ตอบค่าประมาณ (จำนวนไฟล์/ขนาดคำนวณจากจำนวนแถว, ระบุ raw เป็น Parquet) และไม่มีตัวอย่างแถวใน raw/active</td></tr>
+    <tr><td>F-22</td><td><span class="tag t-mid">กลาง</span></td><td><code>/executive/overview</code> ส่ง <code>missing_values_pct</code>, <code>duplicate_records_pct</code>, <code>invalid_type_pct</code> เป็น 0.0 ทั้งที่มีแถวถูกกักกัน</td></tr>
+    <tr><td>F-21</td><td><span class="tag t-low">ต่ำ</span></td><td><code>/analytics/clustering</code> ตั้ง <code>source: "Unknown"</code> ให้ทุกคลัสเตอร์</td></tr>
+    <tr><td>F-9</td><td><span class="tag t-low">ต่ำ</span></td><td><code>POST /pipeline/acknowledge/{id ที่ไม่มี}</code> ตอบ 200 และสร้างเอกสารขยะ (ควร 404)</td></tr>
+    <tr><td>F-6, F-7</td><td><span class="tag t-low">ต่ำ</span></td><td><code>POST /rules/ai-proposals/reset</code> ไม่เรียก LLM แต่คืนข้อเสนอตัวอย่างตายตัว และการ approve ข้อเสนอตัวอย่างตอบ "merged" ทั้งที่ไม่ได้ merge</td></tr>
+    <tr><td>F-15</td><td><span class="tag t-low">ต่ำ</span></td><td>เมื่อคีย์ Groq มาจาก env การบันทึกใน <code>/system/settings</code> เขียนเอกสารเป็น disabled แต่ GET ยังแสดง enabled</td></tr>
+    <tr><td>–</td><td><span class="tag t-low">ต่ำ</span></td><td><code>POST /pipeline/ingest/rdbms</code> กับ <code>SELECT … INTO</code> ตอบ 502 (ถูกปฏิเสธแล้ว แต่ควรเป็น 4xx)</td></tr>
+  </tbody>
+</table>
+
+<p class="foot">เอกสารนี้สรุปจากรายงานทดสอบการใช้งานจริง (<span class="mono">docs/testing/2026-10-01-real-use-test-report.md</span>) และ commit ในช่วง e1a9e60 ถึง 61e972e แผนงานที่เกี่ยวข้องอยู่ที่ <span class="mono">docs/superpowers/plans/2026-10-01-api-route-completeness.md</span> และ <span class="mono">2026-10-01-real-use-feature-test.md</span></p>
+</body>
+</html>
