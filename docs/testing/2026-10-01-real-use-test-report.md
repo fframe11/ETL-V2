@@ -24,3 +24,6 @@
 | T2.7 | ขาดคอลัมน์ primary key -> 400 | PASS | golden_student_scores: missing primary key ['student_id'] |
 | T2.8 | e2e_ingest_check (concurrent/dup/queue) | PASS | t2-e2e-ingest-check.txt (PASS 3 ข้อ; สร้างตาราง e2e_ingest_<ts> ที่ไม่ขึ้นต้น qa_ ค้างไว้) |
 | T2.9 | service key ingest | PASS | HTTP 202 ไม่มี cookie, ตาราง qa_scores_svc |
+| T3.1 | allowlist/SSRF/scheme guard -> 400 | PASS | 5 URL = 400 ทั้งหมด; D-1: โค้ด fail-closed แต่ .env.example/README ยังบอกว่า 'ไม่ตั้งค่า = ยอมทุก host' |
+| T3.2 | ingest data.go.th -> SUCCEEDED (50 แถว) | FAIL | queued -> SUCCEEDED ได้ แต่ total_records=11 ไม่ใช่ 50 เพราะ resource นี้มี 11 ระเบียนทั้งหมด (ยืนยันกับ data.go.th total=11; ข้อกำหนดของแผนผิด = D-5, ระบบทำงานถูก) t3-gov-record-count.txt |
+| T3.3 | API ซ้ำ -> duplicate | PASS | status=duplicate, ingest id เดิม, spark_triggered=false |
