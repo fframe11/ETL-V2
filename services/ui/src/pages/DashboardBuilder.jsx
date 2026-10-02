@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { PageHeader } from "../components/ui";
 import DatasetPicker from "../components/builder/DatasetPicker";
 import DataPreview from "../components/builder/DataPreview";
@@ -44,39 +44,60 @@ function EngineNote({ draft }) {
 }
 
 export default function DashboardBuilder() {
-  const [step, setStep] = useState(0);
+  const [step, setStepRaw] = useState(0);
   const [dataset, setDataset] = useState(null);
   const [request, setRequest] = useState({ context: "", audience: "business" });
   const [draft, setDraft] = useState(null);
   const [selections, setSelections] = useState({});
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  // Guards against late responses: `epoch` changes with the dataset, `seq` counts the calls per kind,
+  // and `committed` holds the selections that match the data currently on screen.
+  const epoch = useRef(0);
+  const seq = useRef({});
+  const committed = useRef({});
 
   const maxStep = draft ? 3 : dataset ? 2 : 0;
 
+  const setStep = (next) => {
+    setError("");
+    setStepRaw(next);
+  };
+
   const chooseDataset = (next) => {
     if (dataset?.name !== next.name) {
+      epoch.current += 1;
+      committed.current = {};
       setDraft(null);
       setSelections({});
+      setError("");
+      setBusy("");
     }
     setDataset(next);
   };
 
+  // `work(live)` must check live() after every await before it writes state: a response is dropped
+  // when the dataset changed or a newer call of the same kind has started.
   const run = async (kind, work) => {
+    const myEpoch = epoch.current;
+    const mySeq = (seq.current[kind] = (seq.current[kind] || 0) + 1);
+    const live = () => myEpoch === epoch.current && mySeq === seq.current[kind];
     setBusy(kind);
     setError("");
     try {
-      return await work();
+      return await work(live);
     } catch (e) {
-      setError(e.message);
+      if (live()) setError(e.message);
       return null;
     } finally {
-      setBusy("");
+      if (live()) setBusy("");
     }
   };
 
-  const generate = () => run("generate", async () => {
+  const generate = () => run("generate", async (live) => {
     const result = await dashboardsApi.generate(dataset.name, request.context, request.audience);
+    if (!live()) return;
+    committed.current = {};
     setDraft(result);
     setSelections({});
     setStep(3);
@@ -84,9 +105,16 @@ export default function DashboardBuilder() {
 
   const changeSelections = (next) => {
     setSelections(next);
-    return run("render", async () => {
-      const result = await dashboardsApi.render(dataset.name, draft.spec, next);
-      setDraft((d) => ({ ...d, spec: result.spec, data: result.data }));
+    return run("render", async (live) => {
+      try {
+        const result = await dashboardsApi.render(dataset.name, draft.spec, next);
+        if (!live()) return;
+        committed.current = next;
+        setDraft((d) => d && { ...d, spec: result.spec, data: result.data });
+      } catch (e) {
+        if (live()) setSelections(committed.current);
+        throw e;
+      }
     });
   };
 

@@ -1,5 +1,7 @@
-import { it, expect } from "vitest";
-import { screen, fireEvent, act } from "@testing-library/react";
+import React from "react";
+import { it, expect, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
+import { render, screen, fireEvent, act, within } from "@testing-library/react";
 import { renderPage } from "../test/renderPage";
 import DashboardBuilder from "./DashboardBuilder";
 import { SPEC, DATA } from "../test/dashboardFixtures";
@@ -131,4 +133,134 @@ it("shows the API error when generation fails", async () => {
   await generateDashboard([["/dashboards/generate", { status: 404, body: { detail: "ไม่พบชุดข้อมูล sales" } }]]);
   expect(screen.getByRole("alert")).toHaveTextContent("ไม่พบชุดข้อมูล sales");
   expect(screen.getByRole("button", { name: "สร้างแดชบอร์ดด้วย AI" })).toBeEnabled();
+});
+
+// --- late and out-of-order responses ---------------------------------------------------------
+// fetch stub where /generate and /render stay pending until the test answers them.
+const TWO_DATASETS = { datasets: [
+  DATASETS.datasets[0],
+  { ...DATASETS.datasets[0], name: "orders", source: "Database" }
+] };
+
+function controlledFetch() {
+  const pending = { generate: [], render: [] };
+  const reply = (status, body) => ({
+    ok: status >= 200 && status < 300, status,
+    json: async () => body, text: async () => JSON.stringify(body), blob: async () => new Blob()
+  });
+  const fn = vi.fn((url) => {
+    const u = String(url);
+    for (const kind of Object.keys(pending)) {
+      if (u.includes(`/dashboards/${kind}`)) {
+        return new Promise((resolve) => pending[kind].push((body, status = 200) => resolve(reply(status, body))));
+      }
+    }
+    return Promise.resolve(reply(200, u.includes("/preview") ? PREVIEW : TWO_DATASETS));
+  });
+  vi.stubGlobal("fetch", fn);
+  return pending;
+}
+
+const answer = (respond, ...args) => act(async () => { respond(...args); });
+const rendered = (rowsAfterFilter) => ({ spec: SPEC, data: { ...DATA, rows_after_filter: rowsAfterFilter } });
+const stepButtons = () => within(screen.getByRole("list", { name: "ขั้นตอนสร้างแดชบอร์ด" })).getAllByRole("button");
+
+async function mountBuilder() {
+  const pending = controlledFetch();
+  await act(async () => { render(<MemoryRouter><DashboardBuilder /></MemoryRouter>); });
+  await settle();
+  return pending;
+}
+
+async function startGenerate() {
+  fireEvent.click(screen.getByRole("radio", { name: "เลือก sales" }));
+  fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+  await settle();
+  fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+  fireEvent.click(screen.getByRole("button", { name: EXAMPLE }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "สร้างแดชบอร์ดด้วย AI" })); });
+}
+
+async function openDashboard() {
+  const pending = await mountBuilder();
+  await startGenerate();
+  await answer(pending.generate[0], GENERATED);
+  return pending;
+}
+
+const filterRegion = (value) => fireEvent.change(screen.getByLabelText("ภูมิภาค"), { target: { value } });
+
+it("does not bring back a dashboard when a render finishes after the dataset was changed", async () => {
+  const pending = await openDashboard();
+  filterRegion("North");
+  fireEvent.click(stepButtons()[0]);
+  await settle();
+  fireEvent.click(screen.getByRole("radio", { name: "เลือก orders" }));
+  await answer(pending.render[0], rendered(2));
+  expect(stepButtons()[3]).toBeDisabled();
+  expect(screen.queryByRole("status")).toBeNull();
+  expect(screen.queryByText("ภาพรวมยอดขาย")).toBeNull();
+});
+
+it("ignores a generate response that arrives after the dataset was changed", async () => {
+  const pending = await mountBuilder();
+  await startGenerate();
+  fireEvent.click(stepButtons()[0]);
+  await settle();
+  fireEvent.click(screen.getByRole("radio", { name: "เลือก orders" }));
+  await answer(pending.generate[0], GENERATED);
+  expect(screen.getByRole("radio", { name: "เลือก orders" })).toBeChecked();
+  expect(screen.queryByText("ภาพรวมยอดขาย")).toBeNull();
+  expect(stepButtons()[3]).toBeDisabled();
+});
+
+it("keeps the newest filter result when render responses arrive out of order", async () => {
+  const pending = await openDashboard();
+  filterRegion("North");
+  filterRegion("South");
+  await answer(pending.render[1], rendered(3));
+  await answer(pending.render[0], rendered(2));
+  expect(screen.getByText("3 จาก 6 แถว")).toBeInTheDocument();
+  expect(screen.queryByText("2 จาก 6 แถว")).toBeNull();
+  expect(screen.getByLabelText("ภูมิภาค")).toHaveValue("South");
+  expect(document.querySelector(".dbb-canvas")).toHaveAttribute("aria-busy", "false");
+});
+
+it("stays busy until the newest render settles", async () => {
+  const pending = await openDashboard();
+  filterRegion("North");
+  filterRegion("South");
+  await answer(pending.render[0], rendered(2));
+  expect(document.querySelector(".dbb-canvas")).toHaveAttribute("aria-busy", "true");
+  await answer(pending.render[1], rendered(3));
+  expect(document.querySelector(".dbb-canvas")).toHaveAttribute("aria-busy", "false");
+});
+
+it("puts the filter back and shows the error when the newest render fails", async () => {
+  const pending = await openDashboard();
+  filterRegion("North");
+  await answer(pending.render[0], { detail: "ไม่พบชุดข้อมูล sales" }, 404);
+  expect(screen.getByRole("alert")).toHaveTextContent("ไม่พบชุดข้อมูล sales");
+  expect(screen.getByLabelText("ภูมิภาค")).toHaveValue("");
+  expect(screen.getByText("6 จาก 6 แถว")).toBeInTheDocument();
+});
+
+it("clears the error banner when another dataset is chosen", async () => {
+  const pending = await openDashboard();
+  filterRegion("North");
+  fireEvent.click(stepButtons()[0]);
+  await settle();
+  await answer(pending.render[0], { detail: "ไม่พบชุดข้อมูล sales" }, 404);
+  expect(screen.getByRole("alert")).toHaveTextContent("ไม่พบชุดข้อมูล sales");
+  fireEvent.click(screen.getByRole("radio", { name: "เลือก orders" }));
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+it("clears the error banner when the user moves to another step", async () => {
+  const pending = await openDashboard();
+  filterRegion("North");
+  await answer(pending.render[0], { detail: "ไม่พบชุดข้อมูล sales" }, 404);
+  expect(screen.getByRole("alert")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "แก้ความต้องการ" }));
+  expect(screen.queryByRole("alert")).toBeNull();
 });
