@@ -114,3 +114,38 @@ def test_one_broken_widget_does_not_blank_the_others(monkeypatch):
     widgets = compute_dashboard(DF, spec, PROFILE)["widgets"]
     assert widgets["k"]["value"] == 500.0
     assert widgets["b"] == {"error": "คำนวณวิดเจ็ตนี้ไม่ได้: boom"}
+
+
+def test_timezone_aware_date_bounds_are_converted_to_utc_wall_time():
+    kpi = {"type": "kpi", "metric": SUM}
+    # "Z" is already UTC: from 2025-02-03 00:00 keeps 02-03, 02-28, 03-10, 03-11 -> 50+80+40+30
+    assert one(kpi, {"order_date": {"from": "2025-02-03T00:00:00Z"}})["value"] == 200.0
+    # 2025-02-04T03:00+07:00 is 2025-02-03 20:00 UTC: midnight of 02-03 is excluded -> 80+40+30
+    assert one(kpi, {"order_date": {"from": "2025-02-04T03:00:00+07:00"}})["value"] == 150.0
+    # an aware "to" still includes its whole UTC day: 01-05, 01-20, 02-03 -> 100+200+50
+    assert one(kpi, {"order_date": {"to": "2025-02-03T00:00:00Z"}})["value"] == 350.0
+    assert one(kpi, {"order_date": {"to": "2025-02-03T07:00:00+07:00"}})["value"] == 350.0
+
+
+def test_out_of_range_and_garbage_date_bounds_are_ignored():
+    kpi = {"type": "kpi", "metric": SUM}
+    assert one(kpi, {"order_date": {"to": "9999-12-31"}})["value"] == 500.0
+    assert one(kpi, {"order_date": {"from": "9999-12-31T00:00:00Z", "to": "0001-01-01"}})["value"] == 500.0
+    assert one(kpi, {"order_date": {"from": "not a date", "to": "also not"}})["value"] == 500.0
+    result = run(kpi, {"order_date": {"to": "9999-12-31"}})
+    assert result["rows_total"] == 6 and result["rows_after_filter"] == 6
+
+
+def test_compute_dashboard_never_mutates_the_input_frame():
+    before = DF.copy()
+    widgets = [
+        {"type": "kpi", "metric": SUM, "compare": {"date_column": "order_date", "time_grain": "month"}},
+        {"type": "bar", "x": "region", "metric": SUM, "group_by": "segment"},
+        {"type": "pie", "x": "region", "metric": SUM, "limit": 2},
+        {"type": "line", "x": "order_date", "time_grain": "month", "metric": SUM, "group_by": "segment"},
+        {"type": "table", "columns": ["region", "amount"], "order_by": {"column": "amount", "desc": True}, "limit": 2},
+    ]
+    spec, _ = validate_spec({"widgets": widgets, "filters": [{"column": "region"}, {"column": "order_date"}]}, PROFILE)
+    selections = {"region": {"values": ["North", "(ว่าง)"]}, "order_date": {"from": "2025-01-01", "to": "2025-03-31"}}
+    compute_dashboard(DF, spec, PROFILE, selections)
+    pd.testing.assert_frame_equal(DF, before)

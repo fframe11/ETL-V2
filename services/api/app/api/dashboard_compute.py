@@ -136,9 +136,13 @@ def _timestamp(value):
         return None
     try:
         ts = pd.Timestamp(value)
-    except (TypeError, ValueError):
+        if pd.isna(ts):
+            return None
+        if ts.tzinfo is not None:  # frame columns are tz-naive UTC wall time
+            ts = ts.tz_convert(None)
+        return ts.as_unit("ns")  # raises when outside the datetime64[ns] range
+    except (TypeError, ValueError, OverflowError, pd.errors.OutOfBoundsDatetime):
         return None
-    return None if pd.isna(ts) else ts
 
 
 def apply_filters(df, selections, kinds):
@@ -156,7 +160,12 @@ def apply_filters(df, selections, kinds):
             if start is not None:
                 df = df[df[column] >= start]
             if end is not None:
-                df = df[df[column] < end + pd.Timedelta(days=1)]
+                try:
+                    end = end + pd.Timedelta(days=1)
+                except (OverflowError, pd.errors.OutOfBoundsDatetime):
+                    end = None  # no representable upper bound: treat as unbounded
+                if end is not None:
+                    df = df[df[column] < end]
     return df
 
 
