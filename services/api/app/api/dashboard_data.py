@@ -4,6 +4,7 @@ Only the active layer (/data/active/<table>, the rows that passed the Quality Ga
 offered. A table is loaded with pandas once per cache period, its technical columns are
 dropped and every column is classified as numeric, date, categorical or text; both the
 dashboard spec and the LLM prompt are built from that profile."""
+import logging
 import time
 
 import pandas as pd
@@ -11,6 +12,8 @@ from fastapi import HTTPException
 
 from .data_export import _list_hdfs_dir, _records_json_safe, read_parquet_folder_to_df
 from .validation import validate_table_name
+
+logger = logging.getLogger(__name__)
 
 KINDS = ("numeric", "categorical", "date", "text")
 TECHNICAL_COLUMNS = {"run_id", "ingest_id", "__index_level_0__"}
@@ -112,10 +115,15 @@ def load_active_dataset(table_name: str):
 
 
 def dataset_profile(table_name: str) -> dict:
+    """Profile only. A miss fills _PROFILE_CACHE and never _FRAME_CACHE, so listing many
+    tables cannot evict the frame of the dataset being worked on."""
+    validate_table_name(table_name)
     hit = _PROFILE_CACHE.get(table_name)
     if hit and time.time() - hit[0] < _CACHE_TTL_S:
         return hit[1]
-    return load_active_dataset(table_name)[1]
+    _, profile = prepare_frame(_read_active(table_name))
+    _PROFILE_CACHE[table_name] = (time.time(), profile)
+    return profile
 
 
 def list_active_tables():
@@ -134,6 +142,8 @@ def _latest(es, index, table_name, sort_field):
         hits = res["hits"]["hits"]
         return hits[0]["_source"] if hits else None
     except Exception:
+        logger.warning("Elasticsearch lookup failed (index=%s, table=%s); continuing without it",
+                       index, table_name, exc_info=True)
         return None
 
 

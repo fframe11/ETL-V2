@@ -114,3 +114,69 @@ def test_unsafe_table_names_are_rejected():
     with pytest.raises(HTTPException) as exc:
         dashboard_data.load_active_dataset("../etc")
     assert exc.value.status_code == 400
+
+
+def test_listing_many_tables_does_not_evict_the_frame_being_worked_on(monkeypatch):
+    names = [f"t{i}" for i in range(dashboard_data._FRAME_CACHE_MAX + 3)]
+    monkeypatch.setattr(dashboard_data, "list_active_tables", lambda: names)
+    monkeypatch.setattr(dashboard_data, "_read_active", lambda name: SALES.copy())
+    dashboard_data.load_active_dataset("working")
+    assert list(dashboard_data._FRAME_CACHE) == ["working"]
+
+    listed = dashboard_data.list_datasets(None)
+    assert [d["name"] for d in listed] == sorted(names)
+    assert all(d["records"] == 5 for d in listed)
+    assert list(dashboard_data._FRAME_CACHE) == ["working"]
+
+
+def test_listing_alone_leaves_the_frame_cache_empty(monkeypatch):
+    names = [f"t{i}" for i in range(dashboard_data._FRAME_CACHE_MAX + 3)]
+    monkeypatch.setattr(dashboard_data, "list_active_tables", lambda: names)
+    monkeypatch.setattr(dashboard_data, "_read_active", lambda name: SALES.copy())
+    dashboard_data.list_datasets(None)
+    assert dashboard_data._FRAME_CACHE == {}
+    assert set(dashboard_data._PROFILE_CACHE) == set(names)
+
+
+def test_profiles_are_read_once_per_cache_period(monkeypatch):
+    calls = []
+    monkeypatch.setattr(dashboard_data, "list_active_tables", lambda: ["sales"])
+    monkeypatch.setattr(dashboard_data, "_read_active", lambda name: calls.append(name) or SALES.copy())
+    dashboard_data.list_datasets(None)
+    dashboard_data.list_datasets(None)
+    assert dashboard_data.dataset_profile("sales")["rows"] == 5
+    assert calls == ["sales"]
+
+
+def test_dataset_profile_rejects_unsafe_table_names():
+    with pytest.raises(HTTPException) as exc:
+        dashboard_data.dataset_profile("../etc")
+    assert exc.value.status_code == 400
+
+
+def test_dataset_profile_reuses_a_fresh_cached_frame(monkeypatch):
+    calls = []
+    monkeypatch.setattr(dashboard_data, "_read_active", lambda name: calls.append(name) or SALES.copy())
+    _, profile = dashboard_data.load_active_dataset("sales")
+    assert dashboard_data.dataset_profile("sales") is profile
+    assert calls == ["sales"]
+
+
+def test_list_survives_an_elasticsearch_failure_and_logs_it(monkeypatch, caplog):
+    class BrokenES(FakeES):
+        def search(self, index, query, size=10, sort=None):
+            raise RuntimeError("cluster is down")
+
+    es = BrokenES()
+    es.index("sdoqap_runs", "i1", {"table_name": "sales"})
+    es.index("sdoqap_quality_runs", "q1", {"table_name": "sales"})
+    monkeypatch.setattr(dashboard_data, "list_active_tables", lambda: ["sales"])
+    monkeypatch.setattr(dashboard_data, "_read_active", lambda name: SALES.copy())
+
+    with caplog.at_level("WARNING", logger=dashboard_data.logger.name):
+        (sales,) = dashboard_data.list_datasets(es)
+    assert sales["source"] is None and sales["last_updated"] is None and sales["quality_score"] is None
+    assert sales["records"] == 5 and sales["error"] is None
+    warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert warnings and "sdoqap_runs" in warnings[0].getMessage() and "sales" in warnings[0].getMessage()
+    assert warnings[0].exc_info is not None
