@@ -24,7 +24,7 @@ export default function ChartWidget({ widget, data, onDrill }) {
   const seriesName = (s) => (s === "value" ? widget.title : s);
   const legend = series.length > 1;
   const drill = DRILLABLE.has(widget.type) && onDrill
-    ? (entry) => { const v = drillValue(entry); if (v !== null) onDrill(widget.x, v); }
+    ? (entry) => { const v = drillValue(entry); if (v !== null) onDrill(widget.x, v, widget.time_grain); }
     : undefined;
   const cursor = drill ? "pointer" : undefined;
 

@@ -8,7 +8,12 @@ async function request(path, { method = "GET", body } = {}) {
     options.headers = { "Content-Type": "application/json" };
     options.body = JSON.stringify(body);
   }
-  const res = await fetch(`${BASE}${path}`, options);
+  let res;
+  try {
+    res = await fetch(`${BASE}${path}`, options);
+  } catch {
+    throw new Error("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่");
+  }
   if (res.status === 401 && window.location.pathname !== "/login") {
     window.location.href = "/login";
   }

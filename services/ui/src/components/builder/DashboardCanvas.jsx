@@ -16,7 +16,9 @@ export default function DashboardCanvas({ spec, data, selections = {}, onSelecti
   // drill value on a date column needs its own chip.
   const filterColumns = new Set(spec.filters.filter((f) => f.type === "select").map((f) => f.column));
   const drills = Object.entries(selections).filter(([column, sel]) => !filterColumns.has(column) && sel?.values?.length);
-  const drill = (column, value) => onSelectionsChange({ ...selections, [column]: { values: [value] } });
+  // A bar or slice of a date column is a time bucket ("2025-03-01" = March), so the server needs the grain.
+  const drill = (column, value, grain) =>
+    onSelectionsChange({ ...selections, [column]: grain ? { values: [value], grain } : { values: [value] } });
   const clear = (column) => {
     const next = { ...selections };
     delete next[column];

@@ -579,3 +579,47 @@ it("offers the quality-run history as a dataset under a readable name", async ()
   fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
   expect(screen.getByLabelText("อยากวิเคราะห์อะไรจาก ผลตรวจคุณภาพข้อมูล (ทุกตาราง)")).toBeInTheDocument();
 });
+
+// --- a failed save is reported inside the dialog -------------------------------------------------
+const openSaveDialog = () => fireEvent.click(screen.getByRole("button", { name: "บันทึกแดชบอร์ด" }));
+
+it("shows why a save failed inside the dialog and keeps the dialog and the name", async () => {
+  await generateDashboard([["/dashboards/saved", { status: 503, body: { detail: "บันทึกไม่ได้ในตอนนี้ ลองใหม่อีกครั้ง" } }]]);
+  openSaveDialog();
+  fireEvent.change(screen.getByLabelText("ชื่อแดชบอร์ด"), { target: { value: "ยอดขายผู้บริหาร" } });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "บันทึก" })); });
+  await settle();
+  const dialog = screen.getByRole("dialog");
+  expect(within(dialog).getByRole("alert")).toHaveTextContent("บันทึกไม่ได้ในตอนนี้ ลองใหม่อีกครั้ง");
+  expect(screen.getAllByRole("alert")).toHaveLength(1);
+  expect(screen.getByLabelText("ชื่อแดชบอร์ด")).toHaveValue("ยอดขายผู้บริหาร");
+  expect(screen.getByRole("button", { name: "บันทึก" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "ยกเลิก" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "ยกเลิก" }));
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+it("shows an error that is not about saving on the page, not in a dialog", async () => {
+  await generateDashboard([["/dashboards/refine", { status: 503, body: { detail: "ปรับด้วย AI ไม่ได้ตอนนี้" } }]]);
+  fireEvent.change(screen.getByLabelText("ปรับแดชบอร์ดด้วย AI", { selector: "textarea" }), { target: { value: "เพิ่ม Filter จังหวัด" } });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "ปรับแดชบอร์ด" })); });
+  await settle();
+  expect(screen.getAllByRole("alert")).toHaveLength(1);
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+it("sends only the last 50 refinements, which the server accepts", async () => {
+  await generateDashboard([["/dashboards/refine", { body: REFINED }], ["/dashboards/saved", { body: SAVED_DOC }]]);
+  for (let i = 1; i <= 52; i += 1) {
+    fireEvent.change(refineBox(), { target: { value: `คำสั่งที่ ${i}` } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "ปรับแดชบอร์ด" })); });
+  }
+  await settle();
+  openSaveDialog();
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "บันทึก" })); });
+  await settle();
+  const { refinements } = JSON.parse(callTo("/dashboards/saved", "POST")[1].body);
+  expect(refinements).toHaveLength(50);
+  expect(refinements[0]).toBe("คำสั่งที่ 3");
+  expect(refinements[49]).toBe("คำสั่งที่ 52");
+});

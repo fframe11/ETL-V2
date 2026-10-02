@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 
-export default function SaveDialog({ initial, onSave, onCancel, busy }) {
+export default function SaveDialog({ initial, onSave, onCancel, busy, error = "" }) {
   const [name, setName] = useState(initial.name || "");
   const [description, setDescription] = useState(initial.description || "");
   const ready = name.trim().length > 0 && !busy;
@@ -18,6 +18,7 @@ export default function SaveDialog({ initial, onSave, onCancel, busy }) {
         <label htmlFor="dbb-save-description">คำอธิบาย</label>
         <textarea id="dbb-save-description" rows={3} maxLength={500} value={description}
           onChange={(e) => setDescription(e.target.value)} />
+        {error && <p role="alert" className="dbb-error">{error}</p>}
         <div className="dbb-actions">
           <button type="button" onClick={onCancel}>ยกเลิก</button>
           <button type="submit" className="dbb-btn-primary" disabled={!ready}>{busy ? "กำลังบันทึก…" : "บันทึก"}</button>

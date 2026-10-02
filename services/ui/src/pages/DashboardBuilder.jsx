@@ -10,7 +10,9 @@ import SavedDashboards from "../components/builder/SavedDashboards";
 import { dashboardsApi } from "../utils/dashboardsApi";
 import "./DashboardBuilder.css";
 
-export const STEPS = ["เลือกชุดข้อมูล", "ดูข้อมูล", "ระบุความต้องการ", "แดชบอร์ด"];
+const MAX_SAVED_REFINEMENTS = 50; // the server rejects a longer list (SavePayload.refinements)
+
+export const STEPS =["เลือกชุดข้อมูล", "ดูข้อมูล", "ระบุความต้องการ", "แดชบอร์ด"];
 
 function Stepper({ step, maxStep, onStep }) {
   return (
@@ -136,7 +138,7 @@ export default function DashboardBuilder() {
 
   const save = ({ name, description }) => run("save", async (live) => {
     const doc = { name, description, table_name: dataset.name, context: request.context,
-      audience: request.audience, spec: draft.spec, refinements };
+      audience: request.audience, spec: draft.spec, refinements: refinements.slice(-MAX_SAVED_REFINEMENTS) };
     const result = saved ? await dashboardsApi.updateSaved(saved.id, doc) : await dashboardsApi.createSaved(doc);
     if (!live()) return; // the save itself happened on the server; only the screen has moved on
     setSaved({ id: result.id, name: result.name, description: result.description || "" });
@@ -186,7 +188,7 @@ export default function DashboardBuilder() {
     <div className="dbb-page">
       <PageHeader pageKey="builder" />
       <Stepper step={step} maxStep={maxStep} onStep={setStep} />
-      {error && <p role="alert" className="dbb-error">{error}</p>}
+      {error && !showSave && <p role="alert" className="dbb-error">{error}</p>}
       {notice && <p className="dbb-notice">{notice}</p>}
 
       {step === 0 && (
@@ -222,7 +224,7 @@ export default function DashboardBuilder() {
             <EngineNote draft={draft} />
             <div className="dbb-actions">
               <button type="button" onClick={() => setStep(2)}>แก้ความต้องการ</button>
-              <button type="button" className="dbb-btn-primary" onClick={() => setShowSave(true)}>
+              <button type="button" className="dbb-btn-primary" onClick={() => { setError(""); setShowSave(true); }}>
                 {saved ? "บันทึกการแก้ไข" : "บันทึกแดชบอร์ด"}
               </button>
             </div>
@@ -237,7 +239,7 @@ export default function DashboardBuilder() {
 
       {showSave && (
         <SaveDialog initial={saved || { name: draft?.spec.title || "", description: draft?.spec.description || "" }}
-          onSave={save} onCancel={() => setShowSave(false)} busy={busy === "save"} />
+          onSave={save} onCancel={() => { setShowSave(false); setError(""); }} busy={busy === "save"} error={error} />
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-import { it, expect } from "vitest";
+import { it, expect, vi } from "vitest";
 import { dashboardsApi } from "./dashboardsApi";
 import { mockFetchByUrl } from "../test/renderPage";
 
@@ -20,4 +20,14 @@ it("turns the API detail into the error message", async () => {
 it("does not show server paths from an error", async () => {
   mockFetchByUrl([["/dashboards/datasets", { status: 404, body: { detail: "Delta log not found at /data/active/sales/_delta_log" } }]]);
   await expect(dashboardsApi.listDatasets()).rejects.toThrow("คำขอล้มเหลว (HTTP 404)");
+});
+
+it("explains a network failure in Thai instead of the browser's English message", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("Failed to fetch"); }));
+  await expect(dashboardsApi.listDatasets()).rejects.toThrow("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่");
+});
+
+it("keeps the HTTP error message when the server did answer", async () => {
+  mockFetchByUrl([["/dashboards/saved", { status: 503, body: { detail: "บันทึกไม่ได้ในตอนนี้" } }]]);
+  await expect(dashboardsApi.createSaved({})).rejects.toThrow("บันทึกไม่ได้ในตอนนี้");
 });
