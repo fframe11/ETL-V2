@@ -556,3 +556,26 @@ it("keeps an opened saved dashboard when a filter render for the previous dashbo
   expect(screen.queryByText("2 จาก 6 แถว")).toBeNull();
   expect(screen.getByLabelText("ภูมิภาค")).toHaveValue("");
 });
+
+// --- the quality-run history as a dataset ------------------------------------------------------
+const WITH_QUALITY = { datasets: [
+  { name: "_quality_runs", source: "Quality Gate (Elasticsearch)", records: 42, columns: 14,
+    kind_counts: { numeric: 9, categorical: 4, date: 1, text: 0 }, last_updated: "2026-10-02T01:00:00Z", error: null },
+  ...DATASETS.datasets
+] };
+
+it("offers the quality-run history as a dataset under a readable name", async () => {
+  await renderPage(DashboardBuilder, "/dashboard-builder", [
+    ["/dashboards/datasets/_quality_runs/preview", { body: PREVIEW }],
+    ["/dashboards/datasets", { body: WITH_QUALITY }]
+  ]);
+  expect(screen.getByText("ผลตรวจคุณภาพข้อมูล (ทุกตาราง)")).toBeInTheDocument();
+  expect(screen.getByText("Quality Gate (Elasticsearch)")).toBeInTheDocument();
+  expect(screen.queryByText("_quality_runs")).toBeNull();
+  fireEvent.click(screen.getByRole("radio", { name: "เลือก ผลตรวจคุณภาพข้อมูล (ทุกตาราง)" }));
+  fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+  await settle();
+  expect(callTo("/dashboards/datasets/_quality_runs/preview")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+  expect(screen.getByLabelText("อยากวิเคราะห์อะไรจาก ผลตรวจคุณภาพข้อมูล (ทุกตาราง)")).toBeInTheDocument();
+});

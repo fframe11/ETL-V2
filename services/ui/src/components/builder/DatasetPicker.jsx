@@ -5,6 +5,13 @@ import { friendlyApiError } from "../../utils/apiError";
 
 export const KIND_LABELS = { numeric: "ตัวเลข", categorical: "หมวดหมู่", date: "วันที่", text: "ข้อความ" };
 
+// Must match QUALITY_DATASET in services/api/app/api/dashboard_data.py.
+export const QUALITY_DATASET = "_quality_runs";
+
+export function datasetLabel(name) {
+  return name === QUALITY_DATASET ? "ผลตรวจคุณภาพข้อมูล (ทุกตาราง)" : name;
+}
+
 export function describeKinds(counts) {
   if (!counts) return "—";
   const parts = Object.entries(KIND_LABELS)
@@ -62,14 +69,14 @@ export default function DatasetPicker({ selected, onSelect }) {
                   <input
                     type="radio"
                     name="dbb-dataset"
-                    aria-label={`เลือก ${d.name}`}
+                    aria-label={`เลือก ${datasetLabel(d.name)}`}
                     checked={isSelected}
                     disabled={Boolean(d.error)}
                     onChange={() => onSelect(d)}
                   />
                 </td>
                 <td>
-                  <strong>{d.name}</strong>
+                  <strong>{datasetLabel(d.name)}</strong>
                   {d.error && <div className="dbb-error-inline">{friendlyApiError(d.error, "อ่านชุดข้อมูลนี้ไม่ได้")}</div>}
                 </td>
                 <td>{d.source || "—"}</td>

@@ -10,6 +10,7 @@ import time
 import pandas as pd
 from fastapi import HTTPException
 
+from .config import get_es_client
 from .data_export import _list_hdfs_dir, _records_json_safe, read_parquet_folder_to_df
 from .validation import validate_table_name
 
@@ -21,6 +22,16 @@ CATEGORY_MAX_DISTINCT = 50
 PARSE_MIN_RATIO = 0.9
 PREVIEW_ROWS = 20
 SOURCE_LABELS = {"file": "File upload", "api": "REST API", "rdbms": "Database"}
+
+# The quality-run history (one row per run in sdoqap_quality_runs) is offered as a dataset
+# too, for "track data quality" dashboards. The leading "_" can never clash with an HDFS
+# table: list_active_tables() skips such names.
+QUALITY_DATASET = "_quality_runs"
+QUALITY_INDEX = "sdoqap_quality_runs"
+QUALITY_MAX_RUNS = 5000
+QUALITY_COLUMNS = ("timestamp", "table_name", "total_records", "clean_records", "quarantined_records",
+                   "quality_score", "effective_quality_threshold", "duration_seconds", "freshness_lag_hours",
+                   "quarantined_financial_value", "operational_impact_score", "is_anomaly", "rules_mode")
 
 _CACHE_TTL_S = 120
 _FRAME_CACHE_MAX = 4
@@ -95,7 +106,26 @@ def prepare_frame(df: pd.DataFrame):
     return df, profile_dataframe(df)
 
 
+def _read_quality_runs() -> pd.DataFrame:
+    """Flat fields of the newest QUALITY_MAX_RUNS quality runs, plus gate_result
+    (ผ่าน / ไม่ผ่าน; empty when the run did not record its threshold)."""
+    es = get_es_client()
+    if not es.indices.exists(index=QUALITY_INDEX):
+        raise HTTPException(status_code=404, detail="ยังไม่มีผลตรวจคุณภาพ รัน Pipeline อย่างน้อยหนึ่งครั้งก่อน")
+    res = es.search(index=QUALITY_INDEX, query={"match_all": {}}, size=QUALITY_MAX_RUNS,
+                    sort=[{"timestamp": {"order": "desc"}}])
+    rows = [{c: h["_source"].get(c) for c in QUALITY_COLUMNS} for h in res["hits"]["hits"]]
+    df = pd.DataFrame(rows, columns=list(QUALITY_COLUMNS))
+    score = pd.to_numeric(df["quality_score"], errors="coerce")
+    threshold = pd.to_numeric(df["effective_quality_threshold"], errors="coerce")
+    passed = (score >= threshold).map({True: "ผ่าน", False: "ไม่ผ่าน"})
+    df["gate_result"] = passed.where(score.notna() & threshold.notna())
+    return df
+
+
 def _read_active(table_name: str) -> pd.DataFrame:
+    if table_name == QUALITY_DATASET:
+        return _read_quality_runs()
     return read_parquet_folder_to_df(f"/data/active/{table_name}")
 
 
@@ -172,3 +202,26 @@ def list_datasets(es):
 def preview_dataset(table_name: str) -> dict:
     df, profile = load_active_dataset(table_name)
     return {"table_name": table_name, "profile": profile, "sample": _records_json_safe(df.head(PREVIEW_ROWS))}
+
+
+def quality_dataset_entry(es):
+    """Catalog row for the quality-run history, or None until a run has been recorded."""
+    if es is None:
+        return None
+    try:
+        if not es.indices.exists(index=QUALITY_INDEX):
+            return None
+    except Exception:
+        return None
+    entry = {"name": QUALITY_DATASET, "source": "Quality Gate (Elasticsearch)", "records": None, "columns": None,
+             "kind_counts": None, "last_updated": None, "quality_score": None, "error": None}
+    try:
+        profile = dataset_profile(QUALITY_DATASET)
+        newest = next((c.get("max") for c in profile["columns"] if c["name"] == "timestamp"), None)
+        entry.update(records=profile["rows"], columns=profile["column_count"], kind_counts=profile["kind_counts"],
+                     last_updated=f"{newest}Z" if newest else None)  # timestamps are kept as naive UTC
+    except HTTPException as exc:
+        entry["error"] = str(exc.detail)
+    except Exception as exc:
+        entry["error"] = f"อ่านข้อมูลไม่ได้: {exc}"
+    return entry

@@ -1,6 +1,6 @@
 import React, { useRef, useState } from "react";
 import { PageHeader } from "../components/ui";
-import DatasetPicker from "../components/builder/DatasetPicker";
+import DatasetPicker, { datasetLabel } from "../components/builder/DatasetPicker";
 import DataPreview from "../components/builder/DataPreview";
 import ContextForm from "../components/builder/ContextForm";
 import DashboardCanvas from "../components/builder/DashboardCanvas";
@@ -212,7 +212,7 @@ export default function DashboardBuilder() {
 
       {step === 2 && dataset && (
         <section className="dbb-panel" aria-label={STEPS[2]}>
-          <ContextForm table={dataset.name} value={request} onChange={setRequest} onGenerate={generate} busy={busy === "generate"} />
+          <ContextForm table={datasetLabel(dataset.name)} value={request} onChange={setRequest} onGenerate={generate} busy={busy === "generate"} />
         </section>
       )}
 

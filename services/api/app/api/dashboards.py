@@ -72,7 +72,9 @@ def _audience(value):
 
 @router.get("/datasets")
 def list_dashboard_datasets():
-    return {"datasets": dashboard_data.list_datasets(_es_or_none())}
+    es = _es_or_none()
+    quality = dashboard_data.quality_dataset_entry(es)
+    return {"datasets": ([quality] if quality else []) + dashboard_data.list_datasets(es)}
 
 
 @router.get("/datasets/{table_name}/preview")
