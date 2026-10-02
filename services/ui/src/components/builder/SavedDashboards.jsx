@@ -37,7 +37,7 @@ export default function SavedDashboards({ onOpen, onDeleted }) {
             <li key={d.id}>
               <div>
                 <strong>{d.name}</strong>
-                <span className="dbb-muted"> · {datasetLabel(d.table_name)} ·{d.widget_count} วิดเจ็ต · {formatDate(d.updated_at)}</span>
+                <span className="dbb-muted"> · {datasetLabel(d.table_name)} · {d.widget_count} วิดเจ็ต · {formatDate(d.updated_at)}</span>
                 {d.description && <p>{d.description}</p>}
               </div>
               <div className="dbb-actions">

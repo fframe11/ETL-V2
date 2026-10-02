@@ -3,6 +3,7 @@ import { it, expect, vi } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { mockFetchByUrl } from "../../test/renderPage";
 import SavedDashboards from "./SavedDashboards";
+import { formatDate } from "./DatasetPicker";
 
 const ID = "a".repeat(32);
 const SUMMARY = { id: ID, name: "ยอดขายผู้บริหาร", description: "", table_name: "sales", widget_count: 3,
@@ -36,6 +37,20 @@ it("does not report a deletion that failed", async () => {
   await confirmDelete();
   expect(onDeleted).not.toHaveBeenCalled();
   expect(screen.getByRole("alert")).toBeInTheDocument();
+});
+
+it("shows each dashboard's dataset under a readable name with single spaces around the separators", async () => {
+  const quality = { ...SUMMARY, id: "b".repeat(32), name: "ติดตามคุณภาพ", table_name: "_quality_runs", widget_count: 6 };
+  const sales = { ...SUMMARY, widget_count: 6 };
+  mockFetchByUrl([["/dashboards/saved", { body: { dashboards: [sales, quality] } }]]);
+  let container;
+  await act(async () => { ({ container } = render(<SavedDashboards onOpen={() => {}} />)); });
+  await settle();
+  const spans = container.querySelectorAll("li span.dbb-muted");
+  expect(spans).toHaveLength(2);
+  expect(spans[0].textContent).toBe(` · sales · 6 วิดเจ็ต · ${formatDate(SUMMARY.updated_at)}`);
+  expect(spans[1].textContent).toBe(` · ผลตรวจคุณภาพข้อมูล (ทุกตาราง) · 6 วิดเจ็ต · ${formatDate(SUMMARY.updated_at)}`);
+  expect(container.textContent).not.toContain("_quality_runs");
 });
 
 it("still deletes when no onDeleted is given", async () => {
