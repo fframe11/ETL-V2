@@ -4,6 +4,7 @@ import DatasetPicker from "../components/builder/DatasetPicker";
 import DataPreview from "../components/builder/DataPreview";
 import ContextForm from "../components/builder/ContextForm";
 import DashboardCanvas from "../components/builder/DashboardCanvas";
+import RefinePanel from "../components/builder/RefinePanel";
 import { dashboardsApi } from "../utils/dashboardsApi";
 import "./DashboardBuilder.css";
 
@@ -51,6 +52,8 @@ export default function DashboardBuilder() {
   const [selections, setSelections] = useState({});
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [refinements, setRefinements] = useState([]);
+  const [changes, setChanges] = useState(null);
   // Guards against late responses: `epoch` changes with the dataset, `seq` counts the calls per kind,
   // and `committed` holds the selections that match the data currently on screen.
   const epoch = useRef(0);
@@ -70,17 +73,22 @@ export default function DashboardBuilder() {
       committed.current = {};
       setDraft(null);
       setSelections({});
+      setRefinements([]);
+      setChanges(null);
       setError("");
       setBusy("");
     }
     setDataset(next);
   };
 
+  // Starting a call (or invalidating a kind) makes every earlier call of that kind stale.
+  const bump = (kind) => (seq.current[kind] = (seq.current[kind] || 0) + 1);
+
   // `work(live)` must check live() after every await before it writes state: a response is dropped
   // when the dataset changed or a newer call of the same kind has started.
   const run = async (kind, work) => {
     const myEpoch = epoch.current;
-    const mySeq = (seq.current[kind] = (seq.current[kind] || 0) + 1);
+    const mySeq = bump(kind);
     const live = () => myEpoch === epoch.current && mySeq === seq.current[kind];
     setBusy(kind);
     setError("");
@@ -100,7 +108,22 @@ export default function DashboardBuilder() {
     committed.current = {};
     setDraft(result);
     setSelections({});
+    setRefinements([]);
+    setChanges(null);
     setStep(3);
+  });
+
+  // Resolves true only when the refined dashboard was committed (the panel then clears its textbox).
+  const refine = (instruction) => run("refine", async (live) => {
+    const result = await dashboardsApi.refine(dataset.name, draft.spec, instruction);
+    if (!live()) return false;
+    bump("render"); // a filter render started for the old draft must not overwrite the refined one
+    committed.current = {};
+    setDraft(result);
+    setSelections({});
+    setChanges(result.changes);
+    setRefinements((list) => [...list, instruction]);
+    return true;
   });
 
   const changeSelections = (next) => {
@@ -160,6 +183,7 @@ export default function DashboardBuilder() {
           <div className="dbb-workspace">
             <DashboardCanvas spec={draft.spec} data={draft.data} selections={selections}
               onSelectionsChange={changeSelections} busy={busy === "render"} />
+            <RefinePanel onRefine={refine} busy={busy === "refine"} changes={changes} history={refinements} />
           </div>
         </section>
       )}

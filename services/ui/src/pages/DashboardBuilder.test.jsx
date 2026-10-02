@@ -264,3 +264,64 @@ it("clears the error banner when the user moves to another step", async () => {
   fireEvent.click(screen.getByRole("button", { name: "แก้ความต้องการ" }));
   expect(screen.queryByRole("alert")).toBeNull();
 });
+
+const REFINED_SPEC = { ...SPEC, widgets: [...SPEC.widgets,
+  { id: "w4", type: "line", title: "ยอดขายรายเดือน", x: "order_date", time_grain: "month", metric: { agg: "sum", column: "amount" },
+    format: "number", group_by: null, stacked: false, layout: { x: 0, y: 9, w: 6, h: 4 } }] };
+const REFINED = { engine: "groq", model: "openai/gpt-oss-120b", warnings: [], spec: REFINED_SPEC, data: DATA,
+  changes: { added: ["ยอดขายรายเดือน"], removed: [], changed: [], layout_changed: true, filters_added: [], filters_removed: [] } };
+
+it("refines the dashboard with an instruction and lists what changed", async () => {
+  await generateDashboard([["/dashboards/refine", { body: REFINED }]]);
+  fireEvent.click(screen.getByRole("button", { name: "เพิ่มกราฟยอดขายรายเดือน" }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "ปรับแดชบอร์ด" })); });
+  await settle();
+  const body = JSON.parse(callTo("/dashboards/refine")[1].body);
+  expect(body).toEqual({ table_name: "sales", spec: SPEC, instruction: "เพิ่มกราฟยอดขายรายเดือน" });
+  expect(screen.getByText("เพิ่ม: ยอดขายรายเดือน")).toBeInTheDocument();
+  expect(screen.getByText("จัดตำแหน่งใหม่")).toBeInTheDocument();
+  expect(screen.getByRole("article", { name: "ยอดขายรายเดือน" })).toBeInTheDocument();
+  expect(screen.getByText("คำสั่งที่ใช้แล้ว 1 ครั้ง")).toBeInTheDocument();
+  expect(screen.getByLabelText("ปรับแดชบอร์ดด้วย AI", { selector: "textarea" })).toHaveValue("");
+});
+
+it("keeps the dashboard and explains when AI refinement is unavailable", async () => {
+  await generateDashboard([["/dashboards/refine", { status: 503, body: { detail: "ปรับด้วย AI ไม่ได้ตอนนี้: ยังไม่ได้ตั้งค่า Groq API key" } }]]);
+  fireEvent.change(screen.getByLabelText("ปรับแดชบอร์ดด้วย AI", { selector: "textarea" }), { target: { value: "เพิ่ม Filter จังหวัด" } });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "ปรับแดชบอร์ด" })); });
+  await settle();
+  expect(screen.getByRole("alert")).toHaveTextContent("ยังไม่ได้ตั้งค่า Groq API key");
+  expect(screen.getByText("ภาพรวมยอดขาย")).toBeInTheDocument();
+  expect(screen.getByLabelText("ปรับแดชบอร์ดด้วย AI", { selector: "textarea" })).toHaveValue("เพิ่ม Filter จังหวัด");
+});
+
+// --- refine responses that arrive late ---------------------------------------------------------
+// the refine call stays pending until the test answers it; every other call goes to controlledFetch.
+function deferRefine() {
+  const inner = fetch;
+  const resolvers = [];
+  vi.stubGlobal("fetch", vi.fn((url, options) => {
+    if (!String(url).includes("/dashboards/refine")) return inner(url, options);
+    return new Promise((resolve) => resolvers.push((body) => resolve({
+      ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body), blob: async () => new Blob()
+    })));
+  }));
+  return resolvers;
+}
+
+it("ignores a refine response that arrives after the dataset was changed", async () => {
+  await openDashboard();
+  const refines = deferRefine();
+  fireEvent.change(screen.getByLabelText("ปรับแดชบอร์ดด้วย AI", { selector: "textarea" }), { target: { value: "เพิ่มกราฟยอดขายรายเดือน" } });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "ปรับแดชบอร์ด" })); });
+  expect(refines).toHaveLength(1);
+  fireEvent.click(stepButtons()[0]);
+  await settle();
+  fireEvent.click(screen.getByRole("radio", { name: "เลือก orders" }));
+  await answer(refines[0], REFINED);
+  expect(screen.getByRole("radio", { name: "เลือก orders" })).toBeChecked();
+  expect(stepButtons()[3]).toBeDisabled();
+  expect(screen.queryByRole("status")).toBeNull();
+  expect(screen.queryByText("ยอดขายรายเดือน")).toBeNull();
+  expect(screen.queryByText("ภาพรวมยอดขาย")).toBeNull();
+});
