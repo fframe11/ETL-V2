@@ -445,6 +445,52 @@ it("asks before deleting a saved dashboard", async () => {
   expect(callTo(`/dashboards/saved/${ID}`, "DELETE")).toBeTruthy();
 });
 
+// --- deleting the saved dashboard that is open ---------------------------------------------------
+const OTHER_ID = "b".repeat(32);
+const OTHER_SUMMARY = { ...SUMMARY, id: OTHER_ID, name: "รายงานอื่น" };
+const TWO_SAVED_ROUTES = [
+  [`/dashboards/saved/${ID}`, { body: SAVED_DOC }],
+  ["/dashboards/saved", { body: { dashboards: [SUMMARY, OTHER_SUMMARY] } }],
+  ["/dashboards/datasets", { body: DATASETS }],
+  ["/dashboards/render", { body: { spec: SPEC, data: DATA } }]
+];
+
+async function openThenReturnToList() {
+  await renderPage(DashboardBuilder, "/dashboard-builder", TWO_SAVED_ROUTES);
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "เปิด ยอดขายผู้บริหาร" })); });
+  await settle();
+  fireEvent.click(stepButtons()[0]);
+  await settle(); // the saved list is loaded again when the first step is shown
+}
+
+const deleteSavedDashboard = async (name) => {
+  fireEvent.click(screen.getByRole("button", { name: `ลบ ${name}` }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: `ยืนยันลบ ${name}` })); });
+  await settle();
+};
+
+it("saves the working dashboard as a new one after the open saved dashboard was deleted", async () => {
+  await openThenReturnToList();
+  await deleteSavedDashboard("ยอดขายผู้บริหาร");
+  expect(callTo(`/dashboards/saved/${ID}`, "DELETE")).toBeTruthy();
+  fireEvent.click(stepButtons()[3]);
+  expect(screen.queryByRole("button", { name: "บันทึกการแก้ไข" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "บันทึกแดชบอร์ด" }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "บันทึก" })); });
+  await settle();
+  expect(callTo("/dashboards/saved", "POST")).toBeTruthy();
+  expect(callTo(`/dashboards/saved/${ID}`, "PUT")).toBeUndefined();
+});
+
+it("keeps saving over the open dashboard when a different saved dashboard is deleted", async () => {
+  await openThenReturnToList();
+  await deleteSavedDashboard("รายงานอื่น");
+  expect(callTo(`/dashboards/saved/${OTHER_ID}`, "DELETE")).toBeTruthy();
+  fireEvent.click(stepButtons()[3]);
+  expect(screen.getByRole("button", { name: "บันทึกการแก้ไข" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "บันทึกแดชบอร์ด" })).toBeNull();
+});
+
 // --- opening a saved dashboard while other calls are in flight ----------------------------------
 // the saved list is answered at once; fetching one saved dashboard stays pending until the test answers it.
 function withSavedList() {

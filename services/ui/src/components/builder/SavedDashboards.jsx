@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { dashboardsApi } from "../../utils/dashboardsApi";
 import { formatDate } from "./DatasetPicker";
 
-export default function SavedDashboards({ onOpen }) {
+export default function SavedDashboards({ onOpen, onDeleted }) {
   const [items, setItems] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const [error, setError] = useState("");
@@ -16,6 +16,7 @@ export default function SavedDashboards({ onOpen }) {
   const remove = async (id) => {
     try {
       await dashboardsApi.deleteSaved(id);
+      onDeleted?.(id);
       setConfirmId(null);
       await load();
     } catch (e) {

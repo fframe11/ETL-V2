@@ -195,7 +195,8 @@ export default function DashboardBuilder() {
           <div className="dbb-actions">
             <button type="button" className="dbb-btn-primary" disabled={!dataset} onClick={() => setStep(1)}>ถัดไป</button>
           </div>
-          <SavedDashboards onOpen={openSaved} />
+          <SavedDashboards onOpen={openSaved}
+            onDeleted={(id) => setSaved((s) => (s?.id === id ? null : s))} />
         </section>
       )}
 

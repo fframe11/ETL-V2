@@ -1,0 +1,45 @@
+import React from "react";
+import { it, expect, vi } from "vitest";
+import { render, screen, fireEvent, act } from "@testing-library/react";
+import { mockFetchByUrl } from "../../test/renderPage";
+import SavedDashboards from "./SavedDashboards";
+
+const ID = "a".repeat(32);
+const SUMMARY = { id: ID, name: "ยอดขายผู้บริหาร", description: "", table_name: "sales", widget_count: 3,
+  updated_at: "2026-10-02T03:00:00Z" };
+
+const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+
+async function mount(routes, onDeleted) {
+  mockFetchByUrl([...routes, ["/dashboards/saved", { body: { dashboards: [SUMMARY] } }]]);
+  await act(async () => { render(<SavedDashboards onOpen={() => {}} onDeleted={onDeleted} />); });
+  await settle();
+}
+
+async function confirmDelete() {
+  fireEvent.click(screen.getByRole("button", { name: "ลบ ยอดขายผู้บริหาร" }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "ยืนยันลบ ยอดขายผู้บริหาร" })); });
+  await settle();
+}
+
+it("reports the id of a dashboard once it was deleted", async () => {
+  const onDeleted = vi.fn();
+  await mount([[`/dashboards/saved/${ID}`, { body: {} }]], onDeleted);
+  await confirmDelete();
+  expect(onDeleted).toHaveBeenCalledTimes(1);
+  expect(onDeleted).toHaveBeenCalledWith(ID);
+});
+
+it("does not report a deletion that failed", async () => {
+  const onDeleted = vi.fn();
+  await mount([[`/dashboards/saved/${ID}`, { status: 500, body: { detail: "ลบไม่สำเร็จ" } }]], onDeleted);
+  await confirmDelete();
+  expect(onDeleted).not.toHaveBeenCalled();
+  expect(screen.getByRole("alert")).toBeInTheDocument();
+});
+
+it("still deletes when no onDeleted is given", async () => {
+  await mount([[`/dashboards/saved/${ID}`, { body: {} }]]);
+  await confirmDelete();
+  expect(fetch.mock.calls.some(([url, o]) => String(url).includes(`/saved/${ID}`) && o?.method === "DELETE")).toBe(true);
+});
