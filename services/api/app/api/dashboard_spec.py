@@ -37,9 +37,14 @@ def _text(value, limit):
 def _int(value, default, low, high):
     try:
         number = int(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return default
     return max(low, min(high, number))
+
+
+def _known(value, kinds):
+    """True when value names a profile column. Lists and dicts from bad JSON are never columns."""
+    return isinstance(value, str) and value in kinds
 
 
 def _metric(raw, kinds):
@@ -51,7 +56,7 @@ def _metric(raw, kinds):
         return None, f"ไม่รองรับการคำนวณ {agg}"
     if agg == "count":
         return {"agg": "count", "column": None}, None
-    if column not in kinds:
+    if not _known(column, kinds):
         return None, f"ไม่มีคอลัมน์ {column}"
     if agg in NUMERIC_AGGREGATIONS and kinds[column] != "numeric":
         return None, f"{agg} ใช้ได้กับคอลัมน์ตัวเลขเท่านั้น ({column})"
@@ -91,7 +96,7 @@ def _widget(raw, kinds, warnings):
     w = {"id": raw.get("id"), "type": wtype, "title": title}
     if wtype == "table":
         listed = raw.get("columns") if isinstance(raw.get("columns"), list) else []
-        w["columns"] = [c for c in listed if c in kinds][:MAX_TABLE_COLUMNS] or list(kinds)[:8]
+        w["columns"] = [c for c in listed if _known(c, kinds)][:MAX_TABLE_COLUMNS] or list(kinds)[:8]
         order = raw.get("order_by")
         if isinstance(order, dict) and order.get("column") in w["columns"]:
             w["order_by"] = {"column": order["column"], "desc": bool(order.get("desc", True))}
@@ -103,21 +108,21 @@ def _widget(raw, kinds, warnings):
         w["format"] = raw.get("format") if raw.get("format") in FORMATS else "number"
     if wtype == "kpi" and isinstance(raw.get("compare"), dict):
         compare = raw["compare"]
-        if kinds.get(compare.get("date_column")) == "date":
+        if _known(compare.get("date_column"), kinds) and kinds[compare["date_column"]] == "date":
             grain = compare.get("time_grain") if compare.get("time_grain") in TIME_GRAINS else "month"
             w["compare"] = {"date_column": compare["date_column"], "time_grain": grain}
         else:
             warnings.append(f"'{name}': ไม่เปรียบเทียบช่วงเวลา เพราะ {compare.get('date_column')} ไม่ใช่คอลัมน์วันที่")
     if wtype in ("bar", "line", "area", "pie", "donut"):
         x = raw.get("x")
-        if x not in kinds:
+        if not _known(x, kinds):
             return drop(f"ไม่มีคอลัมน์ {x}")
         if wtype in ("line", "area") and kinds[x] not in ("date", "numeric"):
             return drop(f"กราฟเส้นต้องใช้แกน X เป็นวันที่หรือตัวเลข ({x})")
         w["x"] = x
     if wtype in ("bar", "line", "area"):
         group = raw.get("group_by")
-        w["group_by"] = group if group in kinds and group != w["x"] else None
+        w["group_by"] = group if _known(group, kinds) and group != w["x"] else None
         w["stacked"] = bool(raw.get("stacked")) and w["group_by"] is not None
     if wtype in ("line", "area"):
         grain = raw.get("time_grain") if raw.get("time_grain") in TIME_GRAINS else "month"
@@ -168,7 +173,7 @@ def _filters(raw_filters, kinds, warnings):
         if not isinstance(raw, dict):
             continue
         column = raw.get("column")
-        if column not in kinds:
+        if not _known(column, kinds):
             warnings.append(f"ตัดตัวกรอง: ไม่มีคอลัมน์ {column}")
             continue
         if column in seen or len(out) >= MAX_FILTERS:

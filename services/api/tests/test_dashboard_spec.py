@@ -142,3 +142,59 @@ def test_diff_reports_what_a_refinement_changed():
     assert diff_specs(old, new) == {"added": ["D"], "removed": ["C"], "changed": ["B"], "layout_changed": True,
                                     "filters_added": ["segment"], "filters_removed": ["region"]}
     assert diff_specs(old, old)["layout_changed"] is False
+
+
+GOOD = {"id": "good", "type": "kpi", "title": "good", "metric": SUM}
+INF = float("inf")
+
+
+@pytest.mark.parametrize("bad", [
+    {"type": "bar", "title": "bad", "x": ["region"], "metric": SUM},
+    {"type": "bar", "title": "bad", "x": {"a": 1}, "metric": SUM},
+    {"type": "kpi", "title": "bad", "metric": {"agg": "sum", "column": ["amount"]}},
+    {"type": "kpi", "title": "bad", "metric": {"agg": "count_distinct", "column": {"a": 1}}},
+])
+def test_wrong_typed_columns_drop_the_widget_with_a_warning_and_keep_the_others(bad):
+    spec, warnings = check(GOOD, bad)
+    assert [w["id"] for w in spec["widgets"]] == ["good"]
+    assert any("bad" in w for w in warnings)
+
+
+@pytest.mark.parametrize("group_by", [{"a": 1}, ["segment"]])
+def test_wrong_typed_group_by_falls_back_to_no_grouping(group_by):
+    spec, _ = check(GOOD, {"type": "bar", "title": "b", "x": "region", "metric": SUM, "group_by": group_by})
+    assert [w["id"] for w in spec["widgets"]][0] == "good"
+    assert spec["widgets"][1]["group_by"] is None and spec["widgets"][1]["stacked"] is False
+
+
+def test_wrong_typed_table_columns_are_ignored():
+    spec, _ = check(GOOD, {"type": "table", "title": "t", "columns": [["region"], {"a": 1}, "amount", 3]})
+    assert spec["widgets"][1]["columns"] == ["amount"]
+
+
+def test_wrong_typed_compare_date_column_is_ignored_with_a_warning():
+    spec, warnings = check({"type": "kpi", "title": "k", "metric": SUM, "compare": {"date_column": ["order_date"]}},
+                           GOOD)
+    assert [w["id"] for w in spec["widgets"]] != [] and all("compare" not in w for w in spec["widgets"])
+    assert len(spec["widgets"]) == 2 and warnings
+
+
+def test_wrong_typed_filter_column_is_dropped_with_a_warning():
+    spec, warnings = check(GOOD, filters=[{"column": ["region"]}, {"column": {"a": 1}}, {"column": "region"}])
+    assert [f["column"] for f in spec["filters"]] == ["region"]
+    assert len(warnings) == 2
+
+
+@pytest.mark.parametrize("bad", [
+    {"type": "bar", "title": "b", "x": "region", "metric": SUM, "limit": INF},
+    {"type": "bar", "title": "b", "x": "region", "metric": SUM, "limit": -INF},
+    {"type": "bar", "title": "b", "x": "region", "metric": SUM, "limit": float("nan")},
+    {"type": "bar", "title": "b", "x": "region", "metric": SUM, "layout": {"w": INF, "h": INF, "x": INF, "y": INF}},
+    {"type": "table", "title": "b", "limit": INF},
+])
+def test_non_finite_numbers_fall_back_to_defaults(bad):
+    spec, _ = check(GOOD, bad)
+    widget = spec["widgets"][1]
+    assert spec["widgets"][0]["id"] == "good" and widget["title"] == "b"
+    assert widget["limit"] == {"bar": 10, "table": 50}[widget["type"]]
+    assert widget["layout"]["w"] in (6, 12) and widget["layout"]["h"] in (4, 5)
