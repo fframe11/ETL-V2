@@ -1,0 +1,185 @@
+"""Chart-ready numbers for a validated dashboard spec (pandas, in the API process).
+
+Every column and aggregation reaching this module was accepted by validate_spec(), so
+the work here is plain group-by arithmetic over the active-layer DataFrame."""
+import pandas as pd
+
+from .data_export import _records_json_safe
+
+EMPTY = "(ว่าง)"
+OTHER = "อื่นๆ"
+MAX_SERIES = 8
+MAX_POINTS = 500
+MAX_FILTER_OPTIONS = 100
+_PERIODS = {"day": "D", "week": "W", "month": "M", "quarter": "Q", "year": "Y"}
+_REDUCERS = {"sum": "sum", "avg": "mean", "min": "min", "max": "max"}
+
+
+def _value(v):
+    if v is None or pd.isna(v):
+        return None
+    return round(float(v), 4)
+
+
+def _day(v):
+    return None if pd.isna(v) else pd.Timestamp(v).date().isoformat()
+
+
+def _labels(series):
+    return series.astype("string").fillna(EMPTY)
+
+
+def _bucket(series, grain):
+    return series.dt.to_period(_PERIODS[grain]).dt.start_time
+
+
+def _aggregate(frame, metric):
+    agg, column = metric["agg"], metric["column"]
+    if agg == "count":
+        return len(frame)
+    if agg == "count_distinct":
+        return int(frame[column].nunique())
+    numbers = pd.to_numeric(frame[column], errors="coerce")
+    return _value(getattr(numbers, _REDUCERS[agg])())
+
+
+def _grouped(frame, keys, metric):
+    groups = frame.groupby(keys, sort=False)
+    agg, column = metric["agg"], metric["column"]
+    if agg == "count":
+        return groups.size()
+    if agg == "count_distinct":
+        return groups[column].nunique()
+    return groups[column].agg(_REDUCERS[agg])
+
+
+def _top(totals, limit, ascending=False):
+    return list(totals.sort_values(ascending=ascending, kind="stable").index[:limit])
+
+
+def _pivot_rows(frame, keys, metric, group):
+    """rows [{"x": key, <series>: value}] for the given x keys, and the series names."""
+    if not group:
+        totals = _grouped(frame, ["_x"], metric)
+        return [{"x": k, "value": _value(totals.get(k))} for k in keys], ["value"]
+    frame = frame.assign(_g=_labels(frame[group]))
+    totals = _grouped(frame, ["_g"], metric)
+    names = _top(totals, MAX_SERIES)
+    if len(totals) > MAX_SERIES:
+        frame = frame.assign(_g=frame["_g"].where(frame["_g"].isin(names), OTHER))
+        names = names + [OTHER]
+    cells = _grouped(frame, ["_x", "_g"], metric)
+    return [{"x": k, **{s: _value(cells.get((k, s))) for s in names}} for k in keys], names
+
+
+def _kpi(df, w):
+    out = {"value": _value(_aggregate(df, w["metric"]))}
+    compare = w.get("compare")
+    if compare:
+        buckets = _bucket(df[compare["date_column"]], compare["time_grain"])
+        periods = sorted(buckets.dropna().unique())
+        if len(periods) >= 2:
+            current = _aggregate(df[buckets == periods[-1]], w["metric"])
+            previous = _aggregate(df[buckets == periods[-2]], w["metric"])
+            change = round((current - previous) / abs(previous) * 100, 1) if previous and current is not None else None
+            out.update(current=_value(current), previous=_value(previous),
+                       period=_day(periods[-1]), change_pct=change)
+    return out
+
+
+def _bar(df, w):
+    frame = df.assign(_x=_labels(df[w["x"]]))
+    totals = _grouped(frame, ["_x"], w["metric"])
+    if w["sort"] == "x":
+        keys = sorted(totals.index)[: w["limit"]]
+    else:
+        keys = _top(totals, w["limit"], ascending=(w["sort"] == "asc"))
+    rows, series = _pivot_rows(frame[frame["_x"].isin(keys)], keys, w["metric"], w["group_by"])
+    return {"rows": rows, "series": series}
+
+
+def _pie(df, w):
+    frame = df.assign(_x=_labels(df[w["x"]]))
+    totals = _grouped(frame, ["_x"], w["metric"])
+    keys = _top(totals, w["limit"])
+    if len(totals) > len(keys):
+        frame = frame.assign(_x=frame["_x"].where(frame["_x"].isin(keys), OTHER))
+        totals = _grouped(frame, ["_x"], w["metric"])
+        keys = keys + [OTHER]
+    return {"rows": [{"x": k, "value": _value(totals.get(k))} for k in keys], "series": ["value"]}
+
+
+def _time(df, w):
+    x = w["x"]
+    frame = df.assign(_t=_bucket(df[x], w["time_grain"]) if w["time_grain"] else df[x]).dropna(subset=["_t"])
+    points = sorted(frame["_t"].unique())[-MAX_POINTS:]
+    label = _day if w["time_grain"] else _value
+    frame = frame[frame["_t"].isin(points)]
+    frame = frame.assign(_x=frame["_t"].map(label))
+    rows, series = _pivot_rows(frame, [label(t) for t in points], w["metric"], w["group_by"])
+    return {"rows": rows, "series": series}
+
+
+def _table(df, w):
+    frame = df[w["columns"]]
+    order = w.get("order_by")
+    if order:
+        frame = frame.sort_values(order["column"], ascending=not order["desc"], na_position="last", kind="stable")
+    return {"columns": w["columns"], "rows": _records_json_safe(frame.head(w["limit"])), "total_rows": len(df)}
+
+
+_COMPUTE = {"kpi": _kpi, "bar": _bar, "line": _time, "area": _time, "pie": _pie, "donut": _pie, "table": _table}
+
+
+def _timestamp(value):
+    if not value:
+        return None
+    try:
+        ts = pd.Timestamp(value)
+    except (TypeError, ValueError):
+        return None
+    return None if pd.isna(ts) else ts
+
+
+def apply_filters(df, selections, kinds):
+    """Rows matching the viewer's choices. {"values": [...]} matches the labels the charts
+    show, so a drill-down click on "(ว่าง)" works; {"from", "to"} on a date column includes
+    both days. Unknown columns and malformed selections are ignored."""
+    for column, selection in (selections or {}).items():
+        if column not in kinds or not isinstance(selection, dict):
+            continue
+        values = selection.get("values")
+        if isinstance(values, list) and values:
+            df = df[_labels(df[column]).isin([str(v) for v in values])]
+        if kinds[column] == "date":
+            start, end = _timestamp(selection.get("from")), _timestamp(selection.get("to"))
+            if start is not None:
+                df = df[df[column] >= start]
+            if end is not None:
+                df = df[df[column] < end + pd.Timedelta(days=1)]
+    return df
+
+
+def filter_options(df, spec):
+    options = {}
+    for f in spec["filters"]:
+        column = df[f["column"]]
+        if f["type"] == "date_range":
+            options[f["column"]] = {"min": _day(column.min()), "max": _day(column.max())}
+        else:
+            values = sorted(column.dropna().astype("string").unique().tolist())
+            options[f["column"]] = {"values": values[:MAX_FILTER_OPTIONS]}
+    return options
+
+
+def compute_dashboard(df, spec, profile, selections=None):
+    kinds = {c["name"]: c["kind"] for c in profile["columns"]}
+    filtered = apply_filters(df, selections, kinds)
+    widgets = {}
+    for w in spec["widgets"]:
+        try:
+            widgets[w["id"]] = _COMPUTE[w["type"]](filtered, w)
+        except Exception as exc:  # one broken widget must not blank the whole dashboard
+            widgets[w["id"]] = {"error": f"คำนวณวิดเจ็ตนี้ไม่ได้: {exc}"}
+    return {"widgets": widgets, "filter_options": filter_options(df, spec),
+            "rows_total": len(df), "rows_after_filter": len(filtered)}
