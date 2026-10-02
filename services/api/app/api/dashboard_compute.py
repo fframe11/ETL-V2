@@ -2,9 +2,14 @@
 
 Every column and aggregation reaching this module was accepted by validate_spec(), so
 the work here is plain group-by arithmetic over the active-layer DataFrame."""
+import logging
+import math
+
 import pandas as pd
 
 from .data_export import _records_json_safe
+
+logger = logging.getLogger(__name__)
 
 EMPTY = "(ว่าง)"
 OTHER = "อื่นๆ"
@@ -16,8 +21,8 @@ _REDUCERS = {"sum": "sum", "avg": "mean", "min": "min", "max": "max"}
 
 
 def _value(v):
-    if v is None or pd.isna(v):
-        return None
+    if v is None or pd.isna(v) or not math.isfinite(float(v)):
+        return None  # JSON cannot carry nan or inf
     return round(float(v), 4)
 
 
@@ -26,11 +31,27 @@ def _day(v):
 
 
 def _labels(series):
+    if pd.api.types.is_datetime64_any_dtype(series):
+        # pandas formats datetimes array-wide ("2025-01-01" or "2025-01-01 00:00:00" depending on
+        # the other values), so a filtered subset would stop matching the label the chart showed.
+        return series.dt.strftime("%Y-%m-%d %H:%M:%S").astype("string").fillna(EMPTY)
     return series.astype("string").fillna(EMPTY)
 
 
 def _bucket(series, grain):
     return series.dt.to_period(_PERIODS[grain]).dt.start_time
+
+
+def _bucket_labels(series, grain):
+    return _bucket(series, grain).map(_day).astype("string").fillna(EMPTY)
+
+
+def _x_labels(df, w):
+    """The category of each row for a bar or pie: the raw label, or the time bucket of a date x."""
+    grain = w.get("time_grain")
+    if grain in _PERIODS and pd.api.types.is_datetime64_any_dtype(df[w["x"]]):
+        return _bucket_labels(df[w["x"]], grain)
+    return _labels(df[w["x"]])
 
 
 def _aggregate(frame, metric):
@@ -88,7 +109,7 @@ def _kpi(df, w):
 
 
 def _bar(df, w):
-    frame = df.assign(_x=_labels(df[w["x"]]))
+    frame = df.assign(_x=_x_labels(df, w))
     totals = _grouped(frame, ["_x"], w["metric"])
     if w["sort"] == "x":
         keys = sorted(totals.index)[: w["limit"]]
@@ -99,7 +120,7 @@ def _bar(df, w):
 
 
 def _pie(df, w):
-    frame = df.assign(_x=_labels(df[w["x"]]))
+    frame = df.assign(_x=_x_labels(df, w))
     totals = _grouped(frame, ["_x"], w["metric"])
     keys = _top(totals, w["limit"])
     if len(totals) > len(keys):
@@ -154,7 +175,12 @@ def apply_filters(df, selections, kinds):
             continue
         values = selection.get("values")
         if isinstance(values, list) and values:
-            df = df[_labels(df[column]).isin([str(v) for v in values])]
+            grain = selection.get("grain")
+            if kinds[column] == "date" and isinstance(grain, str) and grain in _PERIODS:
+                labels = _bucket_labels(df[column], grain)  # the label of a bucketed bar or slice
+            else:
+                labels = _labels(df[column])
+            df = df[labels.isin([str(v) for v in values])]
         if kinds[column] == "date":
             start, end = _timestamp(selection.get("from")), _timestamp(selection.get("to"))
             if start is not None:
@@ -189,6 +215,7 @@ def compute_dashboard(df, spec, profile, selections=None):
         try:
             widgets[w["id"]] = _COMPUTE[w["type"]](filtered, w)
         except Exception as exc:  # one broken widget must not blank the whole dashboard
+            logger.exception("Dashboard widget %s (%s) could not be computed", w["id"], w["type"])
             widgets[w["id"]] = {"error": f"คำนวณวิดเจ็ตนี้ไม่ได้: {exc}"}
     return {"widgets": widgets, "filter_options": filter_options(df, spec),
             "rows_total": len(df), "rows_after_filter": len(filtered)}

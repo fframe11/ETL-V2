@@ -9,6 +9,7 @@ is unavailable."""
 import json
 import logging
 import os
+import time
 
 import requests
 
@@ -21,7 +22,8 @@ logger = logging.getLogger(__name__)
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 DEFAULT_MODEL = "openai/gpt-oss-120b"
-TIMEOUT_S = 45
+TIMEOUT_S = 20          # per Groq call; the front proxy gives up on a request after 60 s
+RETRY_BUDGET_S = 25     # a bad first answer is retried only if it came back within this many seconds
 
 
 class LLMUnavailable(RuntimeError):
@@ -105,12 +107,24 @@ def call_groq(messages, api_key, model):
         raise LLMUnavailable("Groq ตอบกลับในรูปแบบที่อ่านไม่ได้") from exc
 
 
+def _looks_like_identifier(column, rows):
+    """A whole-number column that is (nearly) unique or has 9+ digit values: an id, account or
+    phone number, whose min and max are real records."""
+    low, high = column.get("min"), column.get("max")
+    if low is None or high is None or float(low) != int(low) or float(high) != int(high):
+        return False
+    digits = len(str(int(max(abs(low), abs(high)))))
+    return digits >= 9 or bool(rows and column["distinct"] / rows >= 0.9)
+
+
 def profile_for_prompt(profile):
-    """The column profile without any cell value except numeric and date ranges."""
+    """The column profile without any cell value except numeric and date ranges (and not
+    even the range of a numeric column that looks like an identifier)."""
     columns = []
     for c in profile["columns"]:
         item = {"name": c["name"], "kind": c["kind"], "distinct": c["distinct"], "missing_pct": c["missing_pct"]}
-        if c["kind"] in ("numeric", "date"):
+        identifier = c["kind"] == "numeric" and _looks_like_identifier(c, profile["rows"])
+        if c["kind"] in ("numeric", "date") and not identifier:
             item["min"], item["max"] = c.get("min"), c.get("max")
         columns.append(item)
     return {"rows": profile["rows"], "columns": columns}
@@ -141,6 +155,7 @@ def parse_json_object(text):
 
 def _ask(messages, profile):
     """(spec, warnings, model). One retry that tells the LLM why its answer was rejected."""
+    started = time.monotonic()
     key, model = groq_settings()
     if not key:
         raise LLMUnavailable("ยังไม่ได้ตั้งค่า Groq API key")
@@ -148,6 +163,8 @@ def _ask(messages, profile):
     try:
         spec, warnings = validate_spec(parse_json_object(content), profile)
     except SpecError as exc:
+        if time.monotonic() - started > RETRY_BUDGET_S:
+            raise  # no time left for a second call before the proxy gives up on the request
         retry = messages + [
             {"role": "assistant", "content": content},
             {"role": "user", "content": f"That answer was rejected: {exc}. Reply again with the corrected JSON object only."},

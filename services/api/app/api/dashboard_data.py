@@ -5,6 +5,9 @@ offered. A table is loaded with pandas once per cache period, its technical colu
 dropped and every column is classified as numeric, date, categorical or text; both the
 dashboard spec and the LLM prompt are built from that profile."""
 import logging
+import math
+import re
+import threading
 import time
 
 import pandas as pd
@@ -37,6 +40,8 @@ _CACHE_TTL_S = 120
 _FRAME_CACHE_MAX = 4
 _FRAME_CACHE = {}    # table -> (loaded_at, df, profile)
 _PROFILE_CACHE = {}  # table -> (loaded_at, profile); profiles are small, frames are not
+_CACHE_LOCK = threading.Lock()  # guards both caches; never held while a table is being read
+_LEADING_ZERO = re.compile(r"^0\d")  # phone numbers, zip codes: digits that are not quantities
 
 
 def _parse_dates(series: pd.Series) -> pd.Series:
@@ -56,8 +61,10 @@ def classify_column(series: pd.Series) -> str:
         return "text"
     sample = values.astype(str).head(500)
     if pd.to_numeric(sample, errors="coerce").notna().mean() >= PARSE_MIN_RATIO:
-        return "numeric"
-    if _parse_dates(sample).notna().mean() >= PARSE_MIN_RATIO:
+        # "0812345678" or "01234" is an identifier: converting it would drop the leading zero.
+        if not sample.str.match(_LEADING_ZERO).any():
+            return "numeric"
+    elif _parse_dates(sample).notna().mean() >= PARSE_MIN_RATIO:
         return "date"
     distinct = values.nunique()
     if distinct <= CATEGORY_MAX_DISTINCT or distinct <= 0.5 * len(values):
@@ -66,7 +73,8 @@ def classify_column(series: pd.Series) -> str:
 
 
 def _number(value):
-    return None if pd.isna(value) else round(float(value), 4)
+    """A rounded float, or None for a missing or non-finite value (JSON cannot carry inf/nan)."""
+    return None if pd.isna(value) or not math.isfinite(float(value)) else round(float(value), 4)
 
 
 def _iso(value):
@@ -112,8 +120,12 @@ def _read_quality_runs() -> pd.DataFrame:
     es = get_es_client()
     if not es.indices.exists(index=QUALITY_INDEX):
         raise HTTPException(status_code=404, detail="ยังไม่มีผลตรวจคุณภาพ รัน Pipeline อย่างน้อยหนึ่งครั้งก่อน")
-    res = es.search(index=QUALITY_INDEX, query={"match_all": {}}, size=QUALITY_MAX_RUNS,
-                    sort=[{"timestamp": {"order": "desc"}}])
+    try:
+        res = es.search(index=QUALITY_INDEX, query={"match_all": {}}, size=QUALITY_MAX_RUNS,
+                        sort=[{"timestamp": {"order": "desc"}}])
+    except Exception as exc:
+        logger.warning("Reading the quality runs from Elasticsearch failed", exc_info=True)
+        raise HTTPException(status_code=503, detail="อ่านผลตรวจคุณภาพจาก Elasticsearch ไม่ได้ในตอนนี้") from exc
     rows = [{c: h["_source"].get(c) for c in QUALITY_COLUMNS} for h in res["hits"]["hits"]]
     df = pd.DataFrame(rows, columns=list(QUALITY_COLUMNS))
     score = pd.to_numeric(df["quality_score"], errors="coerce")
@@ -132,15 +144,17 @@ def _read_active(table_name: str) -> pd.DataFrame:
 def load_active_dataset(table_name: str):
     """(DataFrame, profile) of a table's active layer, cached for _CACHE_TTL_S seconds."""
     validate_table_name(table_name)
-    hit = _FRAME_CACHE.get(table_name)
+    with _CACHE_LOCK:
+        hit = _FRAME_CACHE.get(table_name)
     if hit and time.time() - hit[0] < _CACHE_TTL_S:
         return hit[1], hit[2]
     df, profile = prepare_frame(_read_active(table_name))
-    if table_name not in _FRAME_CACHE and len(_FRAME_CACHE) >= _FRAME_CACHE_MAX:
-        _FRAME_CACHE.pop(min(_FRAME_CACHE, key=lambda k: _FRAME_CACHE[k][0]))
     now = time.time()
-    _FRAME_CACHE[table_name] = (now, df, profile)
-    _PROFILE_CACHE[table_name] = (now, profile)
+    with _CACHE_LOCK:
+        if table_name not in _FRAME_CACHE and len(_FRAME_CACHE) >= _FRAME_CACHE_MAX:
+            _FRAME_CACHE.pop(min(_FRAME_CACHE, key=lambda k: _FRAME_CACHE[k][0]))
+        _FRAME_CACHE[table_name] = (now, df, profile)
+        _PROFILE_CACHE[table_name] = (now, profile)
     return df, profile
 
 
@@ -148,11 +162,13 @@ def dataset_profile(table_name: str) -> dict:
     """Profile only. A miss fills _PROFILE_CACHE and never _FRAME_CACHE, so listing many
     tables cannot evict the frame of the dataset being worked on."""
     validate_table_name(table_name)
-    hit = _PROFILE_CACHE.get(table_name)
+    with _CACHE_LOCK:
+        hit = _PROFILE_CACHE.get(table_name)
     if hit and time.time() - hit[0] < _CACHE_TTL_S:
         return hit[1]
     _, profile = prepare_frame(_read_active(table_name))
-    _PROFILE_CACHE[table_name] = (time.time(), profile)
+    with _CACHE_LOCK:
+        _PROFILE_CACHE[table_name] = (time.time(), profile)
     return profile
 
 

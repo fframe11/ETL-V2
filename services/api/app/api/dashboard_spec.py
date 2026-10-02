@@ -96,7 +96,7 @@ def _widget(raw, kinds, warnings):
     w = {"id": raw.get("id"), "type": wtype, "title": title}
     if wtype == "table":
         listed = raw.get("columns") if isinstance(raw.get("columns"), list) else []
-        w["columns"] = [c for c in listed if _known(c, kinds)][:MAX_TABLE_COLUMNS] or list(kinds)[:8]
+        w["columns"] = list(dict.fromkeys(c for c in listed if _known(c, kinds)))[:MAX_TABLE_COLUMNS] or list(kinds)[:8]
         order = raw.get("order_by")
         if isinstance(order, dict) and order.get("column") in w["columns"]:
             w["order_by"] = {"column": order["column"], "desc": bool(order.get("desc", True))}
@@ -120,6 +120,9 @@ def _widget(raw, kinds, warnings):
         if wtype in ("line", "area") and kinds[x] not in ("date", "numeric"):
             return drop(f"กราฟเส้นต้องใช้แกน X เป็นวันที่หรือตัวเลข ({x})")
         w["x"] = x
+    if wtype in ("bar", "pie", "donut") and kinds[w["x"]] == "date":
+        # a date on a category axis is grouped into time buckets, not into raw timestamps
+        w["time_grain"] = raw.get("time_grain") if raw.get("time_grain") in TIME_GRAINS else "month"
     if wtype in ("bar", "line", "area"):
         group = raw.get("group_by")
         w["group_by"] = group if _known(group, kinds) and group != w["x"] else None
