@@ -24,7 +24,7 @@ describe("page registry", () => {
   });
 
   it("covers every routed path in App.jsx", () => {
-    const routed = ["/", "/dashboard", "/analytics", "/pipeline", "/schema", "/rules", "/guide", "/ingestion", "/export", "/whitebox"];
+    const routed = ["/", "/dashboard", "/dashboard-builder", "/analytics", "/pipeline", "/schema", "/rules", "/guide", "/ingestion", "/export", "/whitebox"];
     const paths = new Set(PAGES.map((p) => p.path));
     for (const r of routed) expect(paths.has(r)).toBe(true);
   });

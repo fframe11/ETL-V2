@@ -4,6 +4,7 @@ import NavBar from "./components/NavBar";
 import ErrorBoundary from "./components/ErrorBoundary";
 import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
+import DashboardBuilder from "./pages/DashboardBuilder";
 import Analytics from "./pages/Analytics";
 import Pipeline from "./pages/Pipeline";
 import Schema from "./pages/Schema";
@@ -98,6 +99,7 @@ function AppContent({ isSidebarOpen, toggleSidebar }) {
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
+              <Route path="/dashboard-builder" element={<RequireAuth><DashboardBuilder /></RequireAuth>} />
               <Route path="/analytics" element={<RequireAuth><Analytics /></RequireAuth>} />
               <Route path="/pipeline" element={<RequireAuth><Pipeline /></RequireAuth>} />
               <Route path="/schema" element={<RequireAuth><Schema /></RequireAuth>} />

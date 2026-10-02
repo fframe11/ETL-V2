@@ -131,7 +131,7 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
   // the sidebar label, the page <h1>, and workflow step order never drift apart.
   const NAV_ICONS = {
     home: <HomeIcon />, guide: <GuideIcon />, schema: <SchemaIcon />, pipeline: <PipelineIcon />,
-    dashboard: <DashboardIcon />, rules: <RulesIcon />, export: <ExportIcon />,
+    dashboard: <DashboardIcon />, builder: <DashboardIcon />, rules: <RulesIcon />, export: <ExportIcon />,
     analytics: <AnalyticsIcon />, whitebox: <RunsIcon />, ingestion: <IngestionIcon />
   };
   const NAV_BADGES = {
