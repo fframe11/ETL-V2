@@ -5,6 +5,8 @@ import DataPreview from "../components/builder/DataPreview";
 import ContextForm from "../components/builder/ContextForm";
 import DashboardCanvas from "../components/builder/DashboardCanvas";
 import RefinePanel from "../components/builder/RefinePanel";
+import SaveDialog from "../components/builder/SaveDialog";
+import SavedDashboards from "../components/builder/SavedDashboards";
 import { dashboardsApi } from "../utils/dashboardsApi";
 import "./DashboardBuilder.css";
 
@@ -54,6 +56,9 @@ export default function DashboardBuilder() {
   const [error, setError] = useState("");
   const [refinements, setRefinements] = useState([]);
   const [changes, setChanges] = useState(null);
+  const [saved, setSaved] = useState(null);
+  const [showSave, setShowSave] = useState(false);
+  const [notice, setNotice] = useState("");
   // Guards against late responses: `epoch` changes with the dataset, `seq` counts the calls per kind,
   // and `committed` holds the selections that match the data currently on screen.
   const epoch = useRef(0);
@@ -75,6 +80,7 @@ export default function DashboardBuilder() {
       setSelections({});
       setRefinements([]);
       setChanges(null);
+      setSaved(null);
       setError("");
       setBusy("");
     }
@@ -128,6 +134,39 @@ export default function DashboardBuilder() {
     return true;
   });
 
+  const save = ({ name, description }) => run("save", async (live) => {
+    const doc = { name, description, table_name: dataset.name, context: request.context,
+      audience: request.audience, spec: draft.spec, refinements };
+    const result = saved ? await dashboardsApi.updateSaved(saved.id, doc) : await dashboardsApi.createSaved(doc);
+    if (!live()) return; // the save itself happened on the server; only the screen has moved on
+    setSaved({ id: result.id, name: result.name, description: result.description || "" });
+    setShowSave(false);
+    setNotice(`บันทึก "${result.name}" แล้ว`);
+  });
+
+  // Opening replaces the whole working state, so it also invalidates every call still in flight for the old one.
+  const openSaved = (id) => run("open", async (live) => {
+    const doc = await dashboardsApi.getSaved(id);
+    const rendered = await dashboardsApi.render(doc.table_name, doc.spec, {});
+    if (!live()) return false;
+    epoch.current += 1;
+    bump("generate");
+    bump("refine");
+    bump("render");
+    committed.current = {};
+    setBusy(""); // the calls invalidated above will not clear their own busy flag any more
+    setDataset({ name: doc.table_name });
+    setRequest({ context: doc.context || "", audience: doc.audience || "business" });
+    setRefinements(doc.refinements || []);
+    setChanges(null);
+    setSaved({ id: doc.id, name: doc.name, description: doc.description || "" });
+    setDraft({ spec: rendered.spec, data: rendered.data, engine: "saved", model: null, warnings: [], savedName: doc.name });
+    setSelections({});
+    setNotice("");
+    setStep(3);
+    return true;
+  });
+
   const changeSelections = (next) => {
     setSelections(next);
     return run("render", async (live) => {
@@ -148,6 +187,7 @@ export default function DashboardBuilder() {
       <PageHeader pageKey="builder" />
       <Stepper step={step} maxStep={maxStep} onStep={setStep} />
       {error && <p role="alert" className="dbb-error">{error}</p>}
+      {notice && <p className="dbb-notice">{notice}</p>}
 
       {step === 0 && (
         <section className="dbb-panel" aria-label={STEPS[0]}>
@@ -155,6 +195,7 @@ export default function DashboardBuilder() {
           <div className="dbb-actions">
             <button type="button" className="dbb-btn-primary" disabled={!dataset} onClick={() => setStep(1)}>ถัดไป</button>
           </div>
+          <SavedDashboards onOpen={openSaved} />
         </section>
       )}
 
@@ -180,6 +221,9 @@ export default function DashboardBuilder() {
             <EngineNote draft={draft} />
             <div className="dbb-actions">
               <button type="button" onClick={() => setStep(2)}>แก้ความต้องการ</button>
+              <button type="button" className="dbb-btn-primary" onClick={() => setShowSave(true)}>
+                {saved ? "บันทึกการแก้ไข" : "บันทึกแดชบอร์ด"}
+              </button>
             </div>
           </div>
           <div className="dbb-workspace">
@@ -188,6 +232,11 @@ export default function DashboardBuilder() {
             <RefinePanel onRefine={refine} busy={busy === "refine"} changes={changes} history={refinements} />
           </div>
         </section>
+      )}
+
+      {showSave && (
+        <SaveDialog initial={saved || { name: draft?.spec.title || "", description: draft?.spec.description || "" }}
+          onSave={save} onCancel={() => setShowSave(false)} busy={busy === "save"} />
       )}
     </div>
   );

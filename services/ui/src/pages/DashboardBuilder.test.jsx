@@ -379,3 +379,134 @@ it("ignores a filter render that arrives after a newer dashboard was generated",
   expect(screen.queryByText("2 จาก 6 แถว")).toBeNull();
   expect(screen.getByLabelText("ภูมิภาค")).toHaveValue("");
 });
+
+// --- save, reopen and delete ------------------------------------------------------------------
+const ID = "a".repeat(32);
+const SAVED_DOC = { id: ID, name: "ยอดขายผู้บริหาร", description: "รายเดือน", table_name: "sales", context: EXAMPLE,
+  audience: "management", spec: SPEC, refinements: ["เพิ่ม Filter จังหวัด"], created_at: "2026-10-02T03:00:00Z",
+  updated_at: "2026-10-02T03:00:00Z" };
+const SUMMARY = { id: ID, name: "ยอดขายผู้บริหาร", description: "รายเดือน", table_name: "sales", widget_count: 3,
+  updated_at: "2026-10-02T03:00:00Z" };
+
+it("saves the dashboard with its dataset, request and refinements, then updates the same one", async () => {
+  await generateDashboard([[`/dashboards/saved/${ID}`, { body: SAVED_DOC }], ["/dashboards/saved", { body: SAVED_DOC }]]);
+  fireEvent.click(screen.getByRole("button", { name: "บันทึกแดชบอร์ด" }));
+  fireEvent.change(screen.getByLabelText("ชื่อแดชบอร์ด"), { target: { value: "ยอดขายผู้บริหาร" } });
+  fireEvent.change(screen.getByLabelText("คำอธิบาย"), { target: { value: "รายเดือน" } });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "บันทึก" })); });
+  await settle();
+  expect(JSON.parse(callTo("/dashboards/saved", "POST")[1].body)).toEqual({
+    name: "ยอดขายผู้บริหาร", description: "รายเดือน", table_name: "sales", context: EXAMPLE,
+    audience: "business", spec: SPEC, refinements: [] });
+  expect(screen.getByText('บันทึก "ยอดขายผู้บริหาร" แล้ว')).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "บันทึกการแก้ไข" }));
+  expect(screen.getByLabelText("ชื่อแดชบอร์ด")).toHaveValue("ยอดขายผู้บริหาร");
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "บันทึก" })); });
+  await settle();
+  expect(callTo(`/dashboards/saved/${ID}`, "PUT")).toBeTruthy();
+});
+
+it("suggests the dashboard title as the name and does not save a blank one", async () => {
+  await generateDashboard();
+  fireEvent.click(screen.getByRole("button", { name: "บันทึกแดชบอร์ด" }));
+  expect(screen.getByLabelText("ชื่อแดชบอร์ด")).toHaveValue("ภาพรวมยอดขาย");
+  fireEvent.change(screen.getByLabelText("ชื่อแดชบอร์ด"), { target: { value: "   " } });
+  expect(screen.getByRole("button", { name: "บันทึก" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "ยกเลิก" }));
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+const SAVED_ROUTES = [
+  [`/dashboards/saved/${ID}`, { body: SAVED_DOC }],
+  ["/dashboards/saved", { body: { dashboards: [SUMMARY] } }],
+  ["/dashboards/datasets", { body: DATASETS }],
+  ["/dashboards/render", { body: { spec: SPEC, data: DATA } }]
+];
+
+it("opens a saved dashboard from the list", async () => {
+  await renderPage(DashboardBuilder, "/dashboard-builder", SAVED_ROUTES);
+  expect(screen.getByText("ยอดขายผู้บริหาร")).toBeInTheDocument();
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "เปิด ยอดขายผู้บริหาร" })); });
+  await settle();
+  expect(JSON.parse(callTo("/dashboards/render")[1].body)).toEqual({ table_name: "sales", spec: SPEC, selections: {} });
+  expect(screen.getByText("ภาพรวมยอดขาย")).toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveTextContent("แดชบอร์ดที่บันทึกไว้: ยอดขายผู้บริหาร");
+  expect(screen.getByRole("button", { name: "บันทึกการแก้ไข" })).toBeInTheDocument();
+  expect(screen.getByText("คำสั่งที่ใช้แล้ว 1 ครั้ง")).toBeInTheDocument();
+});
+
+it("asks before deleting a saved dashboard", async () => {
+  await renderPage(DashboardBuilder, "/dashboard-builder", SAVED_ROUTES);
+  fireEvent.click(screen.getByRole("button", { name: "ลบ ยอดขายผู้บริหาร" }));
+  expect(callTo("/dashboards/saved", "DELETE")).toBeUndefined();
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "ยืนยันลบ ยอดขายผู้บริหาร" })); });
+  await settle();
+  expect(callTo(`/dashboards/saved/${ID}`, "DELETE")).toBeTruthy();
+});
+
+// --- opening a saved dashboard while other calls are in flight ----------------------------------
+// the saved list is answered at once; fetching one saved dashboard stays pending until the test answers it.
+function withSavedList() {
+  const inner = fetch;
+  const opens = [];
+  const reply = (body) => ({
+    ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body), blob: async () => new Blob()
+  });
+  vi.stubGlobal("fetch", vi.fn((url, options) => {
+    const u = String(url);
+    if (u.endsWith("/dashboards/saved")) return Promise.resolve(reply({ dashboards: [SUMMARY] }));
+    if (u.endsWith(`/dashboards/saved/${ID}`) && options?.method === "GET") {
+      return new Promise((resolve) => opens.push((body) => resolve(reply(body))));
+    }
+    return inner(url, options);
+  }));
+  return opens;
+}
+
+async function mountWithSavedList() {
+  const pending = controlledFetch();
+  const opens = withSavedList();
+  await act(async () => { render(<MemoryRouter><DashboardBuilder /></MemoryRouter>); });
+  await settle();
+  return { pending, opens };
+}
+
+const openSavedButton = () => screen.getByRole("button", { name: "เปิด ยอดขายผู้บริหาร" });
+
+it("ignores a saved dashboard that finishes opening after the dataset was changed", async () => {
+  const { pending, opens } = await mountWithSavedList();
+  await act(async () => { fireEvent.click(openSavedButton()); });
+  expect(opens).toHaveLength(1);
+  fireEvent.click(screen.getByRole("radio", { name: "เลือก orders" }));
+  await answer(opens[0], SAVED_DOC);
+  await settle();
+  expect(pending.render).toHaveLength(1);
+  await answer(pending.render[0], rendered(6));
+  expect(screen.getByRole("radio", { name: "เลือก orders" })).toBeChecked();
+  expect(stepButtons()[3]).toBeDisabled();
+  expect(screen.queryByRole("status")).toBeNull();
+  expect(screen.queryByText("ภาพรวมยอดขาย")).toBeNull();
+});
+
+it("keeps an opened saved dashboard when a filter render for the previous dashboard finishes afterwards", async () => {
+  const { pending, opens } = await mountWithSavedList();
+  await startGenerate();
+  await answer(pending.generate[0], GENERATED);
+  filterRegion("North");
+  expect(pending.render).toHaveLength(1);
+  fireEvent.click(stepButtons()[0]);
+  await settle(); // the saved list is loaded again when the first step is shown
+  await act(async () => { fireEvent.click(openSavedButton()); });
+  await answer(opens[0], SAVED_DOC);
+  await settle();
+  expect(pending.render).toHaveLength(2);
+  await answer(pending.render[1], rendered(6));
+  expect(screen.getByRole("status")).toHaveTextContent("แดชบอร์ดที่บันทึกไว้: ยอดขายผู้บริหาร");
+  expect(screen.getByText("6 จาก 6 แถว")).toBeInTheDocument();
+  await answer(pending.render[0], rendered(2));
+  expect(screen.getByRole("status")).toHaveTextContent("แดชบอร์ดที่บันทึกไว้: ยอดขายผู้บริหาร");
+  expect(screen.getByText("6 จาก 6 แถว")).toBeInTheDocument();
+  expect(screen.queryByText("2 จาก 6 แถว")).toBeNull();
+  expect(screen.getByLabelText("ภูมิภาค")).toHaveValue("");
+});
