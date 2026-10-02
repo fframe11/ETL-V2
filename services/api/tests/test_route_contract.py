@@ -125,6 +125,11 @@ CALLS = [
     same("POST", "/api/v1/dashboards/generate"),
     same("POST", "/api/v1/dashboards/refine"),
     same("POST", "/api/v1/dashboards/render"),
+    same("GET", "/api/v1/dashboards/saved"),
+    same("POST", "/api/v1/dashboards/saved"),
+    ("GET", "/api/v1/dashboards/saved/D1", "/api/v1/dashboards/saved/{dashboard_id}"),
+    ("PUT", "/api/v1/dashboards/saved/D1", "/api/v1/dashboards/saved/{dashboard_id}"),
+    ("DELETE", "/api/v1/dashboards/saved/D1", "/api/v1/dashboards/saved/{dashboard_id}"),
     # infra/n8n/ingestion_workflow.json and infra/grafana alert_rules.yaml
     same("POST", "/api/v1/system/cleanup"),
     same("POST", "/api/v1/system/alert"),

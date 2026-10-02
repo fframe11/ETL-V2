@@ -36,6 +36,12 @@ class FakeES:
     def update(self, index, id, doc, refresh=None):
         self.docs[index][id].update(doc)
 
+    def delete(self, index, id, refresh=None):
+        try:
+            del self.docs[index][id]
+        except KeyError as exc:
+            raise NotFound(id) from exc
+
     def get(self, index, id):
         try:
             return {"_id": id, "_source": dict(self.docs[index][id])}
