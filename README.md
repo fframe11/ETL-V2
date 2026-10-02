@@ -200,6 +200,19 @@ docker exec sdoqap-namenode hdfs dfs -ls /data/quarantine
 ```cmd
 curl http://localhost:9200/_cat/indices?v
 ```
+
+### Create Dashboard (AI)
+
+หน้า `/dashboard-builder` สร้างแดชบอร์ดจากชุดข้อมูลที่ผ่าน Quality Gate แล้ว (active layer) ด้วยภาษาธรรมชาติ:
+เลือกชุดข้อมูล → ดูข้อมูล → พิมพ์ความต้องการและเลือกผู้ใช้ (Business User / Data Analyst / Management) → AI สร้างแดชบอร์ด → กรองหรือคลิกกราฟเพื่อ drill-down → สั่งปรับด้วย AI → บันทึก
+
+- LLM: Groq `openai/gpt-oss-120b` ใช้คีย์เดียวกับฟีเจอร์ AI อื่น (หน้า Expectations & Alerts หรือ `GROQ_API_KEY`) ถ้าไม่มีคีย์ ระบบจะสร้างแดชบอร์ดแบบกฎจากชนิดคอลัมน์ให้แทน
+- AI ไม่ได้คำนวณตัวเลขและไม่ได้เขียน SQL แต่ตอบเป็น dashboard spec (JSON) ที่ API ตรวจกับ whitelist ก่อน แล้ว API คำนวณเองด้วย pandas
+- ข้อมูลที่ส่งให้ Groq มีแค่ชื่อคอลัมน์ ชนิด จำนวนค่าไม่ซ้ำ % ค่าว่าง และช่วงของตัวเลข/วันที่ ไม่มีแถวข้อมูลหรือค่าหมวดหมู่
+- นอกจากตารางใน active layer แล้ว ยังเลือก "ผลตรวจคุณภาพข้อมูล (ทุกตาราง)" ได้ด้วย (หนึ่งแถวต่อหนึ่งรอบการตรวจใน `sdoqap_quality_runs` พร้อมคอลัมน์ `gate_result`) เพื่อสร้างแดชบอร์ดติดตาม Data Quality
+- แดชบอร์ดที่บันทึกเก็บใน Elasticsearch index `sdoqap_dashboards`
+- API: `/api/v1/dashboards/*` (ต้อง login)
+
 ## Required Environment Variables
 
 - `ELASTICSEARCH_USER` – Elasticsearch username (required)
