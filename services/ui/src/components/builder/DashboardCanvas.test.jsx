@@ -75,3 +75,24 @@ it("shows a widget's own error without hiding the others", () => {
   expect(screen.getByText("คำนวณวิดเจ็ตนี้ไม่ได้: boom")).toBeInTheDocument();
   expect(screen.getByText("฿1.77M")).toBeInTheDocument();
 });
+
+it("shows a drill chip for a value selection on a date range filter column and clears it", () => {
+  const onChange = draw({ selections: { order_date: { values: ["2025-03-01"] } } });
+  fireEvent.click(screen.getByRole("button", { name: "ล้างตัวกรอง order_date" }));
+  expect(onChange).toHaveBeenCalledWith({});
+});
+
+it("shows a from/to selection on a date range filter in its inputs, not as a chip", () => {
+  draw({ selections: { order_date: { from: "2025-02-01" } } });
+  expect(screen.getByLabelText("วันที่สั่งซื้อ ตั้งแต่")).toHaveValue("2025-02-01");
+  expect(screen.queryByRole("button", { name: "ล้างตัวกรอง order_date" })).not.toBeInTheDocument();
+});
+
+it("keeps an active select value visible even when it is not among the options", () => {
+  const onChange = draw({ selections: { region: { values: ["West"] } } });
+  const select = screen.getByLabelText("ภูมิภาค");
+  expect(select).toHaveValue("West");
+  expect(within(select).getByRole("option", { name: "West" })).toBeInTheDocument();
+  fireEvent.change(select, { target: { value: "" } });
+  expect(onChange).toHaveBeenCalledWith({});
+});

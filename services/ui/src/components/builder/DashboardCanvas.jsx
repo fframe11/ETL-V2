@@ -12,7 +12,9 @@ function WidgetBody({ widget, data, onDrill }) {
 }
 
 export default function DashboardCanvas({ spec, data, selections = {}, onSelectionsChange, busy = false }) {
-  const filterColumns = new Set(spec.filters.map((f) => f.column));
+  // Only a select control shows a `values` selection; a date range control cannot, so a
+  // drill value on a date column needs its own chip.
+  const filterColumns = new Set(spec.filters.filter((f) => f.type === "select").map((f) => f.column));
   const drills = Object.entries(selections).filter(([column, sel]) => !filterColumns.has(column) && sel?.values?.length);
   const drill = (column, value) => onSelectionsChange({ ...selections, [column]: { values: [value] } });
   const clear = (column) => {
