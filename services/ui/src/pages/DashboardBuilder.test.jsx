@@ -325,3 +325,57 @@ it("ignores a refine response that arrives after the dataset was changed", async
   expect(screen.queryByText("ยอดขายรายเดือน")).toBeNull();
   expect(screen.queryByText("ภาพรวมยอดขาย")).toBeNull();
 });
+
+// --- refine / render / generate invalidate each other --------------------------------------------
+const REGENERATED = { ...GENERATED, spec: { ...SPEC, title: "ภาพรวมใหม่" } };
+const refineBox = () => screen.getByLabelText("ปรับแดชบอร์ดด้วย AI", { selector: "textarea" });
+
+async function startRefine(instruction = "เพิ่มกราฟยอดขายรายเดือน") {
+  fireEvent.change(refineBox(), { target: { value: instruction } });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "ปรับแดชบอร์ด" })); });
+}
+
+async function regenerate() {
+  fireEvent.click(screen.getByRole("button", { name: "แก้ความต้องการ" }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "สร้างแดชบอร์ดด้วย AI" })); });
+}
+
+it("keeps the refined dashboard when a filter render for the old draft finishes afterwards", async () => {
+  const pending = await openDashboard();
+  const refines = deferRefine();
+  filterRegion("North");
+  await startRefine();
+  await answer(refines[0], REFINED);
+  await answer(pending.render[0], rendered(2));
+  expect(screen.getByRole("article", { name: "ยอดขายรายเดือน" })).toBeInTheDocument();
+  expect(screen.getByLabelText("ภูมิภาค")).toHaveValue("");
+  expect(screen.queryByText("2 จาก 6 แถว")).toBeNull();
+});
+
+it("ignores a refine response that arrives after a newer dashboard was generated", async () => {
+  const pending = await openDashboard();
+  const refines = deferRefine();
+  await startRefine();
+  await regenerate();
+  await answer(pending.generate[1], REGENERATED);
+  expect(screen.getByText("ภาพรวมใหม่")).toBeInTheDocument();
+  await answer(refines[0], REFINED);
+  expect(screen.getByText("ภาพรวมใหม่")).toBeInTheDocument();
+  expect(screen.queryByText("ภาพรวมยอดขาย")).toBeNull();
+  expect(screen.queryByRole("article", { name: "ยอดขายรายเดือน" })).toBeNull();
+  expect(screen.queryByText(/คำสั่งที่ใช้แล้ว/)).toBeNull();
+  expect(screen.queryByText("เพิ่ม: ยอดขายรายเดือน")).toBeNull();
+});
+
+it("ignores a filter render that arrives after a newer dashboard was generated", async () => {
+  const pending = await openDashboard();
+  filterRegion("North");
+  await regenerate();
+  await answer(pending.generate[1], REGENERATED);
+  await answer(pending.render[0], rendered(2));
+  expect(screen.getByText("ภาพรวมใหม่")).toBeInTheDocument();
+  expect(screen.queryByText("ภาพรวมยอดขาย")).toBeNull();
+  expect(screen.getByText("6 จาก 6 แถว")).toBeInTheDocument();
+  expect(screen.queryByText("2 จาก 6 แถว")).toBeNull();
+  expect(screen.getByLabelText("ภูมิภาค")).toHaveValue("");
+});

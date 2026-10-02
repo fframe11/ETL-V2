@@ -105,6 +105,8 @@ export default function DashboardBuilder() {
   const generate = () => run("generate", async (live) => {
     const result = await dashboardsApi.generate(dataset.name, request.context, request.audience);
     if (!live()) return;
+    bump("refine"); // a refine or filter render started for the previous draft must not touch the new one
+    bump("render");
     committed.current = {};
     setDraft(result);
     setSelections({});
