@@ -148,3 +148,18 @@ def test_multi_table_join_execution_and_schema_standardization():
     valid_dates = unified_df["enrollment_date"].dropna()
     assert valid_dates.str.match(r"^\d{4}-\d{2}-\d{2}$").all()
 
+
+
+def test_profile_handles_boolean_columns():
+    # Regression: pandas reads true/false columns as bool and is_numeric_dtype(bool) is True,
+    # which sent them to quantile() and raised "numpy boolean subtract" (HTTP 500 on upload).
+    df = pd.DataFrame({
+        "id": [1, 2, 3, 4],
+        "arrest": [True, False, False, True],
+        "domestic": [False, False, False, True],
+        "score": [10.0, 20.0, 30.0, 40.0],
+    })
+    profile = _compute_profile(df, "bool_cols")
+    assert profile["columns_profile"]["arrest"]["distinct_count"] == 2
+    assert "iqr" not in profile["columns_profile"]["arrest"]
+    assert profile["columns_profile"]["score"]["iqr"] > 0

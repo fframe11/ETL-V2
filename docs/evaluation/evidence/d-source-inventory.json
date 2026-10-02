@@ -140,9 +140,9 @@
     },
     {
       "path": "data/evaluation/student_course_score_evaluation_dataset/dirty_dataset.csv",
-      "bytes": 57464,
-      "rows": 1030,
-      "columns": 7
+      "bytes": 604936,
+      "rows": 10100,
+      "columns": 8
     },
     {
       "path": "data/evaluation/student_course_score_evaluation_dataset/ground_truth.csv",
@@ -158,31 +158,43 @@
     },
     {
       "path": "data/evaluation/student_course_score_evaluation_dataset/output_runs/clean_dataset_run.csv",
-      "bytes": 83205,
-      "rows": 915,
-      "columns": 10
+      "bytes": 892892,
+      "rows": 9400,
+      "columns": 11
+    },
+    {
+      "path": "data/evaluation/student_course_score_evaluation_dataset/output_runs/ijzp_q8t2_500k_uploaded.csv",
+      "bytes": 126617573,
+      "rows": 500000,
+      "columns": 22
+    },
+    {
+      "path": "data/evaluation/student_course_score_evaluation_dataset/output_runs/ijzp_q8t2_uploaded.csv",
+      "bytes": 252776531,
+      "rows": 1000000,
+      "columns": 22
     },
     {
       "path": "data/evaluation/student_course_score_evaluation_dataset/output_runs/quarantine_lake_run.csv",
-      "bytes": 10877,
-      "rows": 95,
-      "columns": 10
+      "bytes": 70234,
+      "rows": 600,
+      "columns": 11
     },
     {
       "path": "data/evaluation/student_course_score_evaluation_dataset/output_runs/review_queue_run.csv",
-      "bytes": 2319,
-      "rows": 20,
-      "columns": 10
+      "bytes": 11542,
+      "rows": 100,
+      "columns": 11
     },
     {
       "path": "data/evaluation/student_course_score_evaluation_dataset/output_runs/unified_multitable_dataset.csv",
-      "bytes": 100989,
-      "rows": 1030,
-      "columns": 10
+      "bytes": 1040989,
+      "rows": 10100,
+      "columns": 11
     },
     {
       "path": "data/evaluation/student_course_score_evaluation_dataset/output_runs/workflow_state.json",
-      "bytes": 580
+      "bytes": 637
     },
     {
       "path": "data/inputs/datasets/customer_churn_100k.csv",
@@ -270,17 +282,22 @@
   "ingestions": {
     "by_source": {
       "file": {
-        "ingestions": 14,
+        "ingestions": 15,
         "succeeded": 12,
-        "bytes": 115687340
+        "bytes": 260269126
+      },
+      "rdbms": {
+        "ingestions": 1,
+        "succeeded": 1,
+        "bytes": 615037
       }
     },
-    "total_bytes": 115687340
+    "total_bytes": 260884163
   },
   "quality_runs": {
-    "tables": 21,
-    "runs": 169,
-    "records_processed": 3566454,
+    "tables": 22,
+    "runs": 187,
+    "records_processed": 3586969,
     "largest_run": 990100
   }
 }

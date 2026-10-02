@@ -229,7 +229,8 @@ def _compute_profile(df: pd.DataFrame, dataset_name: str) -> Dict[str, Any]:
         unique_rate_pct = round((distinct_count / total_rows) * 100, 2) if total_rows > 0 else 0.0
 
         # Infer broad type
-        is_numeric = pd.api.types.is_numeric_dtype(series)
+        # bool counts as numeric to pandas but has no quantiles/fences, so keep it out of the numeric branch
+        is_numeric = pd.api.types.is_numeric_dtype(series) and not pd.api.types.is_bool_dtype(series)
         inferred_type = "String"
         if pd.api.types.is_integer_dtype(series):
             inferred_type = "Integer"

@@ -1,0 +1,20 @@
+{
+  "how": "POST /api/v1/pipeline/ingest/rdbms from PostgreSQL service 'postgres', table student_scores_src (10,100 rows loaded from data/evaluation/original/dirty_dataset.csv), SELECT * FROM student_scores_src",
+  "rows_in_source_table": 10100,
+  "rows_ingested_response": 10100,
+  "run": {
+    "ingest_id": "20261001T183308-87462239",
+    "table_name": "pg_student_scores",
+    "source": "rdbms",
+    "state": "SUCCEEDED",
+    "size_bytes": 615037,
+    "error": null
+  },
+  "quality": {
+    "total_records": 10100,
+    "clean_records": 9441,
+    "quarantined_records": 659,
+    "duration_seconds": 79.636
+  },
+  "note": "pg_student_scores had no registered primary key or rules, so the 100 duplicate keys were not removed (unlike student_course_scores)."
+}

@@ -33,6 +33,7 @@ Runs inside Docker at ``/opt/spark-apps/``.
 """
 
 import os
+import re
 import sys
 import json
 from datetime import datetime, timezone
@@ -95,6 +96,11 @@ class AIRuleAdvisor:
     def __init__(self, api_key=None, model=None, es_url=None):
         self.es_url = es_url or os.getenv("ELASTICSEARCH_URL", "")
         self._base_url, self._auth = _get_es_connection(self.es_url)
+        # Second-choice engine after Groq (same variables auto_remediation_engine uses).
+        # The container only exists under the "ai" compose profile; when it is not up the
+        # connect fails fast and the rule-based advisor answers instead.
+        self.ollama_host = os.getenv("OLLAMA_URL", "http://ollama:11434").rstrip("/")
+        self.ollama_model = os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
 
     # ── Trigger guard ─────────────────────────────────────────────────────
 
@@ -181,8 +187,8 @@ class AIRuleAdvisor:
             groq_enabled = bool(groq_api_key)
 
         if not groq_enabled or not groq_api_key:
-            print("[AI_ADVISOR] Groq is disabled or not configured. Running Local Heuristic Advisor...")
-            return self._run_local_heuristic_advisor(table_name, quarantined_rows, column_stats, historical_context)
+            print("[AI_ADVISOR] Groq is disabled or not configured. Trying Ollama, then the Local Heuristic Advisor...")
+            return self._ollama_or_heuristic(table_name, quarantined_rows, column_stats, historical_context)
 
         # ── 2. Build structured prompt ───────────────────────────────────────
         prompt = self._build_analysis_prompt(
@@ -211,8 +217,8 @@ class AIRuleAdvisor:
             res = requests.post(url, headers=headers, json=payload, timeout=60)
             if res.status_code != 200:
                 print(f"[AI_ADVISOR] Groq API returned HTTP {res.status_code}: {res.text[:500]}")
-                print("[AI_ADVISOR] Falling back to Local Heuristic Advisor...")
-                return self._run_local_heuristic_advisor(table_name, quarantined_rows, column_stats, historical_context)
+                print("[AI_ADVISOR] Falling back to Ollama, then the Local Heuristic Advisor...")
+                return self._ollama_or_heuristic(table_name, quarantined_rows, column_stats, historical_context)
             
             response_body = res.json()
             raw_text = response_body.get("choices", [{}])[0].get("message", {}).get("content", "")
@@ -226,15 +232,46 @@ class AIRuleAdvisor:
                 "explanation": parsed.get("explanation", ""),
                 "remediation_ticket": parsed.get("remediation_ticket"),
                 "status": "SUCCESS",
+                "analysis_metadata": {"method": "groq_llm", "model": active_model,
+                                      "sample_size": len(quarantined_rows or [])},
             }
             print(f"[AI_ADVISOR] Groq Analysis complete — confidence={result['confidence']:.2f}, "
                   f"rules_suggested={len(result['suggested_rules'])}")
             return result
         except Exception as e:
-            print(f"[AI_ADVISOR] Unexpected error during Groq call: {e}. Falling back to Local Heuristic Advisor...")
-            return self._run_local_heuristic_advisor(table_name, quarantined_rows, column_stats, historical_context)
+            print(f"[AI_ADVISOR] Unexpected error during Groq call: {e}. Falling back to Ollama, then the Local Heuristic Advisor...")
+            return self._ollama_or_heuristic(table_name, quarantined_rows, column_stats, historical_context)
+
+    def _ollama_or_heuristic(self, table_name, quarantined_rows, column_stats, historical_context):
+        """Second and third choice: local Ollama model, else the rule-based advisor."""
+        prompt = self._build_analysis_prompt(table_name, quarantined_rows, column_stats, historical_context)
+        result = self._call_ollama(prompt, {"status": "FAILED", "confidence": 0.0})
+        if result.get("status") == "SUCCESS":
+            result["analysis_metadata"] = {"method": "ollama_llm", "model": self.ollama_model,
+                                           "sample_size": len(quarantined_rows or [])}
+            return result
+        print("[AI_ADVISOR] Ollama unavailable. Running Local Heuristic Advisor...")
+        return self._run_local_heuristic_advisor(table_name, quarantined_rows, column_stats, historical_context)
 
     # ── Prompt builder (private) ──────────────────────────────────────────
+
+    _IDENTIFIER_COLUMN = re.compile(r"(^|_)(id|uuid|name|email|phone|mobile|tel|address|ssn)(_|$)", re.I)
+
+    def _redact_identifiers(self, rows, primary_key=None):
+        """Replace values of identifying columns (and the table's primary key) with a
+        placeholder: quarantined rows are sent to an external LLM, which needs the
+        defect pattern, not the person. Column names and non-identifying values stay."""
+        keys = {k.strip() for k in str(primary_key or "").split(",") if k.strip() and k.strip() != "unknown"}
+        redacted = []
+        for row in rows:
+            if not isinstance(row, dict):
+                redacted.append(row)
+                continue
+            redacted.append({
+                col: ("<redacted>" if (col in keys or self._IDENTIFIER_COLUMN.search(str(col))) and val is not None else val)
+                for col, val in row.items()
+            })
+        return redacted
 
     def _build_analysis_prompt(self, table_name, quarantined_rows,
                                column_stats, historical_context):
@@ -246,7 +283,10 @@ class AIRuleAdvisor:
         """
         # Truncate sample to avoid token-limit issues
         sample_limit = 20
-        sample = quarantined_rows[:sample_limit] if quarantined_rows else []
+        sample = self._redact_identifiers(
+            quarantined_rows[:sample_limit] if quarantined_rows else [],
+            historical_context.get("primary_key") if isinstance(historical_context, dict) else None,
+        )
 
         prompt = f"""You are a Data Quality Engineer analysing quarantined records.
 
@@ -319,7 +359,7 @@ Return ONLY valid JSON matching this schema:
         headers = {"Content-Type": "application/json"}
         try:
             print(f"[AI_ADVISOR] Routing request to local Ollama ({self.ollama_model}) at {self.ollama_host}...")
-            res = requests.post(url, headers=headers, json=payload, timeout=90)
+            res = requests.post(url, headers=headers, json=payload, timeout=(3, 90))
             if res.status_code != 200:
                 print(f"[AI_ADVISOR] Ollama returned HTTP {res.status_code}: {res.text[:500]}")
                 fallback["error"] = f"Ollama HTTP {res.status_code}"
@@ -339,6 +379,7 @@ Return ONLY valid JSON matching this schema:
                 "recommended_threshold": parsed.get("recommended_threshold"),
                 "confidence": float(parsed.get("confidence", 0.0) or 0.8),
                 "explanation": parsed.get("explanation", ""),
+                "remediation_ticket": parsed.get("remediation_ticket"),
                 "status": "SUCCESS",
             }
             print(f"[AI_ADVISOR] Ollama analysis complete. Root cause: {result['root_cause']}")
@@ -1050,11 +1091,18 @@ Return ONLY valid JSON matching this schema:
         analysis_result : dict
             The output of :meth:`ai_analyze_quarantined_sample`.
         """
+        # The analyzers report their own outcome ("SUCCESS"/"FAILED"); the approval
+        # queue (api/app/api/dynamic_rules.py) lists only "PROPOSED". A failed
+        # analysis has nothing for a human to approve, so it is not stored.
+        if analysis_result.get("status") == "FAILED":
+            print(f"[AI_ADVISOR] Analysis for '{table_name}' failed; no proposal stored.")
+            return False
+
         doc = {
             "table_name": table_name,
             "run_id": run_id,
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "status": analysis_result.get("status", "PROPOSED"),
+            "status": "PROPOSED",
             "analysis_result": analysis_result,
         }
 
@@ -1073,8 +1121,10 @@ Return ONLY valid JSON matching this schema:
             # Log upstream remediation ticket if present
             if "remediation_ticket" in analysis_result:
                 self.log_remediation_ticket_to_es(table_name, run_id, analysis_result["remediation_ticket"])
+            return True
         except Exception as e:
             print(f"[AI_ADVISOR] Failed to log proposal to ES: {e}")
+            return False
 
     def log_remediation_ticket_to_es(self, table_name, run_id, remediation_ticket):
         """Persist an upstream remediation ticket to Elasticsearch for governance."""

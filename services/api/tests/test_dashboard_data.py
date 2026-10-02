@@ -180,3 +180,28 @@ def test_list_survives_an_elasticsearch_failure_and_logs_it(monkeypatch, caplog)
     warnings = [r for r in caplog.records if r.levelname == "WARNING"]
     assert warnings and "sdoqap_runs" in warnings[0].getMessage() and "sales" in warnings[0].getMessage()
     assert warnings[0].exc_info is not None
+
+
+# pandas 2.3.3 segfaults (killing the API process) in pd.to_numeric on a string such as an
+# MD5 digest that starts like a float exponent. These tests must not reach that call.
+CRASHING_DIGEST = "81e89603437810ef685f6a583c97074f"
+
+
+def test_to_numeric_safe_survives_exponent_like_digest():
+    out = dashboard_data.to_numeric_safe(pd.Series([CRASHING_DIGEST, "12", "1e3", "-4.5", "7 ชิ้น", None, "inf"]))
+    assert out.iloc[1] == 12 and out.iloc[2] == 1000 and out.iloc[3] == -4.5
+    assert out.iloc[[0, 4, 5]].isna().all()
+    assert out.iloc[6] == float("inf")
+
+
+def test_digest_column_is_not_numeric_and_does_not_crash():
+    digests = pd.Series([CRASHING_DIGEST] + [f"{i:032x}" for i in range(40)])
+    assert dashboard_data.classify_column(digests) != "numeric"
+
+
+def test_prepare_frame_keeps_digest_column_as_text():
+    frame = pd.DataFrame({"row_hash": [CRASHING_DIGEST, "000edb69bc4fda9776c3faf8e6f603f1"], "n": ["1", "2"]})
+    df, profile = dashboard_data.prepare_frame(frame)
+    kinds = {c["name"]: c["kind"] for c in profile["columns"]}
+    assert kinds["n"] == "numeric" and kinds["row_hash"] != "numeric"
+    assert df["row_hash"].tolist() == frame["row_hash"].tolist()

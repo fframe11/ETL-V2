@@ -28,6 +28,10 @@ def _sources(ev):
               f"ไฟล์ข้อมูลต้นทางใน `data/`: {len(sources):,} ไฟล์ รวม {sum(f.get('rows', 0) for f in sources):,} แถว (นับเฉพาะ CSV)",
               f"ชุดขยายสำหรับ benchmark (สำเนาซ้ำของชุดประเมินชุดเดียว ไม่ใช่ข้อมูลใหม่): {len(scale):,} ไฟล์ "
               f"รวม {sum(f.get('rows', 0) for f in scale):,} แถว"]
+    by_source = (inv.get("ingestions") or {}).get("by_source")
+    if by_source:
+        parts = ", ".join(f"{k} {v['succeeded']:,}/{v['ingestions']:,} สำเร็จ ({v['bytes']:,} ไบต์)" for k, v in sorted(by_source.items()))
+        lines.append(f"การนำเข้าที่ลงทะเบียนแยกตามชนิดแหล่งข้อมูล: {parts}")
     q = inv.get("quality_runs")
     if q:
         lines.append(f"ประมวลผลผ่าน Spark แล้ว {q['runs']:,} รอบ จาก {q['tables']:,} ตาราง รวม {q['records_processed']:,} แถว "

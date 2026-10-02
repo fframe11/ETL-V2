@@ -42,6 +42,19 @@ _FRAME_CACHE = {}    # table -> (loaded_at, df, profile)
 _PROFILE_CACHE = {}  # table -> (loaded_at, profile); profiles are small, frames are not
 _CACHE_LOCK = threading.Lock()  # guards both caches; never held while a table is being read
 _LEADING_ZERO = re.compile(r"^0\d")  # phone numbers, zip codes: digits that are not quantities
+# What pd.to_numeric may be given. pandas 2.3.3 segfaults (killing the API process) on strings
+# such as the MD5 digest "81e89603437810ef..." that start like a float exponent, so any other
+# string is turned into NaN before pandas sees it. The exponent is capped at 3 digits.
+_PLAIN_NUMBER = re.compile(r"\s*[+-]?(?:(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d{1,3})?|inf|infinity)\s*", re.IGNORECASE)
+
+
+def _parsable(value) -> bool:
+    return not isinstance(value, str) or _PLAIN_NUMBER.fullmatch(value) is not None
+
+
+def to_numeric_safe(series: pd.Series) -> pd.Series:
+    """pd.to_numeric(errors="coerce") that cannot crash the interpreter on odd strings."""
+    return pd.to_numeric(series.where(series.map(_parsable)), errors="coerce")
 
 
 def _parse_dates(series: pd.Series) -> pd.Series:
@@ -60,7 +73,7 @@ def classify_column(series: pd.Series) -> str:
     if values.empty:
         return "text"
     sample = values.astype(str).head(500)
-    if pd.to_numeric(sample, errors="coerce").notna().mean() >= PARSE_MIN_RATIO:
+    if to_numeric_safe(sample).notna().mean() >= PARSE_MIN_RATIO:
         # "0812345678" or "01234" is an identifier: converting it would drop the leading zero.
         if not sample.str.match(_LEADING_ZERO).any():
             return "numeric"
@@ -92,7 +105,7 @@ def profile_dataframe(df: pd.DataFrame) -> dict:
                   "missing_pct": round(missing / rows * 100, 2) if rows else 0.0,
                   "distinct": int(series.nunique(dropna=True))}
         if kind == "numeric":
-            numbers = pd.to_numeric(series, errors="coerce")
+            numbers = to_numeric_safe(series)
             column.update(min=_number(numbers.min()), max=_number(numbers.max()), mean=_number(numbers.mean()))
         elif kind == "date":
             column.update(min=_iso(series.min()), max=_iso(series.max()))
@@ -108,7 +121,7 @@ def prepare_frame(df: pd.DataFrame):
     for name in df.columns:
         kind = classify_column(df[name])
         if kind == "numeric" and not pd.api.types.is_numeric_dtype(df[name]):
-            df[name] = pd.to_numeric(df[name], errors="coerce")
+            df[name] = to_numeric_safe(df[name])
         elif kind == "date":
             df[name] = _parse_dates(df[name])
     return df, profile_dataframe(df)

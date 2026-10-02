@@ -30,14 +30,14 @@ export default function Ingestion() {
   const [apiKey, setApiKey] = useState("");
 
   // RDBMS Ingest State
-  const [rdbmsTableName, setRdbmsTableName] = useState("student_course_scores");
+  const [rdbmsTableName, setRdbmsTableName] = useState("");
   const [dbType, setDbType] = useState("postgresql");
-  const [dbHost, setDbHost] = useState("postgres-prod.internal");
+  const [dbHost, setDbHost] = useState("");
   const [dbPort, setDbPort] = useState(5432);
-  const [dbUser, setDbUser] = useState("etl_reader");
+  const [dbUser, setDbUser] = useState("");
   const [dbPass, setDbPass] = useState("");
-  const [dbName, setDbName] = useState("academic_prod");
-  const [dbQuery, setDbQuery] = useState("SELECT * FROM student_course_scores");
+  const [dbName, setDbName] = useState("");
+  const [dbQuery, setDbQuery] = useState("");
   const [rdbmsStatus, setRdbmsStatus] = useState(null);
   const [isRdbmsUnlocked, setIsRdbmsUnlocked] = useState(false);
   const [showRdbmsLearnMore, setShowRdbmsLearnMore] = useState(false);
@@ -225,6 +225,51 @@ export default function Ingestion() {
     } catch (err) {
       console.error("Failed to queue the pipeline run:", err);
       setQueueError("ส่งเข้าคิวตรวจคุณภาพไม่สำเร็จ: ไม่สามารถติดต่อเซิร์ฟเวอร์ได้");
+    }
+  };
+
+  // Real PostgreSQL ingest: the API opens the connection, runs the SELECT read-only, lands the
+  // rows in HDFS and queues the Spark quality run. Nothing is simulated here.
+  const ingestFromRdbms = async () => {
+    const source = rdbmsTable.trim();
+    const sql = dbQuery.trim() || `SELECT * FROM ${source}`;
+    const target = source.replace(/[^a-zA-Z0-9_]/g, "_");
+    setProfilingLoading(true);
+    setUploadError("");
+    setQuickUploadNotice("");
+    setQueuedRun(null);
+    setQueueError("");
+    try {
+      const res = await fetch("/api/v1/pipeline/ingest/rdbms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          table_name: target,
+          db_type: "postgresql",
+          host: rdbmsHost.trim(),
+          port: Number(rdbmsPort),
+          username: dbUser.trim(),
+          password: dbPass,
+          database: rdbmsDb.trim(),
+          query: sql
+        })
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        setUploadError(friendlyApiError(body?.detail, `ดึงข้อมูลจากฐานข้อมูลไม่สำเร็จ (HTTP ${res.status})`));
+      } else {
+        setPrimaryDatasetName(target);
+        setActiveSourceSummary(`RDBMS · ${rdbmsHost.trim()}:${rdbmsPort}/${rdbmsDb.trim()}`);
+        const rows = body?.rows_ingested == null ? "" : ` (${body.rows_ingested.toLocaleString()} แถว)`;
+        setQuickUploadNotice(`ดึงข้อมูลจากตาราง '${source}'${rows} เข้าตาราง '${target}' แล้ว`);
+        setQueuedRun({ ingestId: body?.ingest_id, duplicate: body?.status === "duplicate" });
+        setDbPass("");
+      }
+    } catch (err) {
+      console.error("Failed to ingest from the database:", err);
+      setUploadError("ดึงข้อมูลจากฐานข้อมูลไม่สำเร็จ: ไม่สามารถติดต่อเซิร์ฟเวอร์ได้");
+    } finally {
+      setProfilingLoading(false);
     }
   };
 
@@ -732,37 +777,47 @@ export default function Ingestion() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              handleConnectSourceAndProfile("RDBMS", rdbmsTable || "student_course_scores", `${rdbmsType}://${rdbmsHost}:${rdbmsPort}/${rdbmsDb}`);
+              ingestFromRdbms();
             }}
             style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: "8px", padding: "16px" }}
           >
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px", alignItems: "end" }}>
               <div>
                 <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>Engine</label>
-                <select value={rdbmsType} onChange={(e) => setRdbmsType(e.target.value)} style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12px", background: "#FFFFFF" }}>
+                <select value="postgresql" disabled style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12px", background: "#FFFFFF" }}>
                   <option value="postgresql">PostgreSQL</option>
-                  <option value="mysql">MySQL</option>
-                  <option value="sqlserver">SQL Server</option>
                 </select>
               </div>
               <div>
                 <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>Host & Port</label>
-                <div style={{ display: "flex", gap: "6px" }}>
-                  <input type="text" value={rdbmsHost} onChange={(e) => setRdbmsHost(e.target.value)} placeholder="db.internal" style={{ flex: 2, padding: "8px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12px", background: "#FFFFFF" }} />
-                  <input type="text" value={rdbmsPort} onChange={(e) => setRdbmsPort(e.target.value)} placeholder="5432" style={{ flex: 1, padding: "8px 8px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12px", background: "#FFFFFF" }} />
+                <div style={{ display: "flex", gap: "6px", minWidth: 0 }}>
+                  <input type="text" required value={rdbmsHost} onChange={(e) => setRdbmsHost(e.target.value)} placeholder="postgres" style={{ flex: 2, minWidth: 0, padding: "8px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12px", background: "#FFFFFF" }} />
+                  <input type="number" required value={rdbmsPort} onChange={(e) => setRdbmsPort(e.target.value)} placeholder="5432" style={{ flex: "0 0 72px", minWidth: 0, padding: "8px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12px", background: "#FFFFFF" }} />
                 </div>
               </div>
               <div>
                 <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>Database Name</label>
-                <input type="text" value={rdbmsDb} onChange={(e) => setRdbmsDb(e.target.value)} placeholder="academic_prod" style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12px", background: "#FFFFFF" }} />
+                <input type="text" required value={rdbmsDb} onChange={(e) => setRdbmsDb(e.target.value)} placeholder="ชื่อฐานข้อมูล" style={{ width: "100%", minWidth: 0, padding: "8px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12px", background: "#FFFFFF" }} />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>Username</label>
+                <input type="text" required autoComplete="off" value={dbUser} onChange={(e) => setDbUser(e.target.value)} style={{ width: "100%", minWidth: 0, padding: "8px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12px", background: "#FFFFFF" }} />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>Password</label>
+                <input type="password" autoComplete="new-password" value={dbPass} onChange={(e) => setDbPass(e.target.value)} style={{ width: "100%", minWidth: 0, padding: "8px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12px", background: "#FFFFFF" }} />
               </div>
               <div>
                 <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>Source Table Name</label>
-                <input type="text" value={rdbmsTable} onChange={(e) => setRdbmsTable(e.target.value)} placeholder="student_course_scores" style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12px", fontWeight: 700, background: "#FFFFFF" }} />
+                <input type="text" required pattern="[A-Za-z_][A-Za-z0-9_.]*" value={rdbmsTable} onChange={(e) => setRdbmsTable(e.target.value)} placeholder="ชื่อตารางต้นทาง เช่น orders" style={{ width: "100%", minWidth: 0, padding: "8px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12px", background: "#FFFFFF", fontWeight: 700 }} />
+              </div>
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>คำสั่ง SQL (ไม่บังคับ — ถ้าเว้นว่างจะใช้ SELECT * FROM ตารางต้นทาง)</label>
+                <input type="text" value={dbQuery} onChange={(e) => setDbQuery(e.target.value)} placeholder="SELECT ... (อ่านอย่างเดียว ไม่เกิน 1,000,000 แถว)" style={{ width: "100%", minWidth: 0, padding: "8px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12px", background: "#FFFFFF" }} />
               </div>
               <div>
                 <button type="submit" disabled={profilingLoading} style={{ width: "100%", padding: "9px 14px", background: "#1B3139", color: "#FFFFFF", border: "none", borderRadius: "6px", fontSize: "12px", fontWeight: 700, cursor: profilingLoading ? "wait" : "pointer", opacity: profilingLoading ? 0.6 : 1 }}>
-                  {profilingLoading ? "กำลังนำเข้าและวิเคราะห์..." : "ดึงข้อมูล RDBMS และรัน Auto-Profiling"}
+                  {profilingLoading ? "กำลังดึงข้อมูล..." : "ดึงข้อมูลจากฐานข้อมูล"}
                 </button>
               </div>
             </div>

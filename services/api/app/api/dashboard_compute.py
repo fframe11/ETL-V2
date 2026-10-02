@@ -7,6 +7,7 @@ import math
 
 import pandas as pd
 
+from .dashboard_data import to_numeric_safe
 from .data_export import _records_json_safe
 
 logger = logging.getLogger(__name__)
@@ -60,7 +61,7 @@ def _aggregate(frame, metric):
         return len(frame)
     if agg == "count_distinct":
         return int(frame[column].nunique())
-    numbers = pd.to_numeric(frame[column], errors="coerce")
+    numbers = to_numeric_safe(frame[column])
     return _value(getattr(numbers, _REDUCERS[agg])())
 
 

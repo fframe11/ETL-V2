@@ -53,6 +53,22 @@ const generateYamlDsl = (rules, tableName) => {
   return yaml;
 };
 
+
+// Confidence lives under analysis_result for real proposals and at the top level for the built-in examples.
+const proposalConfidence = (p) => p.analysis_result?.confidence ?? p.confidence ?? 0;
+
+// Which engine produced a proposal, from analysis_metadata ({method, model}).
+const engineLabel = (meta) => {
+  switch (meta?.method) {
+    case "groq_llm": return `LLM · ${meta.model}`;
+    case "ollama_llm": return `LLM (local) · ${meta.model}`;
+    case "local_heuristic_v2": return "กฎคงที่ (ไม่ใช่ LLM)";
+    case "decision_tree_induction": return "Decision tree (สถิติ)";
+    default: return meta?.method || "ไม่ระบุที่มา";
+  }
+};
+const proposalEngineLabel = (p) => (p.analysis_result ? engineLabel(p.analysis_result.analysis_metadata) : "ตัวอย่าง");
+
 export default function RulesConfig() {
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "tables"); // "tables" or "proposals" or "remediations"
@@ -218,6 +234,7 @@ export default function RulesConfig() {
   // Proposals useApi
   const proposals = useApi("/rules/ai-proposals", { refreshInterval: 10000 });
   const [submitting, setSubmitting] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [actionResult, setActionResult] = useState(null);
 
   // Settings State Hooks
@@ -566,7 +583,10 @@ export default function RulesConfig() {
         setActionResult(null);
         try {
           const res = await postApi(`/rules/ai-proposals/${id}/${action}`);
-          setActionResult({ success: true, message: `AI Proposal ${action}d successfully. Config updated.` });
+          const message = res?.is_example
+            ? res.message
+            : action === "approve" ? "AI Proposal approved successfully. Config updated." : "AI Proposal rejected.";
+          setActionResult({ success: true, message });
           setSelectedProposalId(null);
           proposals.refetch();
           if (selectedTable) {
@@ -579,6 +599,29 @@ export default function RulesConfig() {
         }
       }
     );
+  };
+
+  // Ask the server to run the AI advisor on the chosen table's quarantined rows.
+  const handleGenerateProposal = async () => {
+    setGenerating(true);
+    setActionResult(null);
+    try {
+      const res = await fetch(`/api/v1/rules/ai-proposals/generate?table=${encodeURIComponent(selectedTable)}`, {
+        method: "POST", credentials: "same-origin",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        const conf = Math.round((data.confidence ?? 0) * 100);
+        setActionResult({ success: true, message: `สร้างข้อเสนอสำหรับ '${data.table}' แล้ว โดย ${engineLabel(data)} (ความมั่นใจ ${conf}%) รอการอนุมัติ` });
+        proposals.refetch();
+      } else {
+        setActionResult({ success: false, message: data.detail || `สร้างข้อเสนอไม่สำเร็จ (HTTP ${res.status})` });
+      }
+    } catch (err) {
+      setActionResult({ success: false, message: "เชื่อมต่อ API ไม่ได้" });
+    } finally {
+      setGenerating(false);
+    }
   };
 
   // Deep update helper
@@ -1225,6 +1268,15 @@ export default function RulesConfig() {
           {/* Left: Proposals list */}
           <div className="gs-rules-list">
             <div className="gs-rcard">
+              <div style={{ display: "flex", gap: "6px", marginBottom: "10px", alignItems: "center" }}>
+                <select value={selectedTable} onChange={(e) => setSelectedTable(e.target.value)} aria-label="ตารางที่จะวิเคราะห์"
+                  style={{ flex: 1, fontSize: "11px", padding: "4px" }}>
+                  {tables.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <button className="gs-btn-save" disabled={generating || !selectedTable} onClick={handleGenerateProposal}>
+                  {generating ? "กำลังวิเคราะห์..." : "วิเคราะห์ด้วย AI"}
+                </button>
+              </div>
               <h3>
                 Advisor Proposals
                 {proposals.data?.is_example && (
@@ -1248,7 +1300,7 @@ export default function RulesConfig() {
                       <div
                         key={p.id || p.run_id || p._id}
                         className={`gs-proposal-item gs-list-item ${isSelected ? "selected" : ""}`}
-                        onClick={() => { setSelectedProposalId(p.id || p.run_id); setActionResult(null); }}
+                        onClick={() => { setSelectedProposalId(p.id || p.run_id || p._id); setActionResult(null); }}
                       >
                         <div style={{ display: "flex", justify: "space-between", alignItems: "center", marginBottom: "4px" }}>
                           <span style={{ fontSize: "12px", fontWeight: 700 }}>{p.table_name}</span>
@@ -1257,11 +1309,14 @@ export default function RulesConfig() {
                             fontWeight: "bold",
                             padding: "2px 6px",
                             borderRadius: "4px",
-                            background: (p.analysis_result?.confidence ?? 0) > 0.8 ? "#d1fae5" : "#fff7ed",
-                            color: (p.analysis_result?.confidence ?? 0) > 0.8 ? "var(--accent-green)" : "var(--accent-yellow)"
+                            background: proposalConfidence(p) > 0.8 ? "#d1fae5" : "#fff7ed",
+                            color: proposalConfidence(p) > 0.8 ? "var(--accent-green)" : "var(--accent-yellow)"
                           }}>
-                            {((p.analysis_result?.confidence ?? 0) * 100).toFixed(0)}% Conf
+                            {(proposalConfidence(p) * 100).toFixed(0)}% Conf
                           </span>
+                        </div>
+                        <div style={{ fontSize: "9.5px", fontWeight: 700, color: "var(--text-secondary)", marginBottom: "2px" }}>
+                          {proposalEngineLabel(p)}
                         </div>
                         <div style={{ fontSize: "9.5px", color: "var(--text-muted)", fontFamily: 'var(--font-mono)' }}>
                           Proposed: {p.proposed_at || p.timestamp ? new Date(p.proposed_at || p.timestamp).toLocaleTimeString([], { hour12: false }) : '-'}
@@ -1282,15 +1337,16 @@ export default function RulesConfig() {
                   <h2>Proposal Workspace: <span>{selectedProposal.table_name}</span></h2>
                   <div style={{ textAlign: "right" }}>
                     <div style={{ fontSize: "14px", fontWeight: "bold", color: "var(--accent-purple)", fontFamily: 'var(--font-mono)' }}>
-                      {((selectedProposal.analysis_result?.confidence ?? 0) * 100).toFixed(0)}% Confidence
+                      {(proposalConfidence(selectedProposal) * 100).toFixed(0)}% Confidence
                     </div>
+                    <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>{proposalEngineLabel(selectedProposal)}</div>
                   </div>
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div className="gs-ai-alert">
                     <h4>AI Advisor Root Cause Diagnostic</h4>
-                    <p>{selectedProposal.analysis_result?.root_cause}</p>
+                    <p>{selectedProposal.analysis_result?.root_cause ?? selectedProposal.reasoning}</p>
                   </div>
 
                   <div style={{ padding: '10px 14px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>

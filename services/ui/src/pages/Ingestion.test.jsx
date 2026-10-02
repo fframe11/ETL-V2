@@ -26,9 +26,9 @@ it("explains a missing dataset instead of showing a server file path", async () 
   mockFetchByUrl([
     ["/ingest-source", { status: 404, body: { detail: "Dirty dataset not found at /app/student_course_score_evaluation_dataset/dirty_dataset.csv" } }]
   ]);
-  fireEvent.click(screen.getByRole("tab", { name: /ฐานข้อมูล/ }));
+  fireEvent.click(screen.getByRole("tab", { name: "API" }));
   await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: /ดึงข้อมูล RDBMS/ }));
+    fireEvent.click(screen.getByRole("button", { name: /ดึงข้อมูล API/ }));
   });
   await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
   expect(screen.getByRole("alert")).toHaveTextContent("ยังไม่มีข้อมูลในระบบ");
@@ -49,18 +49,62 @@ it("says the automatic checks need specific columns instead of reporting no prob
   expect(screen.queryByText("ค่าว่างและช่วงค่า")).toBeNull();
 });
 
-it("labels the interactive connector as a demo and shows no invented row count", async () => {
+it("labels the interactive API connector as a demo and shows no invented row count", async () => {
   await renderPage(Ingestion, "/ingestion");
   mockFetchByUrl([
     ["/ingest-source", { status: 200, body: { simulated: true, rows_ingested: null, profile: null } }]
   ]);
-  fireEvent.click(screen.getByRole("tab", { name: /ฐานข้อมูล/ }));
+  fireEvent.click(screen.getByRole("tab", { name: "API" }));
   await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: /ดึงข้อมูล RDBMS/ }));
+    fireEvent.click(screen.getByRole("button", { name: /ดึงข้อมูล API/ }));
   });
   await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
   expect(screen.getByText(/โหมดสาธิต/)).toBeTruthy();
   expect(screen.queryByText(/\(0 แถว\)/)).toBeNull();
+});
+
+async function fillDbForm() {
+  fireEvent.click(screen.getByRole("tab", { name: /ฐานข้อมูล/ }));
+  fireEvent.change(screen.getByPlaceholderText("postgres"), { target: { value: "postgres" } });
+  fireEvent.change(screen.getByPlaceholderText("5432"), { target: { value: "5432" } });
+  fireEvent.change(screen.getByPlaceholderText("ชื่อฐานข้อมูล"), { target: { value: "sdoqap_oltp" } });
+  const inputs = document.querySelectorAll('input[autocomplete="off"], input[type="password"]');
+  fireEvent.change(inputs[0], { target: { value: "reader" } });
+  fireEvent.change(inputs[1], { target: { value: "secret" } });
+  fireEvent.change(screen.getByPlaceholderText(/ชื่อตารางต้นทาง/), { target: { value: "student_scores_src" } });
+}
+
+it("sends the database form to the real RDBMS ingest and shows the run, not a demo notice", async () => {
+  await renderPage(Ingestion, "/ingestion");
+  const fn = mockFetchByUrl([
+    ["/pipeline/ingest/rdbms", { status: 202, body: { status: "queued", ingest_id: "R1", rows_ingested: 10100 } }],
+    ["/pipeline/runs/R1", { body: { state: "RUNNING" } }]
+  ]);
+  await fillDbForm();
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "ดึงข้อมูลจากฐานข้อมูล" }));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, 100)); });
+  const call = fn.mock.calls.find(([url]) => String(url).includes("/pipeline/ingest/rdbms"));
+  expect(call).toBeTruthy();
+  const sent = JSON.parse(call[1].body);
+  expect(sent).toMatchObject({ table_name: "student_scores_src", host: "postgres", port: 5432, database: "sdoqap_oltp", username: "reader", password: "secret", query: "SELECT * FROM student_scores_src" });
+  expect(screen.getByText(/10,100 แถว/)).toBeTruthy();
+  expect(screen.queryByText(/โหมดสาธิต/)).toBeNull();
+  expect(fn.mock.calls.some(([url]) => String(url).includes("ingest-source"))).toBe(false);
+});
+
+it("shows the server's reason when the database ingest is refused", async () => {
+  await renderPage(Ingestion, "/ingestion");
+  mockFetchByUrl([
+    ["/pipeline/ingest/rdbms", { status: 400, body: { detail: "Host 'x' is not in the RDBMS_ALLOWED_HOSTS allowlist." } }]
+  ]);
+  await fillDbForm();
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "ดึงข้อมูลจากฐานข้อมูล" }));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, 100)); });
+  expect(screen.getByRole("alert")).toHaveTextContent(/allowlist|อนุญาต/);
 });
 
 async function uploadFile(routes) {

@@ -17,6 +17,7 @@ Design notes
 """
 
 import os
+import sys
 import json
 import logging
 import copy
@@ -28,6 +29,7 @@ from elasticsearch import Elasticsearch, ConflictError
 
 from .config import get_elasticsearch_url, get_es_client
 from .auth import require_session
+from .validation import validate_table_name
 
 logger = logging.getLogger(__name__)
 
@@ -212,6 +214,60 @@ def _merge_rules(default: dict, table_specific: dict) -> dict:
 # ---------------------------------------------------------------------------
 def _get_es() -> Elasticsearch:
     return get_es_client()
+
+
+# ---------------------------------------------------------------------------
+# AI advisor (the same AIRuleAdvisor the Spark pipeline uses)
+# ---------------------------------------------------------------------------
+# Spark's code is mounted into this container at /opt/spark-apps; local dev finds
+# it at ../../../spark. Importing it keeps one LLM path (Groq -> Ollama -> rules)
+# for the pipeline and for the on-demand "Generate" button.
+_ADVISOR_DIR_CANDIDATES = [
+    "/opt/spark-apps",
+    os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  "..", "..", "..", "spark")),
+]
+
+
+def _get_advisor():
+    for candidate in _ADVISOR_DIR_CANDIDATES:
+        if os.path.isfile(os.path.join(candidate, "ai_rule_advisor.py")):
+            if candidate not in sys.path:
+                sys.path.insert(0, candidate)
+            from ai_rule_advisor import AIRuleAdvisor
+            return AIRuleAdvisor(es_url=ELASTICSEARCH_URL)
+    raise HTTPException(status_code=503, detail="AI advisor module (ai_rule_advisor.py) not found.")
+
+
+def _read_quarantine_sample(table: str, limit: int = 20):
+    """Return ``(rows, total)``: up to ``limit`` real quarantined rows and the layer's row count."""
+    from .data_export import read_parquet_folder_to_df
+    try:
+        df = read_parquet_folder_to_df(f"/data/quarantine/{table}")
+    except HTTPException as he:
+        if he.status_code == 404:
+            return [], 0
+        raise
+    return json.loads(df.head(limit).to_json(orient="records", date_format="iso")), int(len(df))
+
+
+def _latest_run_context(table: str) -> dict:
+    """Totals and score of the table's latest quality run; empty when unavailable."""
+    try:
+        es = _get_es()
+        res = es.search(
+            index="sdoqap_quality_runs",
+            body={"query": {"term": {"table_name.keyword": {"value": table, "case_insensitive": True}}},
+                  "sort": [{"timestamp": {"order": "desc"}}], "size": 1},
+        )
+        hits = res.get("hits", {}).get("hits", [])
+        if hits:
+            doc = hits[0]["_source"]
+            return {"total_records": doc.get("total_records", 0),
+                    "current_quality": doc.get("quality_score")}
+    except Exception:
+        pass
+    return {}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -421,7 +477,8 @@ def approve_proposal(proposal_id: str, _user: str = Depends(require_session)) ->
     for p in _FALLBACK_AI_PROPOSALS:
         if p.get("_id") == proposal_id:
             p["status"] = "APPROVED"
-            return {"status": "approved", "proposal_id": proposal_id, "message": f"Proposal '{proposal_id}' approved and merged."}
+            return {"status": "approved", "proposal_id": proposal_id, "is_example": True,
+                    "message": f"'{proposal_id}' is a built-in example proposal: marked approved, but no rule was changed."}
 
     es = _get_es()
 
@@ -579,11 +636,51 @@ def approve_proposal(proposal_id: str, _user: str = Depends(require_session)) ->
     return {"status": "approved", "proposal_id": proposal_id}
 
 
-@router.post("/ai-proposals/reset", summary="Reset/Generate AI rule proposals")
+@router.post("/ai-proposals/reset", summary="Restore the built-in example proposals")
 def reset_ai_proposals(_user: str = Depends(require_session)) -> dict:
+    """Puts the hard-coded examples back to PROPOSED. Does not call any model;
+    use ``POST /ai-proposals/generate`` for a real analysis."""
     for p in _FALLBACK_AI_PROPOSALS:
         p["status"] = "PROPOSED"
-    return {"status": "reset", "count": len(_FALLBACK_AI_PROPOSALS), "proposals": _FALLBACK_AI_PROPOSALS}
+    return {"status": "reset", "count": len(_FALLBACK_AI_PROPOSALS), "is_example": True,
+            "proposals": _FALLBACK_AI_PROPOSALS}
+
+
+@router.post("/ai-proposals/generate", summary="Analyse a table's quarantined rows with the AI advisor")
+def generate_ai_proposal(table: str = Query(..., description="Table to analyse"),
+                         _user: str = Depends(require_session)) -> dict:
+    """Run the advisor (Groq, else local Ollama, else the rule-based advisor) on real
+    quarantined rows and store the result as a ``PROPOSED`` item for human approval.
+    Nothing is written to ``rules_config.json`` here."""
+    validate_table_name(table, "table")
+    rows, total = _read_quarantine_sample(table)
+    if not rows:
+        raise HTTPException(status_code=404,
+                            detail=f"No quarantined rows found for table '{table}'; nothing to analyse.")
+
+    columns = sorted({c for r in rows for c in r})
+    column_stats = {c: {"null_in_sample": sum(1 for r in rows if r.get(c) is None)} for c in columns}
+    try:
+        from .data_export import load_primary_key
+        primary_key = load_primary_key(table) or "unknown"
+    except Exception:
+        primary_key = "unknown"
+    context = {"primary_key": primary_key, "date_column": "unknown", "total_records": 0,
+               **_latest_run_context(table), "quarantined_records": total}
+
+    advisor = _get_advisor()
+    analysis = advisor.ai_analyze_quarantined_sample(table, rows, column_stats, context)
+    if not analysis or analysis.get("status") == "FAILED":
+        raise HTTPException(status_code=502, detail="The AI advisor could not produce an analysis.")
+
+    run_id = "manual_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    if not advisor.log_proposal_to_es(table, run_id, analysis):
+        raise HTTPException(status_code=502, detail="Analysis finished but the proposal could not be stored.")
+
+    meta = analysis.get("analysis_metadata", {})
+    return {"status": "PROPOSED", "table": table, "run_id": run_id, "stored": True,
+            "is_example": False, "method": meta.get("method"), "model": meta.get("model"),
+            "confidence": analysis.get("confidence"), "sample_size": len(rows), "quarantined_records": total}
 
 
 @router.post("/ai-proposals/{proposal_id}/reject", summary="Reject an AI rule proposal")
