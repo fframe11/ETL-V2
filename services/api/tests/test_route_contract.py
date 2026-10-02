@@ -119,6 +119,12 @@ CALLS = [
     same("POST", "/api/v1/whitebox/multi-table/join"),
     ("GET", "/api/v1/whitebox/preview-zone/raw", "/api/v1/whitebox/preview-zone/{zone}"),
     ("GET", "/api/v1/whitebox/export-csv/clean", "/api/v1/whitebox/export-csv/{zone}"),
+    # DashboardBuilder.jsx via utils/dashboardsApi.js
+    same("GET", "/api/v1/dashboards/datasets"),
+    ("GET", "/api/v1/dashboards/datasets/t1/preview", "/api/v1/dashboards/datasets/{table_name}/preview"),
+    same("POST", "/api/v1/dashboards/generate"),
+    same("POST", "/api/v1/dashboards/refine"),
+    same("POST", "/api/v1/dashboards/render"),
     # infra/n8n/ingestion_workflow.json and infra/grafana alert_rules.yaml
     same("POST", "/api/v1/system/cleanup"),
     same("POST", "/api/v1/system/alert"),
