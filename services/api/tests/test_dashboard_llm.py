@@ -1,0 +1,178 @@
+import json
+import os
+import sys
+
+import pandas as pd
+import pytest
+import requests
+
+API_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, API_ROOT)
+
+from app.api import dashboard_llm  # noqa: E402
+from app.api.dashboard_data import prepare_frame  # noqa: E402
+from app.api.dashboard_spec import SpecError, validate_spec  # noqa: E402
+
+RAW = pd.DataFrame({
+    "order_date": ["2025-01-05", "2025-02-03", "2025-03-10"] * 20,
+    "region": ["North", "South", "East"] * 20,
+    "customer": [f"SECRET-CUSTOMER-{i:03d}" for i in range(60)],
+    "amount": [100.0, 200.0, 50.0] * 20,
+})
+_, PROFILE = prepare_frame(RAW.copy())
+LLM_SPEC = {"title": "ยอดขาย", "widgets": [
+    {"id": "total", "type": "kpi", "title": "ยอดขายรวม", "metric": {"agg": "sum", "column": "amount"}},
+    {"id": "by_region", "type": "bar", "title": "ตามภูมิภาค", "x": "region", "metric": {"agg": "sum", "column": "amount"}},
+], "filters": [{"column": "region"}]}
+
+
+class FakeGroq:
+    def __init__(self, *answers):
+        self.answers = list(answers)
+        self.calls = []
+
+    def __call__(self, messages, api_key, model):
+        self.calls.append(messages)
+        answer = self.answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+
+@pytest.fixture
+def groq(monkeypatch):
+    def install(*answers, key="gsk_test"):
+        fake = FakeGroq(*answers)
+        monkeypatch.setattr(dashboard_llm, "groq_settings", lambda: (key, "openai/gpt-oss-120b"))
+        monkeypatch.setattr(dashboard_llm, "call_groq", fake)
+        return fake
+    return install
+
+
+def test_the_prompt_carries_the_profile_but_no_cell_values():
+    messages = dashboard_llm.build_generate_messages("sales", PROFILE, "ยอดขายรายเดือน", "business")
+    sent = json.dumps(messages, ensure_ascii=False)
+    for value in ("SECRET-CUSTOMER", "North", "South", "East"):
+        assert value not in sent
+    for column in ("order_date", "region", "customer", "amount"):
+        assert column in sent
+    assert "ยอดขายรายเดือน" in sent and "JSON" in messages[0]["content"]
+
+
+def test_generate_uses_the_llm_answer(groq):
+    fake = groq(json.dumps(LLM_SPEC, ensure_ascii=False))
+    result = dashboard_llm.generate_spec("sales", PROFILE, "ยอดขาย", "management")
+    assert result["engine"] == "groq" and result["model"] == "openai/gpt-oss-120b"
+    assert [w["id"] for w in result["spec"]["widgets"]] == ["total", "by_region"]
+    assert result["spec"]["audience"] == "management"
+    assert len(fake.calls) == 1
+
+
+def test_a_rejected_answer_is_retried_once_with_the_reason(groq):
+    fake = groq("ขอโทษ ไม่มี JSON", "```json\n" + json.dumps(LLM_SPEC) + "\n```")
+    result = dashboard_llm.generate_spec("sales", PROFILE, "ยอดขาย", "business")
+    assert result["engine"] == "groq" and len(fake.calls) == 2
+    assert "rejected" in fake.calls[1][-1]["content"]
+
+
+def test_generate_falls_back_to_rules_when_the_llm_keeps_failing(groq):
+    groq("{}", "{\"widgets\": []}")
+    result = dashboard_llm.generate_spec("sales", PROFILE, "ยอดขาย", "business")
+    assert result["engine"] == "rules" and result["model"] is None
+    assert result["warnings"][0].startswith("ใช้แดชบอร์ดอัตโนมัติแบบกฎแทน AI")
+
+
+def test_generate_without_a_key_never_calls_groq(groq):
+    fake = groq(key="")
+    result = dashboard_llm.generate_spec("sales", PROFILE, "ยอดขาย", "analyst")
+    assert result["engine"] == "rules" and fake.calls == []
+    assert "Groq API key" in result["warnings"][0]
+    assert result["spec"]["audience"] == "analyst"
+
+
+def test_generate_falls_back_when_groq_is_down(groq):
+    groq(dashboard_llm.LLMUnavailable("Groq ตอบกลับ HTTP 503"))
+    result = dashboard_llm.generate_spec("sales", PROFILE, "ยอดขาย", "business")
+    assert result["engine"] == "rules" and "HTTP 503" in result["warnings"][0]
+
+
+def test_the_rule_based_spec_uses_the_column_kinds():
+    spec, _ = validate_spec(dashboard_llm.fallback_spec(PROFILE, "ยอดขาย"), PROFILE)
+    types = [w["type"] for w in spec["widgets"]]
+    assert types == ["kpi", "kpi", "line", "bar", "table"]
+    line = spec["widgets"][2]
+    assert line["x"] == "order_date" and line["metric"] == {"agg": "sum", "column": "amount"}
+    assert spec["widgets"][3]["x"] == "region"
+    assert [f["column"] for f in spec["filters"]] == ["region", "order_date"]
+
+
+def test_the_rule_based_spec_works_with_text_only_data():
+    _, profile = prepare_frame(pd.DataFrame({"note": [f"n{i}" for i in range(60)]}))
+    spec, _ = validate_spec(dashboard_llm.fallback_spec(profile), profile)
+    assert [w["type"] for w in spec["widgets"]] == ["kpi", "table"]
+
+
+def test_refine_sends_the_current_spec_and_reports_changes(groq):
+    current, _ = validate_spec(LLM_SPEC, PROFILE)
+    refined = dict(LLM_SPEC, widgets=LLM_SPEC["widgets"] + [
+        {"id": "trend", "type": "line", "title": "ยอดขายรายเดือน", "x": "order_date", "metric": {"agg": "sum", "column": "amount"}}])
+    fake = groq(json.dumps(refined, ensure_ascii=False))
+    result = dashboard_llm.refine_spec("sales", PROFILE, current, "เพิ่มกราฟยอดขายรายเดือน")
+    assert result["changes"]["added"] == ["ยอดขายรายเดือน"] and result["changes"]["removed"] == []
+    system, user = fake.calls[0]
+    assert "same id" in system["content"]
+    sent = json.loads(user["content"])
+    assert sent["instruction"] == "เพิ่มกราฟยอดขายรายเดือน" and sent["current_spec"] == current
+
+
+def test_refine_without_a_key_says_the_ai_is_unavailable(groq):
+    groq(key="")
+    current, _ = validate_spec(LLM_SPEC, PROFILE)
+    with pytest.raises(dashboard_llm.LLMUnavailable):
+        dashboard_llm.refine_spec("sales", PROFILE, current, "เพิ่ม Filter")
+
+
+def test_parse_json_object_finds_the_object_inside_prose():
+    assert dashboard_llm.parse_json_object('ok: {"a": 1} done') == {"a": 1}
+    with pytest.raises(SpecError):
+        dashboard_llm.parse_json_object("no json here")
+    with pytest.raises(SpecError):
+        dashboard_llm.parse_json_object("{not json}")
+
+
+class FakeResponse:
+    def __init__(self, status, body):
+        self.status_code, self._body = status, body
+        self.text = json.dumps(body)
+
+    def json(self):
+        return self._body
+
+
+def test_call_groq_asks_for_a_json_object_and_returns_the_content(monkeypatch):
+    sent = {}
+
+    def post(url, headers, json, timeout):
+        sent.update(url=url, headers=headers, json=json)
+        return FakeResponse(200, {"choices": [{"message": {"content": "{\"widgets\": []}"}}]})
+
+    monkeypatch.setattr(dashboard_llm.requests, "post", post)
+    assert dashboard_llm.call_groq([{"role": "user", "content": "hi"}], "gsk_test", "openai/gpt-oss-120b") == "{\"widgets\": []}"
+    assert sent["url"] == "https://api.groq.com/openai/v1/chat/completions"
+    assert sent["headers"]["Authorization"] == "Bearer gsk_test"
+    assert sent["json"]["model"] == "openai/gpt-oss-120b"
+    assert sent["json"]["response_format"] == {"type": "json_object"}
+
+
+def test_call_groq_errors_do_not_leak_the_response_body(monkeypatch):
+    monkeypatch.setattr(dashboard_llm.requests, "post", lambda *a, **k: FakeResponse(401, {"error": {"message": "Invalid API Key"}}))
+    with pytest.raises(dashboard_llm.LLMUnavailable) as exc:
+        dashboard_llm.call_groq([], "gsk_test", "m")
+    assert str(exc.value) == "Groq ตอบกลับ HTTP 401"
+
+    def offline(*a, **k):
+        raise requests.ConnectionError("no route")
+
+    monkeypatch.setattr(dashboard_llm.requests, "post", offline)
+    with pytest.raises(dashboard_llm.LLMUnavailable):
+        dashboard_llm.call_groq([], "gsk_test", "m")

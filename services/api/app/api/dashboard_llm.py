@@ -1,0 +1,199 @@
+"""LLM side of the Create Dashboard tab (Groq, OpenAI-compatible chat completions).
+
+The prompt carries the dataset's column profile (names, kinds, distinct and missing
+counts, numeric and date ranges) and the user's request. It never carries rows or
+category labels, so dataset values do not leave the system. The LLM answers with a
+spec (dashboard_spec.py) that is validated before anything is computed. Without a key,
+or when Groq fails, generation uses a rule-based spec and refinement reports that the AI
+is unavailable."""
+import json
+import logging
+import os
+
+import requests
+
+from .dashboard_spec import (AGGREGATIONS, AUDIENCES, FORMATS, GRID_COLUMNS, MAX_ROW_SPAN, TIME_GRAINS,
+                             WIDGET_TYPES, SpecError, diff_specs, validate_spec)
+from .system import get_system_settings
+from .whitebox import _get_groq_api_key
+
+logger = logging.getLogger(__name__)
+
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+DEFAULT_MODEL = "openai/gpt-oss-120b"
+TIMEOUT_S = 45
+
+
+class LLMUnavailable(RuntimeError):
+    """No key, Groq unreachable, or Groq answered with an error."""
+
+
+SYSTEM_PROMPT = f"""You design business-intelligence dashboards in the style of Power BI and Databricks.
+Reply with ONE JSON object and nothing else, following this schema:
+{{
+  "title": string,
+  "description": string (one sentence),
+  "audience": one of {json.dumps(list(AUDIENCES))},
+  "filters": [{{"id": string, "column": string, "label": string}}],
+  "widgets": [{{
+    "id": string,
+    "type": one of {json.dumps(list(WIDGET_TYPES))},
+    "title": string,
+    "metric": {{"agg": one of {json.dumps(list(AGGREGATIONS))}, "column": string or null}},
+    "format": one of {json.dumps(list(FORMATS))},
+    "x": string,
+    "group_by": string or null,
+    "stacked": boolean,
+    "time_grain": one of {json.dumps(list(TIME_GRAINS))},
+    "sort": "desc" | "asc" | "x",
+    "limit": integer,
+    "compare": {{"date_column": string, "time_grain": string}},
+    "columns": [string],
+    "order_by": {{"column": string, "desc": boolean}},
+    "layout": {{"x": integer, "y": integer, "w": 1-{GRID_COLUMNS}, "h": 1-{MAX_ROW_SPAN}}}
+  }}]
+}}
+Fields by widget type:
+- kpi: metric, format, optional compare (change of the latest period against the one before).
+- bar: x, metric, optional group_by and stacked, sort, limit (max 20).
+- line, area: x must be a date or numeric column; time_grain for dates; optional group_by and stacked.
+- pie, donut: x with few distinct values, metric, limit (max 8).
+- table: columns, optional order_by, limit (max 200).
+Rules:
+- Use column names exactly as they appear in the profile. Never invent columns.
+- sum, avg, min and max need a numeric column; count takes "column": null.
+- The grid has {GRID_COLUMNS} columns. Put 3-4 kpi cards (w 3, h 2) on the first row, charts below (w 4 or 6, h 4) and a table last (w 12, h 5).
+- Use 5-10 widgets and 1-3 filters on the most useful categorical or date columns.
+- audience "management": headline kpis with compare and trends, no wide tables. "analyst": more breakdowns and a detail table. "business": balanced.
+- Write the title, description, widget titles and filter labels in the language of the user's request."""
+
+REFINE_RULES = """
+You are EDITING the dashboard in "current_spec". Change only what "instruction" asks for.
+Keep every other widget and filter exactly as it is, with the same id. Give new widgets new ids.
+Return the complete updated spec."""
+
+
+def groq_settings():
+    """(api_key, model): the key in the same order as the other LLM features (the setting
+    saved on the Rules page, then GROQ_API_KEY), the model from that setting or GROQ_MODEL."""
+    key = _get_groq_api_key()
+    try:
+        model = get_system_settings().get("groq_model") or DEFAULT_MODEL
+    except Exception:
+        model = os.getenv("GROQ_MODEL", "").strip() or DEFAULT_MODEL
+    return key, model
+
+
+def call_groq(messages, api_key, model):
+    try:
+        res = requests.post(
+            GROQ_URL,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json",
+                     "User-Agent": "SDOQAP-Dashboard-Builder/1.0"},
+            json={"model": model, "messages": messages, "temperature": 0.2, "max_tokens": 8192,
+                  "response_format": {"type": "json_object"}},
+            timeout=TIMEOUT_S,
+        )
+    except requests.RequestException as exc:
+        raise LLMUnavailable(f"เชื่อมต่อ Groq ไม่ได้ ({exc.__class__.__name__})") from exc
+    if res.status_code != 200:
+        logger.warning("Groq returned HTTP %s: %s", res.status_code, res.text[:300])
+        raise LLMUnavailable(f"Groq ตอบกลับ HTTP {res.status_code}")
+    try:
+        return res.json()["choices"][0]["message"]["content"] or ""
+    except (ValueError, KeyError, IndexError, TypeError) as exc:
+        raise LLMUnavailable("Groq ตอบกลับในรูปแบบที่อ่านไม่ได้") from exc
+
+
+def profile_for_prompt(profile):
+    """The column profile without any cell value except numeric and date ranges."""
+    columns = []
+    for c in profile["columns"]:
+        item = {"name": c["name"], "kind": c["kind"], "distinct": c["distinct"], "missing_pct": c["missing_pct"]}
+        if c["kind"] in ("numeric", "date"):
+            item["min"], item["max"] = c.get("min"), c.get("max")
+        columns.append(item)
+    return {"rows": profile["rows"], "columns": columns}
+
+
+def build_generate_messages(table_name, profile, context, audience):
+    user = {"dataset": table_name, "audience": audience, "request": context, "profile": profile_for_prompt(profile)}
+    return [{"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": json.dumps(user, ensure_ascii=False)}]
+
+
+def build_refine_messages(table_name, profile, spec, instruction):
+    user = {"dataset": table_name, "profile": profile_for_prompt(profile), "current_spec": spec,
+            "instruction": instruction}
+    return [{"role": "system", "content": SYSTEM_PROMPT + REFINE_RULES},
+            {"role": "user", "content": json.dumps(user, ensure_ascii=False)}]
+
+
+def parse_json_object(text):
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end <= start:
+        raise SpecError("คำตอบของ AI ไม่มี JSON")
+    try:
+        return json.loads(text[start:end + 1])
+    except ValueError as exc:
+        raise SpecError(f"JSON จาก AI อ่านไม่ได้: {exc}") from exc
+
+
+def _ask(messages, profile):
+    """(spec, warnings, model). One retry that tells the LLM why its answer was rejected."""
+    key, model = groq_settings()
+    if not key:
+        raise LLMUnavailable("ยังไม่ได้ตั้งค่า Groq API key")
+    content = call_groq(messages, key, model)
+    try:
+        spec, warnings = validate_spec(parse_json_object(content), profile)
+    except SpecError as exc:
+        retry = messages + [
+            {"role": "assistant", "content": content},
+            {"role": "user", "content": f"That answer was rejected: {exc}. Reply again with the corrected JSON object only."},
+        ]
+        spec, warnings = validate_spec(parse_json_object(call_groq(retry, key, model)), profile)
+    return spec, warnings, model
+
+
+def fallback_spec(profile, context=""):
+    """A sensible dashboard from the column kinds alone, used when the LLM is unavailable."""
+    columns = profile["columns"]
+    numeric = [c["name"] for c in columns if c["kind"] == "numeric"]
+    dates = [c["name"] for c in columns if c["kind"] == "date"]
+    categories = sorted((c for c in columns if c["kind"] == "categorical"), key=lambda c: c["distinct"])
+    main = {"agg": "sum", "column": numeric[0]} if numeric else {"agg": "count", "column": None}
+    widgets = [{"type": "kpi", "title": "จำนวนแถว", "metric": {"agg": "count", "column": None}}]
+    widgets += [{"type": "kpi", "title": f"ผลรวม {n}", "metric": {"agg": "sum", "column": n}} for n in numeric[:3]]
+    if dates:
+        widgets.append({"type": "line", "title": f"แนวโน้มรายเดือนตาม {dates[0]}", "x": dates[0],
+                        "time_grain": "month", "metric": main})
+    if categories:
+        widest = categories[-1]["name"]
+        widgets.append({"type": "bar", "title": f"แยกตาม {widest}", "x": widest, "metric": main})
+        if len(categories) > 1 and categories[0]["distinct"] <= 8:
+            narrow = categories[0]["name"]
+            widgets.append({"type": "donut", "title": f"สัดส่วนตาม {narrow}", "x": narrow, "metric": main})
+    widgets.append({"type": "table", "title": "ตัวอย่างข้อมูล", "columns": [c["name"] for c in columns[:8]]})
+    filters = [{"column": c["name"]} for c in categories[:2]] + [{"column": d} for d in dates[:1]]
+    return {"title": "แดชบอร์ดภาพรวม", "description": context[:300], "widgets": widgets, "filters": filters}
+
+
+def generate_spec(table_name, profile, context, audience):
+    try:
+        spec, warnings, model = _ask(build_generate_messages(table_name, profile, context, audience), profile)
+        engine = "groq"
+    except (LLMUnavailable, SpecError) as exc:
+        logger.warning("Dashboard generation fell back to rules: %s", exc)
+        spec, warnings = validate_spec(fallback_spec(profile, context), profile)
+        warnings = [f"ใช้แดชบอร์ดอัตโนมัติแบบกฎแทน AI: {exc}"] + warnings
+        engine, model = "rules", None
+    spec["audience"] = audience
+    return {"spec": spec, "warnings": warnings, "engine": engine, "model": model}
+
+
+def refine_spec(table_name, profile, spec, instruction):
+    """Raises LLMUnavailable or SpecError; there is no rule-based refinement."""
+    new_spec, warnings, model = _ask(build_refine_messages(table_name, profile, spec, instruction), profile)
+    return {"spec": new_spec, "warnings": warnings, "engine": "groq", "model": model,
+            "changes": diff_specs(spec, new_spec)}
