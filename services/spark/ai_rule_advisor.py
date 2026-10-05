@@ -315,6 +315,10 @@ class AIRuleAdvisor:
 - You are NEVER allowed to guess or invent arbitrary decimal thresholds (e.g. do not lower a 95% target to 73% randomly). If no historical mathematically-derived number is available, leave the recommended threshold null.
 - Under NO circumstances can any quality threshold proposal be below 70.0%.
 
+## Language
+Write every free-text value (root_cause, explanation, each rule "reason", remediation_action) in Thai.
+Keep JSON keys, rule_type values, severity values, column names and system names in English.
+
 ## Required JSON Output Schema
 Return ONLY valid JSON matching this schema:
 {{
