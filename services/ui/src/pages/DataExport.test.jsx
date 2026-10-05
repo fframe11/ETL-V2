@@ -1,5 +1,5 @@
-import { it, expect } from "vitest";
-import { screen } from "@testing-library/react";
+import { it, expect, vi } from "vitest";
+import { screen, fireEvent, act } from "@testing-library/react";
 import { renderPage } from "../test/renderPage";
 import DataExport from "./DataExport";
 
@@ -28,4 +28,47 @@ it("names downloads after the loaded dataset instead of a sample name", async ()
   const input = await screen.findByPlaceholderText("olist_products_dataset");
   expect(input.value).toBe("");
   expect(screen.queryByPlaceholderText("student_course_scores")).toBeNull();
+});
+
+const TABLES = ["/export/tables", { body: { tables: [{ name: "newest_import", layers: ["active"] }, { name: "orders_b", layers: ["active"] }], reddit_available: false } }];
+
+it("preselects the dataset that is loaded now and shows its name and counts", async () => {
+  await renderPage(DataExport, "/export", [
+    TABLES,
+    ["/whitebox/state", { body: { dataset_name: "orders_b", metrics: { total_rows: 4, clean_rows: 3, review_rows: 0, quarantine_rows: 1 } } }]
+  ]);
+  expect(await screen.findByDisplayValue("orders_b")).toBeTruthy();
+  expect(screen.getByText(/ผ่านการคัดกรอง 3 จาก 4 แถว/)).toBeTruthy(); // passed rows, not the total
+  const heading = screen.getByTestId("export-dataset"); // dataset name shown above the files
+  expect(heading.textContent).toContain("orders_b");
+});
+
+it("falls back to the newest table when the loaded dataset has no stored copy", async () => {
+  await renderPage(DataExport, "/export", [
+    TABLES,
+    ["/whitebox/state", { body: { dataset_name: "only_in_memory", metrics: { total_rows: 1, clean_rows: 1 } } }]
+  ]);
+  expect(await screen.findByDisplayValue("newest_import")).toBeTruthy();
+});
+
+it("downloads a file named after the loaded dataset, and a typed name still wins", async () => {
+  window.URL.createObjectURL = vi.fn(() => "blob:x");
+  window.URL.revokeObjectURL = vi.fn();
+  await renderPage(DataExport, "/export", [
+    ["/whitebox/state", { body: { dataset_name: "olist_products_dataset", metrics: { total_rows: 4, clean_rows: 3, review_rows: 0, quarantine_rows: 1 } } }]
+  ]);
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "ดาวน์โหลด Clean CSV" })); });
+  await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+  expect(screen.getByText(/olist_products_dataset_clean_3rows\.csv/)).toBeTruthy();
+  expect(screen.queryByText(/student_course_scores/)).toBeNull();
+
+  fireEvent.change(screen.getByPlaceholderText("olist_products_dataset"), { target: { value: "my_export" } });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "ดาวน์โหลด Clean CSV" })); });
+  await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+  expect(screen.getByText(/my_export_clean_3rows\.csv/)).toBeTruthy();
+});
+
+it("shows no dataset heading when nothing is loaded", async () => {
+  await renderPage(DataExport, "/export");
+  expect(screen.queryByTestId("export-dataset")).toBeNull();
 });

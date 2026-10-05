@@ -134,9 +134,8 @@ export default function DataExport() {
         const data = await res.json();
         setTables(data.tables || []);
         setRedditAvailable(data.reddit_available || false);
-        if (data.tables && data.tables.length > 0) {
-          setSelectedTable(data.tables[0].name);
-        }
+        // Which table to preselect is decided below, once the loaded dataset is known.
+        setSelectedTable("");
       }
     } catch (e) {
       console.error("Failed to load tables", e);
@@ -144,6 +143,13 @@ export default function DataExport() {
       setTablesLoading(false);
     }
   };
+
+  // Preselect the dataset that is loaded now; otherwise the newest table (the API lists newest first).
+  useEffect(() => {
+    if (selectedTable || tables.length === 0) return;
+    const current = tables.find((t) => t.name === wbState?.dataset_name);
+    setSelectedTable((current || tables[0]).name);
+  }, [tables, wbState, selectedTable]);
 
   const handleDeleteTable = async () => {
     if (!selectedTable) return;
@@ -283,9 +289,18 @@ export default function DataExport() {
 
       {/* Interactive 3-Zone Export & Quality Deliverables Console */}
       <div style={{ background: "#FFFFFF", border: "1px solid #CBD5E1", borderRadius: "12px", padding: "20px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)", marginBottom: "16px" }}>
+        {wbState?.dataset_name && (
+          <div data-testid="export-dataset" style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: "8px", marginBottom: "12px" }}>
+            <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>กำลังส่งออกข้อมูลของตาราง</span>
+            <code style={{ fontSize: "15px", fontWeight: 700, color: "#0F172A", background: "#F1F5F9", padding: "2px 8px", borderRadius: "4px", wordBreak: "break-all" }}>
+              {wbState.dataset_name}
+            </code>
+          </div>
+        )}
         <div style={{ marginBottom: "14px" }}>
           <span style={{ background: "#DCFCE7", color: "#15803D", fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "4px" }}>
-            <Icon name="check" /> ผ่านการคัดกรองแล้ว {typeof wbState?.metrics?.total_rows === "number" ? wbState.metrics.total_rows.toLocaleString() : "—"} แถว
+            <Icon name="check" /> ผ่านการคัดกรอง {typeof wbState?.metrics?.clean_rows === "number" ? wbState.metrics.clean_rows.toLocaleString() : "—"}
+            {typeof wbState?.metrics?.total_rows === "number" ? ` จาก ${wbState.metrics.total_rows.toLocaleString()}` : ""} แถว
           </span>
           <InfoHint text="ส่วนนี้มาจากเอนจินตรวจคุณภาพแบบโต้ตอบ (ทดลองทีละไฟล์ อยู่ในหน่วยความจำ ไม่ถาวร) คนละชุดกับตาราง Pipeline/รายงาน Gold ด้านล่างซึ่งมาจากรอบตรวจ Spark จริงที่เก็บถาวรใน HDFS/Elasticsearch" />
         </div>

@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 import io
 import time
 import requests
@@ -319,6 +320,7 @@ def prepare_df_for_export(df: pd.DataFrame, table_name: str = None) -> bytes:
 def list_export_tables():
     """List all available tables across active, raw, and quarantine layers."""
     tables_map = {}
+    modified_ms = {}  # table -> newest modification time (ms) seen in any layer
     
     # helper to check paths
     def check_layer(path, layer_name):
@@ -333,6 +335,7 @@ def list_export_tables():
                         if t_name not in tables_map:
                             tables_map[t_name] = []
                         tables_map[t_name].append(layer_name)
+                        modified_ms[t_name] = max(modified_ms.get(t_name, 0), int(f.get("modificationTime") or 0))
         except Exception:
             pass
 
@@ -350,8 +353,11 @@ def list_export_tables():
         pass
 
     results = []
-    for name, layers in tables_map.items():
-        results.append({"name": name, "layers": layers})
+    # Newest first, so the table that was just imported is the first one, not the first alphabetically.
+    for name in sorted(tables_map, key=lambda n: (-modified_ms.get(n, 0), n)):
+        ms = modified_ms.get(name, 0)
+        updated_at = datetime.fromtimestamp(ms / 1000, tz=timezone.utc).isoformat() if ms else None
+        results.append({"name": name, "layers": tables_map[name], "updated_at": updated_at})
         
     return {
         "tables": results,
