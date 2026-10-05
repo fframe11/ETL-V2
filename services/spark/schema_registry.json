@@ -300,7 +300,11 @@
     }
   },
   "student_course_scores": {
-    "primary_key": ["student_id", "course", "semester"],
+    "primary_key": [
+      "student_id",
+      "course",
+      "semester"
+    ],
     "date_column": "updated_at",
     "schema_spec": {
       "dirty_row_id": "StringType",
@@ -332,6 +336,62 @@
       "Shipping_Cost": "DoubleType",
       "Profit": "DoubleType",
       "Payment_Method": "StringType"
+    }
+  },
+  "ijzp_q8t2_500k": {
+    "primary_key": "id",
+    "date_column": "date",
+    "schema_spec": {
+      "id": "IntegerType",
+      "case_number": "StringType",
+      "date": "TimestampType",
+      "block": "StringType",
+      "iucr": "StringType",
+      "primary_type": "StringType",
+      "description": "StringType",
+      "location_description": "StringType",
+      "arrest": "StringType",
+      "domestic": "StringType",
+      "beat": "StringType",
+      "district": "StringType",
+      "ward": "IntegerType",
+      "community_area": "IntegerType",
+      "fbi_code": "StringType",
+      "x_coordinate": "IntegerType",
+      "y_coordinate": "IntegerType",
+      "year": "IntegerType",
+      "updated_on": "TimestampType",
+      "latitude": "DoubleType",
+      "longitude": "DoubleType",
+      "location": "StringType"
+    }
+  },
+  "ijzp_q8t2_500k_2": {
+    "primary_key": "id",
+    "date_column": "date",
+    "schema_spec": {
+      "id": "IntegerType",
+      "case_number": "StringType",
+      "date": "TimestampType",
+      "block": "StringType",
+      "iucr": "StringType",
+      "primary_type": "StringType",
+      "description": "StringType",
+      "location_description": "StringType",
+      "arrest": "StringType",
+      "domestic": "StringType",
+      "beat": "StringType",
+      "district": "StringType",
+      "ward": "IntegerType",
+      "community_area": "IntegerType",
+      "fbi_code": "StringType",
+      "x_coordinate": "IntegerType",
+      "y_coordinate": "IntegerType",
+      "year": "IntegerType",
+      "updated_on": "TimestampType",
+      "latitude": "DoubleType",
+      "longitude": "DoubleType",
+      "location": "StringType"
     }
   }
 }
