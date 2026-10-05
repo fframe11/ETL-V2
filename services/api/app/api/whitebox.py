@@ -725,6 +725,52 @@ def _apply_reviewer_decisions(df: pd.DataFrame) -> None:
             df.loc[mask, "whitebox_rule_applied"] = f"Row #{row_id} Quarantined by Reviewer"
 
 
+_TRACKING_COLUMNS = ("dirty_row_id", "whitebox_status", "whitebox_error_type", "whitebox_rule_applied")
+
+
+def _column_impact(df_raw: pd.DataFrame, df_clean: pd.DataFrame, accepted_rules: List[Any]) -> List[Dict[str, Any]]:
+    """Per column: nulls, mean and outliers before and after cleaning.
+
+    "Outliers after" counts clean-zone values outside the fences of the raw data, so it shows what is
+    left of the original problem and not a fresh round of outliers. The fences are the ones the
+    column's accepted auto_iqr rule enforces (basis "rule"); a column without such a rule uses the
+    profile's Tukey 1.5x IQR (basis "tukey_1.5").
+    """
+    iqr_rules = {r.field: r for r in accepted_rules if r.rule_type == "auto_iqr"}
+    out: List[Dict[str, Any]] = []
+    for col in df_raw.columns:
+        if col in _TRACKING_COLUMNS:
+            continue
+        item: Dict[str, Any] = {
+            "column": col,
+            "nulls_before": int(df_raw[col].isna().sum()),
+            "nulls_after": int(df_clean[col].isna().sum()),
+            "mean_before": None, "mean_after": None,
+            "outliers_before": None, "outliers_after": None, "fence_basis": None,
+        }
+        if pd.api.types.is_numeric_dtype(df_raw[col]) and not pd.api.types.is_bool_dtype(df_raw[col]):
+            before = pd.to_numeric(df_raw[col], errors="coerce").dropna()
+            after = pd.to_numeric(df_clean[col], errors="coerce").dropna()
+            if len(before) > 0:
+                q1, q3 = float(before.quantile(0.25)), float(before.quantile(0.75))
+                iqr = q3 - q1
+                rule = iqr_rules.get(col)
+                if rule is not None:
+                    mult = float(rule.parameters.get("multiplier", 3.0))
+                    low = float(rule.parameters.get("lower_fence", q1 - mult * iqr))
+                    high = float(rule.parameters.get("upper_fence", q3 + mult * iqr))
+                    item["fence_basis"] = "rule"
+                else:
+                    low, high = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+                    item["fence_basis"] = "tukey_1.5"
+                item["mean_before"] = round(float(before.mean()), 2)
+                item["mean_after"] = round(float(after.mean()), 2) if len(after) > 0 else None
+                item["outliers_before"] = int(((before < low) | (before > high)).sum())
+                item["outliers_after"] = int(((after < low) | (after > high)).sum())
+        out.append(item)
+    return out
+
+
 @router.post("/execute", dependencies=[Depends(require_session)])
 def execute_pipeline(payload: ExecuteRulesPayload):
     """
@@ -760,6 +806,14 @@ def execute_pipeline(payload: ExecuteRulesPayload):
 
     # Parse active accepted rules
     accepted_rules = [r for r in payload.rules if r.accepted]
+    rule_impact: List[Dict[str, Any]] = []
+
+    def _record_impact(rule: Any, rows: int) -> None:
+        # Rows are counted once, by the first rule that moves them out of the clean zone.
+        rule_impact.append({
+            "rule_type": rule.rule_type, "field": rule.field, "action": rule.action,
+            "rule": rule.recommended_rule, "rows_affected": int(rows), "enforced": True,
+        })
 
     # Generic Rule Execution Engine (applies rules by field name for any dataset)
     # 1. Uniqueness / Candidate Key rules
@@ -768,6 +822,7 @@ def execute_pipeline(payload: ExecuteRulesPayload):
         if isinstance(cols, str):
             cols = [c.strip() for c in cols.split("+")]
         valid_cols = [c for c in cols if c in df.columns]
+        hit = 0
         if valid_cols:
             dup_mask = df.duplicated(subset=valid_cols, keep=r.parameters.get("keep", "first"))
             target_status = "Quarantine" if r.action.lower() == "quarantine" else "Review"
@@ -775,10 +830,13 @@ def execute_pipeline(payload: ExecuteRulesPayload):
             df.loc[affected, "whitebox_status"] = target_status
             df.loc[affected, "whitebox_error_type"] = "Duplicate"
             df.loc[affected, "whitebox_rule_applied"] = f"Composite Uniqueness ({' + '.join(valid_cols)})"
+            hit = affected.sum()
+        _record_impact(r, hit)
 
     # 2. Completeness / Null rules
     for r in [rule for rule in accepted_rules if rule.rule_type == "null_check"]:
         field = r.field
+        hit = 0
         if field in df.columns:
             null_mask = df[field].isna()
             target_status = "Quarantine" if r.action.lower() == "quarantine" else "Review"
@@ -786,10 +844,13 @@ def execute_pipeline(payload: ExecuteRulesPayload):
             df.loc[affected, "whitebox_status"] = target_status
             df.loc[affected, "whitebox_error_type"] = f"Missing {field}"
             df.loc[affected, "whitebox_rule_applied"] = f"Strict Required ({field})"
+            hit = affected.sum()
+        _record_impact(r, hit)
 
     # 3. Domain Range rules
     for r in [rule for rule in accepted_rules if rule.rule_type == "range_check"]:
         field = r.field
+        hit = 0
         if field in df.columns:
             min_v = r.parameters.get("min")
             max_v = r.parameters.get("max")
@@ -804,10 +865,13 @@ def execute_pipeline(payload: ExecuteRulesPayload):
             df.loc[affected, "whitebox_status"] = target_status
             df.loc[affected, "whitebox_error_type"] = f"Invalid {field} Range"
             df.loc[affected, "whitebox_rule_applied"] = f"Domain Range Check [{min_v}, {max_v}] on {field}"
+            hit = affected.sum()
+        _record_impact(r, hit)
 
     # 4. Statistical Auto IQR Outlier rules
     for r in [rule for rule in accepted_rules if rule.rule_type == "auto_iqr"]:
         field = r.field
+        hit = 0
         if field in df.columns:
             num_s = pd.to_numeric(df[field], errors="coerce")
             clean_s = num_s.dropna()
@@ -824,11 +888,14 @@ def execute_pipeline(payload: ExecuteRulesPayload):
                 df.loc[affected, "whitebox_status"] = target_status
                 df.loc[affected, "whitebox_error_type"] = f"{field} Outlier"
                 df.loc[affected, "whitebox_rule_applied"] = f"Statistical Auto IQR ({field} > {round(upper_f, 2)})"
+                hit = affected.sum()
+        _record_impact(r, hit)
 
     # 5. Category Consistency rules
     for r in [rule for rule in accepted_rules if rule.rule_type == "category_consistency"]:
         field = r.field
         allowed = r.parameters.get("allowed_values", [])
+        hit = 0
         if field in df.columns and allowed:
             inconsistent_mask = df[field].notna() & (~df[field].astype(str).isin([str(x) for x in allowed]))
             target_status = "Review" if r.action.lower() == "review" else "Quarantine"
@@ -836,6 +903,17 @@ def execute_pipeline(payload: ExecuteRulesPayload):
             df.loc[affected, "whitebox_status"] = target_status
             df.loc[affected, "whitebox_error_type"] = f"Inconsistent {field}"
             df.loc[affected, "whitebox_rule_applied"] = f"Category Consistency ({field})"
+            hit = affected.sum()
+        _record_impact(r, hit)
+
+    # Accepted rules of a type the engine does not enforce here (e.g. freshness) are listed, not hidden.
+    enforced_types = {"composite_unique", "null_check", "range_check", "auto_iqr", "category_consistency"}
+    for r in accepted_rules:
+        if r.rule_type not in enforced_types:
+            rule_impact.append({
+                "rule_type": r.rule_type, "field": r.field, "action": r.action,
+                "rule": r.recommended_rule, "rows_affected": 0, "enforced": False,
+            })
 
     if payload.apply_reviewer_decisions:
         _apply_reviewer_decisions(df)
@@ -844,6 +922,18 @@ def execute_pipeline(payload: ExecuteRulesPayload):
     df_clean = df[df["whitebox_status"] == "Valid"].copy()
     df_review = df[df["whitebox_status"] == "Review"].copy()
     df_quarantine = df[df["whitebox_status"] == "Quarantine"].copy()
+
+    # Verification that needs no ground truth: every row sits in exactly one zone, and the clean zone
+    # no longer shows the problems the profile found in the raw data.
+    reconciliation = {
+        "total_rows": int(total_raw_rows),
+        "clean_rows": int(len(df_clean)),
+        "review_rows": int(len(df_review)),
+        "quarantine_rows": int(len(df_quarantine)),
+    }
+    reconciliation["unaccounted_rows"] = reconciliation["total_rows"] - (
+        reconciliation["clean_rows"] + reconciliation["review_rows"] + reconciliation["quarantine_rows"])
+    column_impact = _column_impact(df, df_clean, accepted_rules)
 
     # Save to disk
     clean_path = os.path.join(OUTPUT_DIR, "clean_dataset_run.csv")
@@ -875,6 +965,9 @@ def execute_pipeline(payload: ExecuteRulesPayload):
         "post_clean_quality_score_pct": 100.0,
         "execution_time_ms": exec_time_ms,
         "error_distribution": error_summary,
+        "reconciliation": reconciliation,
+        "rule_impact": rule_impact,
+        "column_impact": column_impact,
         "saved_artifacts": {
             "clean_file": clean_path,
             "review_file": review_path,

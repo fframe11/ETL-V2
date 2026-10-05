@@ -36,10 +36,12 @@ export default function WhiteBoxPipeline() {
   // Step 3: Rule Recommendations State
   const [recommendations, setRecommendations] = useState([]);
   const [recsLoading, setRecsLoading] = useState(false);
+  const [rulesGenerated, setRulesGenerated] = useState(false);   // false until the analysis has run, so "no rules yet" is told apart from "no rules needed"
 
   // Step 4 & 5: Execution & Segregation State
   const [executionResult, setExecutionResult] = useState(null);
   const [executing, setExecuting] = useState(false);
+  const [ranRulesKey, setRanRulesKey] = useState(null);   // the accepted rules the shown result was computed with
 
   // Step 6: Benchmark State
   const [benchmarkResult, setBenchmarkResult] = useState(null);
@@ -92,8 +94,14 @@ export default function WhiteBoxPipeline() {
       if (!res.ok) throw new Error("รันทุกขั้นไม่สำเร็จ");
       const data = await res.json();
       if (data.profile_data) setProfileData(data.profile_data);
-      if (data.recommendations) setRecommendations(data.recommendations);
-      if (data.execution_result) setExecutionResult(data.execution_result);
+      if (data.recommendations) {
+        setRecommendations(data.recommendations);
+        setRulesGenerated(true);
+      }
+      if (data.execution_result) {
+        setExecutionResult(data.execution_result);
+        setRanRulesKey(rulesKey(data.recommendations || []));
+      }
       if (data.benchmark_result) setBenchmarkResult(data.benchmark_result);
       if (data.downstream_analytics) setAnalyticsResult(data.downstream_analytics);
       setStageNotes(data.stages || {});
@@ -194,6 +202,7 @@ export default function WhiteBoxPipeline() {
       if (!res.ok) throw new Error("สร้างกฎที่เสนอไม่สำเร็จ");
       const data = await res.json();
       setRecommendations(data.recommendations);
+      setRulesGenerated(true);
       setActiveStep(3);
     } catch (err) {
       setError(err.message);
@@ -267,6 +276,41 @@ export default function WhiteBoxPipeline() {
     });
   };
 
+  // Identity of the rules that would be applied: a result is old once this differs from the one it ran with.
+  const rulesKey = (recs) =>
+    JSON.stringify(recs.filter((r) => r.accepted).map((r) => [r.rule_type, r.field, r.action, r.parameters]));
+  const acceptedRules = recommendations.filter((r) => r.accepted);
+  const resultIsOld = Boolean(executionResult) && ranRulesKey !== null && ranRulesKey !== rulesKey(recommendations);
+
+  // Columns whose accepted rules send rows to a zone ("quarantine" or "review"), first three then a count.
+  const fieldsFor = (action) => {
+    const fields = [...new Set(acceptedRules.filter((r) => r.action === action).map((r) => r.field))];
+    if (fields.length === 0) return "";
+    return fields.slice(0, 3).join(", ") + (fields.length > 3 ? ` และอีก ${fields.length - 3} คอลัมน์` : "");
+  };
+  const pctOfTotal = (n) => {
+    const total = executionResult?.total_rows_ingested || 0;
+    return total > 0 ? `${((n / total) * 100).toFixed(2)}%` : "0%";
+  };
+
+  // Stage 5 works from the segregation result itself, so it needs no ground truth.
+  const reconciliation = executionResult
+    ? executionResult.reconciliation || {
+        total_rows: executionResult.total_rows_ingested ?? 0,
+        clean_rows: executionResult.clean_rows ?? 0,
+        review_rows: executionResult.review_rows ?? 0,
+        quarantine_rows: executionResult.quarantine_rows ?? 0,
+        unaccounted_rows:
+          (executionResult.total_rows_ingested ?? 0) -
+          ((executionResult.clean_rows ?? 0) + (executionResult.review_rows ?? 0) + (executionResult.quarantine_rows ?? 0))
+      }
+    : null;
+  const ruleImpact = [...(executionResult?.rule_impact || [])].sort((a, b) => b.rows_affected - a.rows_affected);
+  const columnImpact = executionResult?.column_impact || [];
+  const columnsWithIssue = columnImpact.filter((c) => c.nulls_before > 0 || (c.outliers_before ?? 0) > 0);
+  const num = (n) => (n === null || n === undefined ? "-" : Number(n).toLocaleString());
+  const ZONE_LABEL = { quarantine: "Quarantine", review: "Review", warning: "แจ้งเตือน" };
+
   const handleExecute = async () => {
     setExecuting(true);
     setError(null);
@@ -282,6 +326,7 @@ export default function WhiteBoxPipeline() {
       if (!res.ok) throw new Error("คัดแยกข้อมูลไม่สำเร็จ");
       const data = await res.json();
       setExecutionResult(data);
+      setRanRulesKey(rulesKey(recommendations));
       setActiveStep(4);
     } catch (err) {
       setError(err.message);
@@ -460,7 +505,7 @@ export default function WhiteBoxPipeline() {
         </button>
 
         <button
-          className={`wb-step-btn ${activeStep === 5 ? "active" : ""} ${benchmarkResult ? "completed" : ""}`}
+          className={`wb-step-btn ${activeStep === 5 ? "active" : ""} ${executionResult ? "completed" : ""}`}
           onClick={() => {
             setActiveStep(5);
             if (!benchmarkResult) fetchBenchmark();
@@ -946,6 +991,21 @@ export default function WhiteBoxPipeline() {
             </div>
           </div>
 
+          {!rulesGenerated && recommendations.length === 0 && (
+            <div className="wb-empty-state" data-testid="rules-not-generated">
+              <p>ยังไม่ได้สร้างกฎ กด "สร้างกฎ" เพื่อให้ระบบวิเคราะห์จากสถิติข้อมูลและบริบทธุรกิจ</p>
+              <button className="wb-btn-primary" onClick={handleGenerateRules} disabled={recsLoading || !profileData}>
+                {recsLoading ? "กำลังสร้าง..." : "สร้างกฎ"}
+              </button>
+            </div>
+          )}
+
+          {rulesGenerated && recommendations.length === 0 && (
+            <div className="wb-empty-state" data-testid="rules-none">
+              <p>ไม่พบความผิดปกติ ระบบไม่มีกฎที่ต้องเสนอสำหรับชุดข้อมูลนี้</p>
+            </div>
+          )}
+
           <div className="wb-rules-list">
             {recommendations.map((r, idx) => (
               <div
@@ -1054,7 +1114,7 @@ export default function WhiteBoxPipeline() {
             <button className="wb-btn-secondary wb-nav-btn" onClick={() => setActiveStep(2)}>
               ⬅ ย้อนกลับ: Stage 2 กำหนดบริบทธุรกิจ
             </button>
-            <button className="wb-btn-primary wb-nav-btn" onClick={handleExecute} disabled={executing}>
+            <button className="wb-btn-primary wb-nav-btn" onClick={handleExecute} disabled={executing || !rulesGenerated}>
               {executing ? "กำลังประมวลผลคัดแยก..." : "ขั้นตอนถัดไป: Stage 4 ดำเนินการคัดแยก 3 ทาง ->"}
             </button>
           </div>
@@ -1068,43 +1128,62 @@ export default function WhiteBoxPipeline() {
             <div>
               <h2>4 · คัดแยก 3 ทาง<InfoHint text="ข้อมูลดีไป Clean ค่าผิดปกติไป Review ข้อมูลเสียไป Quarantine" /></h2>
             </div>
-            <button className="wb-btn-secondary" onClick={handleExecute} disabled={executing}>
+            <button className="wb-btn-secondary" onClick={handleExecute} disabled={executing || !rulesGenerated}>
               Re-Run Transformation
             </button>
           </div>
 
           {executionResult ? (
             <>
+              <p className="wb-sub" data-testid="execution-meta">
+                รันเมื่อ {executionResult.executed_at ? new Date(executionResult.executed_at).toLocaleString("th-TH") : "ไม่ทราบเวลา"}
+                {" · "}ชุดข้อมูล {executionResult.dataset_name || datasetName}
+                {" · "}ใช้ {ranRulesKey ? JSON.parse(ranRulesKey).length : acceptedRules.length} กฎ
+              </p>
+              {resultIsOld && (
+                <div className="wb-error-banner" data-testid="execution-stale">
+                  ผลนี้เป็นของกฎชุดเก่า กฎถูกแก้หลังรัน กด "Re-Run Transformation" เพื่อคำนวณใหม่
+                </div>
+              )}
+
               {/* Segregation Buckets */}
               <div className="wb-grid-3">
-                <div className="wb-card bucket clean">
+                <div className="wb-card bucket clean" data-testid="zone-clean">
                   <div className="wb-bucket-header">
                     <span className="wb-bucket-icon"><Icon name="dot-green" /></span>
                     <h3 title="Records that passed every quality check and are ready to use as-is.">Clean Data Asset</h3>
                   </div>
                   <div className="wb-bucket-count">{(executionResult.clean_rows ?? 0).toLocaleString()} rows</div>
-                  <p>Meets all quality contracts. Directly ready for analytics and business utilization.</p>
-                  <span className="wb-pill success">100% Validated</span>
+                  <p>ผ่านทุกกฎที่เปิดใช้งาน พร้อมนำไปวิเคราะห์ต่อ</p>
+                  <span className="wb-pill success">{pctOfTotal(executionResult.clean_rows ?? 0)} ของทั้งหมด</span>
                 </div>
 
-                <div className="wb-card bucket review">
+                <div className="wb-card bucket review" data-testid="zone-review">
                   <div className="wb-bucket-header">
                     <span className="wb-bucket-icon"><Icon name="dot-yellow" /></span>
                     <h3 title="Statistical outliers that aren't clearly wrong — a person should check them before deciding to keep or drop.">Human Review Queue</h3>
                   </div>
                   <div className="wb-bucket-count">{(executionResult.review_rows ?? 0).toLocaleString()} rows</div>
-                  <p>Study Hours Outliers isolated for domain expert appraisal rather than destructive auto-drop.</p>
-                  <span className="wb-pill warning">Semi-Auto Human Gate</span>
+                  <p>
+                    {fieldsFor("review")
+                      ? `ค่าผิดปกติจากคอลัมน์ ${fieldsFor("review")} รอผู้ตรวจสอบตัดสิน แทนการลบอัตโนมัติ`
+                      : "ไม่มีกฎที่ส่งข้อมูลมาที่นี่"}
+                  </p>
+                  <span className="wb-pill warning">{pctOfTotal(executionResult.review_rows ?? 0)} ของทั้งหมด</span>
                 </div>
 
-                <div className="wb-card bucket quarantine">
+                <div className="wb-card bucket quarantine" data-testid="zone-quarantine">
                   <div className="wb-bucket-header">
                     <span className="wb-bucket-icon"><Icon name="dot-red" /></span>
                     <h3 title="Records that clearly violate a quality rule (missing/out-of-range/duplicate) — held here instead of deleted, and routed back to the source system to fix.">Quarantine Lake</h3>
                   </div>
                   <div className="wb-bucket-count">{(executionResult.quarantine_rows ?? 0).toLocaleString()} rows</div>
-                  <p>Missing scores, out-of-range grades (-10, 150), and duplicate composite keys quarantined.</p>
-                  <span className="wb-pill danger">Isolated for Root-Cause Upstream Fix</span>
+                  <p>
+                    {fieldsFor("quarantine")
+                      ? `ข้อมูลเสียจากคอลัมน์ ${fieldsFor("quarantine")} ถูกกักไว้เพื่อแก้ที่ต้นทาง`
+                      : "ไม่มีกฎที่ส่งข้อมูลมาที่นี่"}
+                  </p>
+                  <span className="wb-pill danger">{pctOfTotal(executionResult.quarantine_rows ?? 0)} ของทั้งหมด</span>
                 </div>
               </div>
 
@@ -1159,8 +1238,24 @@ export default function WhiteBoxPipeline() {
                 </button>
               </div>
             </>
+          ) : executing ? (
+            <p className="wb-empty-state" data-testid="execution-running">กำลังประมวลผลคัดแยก...</p>
           ) : (
-            <p>Executing pipeline...</p>
+            <div className="wb-empty-state" data-testid="execution-not-run">
+              <p>
+                {rulesGenerated
+                  ? 'ยังไม่ได้คัดแยก กด "คัดแยกข้อมูล" เพื่อใช้กฎที่เปิดใช้งานแยกข้อมูลเป็น 3 ทาง'
+                  : "ยังไม่ได้คัดแยก ต้องสร้างและตรวจกฎที่ Stage 3 ก่อน"}
+              </p>
+              {rulesGenerated ? (
+                <button className="wb-btn-primary" onClick={handleExecute} disabled={executing}>คัดแยกข้อมูล</button>
+              ) : (
+                <>
+                  <button className="wb-btn-primary" disabled>คัดแยกข้อมูล</button>
+                  <button className="wb-btn-secondary" onClick={() => setActiveStep(3)}>ไปที่ Stage 3</button>
+                </>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -1171,7 +1266,7 @@ export default function WhiteBoxPipeline() {
           <div className="wb-stage-purpose-box">
             <div className="wb-stage-purpose-icon"><Icon name="check" /></div>
             <div className="wb-stage-purpose-text">
-              <strong>การตรวจสอบความครบถ้วนตามมาตรฐาน SLA (SLA Compliance Audit):</strong> ตรวจสอบจำนวนเรคคอร์ดที่ถูกคัดแยกในแต่ละโซนเทียบกับจำนวนข้อมูลขาเข้าทั้งหมด เพื่อยืนยันว่าไม่มีข้อมูลสูญหาย (Zero Unaccounted Records) และประมวลผลสถิติจากชุดข้อมูลสะอาด (Certified Clean Asset)
+              <strong>ตรวจว่าการคัดแยกถูกต้อง โดยไม่ต้องมีเฉลย:</strong> นับว่าทุกแถวอยู่ในโซนใดโซนหนึ่ง ดูว่าแต่ละกฎกักกี่แถว และเทียบชุด Clean ก่อนและหลังทำความสะอาด
             </div>
           </div>
 
@@ -1179,17 +1274,104 @@ export default function WhiteBoxPipeline() {
             <div>
               <h2>5 · ตรวจผลและใช้งาน<InfoHint text="ตรวจว่าทุกแถวถูกนับครบทั้ง 3 โซน และนำข้อมูล Clean ไปวิเคราะห์ต่อ" /></h2>
             </div>
-            <button className="wb-btn-secondary" onClick={fetchBenchmark} disabled={benchmarkLoading}>
-              {benchmarkLoading ? "Verifying..." : "Re-verify SLA Metrics"}
-            </button>
+            {benchmarkResult && benchmarkResult.status !== "NOT_APPLICABLE" && (
+              <button className="wb-btn-secondary" onClick={fetchBenchmark} disabled={benchmarkLoading}>
+                {benchmarkLoading ? "Verifying..." : "Re-verify SLA Metrics"}
+              </button>
+            )}
           </div>
+
+          {!executionResult ? (
+            <div className="wb-empty-state" data-testid="verify-not-run">
+              <p>ยังไม่มีผลให้ตรวจ ต้องคัดแยกข้อมูลที่ Stage 4 ก่อน</p>
+              <button className="wb-btn-secondary" onClick={() => setActiveStep(4)}>ไปที่ Stage 4</button>
+            </div>
+          ) : (
+            <>
+              {resultIsOld && (
+                <div className="wb-error-banner" data-testid="execution-stale">
+                  ผลนี้เป็นของกฎชุดเก่า กฎถูกแก้หลังรัน กลับไป Stage 4 แล้วกด "Re-Run Transformation" เพื่อคำนวณใหม่
+                </div>
+              )}
+
+              {/* 1. Every row is in exactly one zone */}
+              <div className="wb-card" data-testid="verify-reconciliation" style={{ marginBottom: "1.5rem" }}>
+                <h3>นับแถวครบ</h3>
+                <p style={{ margin: "4px 0" }}>
+                  {reconciliation.unaccounted_rows === 0 ? (
+                    <strong className="text-success">ครบทุกแถว ไม่มีข้อมูลสูญหาย</strong>
+                  ) : (
+                    <strong className="text-danger">ขาด {Math.abs(reconciliation.unaccounted_rows).toLocaleString()} แถว</strong>
+                  )}
+                </p>
+                <p className="wb-sub" style={{ margin: 0 }}>
+                  Clean {num(reconciliation.clean_rows)} + Review {num(reconciliation.review_rows)} + Quarantine {num(reconciliation.quarantine_rows)} = {num(reconciliation.clean_rows + reconciliation.review_rows + reconciliation.quarantine_rows)} จากทั้งหมด {num(reconciliation.total_rows)} แถว
+                </p>
+              </div>
+
+              {/* 2. What each rule moved */}
+              <div className="wb-card" data-testid="verify-rules" style={{ marginBottom: "1.5rem" }}>
+                <h3>ผลของแต่ละกฎ</h3>
+                <p className="wb-sub">แถวหนึ่งนับครั้งเดียว โดยกฎแรกที่พบ</p>
+                {ruleImpact.length === 0 ? (
+                  <p>ไม่มีกฎที่เปิดใช้งาน</p>
+                ) : (
+                  <table className="wb-table">
+                    <thead>
+                      <tr><th>กฎ</th><th>คอลัมน์</th><th>ส่งไป</th><th>แถวที่ถูกกัก</th></tr>
+                    </thead>
+                    <tbody>
+                      {ruleImpact.map((r, i) => (
+                        <tr key={i} data-testid={`verify-rule-${r.rule_type}-${r.field}`}>
+                          <td>{r.rule}</td>
+                          <td>{r.field}</td>
+                          <td>{ZONE_LABEL[r.action] || r.action}</td>
+                          <td>
+                            {!r.enforced ? <em>ยังไม่บังคับใช้</em> : r.rows_affected === 0 ? <em>ไม่พบแถวเข้าเงื่อนไข</em> : <strong>{r.rows_affected.toLocaleString()}</strong>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {/* 3. Clean zone before and after */}
+              <div className="wb-card" data-testid="verify-columns" style={{ marginBottom: "1.5rem" }}>
+                <h3>ชุด Clean ก่อนและหลัง</h3>
+                <p className="wb-sub">ค่าผิดปกติวัดด้วยรั้วเดียวกับที่กฎใช้ ถ้าคอลัมน์ไม่มีกฎ IQR ใช้ Tukey 1.5× IQR</p>
+                {columnsWithIssue.length === 0 ? (
+                  <p>ไม่พบค่าว่างหรือค่าผิดปกติในข้อมูลดิบ</p>
+                ) : (
+                  <table className="wb-table">
+                    <thead>
+                      <tr><th>คอลัมน์</th><th>ค่าว่าง ก่อน / หลัง</th><th>ค่าเฉลี่ย ก่อน / หลัง</th><th>ค่าผิดปกติ ก่อน / หลัง</th></tr>
+                    </thead>
+                    <tbody>
+                      {columnsWithIssue.map((c) => (
+                        <tr key={c.column} data-testid={`verify-column-${c.column}`}>
+                          <td>{c.column}</td>
+                          <td>{num(c.nulls_before)} / {num(c.nulls_after)}{c.nulls_after > 0 && <strong className="text-danger"> เหลือ {num(c.nulls_after)}</strong>}</td>
+                          <td>{num(c.mean_before)} / {num(c.mean_after)}</td>
+                          <td>{num(c.outliers_before)} / {num(c.outliers_after)}{(c.outliers_after ?? 0) > 0 && <strong className="text-danger"> เหลือ {num(c.outliers_after)}</strong>}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                {columnImpact.length > columnsWithIssue.length && (
+                  <p className="wb-sub">{columnImpact.length - columnsWithIssue.length} คอลัมน์ไม่พบปัญหา</p>
+                )}
+              </div>
+            </>
+          )}
 
           {/* SLA Verification Table */}
           {benchmarkResult && benchmarkResult.status === "NOT_APPLICABLE" ? (
             <div className="wb-card" data-testid="benchmark-na">
               <p style={{ margin: 0 }}>
-                ขั้นนี้เทียบกับเฉลยของชุดข้อมูลประเมินนักศึกษาเท่านั้น ชุดข้อมูลที่โหลดอยู่ ({datasetName || "ไม่ทราบชื่อ"}) ไม่มีเฉลย
-                จึงไม่มี Benchmark ให้ตรวจ ดูจำนวนแถวของแต่ละโซนได้ที่ขั้นที่ 4
+                Benchmark เทียบกับเฉลยของชุดข้อมูลประเมินนักศึกษาเท่านั้น ชุดข้อมูลที่โหลดอยู่ ({datasetName || "ไม่ทราบชื่อ"}) ไม่มีเฉลย
+                จึงใช้การตรวจจากผลการคัดแยกจริงด้านบนแทน
               </p>
             </div>
           ) : benchmarkResult ? (

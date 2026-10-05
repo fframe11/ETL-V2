@@ -133,6 +133,165 @@ it("lets the user set a business context for any column and sends it for the loa
   expect(req.field_contexts).not.toHaveProperty("dirty_row_id");
 });
 
+const RULE = {
+  field: "weight_g", rule_type: "null_check", recommended_rule: "Strict Required (weight_g): 0% Null Tolerance", action: "quarantine",
+  parameters: {}, rationale: ["พบค่าว่าง 12 แถว"], sources: ["Data Profiling"], accepted: true
+};
+
+it("tells the user the rules are not generated yet when stage 3 is opened directly, and generates them on request", async () => {
+  await renderPage(WhiteBoxPipeline, "/whitebox", baseRoutes([["/recommend-rules", { body: { recommendations: [RULE] } }]]));
+  await openStep("กฎที่ระบบเสนอ");
+  expect(screen.getByTestId("rules-not-generated").textContent).toContain("ยังไม่ได้สร้างกฎ");
+  expect(calls().some((c) => c.url.includes("/recommend-rules"))).toBe(false);   // opening the step does not run anything
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "สร้างกฎ" })); });
+  await wait();
+  expect(calls().filter((c) => c.url.includes("/recommend-rules")).length).toBe(1);
+  expect(screen.queryByTestId("rules-not-generated")).toBeNull();
+  expect(screen.getByText("Strict Required (weight_g): 0% Null Tolerance")).toBeTruthy();
+});
+
+it("says no rules are needed when the analysis ran and found nothing to flag", async () => {
+  await renderPage(WhiteBoxPipeline, "/whitebox", baseRoutes([["/recommend-rules", { body: { recommendations: [] } }]]));
+  await openStep("กฎที่ระบบเสนอ");
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "สร้างกฎ" })); });
+  await wait();
+  expect(screen.getByTestId("rules-none").textContent).toContain("ไม่พบความผิดปกติ");
+  expect(screen.queryByTestId("rules-not-generated")).toBeNull();
+});
+
+const EXECUTION = { clean_rows: 580, review_rows: 12, quarantine_rows: 8, total_rows_ingested: 600, execution_time_ms: 5, raw_quality_score_pct: 96, post_clean_quality_score_pct: 100, error_distribution: {} };
+
+it("does not claim the pipeline is executing when stage 4 is opened before anything ran", async () => {
+  await renderPage(WhiteBoxPipeline, "/whitebox", baseRoutes([["/execute", { body: EXECUTION }]]));
+  await openStep("คัดแยก 3 ทาง");
+  expect(screen.queryByText(/Executing pipeline/)).toBeNull();
+  expect(screen.getByTestId("execution-not-run").textContent).toContain("ยังไม่ได้คัดแยก");
+  expect(screen.getByTestId("execution-not-run").textContent).toContain("Stage 3");        // says what is missing
+  expect(screen.getByRole("button", { name: "คัดแยกข้อมูล" }).disabled).toBe(true);         // no rules yet, so nothing to apply
+  expect(calls().some((c) => c.url.includes("/execute"))).toBe(false);
+});
+
+it("segregates on request once the rules exist, and shows the three zones", async () => {
+  await renderPage(WhiteBoxPipeline, "/whitebox", baseRoutes([["/recommend-rules", { body: { recommendations: [RULE] } }], ["/execute", { body: EXECUTION }]]));
+  await openStep("กฎที่ระบบเสนอ");
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "สร้างกฎ" })); });
+  await wait();
+  await openStep("คัดแยก 3 ทาง");
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "คัดแยกข้อมูล" })); });
+  await wait();
+  const run = JSON.parse(calls().find((c) => c.url.includes("/execute")).body);
+  expect(run.dataset_name).toBe("orders");
+  expect(run.rules).toHaveLength(1);
+  expect(screen.queryByTestId("execution-not-run")).toBeNull();
+  expect(screen.getByText("580 rows")).toBeTruthy();
+});
+
+const runSegregation = async (extraRoutes = []) => {
+  await renderPage(WhiteBoxPipeline, "/whitebox", baseRoutes([
+    ...extraRoutes,                                    // first match wins, so a test's own routes go first
+    ["/recommend-rules", { body: { recommendations: [RULE] } }],
+    ["/execute", { body: { ...EXECUTION, dataset_name: "orders", executed_at: "2026-10-06T04:30:00+00:00" } }]
+  ]));
+  await openStep("กฎที่ระบบเสนอ");
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "สร้างกฎ" })); });
+  await wait();
+  await openStep("คัดแยก 3 ทาง");
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "คัดแยกข้อมูล" })); });
+  await wait();
+};
+
+it("shows when the segregation ran, on which dataset and with how many rules", async () => {
+  await runSegregation();
+  const meta = screen.getByTestId("execution-meta").textContent;
+  expect(meta).toContain("รันเมื่อ");
+  expect(meta).toContain("orders");
+  expect(meta).toContain("1 กฎ");
+  expect(screen.queryByTestId("execution-stale")).toBeNull();     // nothing changed since the run
+});
+
+it("marks the result as old when a rule is changed after the run, and clears it on re-run", async () => {
+  await runSegregation();
+  await openStep("กฎที่ระบบเสนอ");
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: /Rule Accepted/ })); });   // turn the rule off
+  await openStep("คัดแยก 3 ทาง");
+  expect(screen.getByTestId("execution-stale").textContent).toContain("กฎถูกแก้หลังรัน");
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Re-Run Transformation" })); });
+  await wait();
+  expect(screen.queryByTestId("execution-stale")).toBeNull();
+  expect(screen.getByTestId("execution-meta").textContent).toContain("0 กฎ");
+});
+
+it("describes the zones from the real rules, not from the student sample text", async () => {
+  await runSegregation();
+  expect(screen.queryByText(/Study Hours|grades \(-10|100% Validated/)).toBeNull();
+  expect(screen.getByTestId("zone-quarantine").textContent).toContain("weight_g");   // the column whose rule sends rows here
+  expect(screen.getByTestId("zone-clean").textContent).toContain("96.67%");          // 580 of 600, computed
+});
+
+const VERIFIED = {
+  ...EXECUTION, dataset_name: "orders", executed_at: "2026-10-06T04:30:00+00:00",
+  reconciliation: { total_rows: 600, clean_rows: 580, review_rows: 12, quarantine_rows: 8, unaccounted_rows: 0 },
+  rule_impact: [
+    { rule_type: "auto_iqr", field: "weight_g", action: "review", rule: "Statistical Auto IQR (Tukey 3.0×) on weight_g", rows_affected: 12, enforced: true },
+    { rule_type: "null_check", field: "weight_g", action: "quarantine", rule: "Strict Required (weight_g): 0% Null Tolerance", rows_affected: 8, enforced: true },
+    { rule_type: "freshness", field: "created_at", action: "warning", rule: "Temporal Freshness SLA Check on created_at", rows_affected: 0, enforced: false }
+  ],
+  column_impact: [
+    { column: "weight_g", nulls_before: 12, nulls_after: 0, mean_before: 2100.5, mean_after: 700.25, outliers_before: 30, outliers_after: 0, fence_basis: "rule" },
+    { column: "length_cm", nulls_before: 0, nulls_after: 0, mean_before: 30, mean_after: 29, outliers_before: 10, outliers_after: 4, fence_basis: "tukey_1.5" },
+    { column: "product_id", nulls_before: 0, nulls_after: 0, mean_before: null, mean_after: null, outliers_before: null, outliers_after: null, fence_basis: null }
+  ]
+};
+const NOT_APPLICABLE = ["/benchmark", { body: { status: "NOT_APPLICABLE", message: "x" } }];
+
+const openVerification = async (execution = VERIFIED) => {
+  await runSegregation([["/execute", { body: execution }], NOT_APPLICABLE]);
+  await openStep("ตรวจผลและใช้งาน");
+  await wait();
+};
+
+it("verifies the segregation on a dataset without a ground truth: every row counted once", async () => {
+  await openVerification();
+  const recon = screen.getByTestId("verify-reconciliation").textContent;
+  expect(recon).toContain("ครบทุกแถว");
+  expect(recon).toContain("580");
+  expect(recon).toContain("600");
+  expect(screen.getByTestId("benchmark-na").textContent).toContain("ไม่มีเฉลย");   // the benchmark is still explained, but it is not the only content
+});
+
+it("says how many rows each rule moved and which rules are not enforced", async () => {
+  await openVerification();
+  const rules = screen.getByTestId("verify-rules").textContent;
+  expect(rules).toContain("Strict Required (weight_g)");
+  expect(within(screen.getByTestId("verify-rule-null_check-weight_g")).getByText("8")).toBeTruthy();
+  expect(screen.getByTestId("verify-rule-freshness-created_at").textContent).toContain("ยังไม่บังคับใช้");
+});
+
+it("shows the clean zone before and after, and flags problems that remain", async () => {
+  await openVerification();
+  const weight = screen.getByTestId("verify-column-weight_g").textContent;
+  expect(weight).toContain("12");                       // nulls before
+  expect(weight).toContain("2,100.5");                  // mean before
+  expect(weight).toContain("700.25");                   // mean after
+  expect(screen.getByTestId("verify-column-weight_g").textContent).not.toContain("เหลือ");
+  expect(screen.getByTestId("verify-column-length_cm").textContent).toContain("เหลือ 4");
+  expect(screen.queryByTestId("verify-column-product_id")).toBeNull();     // no problem found, so not listed
+  expect(screen.getByTestId("verify-columns").textContent).toContain("1 คอลัมน์ไม่พบปัญหา");
+});
+
+it("warns when rows are missing from the three zones", async () => {
+  await openVerification({ ...VERIFIED, reconciliation: { ...VERIFIED.reconciliation, clean_rows: 577, unaccounted_rows: 3 } });
+  expect(screen.getByTestId("verify-reconciliation").textContent).toContain("ขาด 3 แถว");
+});
+
+it("asks for the segregation first when stage 5 is opened before it ran", async () => {
+  await renderPage(WhiteBoxPipeline, "/whitebox", baseRoutes([NOT_APPLICABLE]));
+  await openStep("ตรวจผลและใช้งาน");
+  await wait();
+  expect(screen.getByTestId("verify-not-run").textContent).toContain("Stage 4");
+  expect(screen.queryByTestId("verify-reconciliation")).toBeNull();
+});
+
 it("runs every stage only on request and reports a stage that does not apply", async () => {
   const runAll = { status: "ALL_STAGES_READY", dataset_name: "orders", profile_data: PROFILE, recommendations: [], execution_result: { clean_rows: 590, review_rows: 10, quarantine_rows: 0 },
     benchmark_result: null, downstream_analytics: null, stages: { benchmark: { status: "NOT_APPLICABLE" }, analytics: { status: "NOT_APPLICABLE" } } };

@@ -454,3 +454,60 @@ def test_row_decision_moves_one_row_and_resets_on_next_dataset(client):
     assert fresh["row_decisions"] == {}
     assert fresh["review_action"] == "KEEP"
     assert fresh["metrics"]["review_rows"] == base["review_rows"]
+
+
+# ---------------------------------------------------------------------------
+# Verification of the segregation without a ground truth: reconciliation, rule impact, before/after
+# ---------------------------------------------------------------------------
+VERIFY_CSV = (
+    "order_id,amount,note\n"
+    "O1,10,a\nO2,12,b\nO3,,c\nO4,9000,d\nO5,13,e\nO2,12,b\n"   # O3 null amount, O4 outlier, last row duplicates O2
+)
+
+
+def _execute_uploaded(client, name):
+    body = _upload(client, name, VERIFY_CSV).json()
+    recs = body["recommendations"]
+    return recs, client.post("/api/v1/whitebox/execute", json={"dataset_name": name, "rules": recs}).json()
+
+
+def test_execution_reconciles_every_row_into_one_zone(client):
+    _, res = _execute_uploaded(client, "verify_recon")
+    rec = res["reconciliation"]
+    assert rec["total_rows"] == 6
+    assert rec["clean_rows"] + rec["review_rows"] + rec["quarantine_rows"] == 6
+    assert rec["unaccounted_rows"] == 0
+    assert rec["clean_rows"] == res["clean_rows"] and rec["quarantine_rows"] == res["quarantine_rows"]
+
+
+def test_execution_reports_how_many_rows_each_accepted_rule_moved(client):
+    recs, res = _execute_uploaded(client, "verify_rules")
+    impact = res["rule_impact"]
+    assert len(impact) == len([r for r in recs if r["accepted"]])      # one entry per accepted rule, including ones that hit nothing
+    by_key = {(i["rule_type"], i["field"]): i for i in impact}
+    assert by_key[("null_check", "amount")]["rows_affected"] == 1
+    assert by_key[("null_check", "amount")]["action"] == "quarantine"
+    # a row is counted once, by the first rule that catches it, so the rules add up to what left the clean zone
+    assert sum(i["rows_affected"] for i in impact) == res["review_rows"] + res["quarantine_rows"]
+
+
+def test_execution_reports_residual_problems_in_the_clean_zone(client):
+    _, res = _execute_uploaded(client, "verify_cols")
+    cols = {c["column"]: c for c in res["column_impact"]}
+    assert "dirty_row_id" not in cols and "whitebox_status" not in cols
+    amount = cols["amount"]
+    assert amount["nulls_before"] == 1 and amount["nulls_after"] == 0
+    assert amount["outliers_before"] >= 1 and amount["outliers_after"] == 0
+    assert amount["mean_after"] < amount["mean_before"]                 # the 9000 left the clean zone
+    assert amount["fence_basis"] == "rule"                              # judged by the fence the rule enforces, not a stricter one
+    assert cols["note"]["fence_basis"] is None
+    assert cols["note"]["mean_before"] is None                          # text columns have no mean
+
+
+def test_a_rule_that_is_switched_off_is_not_counted(client):
+    recs, _ = _execute_uploaded(client, "verify_off")
+    off = [{**r, "accepted": False} if r["rule_type"] == "null_check" else r for r in recs]
+    res = client.post("/api/v1/whitebox/execute", json={"dataset_name": "verify_off", "rules": off}).json()
+    assert all(i["rule_type"] != "null_check" for i in res["rule_impact"])
+    cols = {c["column"]: c for c in res["column_impact"]}
+    assert cols["amount"]["nulls_after"] == 1                           # the empty amount stayed in the clean zone
