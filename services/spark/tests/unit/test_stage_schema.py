@@ -42,3 +42,11 @@ def test_no_drift_when_columns_match(spark):
     ctx = make_ctx(spark, [("a", "x")], spec)
     run_stages(["schema_drift"], ctx)
     assert ctx.drift_detected is False and ctx.es_docs == []
+
+
+def test_registered_type_the_engine_cannot_produce_is_not_drift(spark):
+    # BooleanType from an older inference: the file is read as text, which is not a change.
+    spec = {"id": "StringType", "arrest": "BooleanType"}
+    ctx = make_ctx(spark, [("a", "true")], spec)
+    run_stages(["schema_drift"], ctx)
+    assert ctx.drift_detected is False and ctx.es_docs == []

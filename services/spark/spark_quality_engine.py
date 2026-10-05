@@ -44,6 +44,7 @@ from run_support import EXIT_SKIPPED, Heartbeat, archive_paths, raw_read_path, s
 from sdoqap.common.names import clean_column_name, normalize_name
 from sdoqap.common.keys import infer_primary_key
 from sdoqap.common.es import es_base_and_auth
+from sdoqap.common.types import registrable_type
 from sdoqap.semantic.similarity import char_ngrams, hybrid_similarity, ngram_cosine
 from sdoqap.common.ship import ship_package
 import sdoqap.stages  # noqa: F401  (registers stages)
@@ -1885,8 +1886,9 @@ if __name__ == "__main__":
                     # Root Cause Fix: 100% Guarantee no leading zeros are lost
                     schema_spec[col] = "StringType"
                 else:
-                    # Safe to use Spark's inferred type (Integer, Double, Timestamp, etc.)
-                    schema_spec[col] = inferred_type
+                    # Spark's inferred type, limited to types the engine can produce
+                    # (a Boolean/Long/Decimal/Date registered as-is can never match what is read)
+                    schema_spec[col] = registrable_type(inferred_type)
 
             columns = list(schema_spec.keys())
 

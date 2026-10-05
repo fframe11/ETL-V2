@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from pyspark.sql import functions as F
 
 from sdoqap.common.names import clean_column_name, normalize_name
+from sdoqap.common.types import producible_type
 from sdoqap.pipeline.registry import stage
 
 
@@ -128,7 +129,9 @@ def schema_drift(ctx):
                 message=f"Column '{col_name}' is missing from source data. Auto-healed with NULLs.",
                 severity="critical"
             )
-        elif actual_columns[col_name] != expected_type:
+        # A registered type the engine cannot produce (e.g. BooleanType from an older inference) is read
+        # as text, which is not a change in the data.
+        elif actual_columns[col_name] != producible_type(expected_type):
             drift_detected = True
             drift_details[col_name] = {"error": "type_mismatch", "expected": expected_type, "actual": actual_columns[col_name], "action": "coerced_to_string"}
             df = df.withColumn(col_name, F.col(col_name).cast("string"))
