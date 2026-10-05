@@ -35,9 +35,73 @@ def get_es():
     return get_es_client()
 
 
+def drift_signature(proposal):
+    """What a proposal changes, independent of which run found it. Same table + same signature
+    = the same finding detected again."""
+    details = proposal.get("drift_details") or {}
+    rows = []
+    for col, d in details.items():
+        d = d if isinstance(d, dict) else {}
+        rows.append((str(col), str(d.get("error")), str(d.get("expected")), str(d.get("actual"))))
+    return tuple(sorted(rows))
+
+
+def group_proposals(hits):
+    """[{id, **source}] newest first -> one entry per (table, finding) with its repeat count."""
+    groups = {}
+    order = []
+    for item in hits:
+        key = (item.get("table_name"), drift_signature(item))
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(item)
+    result = []
+    for key in order:
+        members = sorted(groups[key], key=lambda x: x.get("proposed_at") or "", reverse=True)
+        head = dict(members[0])
+        head["occurrences"] = len(members)
+        head["first_seen"] = members[-1].get("proposed_at")
+        head["last_seen"] = members[0].get("proposed_at")
+        head["duplicate_ids"] = [m["id"] for m in members[1:]]
+        result.append(head)
+    result.sort(key=lambda x: x.get("last_seen") or "", reverse=True)
+    return result
+
+
+def _close_duplicates(es, proposal, status, user, exclude_id):
+    """Resolving one finding also resolves the same finding found again by later runs."""
+    try:
+        res = es.search(index="sdoqap_schema_proposals", body={
+            "query": {"bool": {"must": [
+                {"term": {"status.keyword": "PENDING"}},
+                {"term": {"table_name.keyword": proposal.get("table_name")}},
+            ]}},
+            "size": 200,
+        })
+        signature = drift_signature(proposal)
+        closed = 0
+        for hit in res.get("hits", {}).get("hits", []):
+            if hit["_id"] == exclude_id or drift_signature(hit["_source"]) != signature:
+                continue
+            es.update(index="sdoqap_schema_proposals", id=hit["_id"], body={"doc": {
+                "status": status,
+                "resolved_at": datetime.now(timezone.utc).isoformat(),
+                "resolved_by": user,
+                "superseded_by": exclude_id,
+            }})
+            closed += 1
+        return closed
+    except Exception as exc:
+        print(f"[SCHEMA] Could not close duplicate proposals: {exc}")
+        return 0
+
+
 @router.get("/proposals")
 def list_proposals(status: str = "PENDING"):
-    """List schema drift proposals filtered by status (PENDING / APPROVED / REJECTED)."""
+    """List schema drift proposals filtered by status (PENDING / APPROVED / REJECTED).
+
+    The same finding detected by several runs is returned once, with `occurrences`."""
     try:
         es = get_es()
         if not es or not es.indices.exists(index="sdoqap_schema_proposals"):
@@ -50,14 +114,75 @@ def list_proposals(status: str = "PENDING"):
             body={
                 "query": {"term": {"status.keyword": status}},
                 "sort": [{"proposed_at": {"order": "desc"}}],
-                "size": 50
+                "size": 200
             }
         )
         hits = res.get("hits", {}).get("hits", [])
-        proposals = [{"id": h["_id"], **h["_source"]} for h in hits]
+        proposals = group_proposals([{"id": h["_id"], **h["_source"]} for h in hits])
         return {"proposals": proposals, "total": len(proposals), "status_filter": status}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _pending_groups_by_table(es):
+    counts = {}
+    try:
+        if not es.indices.exists(index="sdoqap_schema_proposals"):
+            return counts
+        res = es.search(index="sdoqap_schema_proposals", body={
+            "query": {"term": {"status.keyword": "PENDING"}}, "size": 200,
+        })
+        items = [{"id": h["_id"], **h["_source"]} for h in res.get("hits", {}).get("hits", [])]
+        for g in group_proposals(items):
+            counts[g["table_name"]] = counts.get(g["table_name"], 0) + 1
+    except Exception:
+        pass
+    return counts
+
+
+@router.get("/tables")
+def list_catalog_tables():
+    """Every registered table with its columns, keys, latest quality run and pending proposals."""
+    from .analytics import _list_tables
+    es = get_es()
+    registry = {}
+    try:
+        if es.indices.exists(index="sdoqap_schema_registry"):
+            res = es.search(index="sdoqap_schema_registry", body={"query": {"match_all": {}}, "size": 500})
+            for hit in res.get("hits", {}).get("hits", []):
+                registry[hit["_id"]] = hit["_source"]
+    except Exception:
+        pass
+    runs = {t["name"]: t for t in _list_tables(es)}
+    pending = _pending_groups_by_table(es)
+
+    tables = []
+    for name in set(registry) | set(runs):
+        reg = registry.get(name) or {}
+        spec = reg.get("schema_spec") or {}
+        run = runs.get(name) or {}
+        tables.append({
+            "name": name,
+            "registered": name in registry,
+            "primary_key": reg.get("primary_key"),
+            "date_column": reg.get("date_column"),
+            "columns": [{"name": c, "type": t} for c, t in spec.items()],
+            "column_count": len(spec),
+            "runs": run.get("runs", 0),
+            "latest_score": run.get("latest_score"),
+            "latest_at": run.get("latest_at"),
+            "pending_proposals": pending.get(name, 0),
+        })
+    tables.sort(key=lambda t: (t["latest_at"] is None, -(_ts(t["latest_at"])), t["name"]))
+    return {"tables": tables, "pending_total": sum(pending.values())}
+
+
+def _ts(iso):
+    """sortable number from an ISO time (0 when missing)"""
+    try:
+        return datetime.fromisoformat(str(iso).replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return 0.0
 
 
 @router.post("/proposals/{proposal_id}/approve")
@@ -176,10 +301,12 @@ def approve_proposal(proposal_id: str, primary_key: str = None, date_column: str
             detail=f"Proposal '{proposal_id}' was modified by another request (e.g. concurrently rejected). Reload and retry."
         )
 
+    closed = _close_duplicates(es, proposal, "APPROVED", user, proposal_id)
     return {
-        "message": f"Schema proposal '{proposal_id}' APPROVED.",
+        "message": f"Schema proposal '{proposal_id}' APPROVED." + (f" Also closed {closed} repeat(s) of the same finding." if closed else ""),
         "table_name": table_name,
-        "schema_applied": proposed_schema
+        "schema_applied": proposed_schema,
+        "closed_duplicates": closed,
     }
 
 
@@ -218,8 +345,11 @@ def reject_proposal(proposal_id: str, user: str = Depends(require_session)):
             detail=f"Proposal '{proposal_id}' was modified by another request (e.g. concurrently approved). Reload and retry."
         )
 
+    closed = _close_duplicates(es, proposal, "REJECTED", user, proposal_id)
     return {
         "message": f"Schema proposal '{proposal_id}' REJECTED. sdoqap_schema_registry unchanged."
+                   + (f" Also closed {closed} repeat(s) of the same finding." if closed else ""),
+        "closed_duplicates": closed,
     }
 
 
