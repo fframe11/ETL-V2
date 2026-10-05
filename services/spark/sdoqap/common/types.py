@@ -27,3 +27,18 @@ def registrable_type(inferred_type):
 def producible_type(registered_type):
     """Type the engine produces for a registered type; compare the file's type against this."""
     return registered_type if registered_type in ENGINE_TYPES else "StringType"
+
+
+# Tried in order by the align stage; the first one that parses a value wins. A value with
+# milliseconds but no "Z" ("2026-09-26T00:00:00.000") used to match none of them.
+TIMESTAMP_FORMATS = (
+    "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+    "yyyy-MM-dd'T'HH:mm:ss.SSS",
+    "yyyy-MM-dd'T'HH:mm:ss'Z'",
+    "yyyy-MM-dd'T'HH:mm:ss",
+    "yyyy-MM-dd HH:mm:ss.SSS",
+    "yyyy-MM-dd HH:mm:ss",
+    "yyyy-MM-dd",
+    "dd/MM/yyyy",
+    "MM/dd/yyyy",
+)

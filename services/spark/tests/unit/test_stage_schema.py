@@ -50,3 +50,15 @@ def test_registered_type_the_engine_cannot_produce_is_not_drift(spark):
     ctx = make_ctx(spark, [("a", "true")], spec)
     run_stages(["schema_drift"], ctx)
     assert ctx.drift_detected is False and ctx.es_docs == []
+
+
+def test_align_parses_timestamps_with_milliseconds_and_never_raises_on_the_rest(spark):
+    # "...T00:00:00.000" (no Z) used to raise SparkUpgradeException and fail the whole run.
+    spec = {"id": "StringType", "ts": "TimestampType"}
+    rows = [("a", "2026-09-26T00:00:00.000"), ("b", "2026-09-26T10:11:12.345Z"), ("c", "2026-09-26 10:11:12"),
+            ("d", "2026-09-26"), ("e", "not a date")]
+    ctx = make_ctx(spark, rows, spec)
+    run_stages(["schema_align"], ctx)
+    by_id = {r["id"]: r["ts"] for r in ctx.df.collect()}
+    assert all(by_id[k] is not None and by_id[k].year == 2026 for k in "abcd")
+    assert by_id["e"] is None

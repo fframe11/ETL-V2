@@ -31,3 +31,13 @@ def test_an_old_boolean_registry_entry_compares_against_text():
     assert producible_type("BooleanType") == "StringType"
     assert producible_type("LongType") == "StringType"
     assert producible_type("IntegerType") == "IntegerType"
+
+
+def test_timestamp_formats_cover_milliseconds_with_and_without_z():
+    from sdoqap.common.types import TIMESTAMP_FORMATS
+    assert "yyyy-MM-dd'T'HH:mm:ss.SSS" in TIMESTAMP_FORMATS       # "2026-09-26T00:00:00.000" (no Z)
+    assert "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'" in TIMESTAMP_FORMATS
+    assert "yyyy-MM-dd HH:mm:ss.SSS" in TIMESTAMP_FORMATS
+    # the more specific millisecond formats come before the ones without milliseconds
+    assert TIMESTAMP_FORMATS.index("yyyy-MM-dd'T'HH:mm:ss.SSS") < TIMESTAMP_FORMATS.index("yyyy-MM-dd'T'HH:mm:ss")
+    assert len(set(TIMESTAMP_FORMATS)) == len(TIMESTAMP_FORMATS)

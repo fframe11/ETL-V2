@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from pyspark.sql import functions as F
 
 from sdoqap.common.names import clean_column_name, normalize_name
-from sdoqap.common.types import producible_type
+from sdoqap.common.types import TIMESTAMP_FORMATS, producible_type
 from sdoqap.pipeline.registry import stage
 
 
@@ -34,6 +34,11 @@ def schema_align(ctx):
             if col_name != canonical_name:
                 print(f"[RENAME] Standardizing column name: '{col_name}' -> '{canonical_name}'")
                 df = df.withColumnRenamed(col_name, canonical_name)
+
+    # Each timestamp format below is a guess. Under Spark's default policy a value that does not
+    # match one but would parse with the legacy parser raises SparkUpgradeException and fails the
+    # whole run; CORRECTED makes it NULL so the next format is tried.
+    ctx.spark.conf.set("spark.sql.legacy.timeParserPolicy", "CORRECTED")
 
     # Cast columns according to schema_spec with Smart Parser / Normalization / Type Promotion
     from pyspark.sql.types import IntegerType, DoubleType, TimestampType, StringType
@@ -73,14 +78,7 @@ def schema_align(ctx):
                 df = df.withColumn(col_name, clean_col.cast(DoubleType()))
             elif type_str == "TimestampType":
                 # Support multiple common date/timestamp formats
-                date_formats = [
-                    "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
-                    "yyyy-MM-dd'T'HH:mm:ss",
-                    "yyyy-MM-dd HH:mm:ss",
-                    "yyyy-MM-dd",
-                    "dd/MM/yyyy",
-                    "MM/dd/yyyy"
-                ]
+                date_formats = TIMESTAMP_FORMATS
                 parsed_ts = None
                 for fmt in date_formats:
                     ts_attempt = F.to_timestamp(F.col(col_name), fmt)
