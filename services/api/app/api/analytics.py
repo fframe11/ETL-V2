@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException
 
 from .config import get_es_client
+from . import analytics_insights as insights
 
 router = APIRouter(tags=["analytics"])
 
@@ -457,18 +458,98 @@ def get_anomaly_sources():
 
     return response_data
 
+def _latest_run(es, table_name):
+    """Newest quality-run document of one table, or None."""
+    try:
+        if not table_name or not es.indices.exists(index="sdoqap_quality_runs"):
+            return None
+        res = es.search(index="sdoqap_quality_runs", body={
+            "query": {"term": {"table_name.keyword": {"value": table_name, "case_insensitive": True}}},
+            "sort": [{"timestamp": {"order": "desc"}}],
+            "size": 1,
+        })
+        hits = res.get("hits", {}).get("hits", [])
+        return hits[0]["_source"] if hits else None
+    except Exception:
+        return None
+
+
+def _resolve_table(es, table_name):
+    """The requested table, else the table of the newest run."""
+    if table_name:
+        return table_name
+    try:
+        if es.indices.exists(index="sdoqap_quality_runs"):
+            res = es.search(index="sdoqap_quality_runs", body={"sort": [{"timestamp": "desc"}], "size": 1})
+            hits = res.get("hits", {}).get("hits", [])
+            if hits:
+                return hits[0]["_source"].get("table_name")
+    except Exception:
+        pass
+    return None
+
+
+def _count_runs(es, table_name):
+    try:
+        if not table_name or not es.indices.exists(index="sdoqap_quality_runs"):
+            return 0
+        res = es.count(index="sdoqap_quality_runs", body={
+            "query": {"term": {"table_name.keyword": {"value": table_name, "case_insensitive": True}}}
+        })
+        return int(res.get("count", 0))
+    except Exception:
+        return 0
+
+
+def _list_tables(es):
+    """Tables that have quality runs, newest first, with their latest score."""
+    tables = []
+    try:
+        if es.indices.exists(index="sdoqap_quality_runs"):
+            res = es.search(index="sdoqap_quality_runs", body={
+                "size": 0,
+                "aggs": {"t": {
+                    "terms": {"field": "table_name.keyword", "size": 200},
+                    "aggs": {"last": {"top_hits": {
+                        "size": 1, "sort": [{"timestamp": {"order": "desc"}}],
+                        "_source": ["quality_score", "timestamp"],
+                    }}},
+                }},
+            })
+            for bucket in res.get("aggregations", {}).get("t", {}).get("buckets", []):
+                hits = bucket["last"]["hits"]["hits"]
+                last = hits[0]["_source"] if hits else {}
+                tables.append({
+                    "name": bucket["key"],
+                    "runs": bucket["doc_count"],
+                    "latest_score": last.get("quality_score"),
+                    "latest_at": last.get("timestamp"),
+                })
+            tables.sort(key=lambda t: t["latest_at"] or "", reverse=True)
+    except Exception:
+        pass
+    return tables
+
+
+@router.get("/api/v1/analytics/tables")
+def list_analytics_tables():
+    """Tables the page can show, newest run first."""
+    return {"tables": _list_tables(get_es_client())}
+
+
 @router.get("/api/v1/analytics/projection")
 def get_quality_projection(table_name: str = None):
     es = get_es_client()
+    table = _resolve_table(es, table_name)
+    result = _quality_projection(es, table)
+    result["table_name"] = table
+    result["runs_count"] = _count_runs(es, table)
+    return result
+
+
+def _quality_projection(es, table_name):
     try:
         if es.indices.exists(index="sdoqap_quality_runs"):
-            # Auto-detect latest table if not provided
-            if not table_name:
-                recent_res = es.search(index="sdoqap_quality_runs", body={"sort": [{"timestamp": "desc"}], "size": 1})
-                recent_hits = recent_res.get("hits", {}).get("hits", [])
-                if recent_hits:
-                    table_name = recent_hits[0]["_source"]["table_name"]
-
             # Query runs filtered by table_name
             if table_name:
                 body = {
@@ -597,78 +678,18 @@ def get_quality_projection(table_name: str = None):
     }
 
 @router.get("/api/v1/analytics/clustering")
-def get_diagnostic_clustering():
+def get_diagnostic_clustering(table_name: str = None):
+    """Why rows of one table were quarantined in its latest run (categories and columns)."""
     es = get_es_client()
-    default_clusters = []
-    try:
-        if es.indices.exists(index="sdoqap_quality_runs"):
-            res = es.search(index="sdoqap_quality_runs", body={"query": {"range": {"quarantined_records": {"gt": 0}}}, "size": 100})
-            hits = res.get("hits", {}).get("hits", [])
-            reasons = {}
-            for hit in hits:
-                doc = hit["_source"]
-                breakdown = doc.get("quarantine_breakdown", {})
-                if breakdown:
-                    for reason, count in breakdown.items():
-                        reasons[reason] = reasons.get(reason, 0) + count
-                else:
-                    table = doc.get("table_name", "unknown")
-                    count = doc.get("quarantined_records", 0)
-                    reasons[f"quarantined_{table}"] = reasons.get(f"quarantined_{table}", 0) + count
+    table = _resolve_table(es, table_name)
+    run = _latest_run(es, table)
+    if run:
+        result = insights.build_clusters(run)
+    else:
+        result = {"clusters": [], "correlation_analysis": "ยังไม่มีผลรันของตารางนี้"}
+    result["table_name"] = table
+    return result
 
-            if reasons:
-                total_errors = sum(reasons.values())
-                aggregated = {}
-                for reason, count in reasons.items():
-                    source = "Unknown"
-                    pattern = reason
-                    if "schema_drift" in reason or "drift" in reason:
-                        source = "CSV File Ingestion"
-                        pattern = "Schema Drift Mismatch"
-                    elif "missing_text" in reason or "missing_content" in reason or "quarantined_mbti" in reason:
-                        source = "Text Ingestion Service"
-                        pattern = "Content Ingestion (Missing Text Content)"
-                    elif "invalid_label" in reason or "invalid_mbti_label" in reason:
-                        source = "Classification Service"
-                        pattern = "Classifier Agent (Invalid Classification Label)"
-                    elif "mbti" in reason or "text" in reason:
-                        source = "Text Ingestion Service"
-                        pattern = "Text Processing Fault"
-                    elif "missing" in reason or "null" in reason:
-                        source = "Database Sync"
-                        pattern = "Null Primary Key Constraint"
-                    elif "duplicate" in reason:
-                        source = "API Gateway"
-                        pattern = "Duplicate Payload Ingestion"
-
-                    key = (source, pattern)
-                    aggregated[key] = aggregated.get(key, 0) + count
-
-                clusters = []
-                idx = 1
-                for (source, pattern), count in aggregated.items():
-                    pct = round((count / total_errors) * 100, 1) if total_errors > 0 else 0.0
-                    clusters.append({
-                        "id": idx,
-                        "source": source,
-                        "pattern": pattern,
-                        "errors_count": count,
-                        "percentage": pct
-                    })
-                    idx += 1
-                clusters.sort(key=lambda x: x["errors_count"], reverse=True)
-                max_cluster = clusters[0]
-                corr = f"{max_cluster['percentage']}% of errors are concentrated in '{max_cluster['source']}' caused by '{max_cluster['pattern']}' ({max_cluster['errors_count']} records impacted)."
-                return {
-                    "clusters": clusters,
-                    "correlation_analysis": corr
-                }
-    except Exception:
-        pass
-    return {
-        "clusters": default_clusters,
-        "correlation_analysis": "No diagnostic correlation detected."
-    }
 
 @router.get("/api/v1/analytics/impact")
 def get_business_impact():
@@ -830,63 +851,67 @@ def get_sell_in_out_analytics():
         )
     }
 
-@router.get("/api/v1/analytics/recommendations")
-def get_actionable_recommendations():
-    es = get_es_client()
-    recommendations = []
+def _drift_and_backup_recommendations(es, current_table):
+    """Schema drift and low-score tables. Those of the chosen table are scope "table"."""
+    recs = []
     try:
         if es.indices.exists(index="sdoqap_schema_drifts"):
-            drift_res = es.search(index="sdoqap_schema_drifts", body={"sort": [{"timestamp": "desc"}], "size": 20})
-            drift_hits = drift_res.get("hits", {}).get("hits", [])
-            seen_notify = set()
-            seen_halt = set()
-            for hit in drift_hits:
+            res = es.search(index="sdoqap_schema_drifts", body={"sort": [{"timestamp": {"order": "desc"}}], "size": 20})
+            seen = set()
+            for hit in res.get("hits", {}).get("hits", []):
                 drift = hit["_source"]
                 table = drift.get("table_name", "unknown")
-                details = drift.get("drift_details", {})
-                mismatches = list(details.keys())
-
-                if table not in seen_notify:
-                    seen_notify.add(table)
-                    idx = len(seen_notify)
-                    recommendations.append({
-                        "id": f"REC-DFT-{idx:03d}",
-                        "title": f"Notify API Devs: Schema Drift on '{table}'",
-                        "description": f"Mismatches detected in fields: {', '.join(mismatches)}. Ingestion payload format has diverged.",
-                        "action_type": "NOTIFY_DEV",
-                        "status": "PENDING"
-                    })
-
-                if table not in seen_halt:
-                    seen_halt.add(table)
-                    idx = len(seen_halt)
-                    recommendations.append({
-                        "id": f"REC-HLT-{idx:03d}",
-                        "title": f"Halt Ingestion for '{table}'",
-                        "description": f"Pause pipeline for '{table}' to prevent further quarantine contamination due to schema drift.",
-                        "action_type": "HALT_INGEST",
-                        "status": "RECOMMENDED"
-                    })
-        if es.indices.exists(index="sdoqap_quality_runs"):
-            run_res = es.search(index="sdoqap_quality_runs", body={"query": {"range": {"quality_score": {"lt": 70.0}}}, "sort": [{"timestamp": "desc"}], "size": 10})
-            run_hits = run_res.get("hits", {}).get("hits", [])
-            seen_restore = set()
-            for hit in run_hits:
-                run = hit["_source"]
-                table = run.get("table_name", "unknown")
-                score = run.get("quality_score", 0.0)
-                if table not in seen_restore:
-                    seen_restore.add(table)
-                    idx = len(seen_restore)
-                    recommendations.append({
-                        "id": f"REC-BAK-{idx:03d}",
-                        "title": f"Restore Backup for '{table}'",
-                        "description": f"Quality score fell to {score}% in run {run.get('run_id')}. Revert active HDFS store to last verified snapshot.",
-                        "action_type": "RESTORE_BACKUP",
-                        "status": "AVAILABLE"
-                    })
+                if table in seen:
+                    continue
+                seen.add(table)
+                fields = ", ".join((drift.get("drift_details") or {}).keys())
+                recs.append({
+                    "id": f"REC-DFT-{len(seen):03d}",
+                    "scope": "table" if table == current_table else "other",
+                    "table": table,
+                    "title": f"โครงสร้างข้อมูลของ '{table}' เปลี่ยน",
+                    "description": (
+                        f"ฟิลด์ที่ไม่ตรงกับ schema ที่ลงทะเบียน: {fields} แจ้งผู้ดูแลต้นทาง "
+                        "และพิจารณาหยุดนำเข้าชั่วคราว ไม่เช่นนั้นแถวรูปแบบใหม่จะถูกกักกันต่อเนื่อง"
+                    ),
+                    "action_type": "NOTIFY_DEV",
+                    "status": "PENDING",
+                })
     except Exception:
         pass
-    if not recommendations:
-        recommendations = []
-    return {"recommendations": recommendations}
+    for n, t in enumerate(_list_tables(es), start=1):
+        score = t.get("latest_score")
+        if t["name"] == current_table or score is None or score >= insights.LOW_SCORE_FOR_BACKUP:
+            continue
+        recs.append({
+            "id": f"REC-BAK-{n:03d}",
+            "scope": "other",
+            "table": t["name"],
+            "title": f"คะแนนล่าสุดของ '{t['name']}' ต่ำ ({score:.2f}%)",
+            "description": "เลือกตารางนี้ที่หัวหน้าเพื่อดูสาเหตุ หรือคืนค่าจาก snapshot ล่าสุดถ้าข้อมูลเคยดี",
+            "action_type": "RESTORE_BACKUP",
+            "status": "AVAILABLE",
+        })
+    return recs
+
+
+@router.get("/api/v1/analytics/recommendations")
+def get_actionable_recommendations(table_name: str = None):
+    """Actions for the chosen table first (from its latest run), other tables' alerts after."""
+    es = get_es_client()
+    table = _resolve_table(es, table_name)
+    run = _latest_run(es, table)
+    recommendations = insights.build_quality_recommendations(run) if run else []
+    recommendations += _drift_and_backup_recommendations(es, table)
+    recommendations.sort(key=lambda r: 0 if r.get("scope") == "table" else 1)  # stable
+    latest = None
+    if run:
+        latest = {
+            "run_id": run.get("run_id"),
+            "quality_score": run.get("quality_score"),
+            "threshold": run.get("effective_quality_threshold") or insights.DEFAULT_QUALITY_THRESHOLD,
+            "total_records": run.get("total_records"),
+            "quarantined_records": run.get("quarantined_records"),
+            "timestamp": run.get("timestamp"),
+        }
+    return {"table_name": table, "latest_run": latest, "recommendations": recommendations}

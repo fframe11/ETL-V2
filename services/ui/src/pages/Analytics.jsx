@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import { Icon } from '../components/UiIcons';
@@ -7,101 +7,135 @@ import { PageHeader, InfoHint } from '../components/ui';
 import { formatUsd, formatThbApprox } from '../utils/currency';
 import "./Analytics.css";
 
+const ACTION_LABEL = {
+  SUMMARY: "สรุป",
+  TUNE_OUTLIER_RULE: "ปรับกฎ",
+  FIX_SOURCE_NULLS: "แก้ที่ต้นทาง",
+  FIX_SOURCE_KEY: "แก้ที่ต้นทาง",
+  REVIEW_KEY: "ตรวจคีย์",
+  REVIEW_RANGE: "ตรวจช่วงค่า",
+  RESTORE_BACKUP: "คืนข้อมูล",
+  NOTIFY_DEV: "แจ้งต้นทาง"
+};
+
+const STATUS_STYLE = {
+  CRITICAL: { background: "#FEF2F2", border: "#FECACA", color: "#B91C1C" },
+  OK: { background: "#ECFDF5", border: "#A7F3D0", color: "#047857" },
+  RECOMMENDED: { background: "#FFFBEB", border: "#FDE68A", color: "#B45309" }
+};
+
+// The API explains the trend in English; show it in Thai.
+function trendText(raw) {
+  if (!raw) return "";
+  const slope = /slope: (-?[\d.]+)/.exec(raw)?.[1];
+  const tail = slope ? ` (ความชัน ${slope} ต่อรอบ)` : "";
+  if (/^Decline/.test(raw)) return `คะแนนมีแนวโน้มลดลง${tail}`;
+  if (/^Stable/.test(raw)) return `คะแนนคงที่หรือดีขึ้น${tail}`;
+  return "";
+}
+
+function RecCard({ rec }) {
+  const style = STATUS_STYLE[rec.status] || { background: "#F8FAFC", border: "#E2E8F0", color: "#475569" };
+  return (
+    <div
+      data-testid="rec-card"
+      style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", padding: "10px 12px", borderRadius: "8px", background: style.background, border: `1px solid ${style.border}` }}
+    >
+      <span style={{ fontSize: "10.5px", fontWeight: 800, color: style.color, minWidth: "76px" }}>
+        {ACTION_LABEL[rec.action_type] || rec.action_type}
+      </span>
+      <div style={{ flex: 1, minWidth: "240px" }}>
+        <strong style={{ fontSize: "13px", color: "#0F172A" }}>{rec.title}</strong>
+        <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: "#475569", lineHeight: 1.45 }}>{rec.description}</p>
+      </div>
+      {rec.link && (
+        <Link to={rec.link} className="ui-btn ui-btn-secondary" style={{ whiteSpace: "nowrap" }}>ไปตั้งกฎ</Link>
+      )}
+    </div>
+  );
+}
+
 export default function Analytics() {
-  const [workspaceMode, setWorkspaceMode] = useState("primary");
+  const [table, setTable] = useState("");
   const [slaTarget, setSlaTarget] = useState(95.0);
-  const [horizonDays, setHorizonDays] = useState(7);
   const [clusterSearch, setClusterSearch] = useState("");
-  const [appliedRecs, setAppliedRecs] = useState({});
   const [actionToast, setActionToast] = useState("");
 
-  const projection = useApi('/analytics/projection', { refreshInterval: 60000 });
-  const clustering = useApi('/analytics/clustering', { refreshInterval: 60000 });
+  const tables = useApi('/analytics/tables', { refreshInterval: 60000 });
+  const loaded = useApi('/whitebox/state');
+  const tableList = tables.data?.tables || [];
+
+  // Start on the dataset that is loaded now (when it has runs), else the newest table.
+  useEffect(() => {
+    if (table || tableList.length === 0) return;
+    const current = tableList.find((t) => t.name === loaded.data?.dataset_name);
+    setTable((current || tableList[0]).name);
+  }, [table, tableList, loaded.data]);
+
+  const query = table ? `?table_name=${encodeURIComponent(table)}` : "";
+  const projection = useApi(`/analytics/projection${query}`, { refreshInterval: 60000, enabled: Boolean(table) });
+  const clustering = useApi(`/analytics/clustering${query}`, { refreshInterval: 60000, enabled: Boolean(table) });
+  const recommendations = useApi(`/analytics/recommendations${query}`, { refreshInterval: 60000, enabled: Boolean(table) });
   const impact = useApi('/analytics/impact', { refreshInterval: 60000 });
-  const recommendations = useApi('/analytics/recommendations', { refreshInterval: 60000 });
 
   const handleRefreshAll = () => {
+    tables.refetch();
     projection.refetch();
     clustering.refetch();
     impact.refetch();
     recommendations.refetch();
-    setActionToast("อัปเดตโมเดลพยากรณ์และข้อมูลคลัสเตอร์ล่าสุดเรียบร้อยแล้ว");
-    setTimeout(() => setActionToast(""), 4000);
+    setActionToast("โหลดข้อมูลล่าสุดแล้ว");
+    setTimeout(() => setActionToast(""), 3000);
   };
 
-  const handleApplyRecommendation = async (rec) => {
-    setAppliedRecs(prev => ({ ...prev, [rec.id]: true }));
-    setActionToast(`นำคำแนะนำ "${rec.title}" ไปปรับใช้กับชุดกฎคัดกรองเรียบร้อยแล้ว`);
-    try {
-      await fetch('/api/v1/whitebox/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirm_rules: true })
-      });
-    } catch {}
-  };
+  const allRecs = recommendations.data?.recommendations || [];
+  const tableRecs = allRecs.filter((r) => r.scope === "table");
+  const otherRecs = allRecs.filter((r) => r.scope !== "table");
+  const latest = recommendations.data?.latest_run;
 
-  // Transform projection data with dynamic horizon support (7 / 14 / 30 days)
-  const projectionData = React.useMemo(() => {
-    if (!projection.data || !projection.data.projected_scores || projection.data.projected_scores.length === 0) return [];
-    const base = (projection.data.projection_days || []).map((d, i) => {
-      const score = projection.data.projected_scores[i];
+  // Forecast points exactly as the server computed them (7 days). Nothing is extended here.
+  const projectionData = useMemo(() => {
+    const d = projection.data;
+    if (!d || !d.projected_scores || d.projected_scores.length === 0) return [];
+    return (d.projection_days || []).map((day, i) => {
+      const score = d.projected_scores[i];
       if (score == null) return null;
       return {
-        day: `Day ${d}`,
+        day: `วันที่ ${day}`,
         Score: parseFloat(score.toFixed(2)),
-        High: projection.data.ci_high?.[i] != null ? parseFloat(projection.data.ci_high[i].toFixed(2)) : null,
-        Low: projection.data.ci_low?.[i] != null ? parseFloat(projection.data.ci_low[i].toFixed(2)) : null,
+        High: d.ci_high?.[i] != null ? parseFloat(d.ci_high[i].toFixed(2)) : null,
+        Low: d.ci_low?.[i] != null ? parseFloat(d.ci_low[i].toFixed(2)) : null
       };
     }).filter(Boolean);
+  }, [projection.data]);
 
-    if (horizonDays <= base.length) {
-      return base.slice(0, horizonDays);
-    }
-    const last = base[base.length - 1] || { Score: 93.1, High: 95.5, Low: 90.5 };
-    const extended = [...base];
-    for (let d = base.length + 1; d <= horizonDays; d++) {
-      const drift = Math.min(4.5, (d - base.length) * 0.18);
-      extended.push({
-        day: `Day ${d}`,
-        Score: parseFloat(Math.min(99.5, last.Score + drift).toFixed(2)),
-        High: parseFloat(Math.min(100.0, (last.High || last.Score + 1.5) + drift).toFixed(2)),
-        Low: parseFloat(Math.max(75.0, (last.Low || last.Score - 1.5) + drift * 0.8).toFixed(2)),
-      });
-    }
-    return extended;
-  }, [projection.data, horizonDays]);
+  const breachDaysCount = useMemo(
+    () => projectionData.filter((d) => d.Score < Number(slaTarget || 95)).length,
+    [projectionData, slaTarget]
+  );
 
-  const breachDaysCount = React.useMemo(() => {
-    return projectionData.filter(d => d.Score < Number(slaTarget || 95)).length;
+  const yDomain = useMemo(() => {
+    if (!projectionData.length) return [0, 100];
+    const vals = projectionData.flatMap((d) => [d.Score, d.High, d.Low, Number(slaTarget || 95)]).filter((v) => v != null && !isNaN(v));
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const pad = Math.max((max - min) * 0.4, 1.5);
+    return [parseFloat(Math.max(0, min - pad).toFixed(1)), parseFloat(Math.min(102, max + pad * 0.5).toFixed(1))];
   }, [projectionData, slaTarget]);
 
-  // Dynamic Y-axis: zoom into range
-  const yDomain = React.useMemo(() => {
-    if (!projectionData.length) return [75, 102];
-    const allVals = projectionData.flatMap(d => [d.Score, d.High, d.Low, Number(slaTarget || 95)]).filter(v => v != null && !isNaN(v) && v !== 0);
-    if (!allVals.length) return [75, 102];
-    const minVal = Math.min(...allVals);
-    const maxVal = Math.max(...allVals);
-    const pad = Math.max((maxVal - minVal) * 0.4, 1.5);
-    return [parseFloat(Math.max(0, minVal - pad).toFixed(1)), parseFloat(Math.min(102, maxVal + pad * 0.5).toFixed(1))];
-  }, [projectionData, slaTarget]);
-
-  // Transform clustering data with live search filter
-  const clusteringData = React.useMemo(() => {
-    if (!clustering.data || !clustering.data.clusters) return [];
+  const clusteringData = useMemo(() => {
+    const clusters = clustering.data?.clusters;
+    if (!clusters) return [];
     const q = clusterSearch.trim().toLowerCase();
-    return clustering.data.clusters
-      .filter(c => !q || String(c.source).toLowerCase().includes(q) || String(c.pattern || "").toLowerCase().includes(q))
-      .map(c => ({
-        name: c.source,
-        pattern: c.pattern,
-        count: c.errors_count,
-        pct: c.percentage,
-      }));
+    return clusters
+      .filter((c) => !q || String(c.label || "").toLowerCase().includes(q) || String(c.pattern || "").toLowerCase().includes(q))
+      .slice(0, 12)
+      .map((c) => ({ name: c.label || c.source, pattern: c.pattern, count: c.errors_count, pct: c.percentage }));
   }, [clustering.data, clusterSearch]);
 
   const clusterColors = ['#6C47FF', '#3B82F6', '#10B981', '#F59E0B', '#EF4444'];
+  const noTables = !tables.loading && tableList.length === 0;
+  const runsCount = projection.data?.runs_count ?? 0;
 
   return (
     <div className="gs-analytics">
@@ -110,17 +144,35 @@ export default function Analytics() {
         pageKey="analytics"
         actions={
           <button type="button" className="ui-btn ui-btn-secondary" onClick={handleRefreshAll}>
-            <Icon name="refresh" /> คำนวณใหม่
+            <Icon name="refresh" /> โหลดใหม่
           </button>
         }
       />
 
-      {/* Interactive Parameter Control Bar */}
+      {/* Table and display controls */}
       <div style={{ background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '10px', padding: '14px 16px', display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'flex-end', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
-        <div style={{ minWidth: '170px' }}>
-          <label style={{ display: 'block', fontSize: '10.5px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>
+        <div style={{ minWidth: '220px' }}>
+          <label htmlFor="analytics-table" style={{ display: 'block', fontSize: '10.5px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
+            ตาราง
+          </label>
+          <select
+            id="analytics-table"
+            value={table}
+            onChange={(e) => setTable(e.target.value)}
+            disabled={tableList.length === 0}
+            style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '12.5px', fontWeight: 700, color: '#0F172A', background: '#FFFFFF' }}
+          >
+            {tableList.length === 0 && <option value="">ยังไม่มีผลรัน</option>}
+            {tableList.map((t) => (
+              <option key={t.name} value={t.name}>{t.name} ({t.runs} รอบ)</option>
+            ))}
+          </select>
+        </div>
+
+        <div style={{ minWidth: '150px' }}>
+          <label style={{ display: 'block', fontSize: '10.5px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
             เป้า SLA (%)
-            <InfoHint text="ค่านี้มีผลแค่การแสดงผลกราฟ/เส้นอ้างอิงในหน้านี้เท่านั้น เกณฑ์ที่เซิร์ฟเวอร์ใช้คำนวณจริงยังคงเป็น 95% เสมอ" />
+            <InfoHint text="มีผลแค่เส้นอ้างอิงและการนับวันในกราฟพยากรณ์ของหน้านี้ ไม่เปลี่ยนเกณฑ์ที่ระบบใช้ตัดสินผ่านหรือไม่ผ่าน" />
           </label>
           <input
             type="number"
@@ -133,37 +185,17 @@ export default function Analytics() {
           />
         </div>
 
-        <div style={{ minWidth: '180px' }}>
-          <label style={{ display: 'block', fontSize: '10.5px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>
-            พยากรณ์ล่วงหน้า
-            <InfoHint text="ระบบคำนวณจริงแค่ 7 วันแรกจากแนวโน้มคะแนนย้อนหลัง ถ้าเลือก 14 หรือ 30 วัน วันที่ 8 เป็นต้นไปหน้าเว็บสร้างตัวเลขต่อขึ้นเองจากวันที่ 7 (ไม่ใช่ผลคำนวณจากเซิร์ฟเวอร์)" />
-          </label>
-          <select
-            value={horizonDays}
-            onChange={(e) => setHorizonDays(Number(e.target.value))}
-            style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '12.5px', fontWeight: 700, color: '#0F172A', background: '#FFFFFF' }}
-          >
-            <option value={7}>7 วัน</option>
-            <option value={14}>14 วัน</option>
-            <option value={30}>30 วัน</option>
-          </select>
-        </div>
-
         <div style={{ minWidth: '220px', flex: 1 }}>
-          <label style={{ display: 'block', fontSize: '10.5px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>
-            ค้นหาความผิดปกติ
+          <label style={{ display: 'block', fontSize: '10.5px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
+            ค้นหาสาเหตุ
           </label>
           <input
             type="text"
             value={clusterSearch}
             onChange={(e) => setClusterSearch(e.target.value)}
-            placeholder="ชื่อตารางหรือรูปแบบ เช่น null"
+            placeholder="ชื่อคอลัมน์หรือสาเหตุ เช่น null"
             style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '12.5px', color: '#0F172A' }}
           />
-        </div>
-
-        <div style={{ background: breachDaysCount > 0 ? '#FEF2F2' : '#ECFDF5', border: `1px solid ${breachDaysCount > 0 ? '#FECACA' : '#6EE7B7'}`, padding: '6px 12px', borderRadius: '8px', fontSize: '11.5px', fontWeight: 800, color: breachDaysCount > 0 ? '#B91C1C' : '#047857' }}>
-          สถานะเทียบเกณฑ์ SLA ({slaTarget}%): {breachDaysCount > 0 ? `ต่ำกว่าเกณฑ์ ${breachDaysCount}/${projectionData.length} วัน` : `ผ่านเกณฑ์ SLA ทุกวัน (100%)`}
         </div>
       </div>
 
@@ -173,94 +205,91 @@ export default function Analytics() {
         </div>
       )}
 
-      {/* 2. Quality Forecast Chart */}
-      <div className="gs-acard gs-acard-wide">
-        <div className="gs-acard-head">
-          <h3>พยากรณ์ {horizonDays} วัน · เป้า {slaTarget}%</h3>
+      {noTables && (
+        <div className="gs-empty">ยังไม่มีผลรันตรวจคุณภาพ นำเข้าไฟล์แล้วรอให้ Pipeline รันเสร็จ</div>
+      )}
+
+      {/* 1. Latest run of the chosen table */}
+      {latest && (
+        <div data-testid="latest-run" style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'baseline', background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '10px', padding: '12px 16px' }}>
+          <div>
+            <div style={{ fontSize: '10.5px', color: '#64748B', fontWeight: 700 }}>คะแนนรอบล่าสุด</div>
+            <strong style={{ fontSize: '1.6rem', color: latest.quality_score >= latest.threshold ? '#047857' : '#B91C1C' }}>
+              {Number(latest.quality_score).toFixed(2)}%
+            </strong>
+          </div>
+          <div>
+            <div style={{ fontSize: '10.5px', color: '#64748B', fontWeight: 700 }}>เกณฑ์ผ่าน</div>
+            <strong style={{ fontSize: '1.1rem' }}>{Number(latest.threshold)}%</strong>
+          </div>
+          <div>
+            <div style={{ fontSize: '10.5px', color: '#64748B', fontWeight: 700 }}>ถูกกักกัน</div>
+            <strong style={{ fontSize: '1.1rem' }}>
+              {Number(latest.quarantined_records || 0).toLocaleString()} จาก {Number(latest.total_records || 0).toLocaleString()} แถว
+            </strong>
+          </div>
         </div>
-        {horizonDays > 7 && (
-          <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#B45309', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '6px', padding: '5px 10px', marginBottom: '10px' }}>
-            คำนวณจริงแค่วันที่ 1–7 จากข้อมูลย้อนหลัง ส่วนวันที่ 8 เป็นต้นไปเป็นตัวเลขที่หน้าเว็บสร้างต่อขึ้นเองเพื่อการแสดงผล ไม่ใช่ผลคำนวณจากเซิร์ฟเวอร์
+      )}
+
+      {/* 2. What to do, for this table first */}
+      {table && (
+        <div className="gs-acard">
+          <div className="gs-acard-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            <h3>
+              ควรทำอะไรกับ {table}
+              <InfoHint text="สร้างจากสาเหตุที่ถูกกักกันในรอบล่าสุดของตารางนี้ด้วยกฎที่กำหนดไว้ ไม่ใช่คำแนะนำจากโมเดล AI" />
+            </h3>
           </div>
-        )}
-
-        {projection.loading ? (
-          <div className="gs-empty">Running quality forecasting models...</div>
-        ) : projection.error ? (
-          <div className="gs-toast err">Failed to load forecasting metrics</div>
-        ) : projection.data ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div className="gs-achart">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={projectionData} margin={{ top: 10, right: 20, left: -25, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="anHigh" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--accent-green)" stopOpacity={0.15}/>
-                      <stop offset="95%" stopColor="var(--accent-green)" stopOpacity={0}/>
-                    </linearGradient>
-                    <linearGradient id="anLow" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--accent-red)" stopOpacity={0.1}/>
-                      <stop offset="95%" stopColor="var(--accent-red)" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" />
-                  <XAxis dataKey="day" stroke="#64748b" tick={{ fontSize: 9.5 }} />
-                  <YAxis domain={yDomain} stroke="#64748b" tick={{ fontSize: 9.5 }} tickFormatter={v => `${v}%`} />
-                  <Tooltip contentStyle={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 8 }} />
-                  <ReferenceLine y={Number(slaTarget || 95)} stroke="var(--accent-yellow)" strokeDasharray="5 3" label={{ value: `SLA Limit (${slaTarget}%)`, position: 'right', fill: 'var(--accent-yellow)', fontSize: 9 }} />
-                  <Area type="monotone" dataKey="High" stroke="var(--accent-green)" fill="url(#anHigh)" strokeWidth={1.5} dot={{ r: 2 }} />
-                  <Area type="monotone" dataKey="Low" stroke="var(--accent-red)" fill="url(#anLow)" strokeWidth={1.5} dot={{ r: 2 }} />
-                  <Line type="monotone" dataKey="Score" stroke="var(--accent-purple)" strokeWidth={2.5} dot={{ r: 3.5 }} />
-                </ComposedChart>
-              </ResponsiveContainer>
+          {recommendations.loading ? (
+            <div className="gs-empty">กำลังโหลด...</div>
+          ) : recommendations.error ? (
+            <div className="gs-toast err">โหลดไม่สำเร็จ</div>
+          ) : tableRecs.length === 0 ? (
+            <div className="gs-empty">ยังไม่มีผลรันของตารางนี้ จึงยังไม่มีคำแนะนำ</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {tableRecs.map((rec) => <RecCard key={rec.id} rec={rec} />)}
             </div>
+          )}
 
-            <div className="gs-analytics-kpis">
-              <div className="gs-akpi">
-                <span className="gs-akpi-label">Stability Index</span>
-                <span className="gs-akpi-value" style={{ color: 'var(--accent-green)' }}>{projection.data.stability_index}</span>
+          {otherRecs.length > 0 && (
+            <details style={{ marginTop: '12px' }}>
+              <summary style={{ fontSize: '12px', fontWeight: 700, color: '#475569', cursor: 'pointer' }}>
+                แจ้งเตือนของตารางอื่น ({otherRecs.length})
+              </summary>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
+                {otherRecs.map((rec) => <RecCard key={rec.id} rec={rec} />)}
               </div>
-              <div className="gs-akpi">
-                <span className="gs-akpi-label">
-                  วันในกราฟที่ต่ำกว่าเป้า ({slaTarget}%)
-                  <InfoHint text="นับสัดส่วนวันในกราฟด้านบนที่คะแนนต่ำกว่าเป้า SLA ที่ตั้งไว้ ไม่ใช่ค่า sla_breach_probability ที่เซิร์ฟเวอร์คำนวณจริง (ซึ่งไม่ได้แสดงในหน้านี้) และถ้าเลือกพยากรณ์ 14/30 วัน ตัวเลขนี้จะรวมวันที่ 8 เป็นต้นไปที่เป็นตัวเลขสร้างขึ้นเองด้วย" />
-                </span>
-                <span className="gs-akpi-value" style={{ color: breachDaysCount > 0 ? 'var(--accent-red)' : 'var(--accent-green)' }}>
-                  {breachDaysCount > 0 ? `${Math.round((breachDaysCount / projectionData.length) * 100)}%` : "0%"}
-                </span>
-              </div>
-            </div>
+            </details>
+          )}
+        </div>
+      )}
 
-            <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-              <strong>Historical Trend Summary:</strong> {projection.data.historical_trend}
-            </p>
-          </div>
-        ) : null}
-      </div>
-
-      {/* 3. Main Analytical Splitted Grid */}
+      {/* 3. Causes and business estimate */}
       <div className="gs-analytics-grid">
-        {/* Error Pattern Clustering */}
         <div className="gs-acard">
           <div className="gs-acard-head">
             <h3>
-              รูปแบบข้อผิดพลาด{clusterSearch ? ` · "${clusterSearch}"` : ""}
-              <InfoHint text="จัดกลุ่มด้วยกฎจับคำสำคัญในข้อความ error ที่ตั้งไว้ล่วงหน้า ไม่ใช่อัลกอริทึม clustering (เช่น k-means)" />
+              สาเหตุที่ถูกกักกัน{clusterSearch ? ` · "${clusterSearch}"` : ""}
+              <InfoHint text="นับจากเหตุผลที่ระบบบันทึกไว้ในรอบล่าสุดของตารางนี้ แถวหนึ่งอาจมีหลายเหตุผล ผลรวมจึงอาจเกินจำนวนแถวที่ถูกกักกัน" />
             </h3>
           </div>
 
-          {clustering.loading ? (
+          {!table ? (
+            <div className="gs-empty">เลือกตารางเพื่อดูสาเหตุ</div>
+          ) : clustering.loading ? (
             <div className="gs-empty">กำลังโหลด...</div>
           ) : clustering.error ? (
             <div className="gs-toast err">โหลดไม่สำเร็จ</div>
           ) : clusteringData.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-secondary)' }}>{clustering.data?.correlation_analysis}</p>
               <div className="gs-achart-sm">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={clusteringData} layout="vertical" margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.04)" />
                     <XAxis type="number" stroke="#64748b" tick={{ fontSize: 9.5 }} />
-                    <YAxis type="category" dataKey="name" stroke="#64748b" tick={{ fontSize: 9.5 }} width={70} />
+                    <YAxis type="category" dataKey="name" stroke="#64748b" tick={{ fontSize: 9.5 }} width={150} />
                     <Tooltip />
                     <Bar dataKey="count" radius={[0, 4, 4, 0]}>
                       {clusteringData.map((entry, idx) => (
@@ -275,20 +304,24 @@ export default function Analytics() {
                 {clusteringData.map((c, i) => (
                   <div key={i} style={{ fontSize: '11px', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '4px' }}>
                     <span style={{ color: clusterColors[i % clusterColors.length], fontWeight: 700 }}>● {c.name}</span>
-                    <span style={{ color: 'var(--text-secondary)' }}>{c.count} events ({c.pct}%)</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>{c.count.toLocaleString()} รายการ ({c.pct}%)</span>
                   </div>
                 ))}
               </div>
             </div>
           ) : (
-            <div className="gs-empty">ไม่พบคลัสเตอร์ที่ตรงกับคำค้นหา &quot;{clusterSearch}&quot;</div>
+            <div className="gs-empty">
+              {clusterSearch ? `ไม่พบสาเหตุที่ตรงกับ "${clusterSearch}"` : "รอบล่าสุดของตารางนี้ไม่มีแถวที่ถูกกักกัน"}
+            </div>
           )}
         </div>
 
-        {/* Business KPI Impact */}
         <div className="gs-acard">
           <div className="gs-acard-head">
-            <h3>ผลกระทบทางธุรกิจ<InfoHint text="คำนวณจากค่าคงที่สมมติ (เช่น ค่าแก้ไข 2 ดอลลาร์/แถว) ไม่ใช่ข้อมูลต้นทุนทางการเงินจริงของธุรกิจ ใช้เพื่อประมาณสัดส่วนผลกระทบเท่านั้น" /></h3>
+            <h3>
+              ผลกระทบทางธุรกิจ (ประมาณการ)
+              <InfoHint text="คำนวณจากค่าคงที่สมมติ (เช่น ค่าแก้ไข 2 ดอลลาร์ต่อแถว) รวมทุกตาราง ไม่ใช่ต้นทุนจริงของธุรกิจ ใช้ดูลำดับความสำคัญเท่านั้น" />
+            </h3>
           </div>
 
           {impact.loading ? (
@@ -310,7 +343,7 @@ export default function Analytics() {
               </div>
 
               <div style={{ padding: '16px', background: 'rgba(239,68,68,0.04)', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.1)', textAlign: 'center', marginTop: '10px' }}>
-                <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>ความเสียหายโดยประมาณ</span>
+                <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>ค่าประมาณจากสูตรสมมติ</span>
                 <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--accent-red)', fontFamily: 'var(--font-mono)', marginTop: '4px' }}>
                   {formatUsd(impact.data?.total_financial_impact_usd)}
                 </div>
@@ -323,57 +356,72 @@ export default function Analytics() {
         </div>
       </div>
 
-      {/* 4. AI Recommendations with Working Action Buttons */}
-      <div className="gs-acard">
-        <div className="gs-acard-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-          <div>
-            <h3>คำแนะนำเชิงกฎ<InfoHint text="สร้างจากกฎตายตัว (เช่น พบ schema drift หรือคะแนนคุณภาพต่ำกว่าเกณฑ์) ไม่ใช่คำแนะนำจากโมเดล AI" /></h3>
+      {/* 4. Forecast: only when there is enough history */}
+      {table && (
+        <div className="gs-acard gs-acard-wide">
+          <div className="gs-acard-head">
+            <h3>พยากรณ์ 7 วัน · เป้า {slaTarget}%</h3>
           </div>
-          <Link to="/rules" style={{ fontSize: '12px', fontWeight: 700, color: '#2563EB', textDecoration: 'none' }}>
-            ไปที่ Expectations & Alerts &rarr;
-          </Link>
-        </div>
 
-        {recommendations.loading ? (
-          <div className="gs-empty">กำลังโหลด...</div>
-        ) : recommendations.error ? (
-          <div className="gs-toast err">โหลดไม่สำเร็จ</div>
-        ) : recommendations.data ? (
-          <div className="gs-rec-list">
-            {(recommendations.data.recommendations || []).map((rec) => {
-              const isApplied = Boolean(appliedRecs[rec.id]);
-              return (
-                <div key={rec.id} className={`gs-rec ${rec.status === 'RECOMMENDED' ? 'medium' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                  <span className="gs-rec-badge">{rec.action_type}</span>
-                  <div className="gs-rec-body" style={{ flex: 1, minWidth: '240px' }}>
-                    <strong>{rec.title}</strong>
-                    <p>{rec.description}</p>
-                  </div>
-                  <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <button
-                      type="button"
-                      onClick={() => handleApplyRecommendation(rec)}
-                      disabled={isApplied}
-                      style={{
-                        padding: '6px 12px',
-                        borderRadius: '6px',
-                        border: isApplied ? '1px solid #10B981' : 'none',
-                        background: isApplied ? '#ECFDF5' : '#2563EB',
-                        color: isApplied ? '#047857' : '#FFFFFF',
-                        fontSize: '11.5px',
-                        fontWeight: 700,
-                        cursor: isApplied ? 'default' : 'pointer'
-                      }}
-                    >
-                      {isApplied ? 'นำไปใช้แล้ว ✓' : 'นำไปใช้'}
-                    </button>
-                  </div>
+          {projection.loading ? (
+            <div className="gs-empty">กำลังคำนวณ...</div>
+          ) : projection.error ? (
+            <div className="gs-toast err">โหลดไม่สำเร็จ</div>
+          ) : projectionData.length === 0 ? (
+            <div className="gs-empty">
+              ตาราง {table} มีผลรัน {runsCount} รอบ ต้องมีอย่างน้อย 2 รอบจึงพยากรณ์ได้ ส่งไฟล์เข้าตรวจซ้ำเพื่อเริ่มเก็บแนวโน้ม
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ alignSelf: 'flex-start', background: breachDaysCount > 0 ? '#FEF2F2' : '#ECFDF5', border: `1px solid ${breachDaysCount > 0 ? '#FECACA' : '#6EE7B7'}`, padding: '6px 12px', borderRadius: '8px', fontSize: '11.5px', fontWeight: 800, color: breachDaysCount > 0 ? '#B91C1C' : '#047857' }}>
+                {breachDaysCount > 0
+                  ? `ต่ำกว่าเป้า ${slaTarget}% จำนวน ${breachDaysCount} จาก ${projectionData.length} วัน`
+                  : `ไม่ต่ำกว่าเป้า ${slaTarget}% ใน ${projectionData.length} วัน`}
+              </div>
+              <div className="gs-achart">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={projectionData} margin={{ top: 10, right: 20, left: -25, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="anHigh" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--accent-green)" stopOpacity={0.15}/>
+                        <stop offset="95%" stopColor="var(--accent-green)" stopOpacity={0}/>
+                      </linearGradient>
+                      <linearGradient id="anLow" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--accent-red)" stopOpacity={0.1}/>
+                        <stop offset="95%" stopColor="var(--accent-red)" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" />
+                    <XAxis dataKey="day" stroke="#64748b" tick={{ fontSize: 9.5 }} />
+                    <YAxis domain={yDomain} stroke="#64748b" tick={{ fontSize: 9.5 }} tickFormatter={(v) => `${v}%`} />
+                    <Tooltip contentStyle={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 8 }} />
+                    <ReferenceLine y={Number(slaTarget || 95)} stroke="var(--accent-yellow)" strokeDasharray="5 3" label={{ value: `เป้า ${slaTarget}%`, position: 'right', fill: 'var(--accent-yellow)', fontSize: 9 }} />
+                    <Area type="monotone" dataKey="High" stroke="var(--accent-green)" fill="url(#anHigh)" strokeWidth={1.5} dot={{ r: 2 }} />
+                    <Area type="monotone" dataKey="Low" stroke="var(--accent-red)" fill="url(#anLow)" strokeWidth={1.5} dot={{ r: 2 }} />
+                    <Line type="monotone" dataKey="Score" stroke="var(--accent-purple)" strokeWidth={2.5} dot={{ r: 3.5 }} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="gs-analytics-kpis">
+                <div className="gs-akpi">
+                  <span className="gs-akpi-label">
+                    ความนิ่งของคะแนน
+                    <InfoHint text="100% คือคะแนนแต่ละรอบใกล้เคียงกันมาก ยิ่งต่ำยิ่งแกว่ง" />
+                  </span>
+                  <span className="gs-akpi-value" style={{ color: 'var(--accent-green)' }}>{projection.data.stability_index}</span>
                 </div>
-              );
-            })}
-          </div>
-        ) : null}
-      </div>
+              </div>
+
+              {trendText(projection.data.historical_trend) && (
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  <strong>แนวโน้มย้อนหลัง:</strong> {trendText(projection.data.historical_trend)}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
