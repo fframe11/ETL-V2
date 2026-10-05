@@ -4,7 +4,8 @@ import { PageHeader, InfoHint, LearnMore } from "../components/ui";
 import "./WhiteBoxPipeline.css";
 
 export default function WhiteBoxPipeline() {
-  const [activeStep, setActiveStep] = useState(0); // 0: Multi-Table, 1: Profiling, 2: Context, 3: Rules, 4: Segregation, 5: Benchmark
+  const [activeStep, setActiveStep] = useState(1); // 0: Join tables (optional), 1: Profiling, 2: Context, 3: Rules, 4: Segregation, 5: Benchmark
+  const [datasetName, setDatasetName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showArchitectureMatrix, setShowArchitectureMatrix] = useState(false);
@@ -15,39 +16,21 @@ export default function WhiteBoxPipeline() {
   const [multiTableLoading, setMultiTableLoading] = useState(false);
   const [joinResult, setJoinResult] = useState(null);
   const [joining, setJoining] = useState(false);
+  const [joinTables, setJoinTables] = useState([]);   // tables that can be joined now
+  const [tableA, setTableA] = useState("");
+  const [tableB, setTableB] = useState("");
+  const [stageNotes, setStageNotes] = useState({});   // stages the run-all call skipped or failed
 
   // Step 1: Profiling State
   const [profileData, setProfileData] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
 
-  // Step 2: User Context State
+  // Step 2: User Context State (one entry per column, filled from the profile)
   const [userContext, setUserContext] = useState({
-    data_purpose: "Official Grade Reporting",
-    criticality: "Critical",
+    data_purpose: "Operational Pipeline",
+    criticality: "Standard",
     update_frequency: "Daily Batch (<= 24h)",
-    field_contexts: {
-      score: {
-        business_meaning: "Course Final Grade",
-        required: true,
-        known_domain: true,
-        min_domain: 0,
-        max_domain: 100
-      },
-      study_hours: {
-        business_meaning: "Weekly Study Effort Hours",
-        required: false,
-        known_domain: false,
-        min_domain: null,
-        max_domain: null
-      },
-      student_id: {
-        business_meaning: "Unique Student Identifier",
-        required: true,
-        known_domain: false,
-        min_domain: null,
-        max_domain: null
-      }
-    }
+    field_contexts: {}
   });
 
   // Step 3: Rule Recommendations State
@@ -67,66 +50,91 @@ export default function WhiteBoxPipeline() {
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [autoRunning, setAutoRunning] = useState(false);
 
-  // Auto-run and populate all stages on mount so system is 100% ready immediately
+  // Opening the page only reads: which dataset is loaded, its profile and the tables that can be
+  // joined. Nothing is run until the user asks (the "run all" button or the steps).
   useEffect(() => {
-    runFullPipeline();
+    loadOverview();
   }, []);
+
+  const loadOverview = async () => {
+    try {
+      const st = await fetch("/api/v1/whitebox/state");
+      if (st.ok) {
+        const d = await st.json();
+        setDatasetName(d.dataset_name || "");
+      }
+    } catch (err) {
+      console.warn("state not loaded", err);
+    }
+    fetchProfile();
+    try {
+      const res = await fetch("/api/v1/whitebox/multi-table/tables");
+      if (res.ok) {
+        const d = await res.json();
+        const tables = d.tables || [];
+        setJoinTables(tables);
+        const loaded = tables.find((t) => t.is_loaded) || tables[0];
+        const other = tables.find((t) => t.name !== loaded?.name);
+        setTableB(loaded?.name || "");
+        setTableA(other?.name || "");
+      }
+    } catch (err) {
+      console.warn("join tables not loaded", err);
+    }
+  };
 
   const runFullPipeline = async () => {
     setAutoRunning(true);
     setError(null);
+    setStageNotes({});
     try {
       const res = await fetch("/api/v1/whitebox/run-all", { method: "POST" });
-      if (!res.ok) throw new Error("Failed to auto-populate pipeline stages");
+      if (!res.ok) throw new Error("รันทุกขั้นไม่สำเร็จ");
       const data = await res.json();
-      if (data.multi_table_preview) setMultiTablePreview(data.multi_table_preview);
-      if (data.multi_table_analysis) setMultiTableAnalysis(data.multi_table_analysis);
-      if (data.join_result) setJoinResult(data.join_result);
       if (data.profile_data) setProfileData(data.profile_data);
       if (data.recommendations) setRecommendations(data.recommendations);
       if (data.execution_result) setExecutionResult(data.execution_result);
       if (data.benchmark_result) setBenchmarkResult(data.benchmark_result);
       if (data.downstream_analytics) setAnalyticsResult(data.downstream_analytics);
+      setStageNotes(data.stages || {});
+      const failed = Object.entries(data.stages || {}).filter(([, v]) => v.status === "FAILED").map(([k]) => k);
+      if (failed.length) setError(`บางขั้นทำงานไม่สำเร็จ: ${failed.join(", ")}`);
     } catch (err) {
-      console.warn("Auto-run fallback to step-by-step fetch:", err);
-      fetchMultiTableData();
-      fetchProfile();
+      setError(err.message || "รันทุกขั้นไม่สำเร็จ");
     } finally {
       setAutoRunning(false);
     }
   };
 
-
-  const fetchMultiTableData = async () => {
+  // Step 0 (optional): runs only when the user picks two tables and asks for the analysis.
+  const analyzeTables = async () => {
+    if (!tableA || !tableB || tableA === tableB) return;
     setMultiTableLoading(true);
+    setError(null);
+    setJoinResult(null);
+    setMultiTableAnalysis(null);
     try {
-      const prevRes = await fetch("/api/v1/whitebox/multi-table/preview");
-      if (prevRes.ok) {
-        const pData = await prevRes.json();
-        setMultiTablePreview(pData);
-      } else {
-        setError("Failed to preview multi-table schema");
-      }
-
+      const qs = new URLSearchParams({ table_a: tableA, table_b: tableB });
+      const prevRes = await fetch(`/api/v1/whitebox/multi-table/preview?${qs}`);
+      if (!prevRes.ok) throw new Error("โหลดตัวอย่างของตารางไม่สำเร็จ");
+      setMultiTablePreview(await prevRes.json());
       const anRes = await fetch("/api/v1/whitebox/multi-table/analyze", {
         method: "POST",
-        headers: { "Content-Type": "application/json" }
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ table_a_name: tableA, table_b_name: tableB })
       });
-      if (anRes.ok) {
-        const aData = await anRes.json();
-        setMultiTableAnalysis(aData);
-      } else {
-        setError("Failed to analyze multi-table candidate relationship");
-      }
+      if (!anRes.ok) throw new Error("วิเคราะห์ความสัมพันธ์ของตารางไม่สำเร็จ");
+      setMultiTableAnalysis(await anRes.json());
     } catch (err) {
-      console.error("Multi-table preview error:", err);
-      setError(err.message || "Failed to load multi-table data");
+      setError(err.message || "โหลดข้อมูลการเชื่อมตารางไม่สำเร็จ");
     } finally {
       setMultiTableLoading(false);
     }
   };
 
   const handleConfirmJoin = async () => {
+    const rel = multiTableAnalysis?.candidate_relationship;
+    if (!rel) return;
     setJoining(true);
     setError(null);
     try {
@@ -134,21 +142,18 @@ export default function WhiteBoxPipeline() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          table_a_name: "student_demographics",
-          table_b_name: "student_course_score",
-          join_key_a: "studentId",
-          join_key_b: "student_id",
+          table_a_name: tableA,
+          table_b_name: tableB,
+          join_key_a: rel.candidate_key_a,
+          join_key_b: rel.candidate_key_b,
           join_type: "left",
           reconcile_schema: true,
           standardize_dates: true,
           target_date_format: "YYYY-MM-DD"
         })
       });
-      if (!res.ok) throw new Error("Failed to execute multi-table join");
-      const data = await res.json();
-      setJoinResult(data);
-      await fetchProfile();
-      setActiveStep(1); // Proceed to Profiling
+      if (!res.ok) throw new Error("เชื่อมตารางไม่สำเร็จ");
+      setJoinResult(await res.json());
     } catch (err) {
       setError(err.message);
     } finally {
@@ -161,7 +166,7 @@ export default function WhiteBoxPipeline() {
     setError(null);
     try {
       const res = await fetch("/api/v1/whitebox/profile");
-      if (!res.ok) throw new Error("Failed to fetch data profiling");
+      if (!res.ok) throw new Error("โหลดสถิติข้อมูลไม่สำเร็จ");
       const data = await res.json();
       setProfileData(data);
     } catch (err) {
@@ -179,14 +184,14 @@ export default function WhiteBoxPipeline() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          dataset_name: "student_course_score",
+          dataset_name: datasetName,
           data_purpose: userContext.data_purpose,
           criticality: userContext.criticality,
           update_frequency: userContext.update_frequency,
-          field_contexts: userContext.field_contexts
+          field_contexts: effectiveFieldContexts()
         })
       });
-      if (!res.ok) throw new Error("Failed to generate rule recommendations");
+      if (!res.ok) throw new Error("สร้างกฎที่เสนอไม่สำเร็จ");
       const data = await res.json();
       setRecommendations(data.recommendations);
       setActiveStep(3);
@@ -195,6 +200,36 @@ export default function WhiteBoxPipeline() {
     } finally {
       setRecsLoading(false);
     }
+  };
+
+  // A column without an explicit choice: required unless it is mostly empty (same default as the server).
+  const defaultFieldContext = (col, p) => ({
+    business_meaning: col,
+    required: (p?.null_rate_pct ?? 0) <= 50,
+    known_domain: false,
+    min_domain: null,
+    max_domain: null
+  });
+
+  const contextColumns = Object.entries(profileData?.columns_profile || {}).filter(([col]) => col !== "dirty_row_id");
+
+  const effectiveFieldContexts = () => {
+    const out = {};
+    for (const [col, p] of contextColumns) {
+      out[col] = userContext.field_contexts[col] || defaultFieldContext(col, p);
+    }
+    return out;
+  };
+
+  const updateFieldContext = (col, patch) => {
+    const p = profileData?.columns_profile?.[col];
+    setUserContext((prev) => ({
+      ...prev,
+      field_contexts: {
+        ...prev.field_contexts,
+        [col]: { ...(prev.field_contexts[col] || defaultFieldContext(col, p)), ...patch }
+      }
+    }));
   };
 
   const toggleRuleAccept = (index) => {
@@ -240,11 +275,11 @@ export default function WhiteBoxPipeline() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          dataset_name: "student_course_score",
+          dataset_name: datasetName,
           rules: recommendations
         })
       });
-      if (!res.ok) throw new Error("Failed to execute pipeline");
+      if (!res.ok) throw new Error("คัดแยกข้อมูลไม่สำเร็จ");
       const data = await res.json();
       setExecutionResult(data);
       setActiveStep(4);
@@ -260,7 +295,7 @@ export default function WhiteBoxPipeline() {
     setError(null);
     try {
       const res = await fetch("/api/v1/whitebox/benchmark");
-      if (!res.ok) throw new Error("Failed to load benchmark evaluation");
+      if (!res.ok) throw new Error("โหลดผล Benchmark ไม่สำเร็จ");
       const data = await res.json();
       setBenchmarkResult(data);
       setActiveStep(5);
@@ -272,6 +307,7 @@ export default function WhiteBoxPipeline() {
   };
 
   const fetchDownstream = async () => {
+    if (!(profileData?.columns_profile?.course && profileData?.columns_profile?.score)) return; // student dataset only
     setAnalyticsLoading(true);
     try {
       const res = await fetch("/api/v1/whitebox/downstream-analytics");
@@ -314,6 +350,12 @@ export default function WhiteBoxPipeline() {
           <span>{showArchitectureMatrix ? "ซ่อน" : "ใครทำอะไร: ผู้ใช้ กับ ระบบ"}</span>
         </button>
       </div>
+
+      {datasetName && (
+        <p style={{ margin: "0 0 12px 0", fontSize: "13px", color: "#475569" }}>
+          ชุดข้อมูลที่กำลังตรวจ <code style={{ fontWeight: 700, color: "#0F172A" }}>{datasetName}</code>
+        </p>
+      )}
 
       {showArchitectureMatrix && (
         <div className="wb-card" style={{ marginBottom: "1.5rem", borderLeft: "4px solid #2563EB", background: "#F8FAFC" }}>
@@ -373,7 +415,7 @@ export default function WhiteBoxPipeline() {
         >
           <span className="wb-step-num">0</span>
           <div className="wb-step-btn-content">
-            <span className="wb-step-btn-title"><Icon name="arrow-right" /> เชื่อมโยงตาราง</span>
+            <span className="wb-step-btn-title"><Icon name="arrow-right" /> เชื่อมตาราง (ไม่บังคับ)</span>
           </div>
         </button>
 
@@ -432,197 +474,183 @@ export default function WhiteBoxPipeline() {
         </button>
       </div>
 
-      {/* STEP 0: MULTI-TABLE RELATIONSHIP & SCHEMA MAPPING */}
+      {/* STEP 0: เชื่อมตาราง (ไม่บังคับ) */}
       {activeStep === 0 && (
         <div className="wb-panel">
           <div className="wb-panel-header">
             <div>
-              <h2>0 · เชื่อมโยงตาราง<InfoHint text="ตรวจความสัมพันธ์ของตารางและรูปแบบคีย์ก่อนรวมข้อมูล" /></h2>
-            </div>
-            <button className="wb-btn-secondary" onClick={fetchMultiTableData} disabled={multiTableLoading}>
-              {multiTableLoading ? "Analyzing..." : "Re-Analyze Tables"}
-            </button>
-          </div>
-
-          {/* Sources Summary Cards */}
-          <div className="wb-grid-2">
-            <div className="wb-card">
-              <div className="wb-source-card-header">
-                <span className="wb-badge">SOURCE TABLE A</span>
-                <h3>Student Demographics</h3>
-              </div>
-              <p className="wb-desc">Master student dimension containing personal identity and faculty enrollment.</p>
-              <div className="wb-metric-box">
-                <span>Columns</span>
-                <code>{multiTablePreview?.table_a?.columns ? JSON.stringify(multiTablePreview.table_a.columns) : "—"}</code>
-              </div>
-              <div className="wb-metric-box" style={{ marginTop: "8px" }}>
-                <span>Total Master Records</span>
-                <strong>{multiTablePreview?.table_a?.total_rows != null ? `${multiTablePreview.table_a.total_rows.toLocaleString()} rows` : "—"}</strong>
-              </div>
-            </div>
-
-            <div className="wb-card">
-              <div className="wb-source-card-header">
-                <span className="wb-badge">SOURCE TABLE B</span>
-                <h3>Student Course Scores</h3>
-              </div>
-              <p className="wb-desc">Fact table containing transactional semester course performance and study hours.</p>
-              <div className="wb-metric-box">
-                <span>Columns</span>
-                <code>{multiTablePreview?.table_b?.columns ? JSON.stringify(multiTablePreview.table_b.columns) : "—"}</code>
-              </div>
-              <div className="wb-metric-box" style={{ marginTop: "8px" }}>
-                <span>Total Transaction Records</span>
-                <strong>{multiTablePreview?.table_b?.total_rows != null ? `${multiTablePreview.table_b.total_rows.toLocaleString()} rows` : "—"}</strong>
-              </div>
+              <h2>0 · เชื่อมตาราง (ไม่บังคับ)<InfoHint text="ใช้เมื่อมีข้อมูลสองตารางที่ต้องรวมกันก่อนตรวจคุณภาพ ถ้ามีตารางเดียวข้ามขั้นนี้ได้" /></h2>
             </div>
           </div>
 
-          {/* Analysis & Reconciliation Cards */}
-          {multiTableAnalysis && (
-            <>
-              {/* 1. Schema Differences */}
-              <div className="wb-card" style={{ marginTop: "1rem" }}>
-                <div className="wb-panel-header">
-                  <div>
-                    <h3>1. Schema & Naming Differences Detected</h3>
-                    <p>Resolves disparate naming conventions (camelCase vs snake_case) across sources.</p>
+          {joinTables.length < 2 ? (
+            <div className="wb-card" data-testid="join-needs-two">
+              <p style={{ margin: 0 }}>
+                ต้องมีอย่างน้อย 2 ตารางจึงเชื่อมกันได้ ตอนนี้มี {joinTables.length} ตาราง
+                นำเข้าอีกไฟล์ที่หน้านำเข้าข้อมูลแล้วกลับมาที่นี่ หรือข้ามไปขั้นที่ 1 ได้เลย
+              </p>
+            </div>
+          ) : (
+            <div className="wb-card">
+              <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
+                <div style={{ minWidth: "220px" }}>
+                  <label className="wb-label" htmlFor="join-table-a">ตาราง A</label>
+                  <select id="join-table-a" className="wb-input" value={tableA} onChange={(e) => setTableA(e.target.value)}>
+                    {joinTables.map((t) => <option key={t.name} value={t.name}>{t.name} ({t.rows.toLocaleString()} แถว)</option>)}
+                  </select>
+                </div>
+                <div style={{ minWidth: "220px" }}>
+                  <label className="wb-label" htmlFor="join-table-b">ตาราง B</label>
+                  <select id="join-table-b" className="wb-input" value={tableB} onChange={(e) => setTableB(e.target.value)}>
+                    {joinTables.map((t) => <option key={t.name} value={t.name}>{t.name} ({t.rows.toLocaleString()} แถว)</option>)}
+                  </select>
+                </div>
+                <button className="wb-btn-secondary" onClick={analyzeTables} disabled={multiTableLoading || !tableA || !tableB || tableA === tableB}>
+                  {multiTableLoading ? "กำลังวิเคราะห์..." : "วิเคราะห์ความสัมพันธ์"}
+                </button>
+              </div>
+              {tableA && tableA === tableB && (
+                <p style={{ margin: "8px 0 0 0", fontSize: "12px", color: "#B45309" }}>เลือกตารางสองตารางที่ต่างกัน</p>
+              )}
+            </div>
+          )}
+
+          {multiTablePreview && (
+            <div className="wb-grid-2" style={{ marginTop: "1rem" }}>
+              {[["table_a", "ตาราง A"], ["table_b", "ตาราง B"]].map(([key, label]) => (
+                <div className="wb-card" key={key} data-testid={`join-${key}`}>
+                  <div className="wb-source-card-header">
+                    <span className="wb-badge">{label}</span>
+                    <h3>{multiTablePreview[key]?.name}</h3>
+                  </div>
+                  <div className="wb-metric-box">
+                    <span>จำนวนแถว</span>
+                    <strong>{multiTablePreview[key]?.total_rows != null ? multiTablePreview[key].total_rows.toLocaleString() : "-"}</strong>
+                  </div>
+                  <div className="wb-metric-box" style={{ marginTop: "8px" }}>
+                    <span>คอลัมน์ ({multiTablePreview[key]?.columns?.length ?? 0})</span>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "4px" }}>
+                      {(multiTablePreview[key]?.columns || []).map((c) => <code key={c} style={{ fontSize: "11px", padding: "1px 6px", background: "#F1F5F9", borderRadius: "4px" }}>{c}</code>)}
+                    </div>
                   </div>
                 </div>
+              ))}
+            </div>
+          )}
 
-                <div className="wb-table-wrapper">
-                  <table className="wb-table">
-                    <thead>
-                      <tr>
-                        <th>Source Table A Column</th>
-                        <th>Source Table B Column</th>
-                        <th>Difference Type</th>
-                        <th>Confidence</th>
-                        <th>Evidence / Rationale</th>
-                        <th>Suggested Standard</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {multiTableAnalysis.schema_differences?.map((s, idx) => (
-                        <tr key={idx}>
-                          <td><code>{s.source_a_column}</code></td>
-                          <td><code>{s.source_b_column}</code></td>
-                          <td><span className="wb-pill warning">{s.difference_type}</span></td>
-                          <td><span className="wb-pill success">{s.confidence_pct}% Match</span><InfoHint text="ตัวเลขนี้เป็นค่าคงที่ (96.0%) ที่ตั้งไว้ตายตัว ไม่ได้คำนวณจากข้อมูลจริง" /></td>
-                          <td>
-                            <ul className="wb-compact-list">
-                              {(s.evidence || []).map((ev, eIdx) => <li key={eIdx}>{ev}</li>)}
-                            </ul>
-                          </td>
-                          <td><strong className="text-success">{s.suggested_standard}</strong></td>
+          {multiTableAnalysis?.status === "NO_CANDIDATE_KEY" && (
+            <div className="wb-card" data-testid="join-no-key" style={{ marginTop: "1rem", borderLeft: "5px solid #F59E0B" }}>
+              <h3 style={{ marginTop: 0 }}>ไม่พบคอลัมน์ที่ใช้เชื่อม</h3>
+              <p style={{ margin: 0 }}>{multiTableAnalysis.message}</p>
+              <p style={{ margin: "6px 0 0 0", fontSize: "12px", color: "#64748B" }}>
+                คอลัมน์คีย์ต้องมีค่าซ้อนทับกันอย่างน้อยครึ่งหนึ่งของชุดที่เล็กกว่า ลองเลือกคู่ตารางอื่น หรือข้ามไปขั้นที่ 1
+              </p>
+            </div>
+          )}
+
+          {multiTableAnalysis?.status === "ANALYSIS_COMPLETE" && (
+            <>
+              {(multiTableAnalysis.schema_differences || []).length > 0 && (
+                <div className="wb-card" style={{ marginTop: "1rem" }}>
+                  <h3>1. ชื่อคอลัมน์ที่ต่างกันแต่น่าจะเป็นอย่างเดียวกัน</h3>
+                  <div className="wb-table-wrapper">
+                    <table className="wb-table">
+                      <thead>
+                        <tr>
+                          <th>คอลัมน์ตาราง A</th>
+                          <th>คอลัมน์ตาราง B</th>
+                          <th>ชื่อที่แนะนำ</th>
+                          <th>ความมั่นใจ<InfoHint text="เป็นค่าคงที่ 96% สำหรับชื่อที่เหมือนกันเมื่อตัดตัวพิมพ์และเครื่องหมายออก ไม่ได้คำนวณจากข้อมูล" /></th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {multiTableAnalysis.schema_differences.map((d, idx) => (
+                          <tr key={idx}>
+                            <td><code>{d.source_a_column}</code></td>
+                            <td><code>{d.source_b_column}</code></td>
+                            <td><strong className="text-success">{d.suggested_standard}</strong></td>
+                            <td>{d.confidence_pct}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* 2. Date Format Differences */}
-              <div className="wb-card" style={{ marginTop: "1rem" }}>
-                <h3>2. Format Reconciliation (Date Discrepancies)</h3>
-                <p>Identifies heterogeneous date patterns across ingestion sources.</p>
-                <div className="wb-table-wrapper">
-                  <table className="wb-table">
-                    <thead>
-                      <tr>
-                        <th>Field (Table A)</th>
-                        <th>Detected Value A</th>
-                        <th>Detected Format A</th>
-                        <th>Field (Table B)</th>
-                        <th>Detected Value B</th>
-                        <th>Suggested Standard Format</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {multiTableAnalysis.date_format_differences?.map((d, idx) => (
-                        <tr key={idx}>
-                          <td><strong>{d.source_a_field}</strong></td>
-                          <td><code>{d.source_a_sample}</code></td>
-                          <td><span className="wb-pill warning">{d.source_a_detected_format}</span></td>
-                          <td><strong>{d.source_b_field}</strong></td>
-                          <td><code>{d.source_b_sample}</code></td>
-                          <td><strong className="text-success">{d.suggested_standard_format} (ISO-8601)</strong></td>
+              {(multiTableAnalysis.date_format_differences || []).length > 0 && (
+                <div className="wb-card" style={{ marginTop: "1rem" }}>
+                  <h3>2. รูปแบบวันที่ที่ต่างกัน</h3>
+                  <div className="wb-table-wrapper">
+                    <table className="wb-table">
+                      <thead>
+                        <tr>
+                          <th>คอลัมน์ตาราง A</th>
+                          <th>ตัวอย่าง A</th>
+                          <th>รูปแบบ A</th>
+                          <th>คอลัมน์ตาราง B</th>
+                          <th>ตัวอย่าง B</th>
+                          <th>รูปแบบมาตรฐาน</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {multiTableAnalysis.date_format_differences.map((d, idx) => (
+                          <tr key={idx}>
+                            <td><strong>{d.source_a_field}</strong></td>
+                            <td><code>{d.source_a_sample}</code></td>
+                            <td><span className="wb-pill warning">{d.source_a_detected_format}</span></td>
+                            <td><strong>{d.source_b_field}</strong></td>
+                            <td><code>{d.source_b_sample}</code></td>
+                            <td><strong className="text-success">{d.suggested_standard_format}</strong></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* 3. Candidate Relationship Card & Human Confirmation Gate */}
-              <div className="wb-card wb-highlight-card" style={{ marginTop: "1rem" }}>
+              <div className="wb-card wb-highlight-card" style={{ marginTop: "1rem" }} data-testid="join-candidate">
                 <div className="wb-panel-header">
                   <div>
-                    <span className="wb-badge success">KEY OVERLAP & RELATIONSHIP DETECTED</span>
+                    <span className="wb-badge success">พบคีย์ที่น่าจะใช้เชื่อมได้</span>
                     <h3 style={{ margin: "6px 0" }}>
-                      Suggested Candidate Key: <code>Student.studentId</code> ⟷ <code>Score.student_id</code>
+                      <code>{multiTableAnalysis.candidate_relationship.left_table}.{multiTableAnalysis.candidate_relationship.candidate_key_a}</code>
+                      {" ⟷ "}
+                      <code>{multiTableAnalysis.candidate_relationship.right_table}.{multiTableAnalysis.candidate_relationship.candidate_key_b}</code>
                     </h3>
                   </div>
                   <div className="wb-match-badge">
-                    <span>Key Match Rate:</span>
-                    <strong>{multiTableAnalysis.candidate_relationship?.match_rate_pct}%</strong>
+                    <span>คีย์ที่พบในอีกตาราง:</span>
+                    <strong>{multiTableAnalysis.candidate_relationship.match_rate_pct}%</strong>
                   </div>
                 </div>
 
                 <div className="wb-grid-3" style={{ margin: "14px 0" }}>
                   <div className="wb-metric-box">
-                    <span>Inferred Cardinality</span>
-                    <strong>{multiTableAnalysis.candidate_relationship?.suggested_cardinality}</strong>
+                    <span>ความสัมพันธ์</span>
+                    <strong>{multiTableAnalysis.candidate_relationship.suggested_cardinality}</strong>
                   </div>
                   <div className="wb-metric-box">
-                    <span>Matching Key Count</span>
-                    <strong>{multiTableAnalysis.candidate_relationship?.overlapping_keys} / {multiTableAnalysis.candidate_relationship?.unique_keys_b} keys</strong>
+                    <span>คีย์ที่ซ้อนทับกัน</span>
+                    <strong>{multiTableAnalysis.candidate_relationship.overlapping_keys.toLocaleString()} ค่า</strong>
                   </div>
                   <div className="wb-metric-box">
-                    <span>Recommended Join<InfoHint text="ค่านี้ตายตัวเป็น Left Join เสมอ ไม่ได้เลือกตามข้อมูลจริง" /></span>
-                    <strong>Left Join (Preserves All Scores)</strong>
+                    <span>การเชื่อม<InfoHint text="ใช้ left join เสมอ: เก็บทุกแถวของตารางที่มีหลายแถวต่อคีย์ แล้วเพิ่มคอลัมน์จากอีกตาราง" /></span>
+                    <strong>เก็บทุกแถวของ {multiTableAnalysis.candidate_relationship.base_table}</strong>
                   </div>
                 </div>
 
-                <div className="wb-why-box">
-                  <div className="wb-why-header">
-                    <span className="wb-why-icon"><Icon name="scale" /></span>
-                    <strong>Semi-Automated Architecture Philosophy (No Black-Box Joins):</strong>
-                  </div>
-                  <p style={{ margin: "4px 0 8px 0", fontSize: "13px" }}>
-                    The system computes candidate overlaps and verifies cardinality before joining. <strong>Note:</strong> in this demo dashboard, the join below already ran automatically when the page loaded (see "JOIN COMPLETED SUCCESSFULLY" below) — the button re-runs it rather than confirming a pending action.
-                  </p>
-                  <ul className="wb-why-list">
-                    {(multiTableAnalysis.candidate_relationship?.rationale || []).map((r, rIdx) => (
-                      <li key={rIdx}>{r}</li>
-                    ))}
-                  </ul>
-                </div>
+                <ul className="wb-why-list">
+                  {(multiTableAnalysis.candidate_relationship.rationale || []).map((r, rIdx) => <li key={rIdx}>{r}</li>)}
+                </ul>
+                <p style={{ margin: "8px 0 0 0", fontSize: "12px", color: "#64748B" }}>
+                  ระบบไม่เชื่อมตารางเอง ต้องกดยืนยันก่อน ตารางที่เชื่อมแล้วถูกบันทึกเป็นไฟล์ ขั้นตอนถัดไปยังทำงานกับชุดข้อมูลที่โหลดอยู่
+                </p>
 
-                {/* Entity vs Attribute Distinction (Defense Note) */}
-                <LearnMore summary="ทำไมไม่รวมทุกคอลัมน์">
-                  <div style={{ marginTop: "12px", padding: "12px", background: "#F1F5F9", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12px", color: "#334155" }}>
-                    <div>
-                      กรณีโครงสร้างตารางต่างกัน (เช่น การเงิน/บุคคล/ตำแหน่ง) ระบบแยกแยะตามหลักการเชิงสัมพันธ์:
-                      <br />
-                      • <strong>Entity (ตัวตนบุคคล):</strong> <code>student_id: 65001</code> / <code>studentId</code> เป็นแกนตัวตนหลัก
-                      <br />
-                      • <strong>Attribute (คุณลักษณะ):</strong> <code>faculty: Engineering</code>, <code>enrollment_date</code>
-                      <br />
-                      • ระบบไม่เดาจับคู่ตามอำเภอใจ แต่ตรวจวัด <strong>Key Overlap ({multiTableAnalysis.candidate_relationship?.match_rate_pct}%)</strong> แล้วเสนอแนะให้<strong>ผู้ใช้ตรวจสอบและกดยืนยัน (User Confirm)</strong> ก่อนเสมอ
-                    </div>
-                  </div>
-                </LearnMore>
-
-                {/* Join Confirmation Action */}
                 <div className="wb-actions">
-                  <button
-                    className="wb-btn-primary"
-                    onClick={handleConfirmJoin}
-                    disabled={joining}
-                  >
-                    {joining ? "Reconciling & Joining..." : joinResult ? " Re-run Join →" : " Confirm Relationship & Execute Semi-Auto Join →"}
+                  <button className="wb-btn-primary" onClick={handleConfirmJoin} disabled={joining}>
+                    {joining ? "กำลังเชื่อมตาราง..." : joinResult ? "เชื่อมตารางอีกครั้ง" : "ยืนยันและเชื่อมตาราง"}
                   </button>
                 </div>
               </div>
@@ -630,23 +658,15 @@ export default function WhiteBoxPipeline() {
           )}
 
           {joinResult && (
-            <div className="wb-card" style={{ marginTop: "1rem", borderLeft: "5px solid #10b981" }}>
-              <div className="wb-panel-header">
-                <div>
-                  <span className="wb-badge success">JOIN COMPLETED SUCCESSFULLY</span>
-                  <h3 style={{ margin: "4px 0" }}>Unified Dataset Created: <code>unified_student_dataset</code></h3>
-                  <span className="wb-sub">
-                    {joinResult.total_rows} rows | {joinResult.total_columns} columns | Matched demographics: {joinResult.matched_rows} rows
-                  </span>
-                </div>
-                <button className="wb-btn-primary" onClick={() => setActiveStep(1)}>
-                  Proceed to Data Profiling →
-                </button>
-              </div>
+            <div className="wb-card" data-testid="join-result" style={{ marginTop: "1rem", borderLeft: "5px solid #10b981" }}>
+              <span className="wb-badge success">เชื่อมตารางสำเร็จ</span>
+              <h3 style={{ margin: "4px 0" }}>ตารางที่ได้: <code>{joinResult.unified_table_name}</code></h3>
+              <span className="wb-sub">
+                {joinResult.total_rows.toLocaleString()} แถว · {joinResult.total_columns} คอลัมน์ · จับคู่ได้ {joinResult.matched_rows.toLocaleString()} แถว · ไม่พบคู่ {joinResult.unmatched_rows.toLocaleString()} แถว
+              </span>
             </div>
           )}
 
-          {/* Bottom Wizard Navigation for Stage 0 */}
           <div className="wb-wizard-nav">
             <div></div>
             <button className="wb-btn-primary wb-nav-btn" onClick={() => setActiveStep(1)}>
@@ -662,7 +682,7 @@ export default function WhiteBoxPipeline() {
           <div className="wb-stage-purpose-box">
             <div className="wb-stage-purpose-icon"><Icon name="list" /></div>
             <div className="wb-stage-purpose-text">
-              <strong>การสำรวจโครงสร้างและค่าสถิติของข้อมูลขาเข้า (Automated Data Profiling):</strong> คำนวณอัตราค่าว่าง (Null Rate), ความซ้ำซ้อนของคีย์ผสม (Composite Key Uniqueness) และการกระจายตัวทางสถิติ (Quartiles Q1, Q3, IQR) จากตารางที่กำลังประมวลผล
+              <strong>สำรวจโครงสร้างและค่าสถิติของข้อมูลขาเข้า:</strong> คำนวณอัตราค่าว่าง ความซ้ำของคีย์ และการกระจายของค่าตัวเลขจากตารางที่กำลังประมวลผล
             </div>
           </div>
 
@@ -680,30 +700,32 @@ export default function WhiteBoxPipeline() {
               {/* Summary Metrics Cards */}
               <div className="wb-grid-4">
                 <div className="wb-card stat-card">
-                  <span className="wb-stat-title">Ingested Rows</span>
+                  <span className="wb-stat-title">แถวที่นำเข้า</span>
                   <span className="wb-stat-val">{profileData.total_rows?.toLocaleString()}</span>
-                  <span className="wb-stat-sub">Evaluation Dataset</span>
+                  <span className="wb-stat-sub">{datasetName || "ชุดข้อมูลที่โหลดอยู่"}</span>
                 </div>
                 <div className="wb-card stat-card">
-                  <span className="wb-stat-title">Detected Columns</span>
+                  <span className="wb-stat-title">คอลัมน์ที่พบ</span>
                   <span className="wb-stat-val">{profileData.total_columns}</span>
-                  <span className="wb-stat-sub">Inferred Types Ready</span>
+                  <span className="wb-stat-sub">ระบบเดาชนิดข้อมูลให้แล้ว</span>
                 </div>
                 <div className="wb-card stat-card warning">
-                  <span className="wb-stat-title">Null Rate (score)</span>
+                  <span className="wb-stat-title">ค่าว่างทั้งหมด</span>
                   <span className="wb-stat-val">
-                    {profileData.columns_profile?.score?.null_rate_pct}%
+                    {Object.values(profileData.columns_profile || {}).reduce((sum, p) => sum + (p.null_count || 0), 0).toLocaleString()}
                   </span>
                   <span className="wb-stat-sub">
-                    {profileData.columns_profile?.score?.null_count} missing rows
+                    ใน {Object.values(profileData.columns_profile || {}).filter((p) => (p.null_count || 0) > 0).length} คอลัมน์
                   </span>
                 </div>
                 <div className="wb-card stat-card danger">
-                  <span className="wb-stat-title">Composite Duplicates</span>
+                  <span className="wb-stat-title">แถวซ้ำตามคีย์</span>
                   <span className="wb-stat-val">
-                    {profileData.duplicate_analysis?.duplicate_rows_detected}
+                    {profileData.duplicate_analysis?.duplicate_rows_detected ?? 0}
                   </span>
-                  <span className="wb-stat-sub">student_id + course + semester</span>
+                  <span className="wb-stat-sub">
+                    {(profileData.duplicate_analysis?.tested_composite_key || []).join(" + ") || "ไม่พบคีย์ที่ใช้ตรวจ"}
+                  </span>
                 </div>
               </div>
 
@@ -725,8 +747,6 @@ export default function WhiteBoxPipeline() {
                     </thead>
                     <tbody>
                       {Object.entries(profileData.columns_profile || {}).map(([col, p]) => {
-                        const isScore = col === "score";
-                        const isStudy = col === "study_hours";
                         return (
                           <tr key={col}>
                             <td><strong>{col}</strong></td>
@@ -744,18 +764,12 @@ export default function WhiteBoxPipeline() {
                               {p.iqr !== undefined ? `IQR: ${p.iqr} (Q1: ${p.q1}, Q3: ${p.q3})` : "—"}
                             </td>
                             <td>
-                              {isScore && p.min < 0 && (
-                                <span className="wb-pill danger">Invalid Range (-10 to 150)</span>
+                              {p.null_count > 0 && <span className="wb-pill warning">ค่าว่าง {p.null_count}</span>}
+                              {p.outlier_count > 0 && <span className="wb-pill warning">ค่าผิดปกติ {p.outlier_count}</span>}
+                              {(profileData.duplicate_analysis?.tested_composite_key || []).includes(col) && (profileData.duplicate_analysis?.duplicate_rows_detected || 0) > 0 && (
+                                <span className="wb-pill warning">คีย์ซ้ำ</span>
                               )}
-                              {isStudy && p.outlier_count > 0 && (
-                                <span className="wb-pill warning">{p.outlier_count} IQR Outliers</span>
-                              )}
-                              {col === "student_id" && profileData.duplicate_analysis?.duplicate_rows_detected > 0 && (
-                                <span className="wb-pill warning">Duplicate Natural Key</span>
-                              )}
-                              {!isScore && !isStudy && col !== "student_id" && p.null_count === 0 && (
-                                <span className="wb-pill success">Clean</span>
-                              )}
+                              {!(p.null_count > 0) && !(p.outlier_count > 0) && <span className="wb-pill success">ปกติ</span>}
                             </td>
                           </tr>
                         );
@@ -768,7 +782,7 @@ export default function WhiteBoxPipeline() {
               {/* Bottom Wizard Navigation for Stage 1 */}
               <div className="wb-wizard-nav">
                 <button className="wb-btn-secondary wb-nav-btn" onClick={() => setActiveStep(0)}>
-                  ⬅ ย้อนกลับ: Stage 0 เชื่อมโยงตาราง
+                  ⬅ เชื่อมตาราง (ไม่บังคับ)
                 </button>
                 <button className="wb-btn-primary wb-nav-btn" onClick={() => setActiveStep(2)}>
                   ขั้นตอนถัดไป: Stage 2 กำหนดบริบทธุรกิจ <Icon name="arrow-right" />
@@ -776,7 +790,7 @@ export default function WhiteBoxPipeline() {
               </div>
             </>
           ) : (
-            <p>Loading profile...</p>
+            <p>กำลังโหลดสถิติข้อมูล...</p>
           )}
         </div>
       )}
@@ -834,129 +848,74 @@ export default function WhiteBoxPipeline() {
           </div>
 
           <div className="wb-card" style={{ marginTop: "1rem" }}>
-            <h3>Field Semantic Annotations</h3>
+            <h3>ความหมายของแต่ละคอลัมน์</h3>
             <p className="wb-desc">
-              Specify which fields have a <strong>Known Domain</strong> (e.g. Score must be 0–100) versus an <strong>Unknown Domain</strong> (triggering Auto IQR).
+              ติ๊ก "ห้ามว่าง" กับคอลัมน์ที่ต้องมีค่าเสมอ และ "ทราบช่วงค่า" กับคอลัมน์ที่รู้ขอบเขตที่ถูกต้อง (กรอกต่ำสุดและสูงสุด)
+              คอลัมน์ตัวเลขที่ไม่ทราบช่วงค่าจะถูกตรวจด้วยสถิติ (IQR) แทน
             </p>
 
-            <div className="wb-context-row">
-              <div className="wb-context-col">
-                <strong>Field: score</strong>
-                <span className="wb-sub">Course Final Grade</span>
-              </div>
-              <div className="wb-context-fields">
-                <label className="wb-checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={userContext.field_contexts.score.required}
-                    onChange={(e) =>
-                      setUserContext({
-                        ...userContext,
-                        field_contexts: {
-                          ...userContext.field_contexts,
-                          score: { ...userContext.field_contexts.score, required: e.target.checked }
-                        }
-                      })
-                    }
-                  />
-                  Required (No Nulls)
-                </label>
-
-                <label className="wb-checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={userContext.field_contexts.score.known_domain}
-                    onChange={(e) =>
-                      setUserContext({
-                        ...userContext,
-                        field_contexts: {
-                          ...userContext.field_contexts,
-                          score: { ...userContext.field_contexts.score, known_domain: e.target.checked }
-                        }
-                      })
-                    }
-                  />
-                  Known Domain (Range Check)
-                </label>
-
-                {userContext.field_contexts.score.known_domain && (
-                  <div className="wb-range-inputs">
-                    <span>Min:</span>
-                    <input
-                      type="number"
-                      className="wb-input-sm"
-                      value={userContext.field_contexts.score.min_domain}
-                      onChange={(e) =>
-                        setUserContext({
-                          ...userContext,
-                          field_contexts: {
-                            ...userContext.field_contexts,
-                            score: { ...userContext.field_contexts.score, min_domain: parseFloat(e.target.value) }
-                          }
-                        })
-                      }
-                    />
-                    <span>Max:</span>
-                    <input
-                      type="number"
-                      className="wb-input-sm"
-                      value={userContext.field_contexts.score.max_domain}
-                      onChange={(e) =>
-                        setUserContext({
-                          ...userContext,
-                          field_contexts: {
-                            ...userContext.field_contexts,
-                            score: { ...userContext.field_contexts.score, max_domain: parseFloat(e.target.value) }
-                          }
-                        })
-                      }
-                    />
+            {contextColumns.length === 0 ? (
+              <p>ยังไม่มีสถิติของข้อมูล กลับไปขั้นที่ 1 เพื่อโหลดสถิติก่อน</p>
+            ) : contextColumns.map(([col, p]) => {
+              const fc = userContext.field_contexts[col] || defaultFieldContext(col, p);
+              const numeric = p.data_type === "Integer" || p.data_type === "Float";
+              return (
+                <div className="wb-context-row" key={col} data-testid="context-row">
+                  <div className="wb-context-col">
+                    <strong>{col}</strong>
+                    <span className="wb-sub">{p.data_type}</span>
                   </div>
-                )}
-              </div>
-            </div>
+                  <div className="wb-context-fields">
+                    <label className="wb-checkbox-label">
+                      <input
+                        type="checkbox"
+                        aria-label={`${col} ห้ามว่าง`}
+                        checked={Boolean(fc.required)}
+                        onChange={(e) => updateFieldContext(col, { required: e.target.checked })}
+                      />
+                      ห้ามว่าง
+                    </label>
 
-            <div className="wb-context-row">
-              <div className="wb-context-col">
-                <strong>Field: study_hours</strong>
-                <span className="wb-sub">Weekly Self-study Hours</span>
-              </div>
-              <div className="wb-context-fields">
-                <label className="wb-checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={userContext.field_contexts.study_hours.required}
-                    onChange={(e) =>
-                      setUserContext({
-                        ...userContext,
-                        field_contexts: {
-                          ...userContext.field_contexts,
-                          study_hours: { ...userContext.field_contexts.study_hours, required: e.target.checked }
-                        }
-                      })
-                    }
-                  />
-                  Required
-                </label>
+                    {numeric && (
+                      <label className="wb-checkbox-label">
+                        <input
+                          type="checkbox"
+                          aria-label={`${col} ทราบช่วงค่า`}
+                          checked={Boolean(fc.known_domain)}
+                          onChange={(e) => updateFieldContext(col, {
+                            known_domain: e.target.checked,
+                            min_domain: e.target.checked && fc.min_domain == null ? (p.min ?? 0) : fc.min_domain,
+                            max_domain: e.target.checked && fc.max_domain == null ? (p.max ?? 0) : fc.max_domain
+                          })}
+                        />
+                        ทราบช่วงค่า
+                      </label>
+                    )}
 
-                <label className="wb-checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={userContext.field_contexts.study_hours.known_domain}
-                    onChange={(e) =>
-                      setUserContext({
-                        ...userContext,
-                        field_contexts: {
-                          ...userContext.field_contexts,
-                          study_hours: { ...userContext.field_contexts.study_hours, known_domain: e.target.checked }
-                        }
-                      })
-                    }
-                  />
-                  Known Domain (Unchecked = Auto IQR Statistical Screening)
-                </label>
-              </div>
-            </div>
+                    {numeric && fc.known_domain && (
+                      <div className="wb-range-inputs">
+                        <span>ต่ำสุด</span>
+                        <input
+                          type="number"
+                          aria-label={`${col} ค่าต่ำสุด`}
+                          className="wb-input-sm"
+                          value={fc.min_domain ?? ""}
+                          onChange={(e) => updateFieldContext(col, { min_domain: e.target.value === "" ? null : parseFloat(e.target.value) })}
+                        />
+                        <span>สูงสุด</span>
+                        <input
+                          type="number"
+                          aria-label={`${col} ค่าสูงสุด`}
+                          className="wb-input-sm"
+                          value={fc.max_domain ?? ""}
+                          onChange={(e) => updateFieldContext(col, { max_domain: e.target.value === "" ? null : parseFloat(e.target.value) })}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           {/* Bottom Wizard Navigation for Stage 2 */}
@@ -1226,7 +1185,14 @@ export default function WhiteBoxPipeline() {
           </div>
 
           {/* SLA Verification Table */}
-          {benchmarkResult ? (
+          {benchmarkResult && benchmarkResult.status === "NOT_APPLICABLE" ? (
+            <div className="wb-card" data-testid="benchmark-na">
+              <p style={{ margin: 0 }}>
+                ขั้นนี้เทียบกับเฉลยของชุดข้อมูลประเมินนักศึกษาเท่านั้น ชุดข้อมูลที่โหลดอยู่ ({datasetName || "ไม่ทราบชื่อ"}) ไม่มีเฉลย
+                จึงไม่มี Benchmark ให้ตรวจ ดูจำนวนแถวของแต่ละโซนได้ที่ขั้นที่ 4
+              </p>
+            </div>
+          ) : benchmarkResult ? (
             <div className="wb-card">
               <div className="wb-benchmark-banner">
                 <div>
@@ -1270,7 +1236,7 @@ export default function WhiteBoxPipeline() {
               </div>
             </div>
           ) : (
-            <p>Loading SLA compliance verification...</p>
+            <p>กำลังโหลดผลตรวจ...</p>
           )}
 
           {/* Zone Reconciliation & Anomaly Breakdown */}
@@ -1405,8 +1371,8 @@ export default function WhiteBoxPipeline() {
             <button className="wb-btn-secondary wb-nav-btn" onClick={() => setActiveStep(4)}>
               ⬅ ย้อนกลับ: Stage 4 คัดแยก 3 ทาง
             </button>
-            <button className="wb-btn-primary wb-nav-btn" onClick={() => setActiveStep(0)}>
-              <Icon name="refresh" /> กลับไปจุดเริ่มต้น: Stage 0 เชื่อมโยงตาราง
+            <button className="wb-btn-primary wb-nav-btn" onClick={() => setActiveStep(1)}>
+              <Icon name="refresh" /> กลับไปจุดเริ่มต้น: Stage 1 สถิติข้อมูลดิบ
             </button>
           </div>
         </div>

@@ -221,6 +221,8 @@ class ExecuteRulesPayload(BaseModel):
     rules: List[RuleItem]
     # The interactive Pipeline page sets this so reviewer approvals and rejections change the result.
     apply_reviewer_decisions: bool = False
+    # False: compute the result without replacing the clean/review/quarantine files Exports serves.
+    persist_outputs: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -371,6 +373,11 @@ def get_dataset_profile(dataset_name: str = ""):
     """
     if dataset_name in _LATEST_PROFILING:
         return _LATEST_PROFILING[dataset_name]
+
+    if dataset_name in _UPLOADED_DATASETS and _WORKFLOW_STATE.get("dataset_source") != "evaluation":
+        profile = _compute_profile(_UPLOADED_DATASETS[dataset_name], dataset_name)
+        _LATEST_PROFILING[dataset_name] = profile
+        return profile
 
     dataset_path = _dataset_path()
     if not os.path.isfile(dataset_path):
@@ -843,9 +850,10 @@ def execute_pipeline(payload: ExecuteRulesPayload):
     review_path = os.path.join(OUTPUT_DIR, "review_queue_run.csv")
     quarantine_path = os.path.join(OUTPUT_DIR, "quarantine_lake_run.csv")
 
-    df_clean.to_csv(clean_path, index=False)
-    df_review.to_csv(review_path, index=False)
-    df_quarantine.to_csv(quarantine_path, index=False)
+    if payload.persist_outputs:
+        df_clean.to_csv(clean_path, index=False)
+        df_review.to_csv(review_path, index=False)
+        df_quarantine.to_csv(quarantine_path, index=False)
 
     exec_time_ms = round((time.time() - start_time) * 1000, 2)
     quality_score_raw = round((len(df_clean) / total_raw_rows) * 100, 2) if total_raw_rows > 0 else 0.0
@@ -1109,188 +1117,367 @@ def _normalize_token(col: str) -> str:
     return re.sub(r"[^a-z0-9]", "", col.lower())
 
 
+_STUDENT_DEMO_NAME = "student_demographics"
+_STUDENT_SCORE_ALIASES = ("student_course_score", "student_course_scores")
+MAX_KEY_SAMPLE_ROWS = 200_000      # rows read per column when looking for a join key
+MAX_KEY_PAIRS = 200                # column pairs compared at most
+MIN_KEY_MATCH_RATE = 0.5           # share of the smaller key set that must exist in the other table
+
+
+def _loaded_dataset_frame():
+    """The dataset the interactive engine works on now (same choice as the state endpoint)."""
+    name = _WORKFLOW_STATE.get("dataset_name", "")
+    if _WORKFLOW_STATE.get("dataset_source") != "evaluation" and name in _UPLOADED_DATASETS:
+        return _UPLOADED_DATASETS[name].copy()
+    path = _dataset_path()
+    return pd.read_csv(path) if os.path.isfile(path) else None
+
+
+def _is_student_evaluation_loaded() -> bool:
+    """True only while the bundled evaluation dataset itself is loaded (not an upload that fell back to it)."""
+    return _WORKFLOW_STATE.get("dataset_source") in ("", "evaluation", None) and _dataset_path() == DIRTY_DATASET_PATH
+
+
+def _resolve_table(name: str):
+    """A table the multi-table step may use, by name, or None. Never reads a file the user did
+    not load, except the bundled student demo pair (demographics + evaluation scores)."""
+    if not name:
+        return None
+    loaded = _WORKFLOW_STATE.get("dataset_name", "")
+    if name == loaded:
+        return _loaded_dataset_frame()
+    if name in _UPLOADED_DATASETS:
+        return _UPLOADED_DATASETS[name].copy()
+    if name == _STUDENT_DEMO_NAME and os.path.isfile(DEMOGRAPHICS_DATASET_PATH):
+        return pd.read_csv(DEMOGRAPHICS_DATASET_PATH)
+    if name in _STUDENT_SCORE_ALIASES and os.path.isfile(DIRTY_DATASET_PATH):
+        return pd.read_csv(DIRTY_DATASET_PATH)
+    return None
+
+
+def _available_multi_tables():
+    """Names that can be offered in the join step: the loaded dataset first, then others."""
+    loaded = _WORKFLOW_STATE.get("dataset_name", "")
+    names, seen_frames = [], set()
+    if loaded:
+        names.append(loaded)
+        if loaded in _UPLOADED_DATASETS:
+            seen_frames.add(id(_UPLOADED_DATASETS[loaded]))
+    for n, frame in _UPLOADED_DATASETS.items():
+        if n != loaded and id(frame) not in seen_frames:
+            seen_frames.add(id(frame))
+            names.append(n)
+    if _is_student_evaluation_loaded() and os.path.isfile(DEMOGRAPHICS_DATASET_PATH) and _STUDENT_DEMO_NAME not in names:
+        names.append(_STUDENT_DEMO_NAME)
+    return names
+
+
+def _key_values(series):
+    """Distinct non-null values as comparable strings (65001 and 65001.0 are the same key)."""
+    s = series.dropna()
+    if len(s) > MAX_KEY_SAMPLE_ROWS:
+        s = s.iloc[:MAX_KEY_SAMPLE_ROWS]
+    if pd.api.types.is_float_dtype(s) and len(s) and bool((s % 1 == 0).all()):
+        s = s.astype("int64")
+    return set(s.astype(str).str.strip())
+
+
+def _kind(series) -> str:
+    return "num" if pd.api.types.is_numeric_dtype(series) else "text"
+
+
+def find_candidate_keys(df_a, df_b):
+    """Column pairs that look like the same key in both tables, best first.
+
+    A pair needs overlapping values (at least MIN_KEY_MATCH_RATE of the smaller key set) and the
+    same kind of data. Equal names (studentId / student_id) and a unique key on one side rank higher.
+    """
+    cols_a = [c for c in df_a.columns if c != "dirty_row_id"]
+    cols_b = [c for c in df_b.columns if c != "dirty_row_id"]
+    values_a = {c: _key_values(df_a[c]) for c in cols_a}
+    values_b = {c: _key_values(df_b[c]) for c in cols_b}
+    unique_a_cols = {c: bool(df_a[c].dropna().is_unique) for c in cols_a if len(values_a[c]) >= 2}
+    unique_b_cols = {c: bool(df_b[c].dropna().is_unique) for c in cols_b if len(values_b[c]) >= 2}
+    pairs = []
+    for ca in cols_a:
+        for cb in cols_b:
+            if _kind(df_a[ca]) != _kind(df_b[cb]):
+                continue
+            va, vb = values_a[ca], values_b[cb]
+            if len(va) < 2 or len(vb) < 2:
+                continue
+            same_name = _normalize_token(ca) == _normalize_token(cb)
+            unique_a, unique_b = unique_a_cols[ca], unique_b_cols[cb]
+            if not (same_name or unique_a or unique_b):
+                continue  # a join key is the unique side of a relationship, or is named alike
+            overlap = len(va & vb)
+            if overlap < 2:
+                continue
+            rate = overlap / min(len(va), len(vb))
+            if rate < MIN_KEY_MATCH_RATE:
+                continue
+            score = rate + (0.5 if same_name else 0.0) + (0.25 if (unique_a or unique_b) else 0.0)
+            pairs.append({
+                "key_a": ca, "key_b": cb, "same_name": same_name, "unique_a": bool(unique_a), "unique_b": bool(unique_b),
+                "overlap": overlap, "distinct_a": len(va), "distinct_b": len(vb), "match_rate": rate, "score": score,
+            })
+            if len(pairs) >= MAX_KEY_PAIRS:
+                break
+        if len(pairs) >= MAX_KEY_PAIRS:
+            break
+    pairs.sort(key=lambda p: p["score"], reverse=True)
+    return pairs
+
+
+def _detect_date_formats(df):
+    """{column: format label} for text columns whose values look like dates."""
+    import re
+    patterns = (("YYYY-MM-DD", re.compile(r"^\d{4}-\d{2}-\d{2}")), ("DD/MM/YYYY", re.compile(r"^\d{2}/\d{2}/\d{4}$")))
+    found = {}
+    for col in df.columns:
+        if not (pd.api.types.is_object_dtype(df[col]) or pd.api.types.is_string_dtype(df[col])):
+            continue  # text columns only (pandas 3 reads text as "str", older versions as object)
+        sample = df[col].dropna().astype(str).head(200)
+        if sample.empty:
+            continue
+        for label, rx in patterns:
+            if sample.map(lambda v, rx=rx: bool(rx.match(v))).mean() >= 0.9:
+                found[col] = label
+                break
+    return found
+
+
+def _roles(df_a, key_a, df_b, key_b):
+    """Which table keeps all its rows (base) and which only adds columns (lookup)."""
+    a_unique, b_unique = bool(df_a[key_a].dropna().is_unique), bool(df_b[key_b].dropna().is_unique)
+    if a_unique and not b_unique:
+        return "b", "a", "1:N"
+    if b_unique and not a_unique:
+        return "a", "b", "1:N"
+    if a_unique and b_unique:
+        return ("a", "b", "1:1") if len(df_a) >= len(df_b) else ("b", "a", "1:1")
+    return "b", "a", "N:M"
+
+
+@router.get("/multi-table/tables")
+def list_multi_table_candidates():
+    """Tables that can be joined now. The join step needs at least two."""
+    out = []
+    for name in _available_multi_tables():
+        frame = _resolve_table(name)
+        if frame is not None:
+            out.append({"name": name, "rows": int(len(frame)), "columns": int(len(frame.columns)),
+                        "is_loaded": name == _WORKFLOW_STATE.get("dataset_name", "")})
+    return {"tables": out}
+
+
+def _table_summary(name, frame):
+    return {
+        "name": name,
+        "total_rows": len(frame),
+        "columns": frame.columns.tolist(),
+        "sample_rows": frame.head(3).to_dict(orient="records"),
+    }
+
+
 @router.get("/multi-table/preview")
-def preview_multi_tables():
+def preview_multi_tables(table_a: Optional[str] = None, table_b: Optional[str] = None):
     """
-    Returns metadata and sample rows of Source Table A (Demographics) and Source Table B (Scores).
+    Name, size, columns and sample rows of the two tables to join.
+    Without parameters it keeps the bundled student demo: demographics (A) and the loaded dataset (B).
     """
-    if not os.path.exists(DEMOGRAPHICS_DATASET_PATH) or not os.path.exists(_dataset_path()):
+    name_a = table_a or _STUDENT_DEMO_NAME
+    name_b = table_b or _WORKFLOW_STATE.get("dataset_name") or "student_course_score"
+    df_a = _resolve_table(name_a)
+    df_b = _resolve_table(name_b) if table_b else _loaded_dataset_frame()
+    if df_a is None or df_b is None:
         raise HTTPException(status_code=404, detail="Required multi-table source datasets not found.")
-
-    df_a = pd.read_csv(DEMOGRAPHICS_DATASET_PATH)
-    df_b = pd.read_csv(_dataset_path())
-
-    return _clean_for_json({
-        "table_a": {
-            "name": "student_demographics",
-            "total_rows": len(df_a),
-            "columns": df_a.columns.tolist(),
-            "sample_rows": df_a.head(3).to_dict(orient="records")
-        },
-        "table_b": {
-            "name": "student_course_score",
-            "total_rows": len(df_b),
-            "columns": df_b.columns.tolist(),
-            "sample_rows": df_b.head(3).to_dict(orient="records")
-        }
-    })
+    return _clean_for_json({"table_a": _table_summary(name_a, df_a), "table_b": _table_summary(name_b, df_b)})
 
 
 @router.post("/multi-table/analyze", dependencies=[Depends(require_session)])
 def analyze_multi_table_relationship(payload: Optional[MultiTableAnalyzePayload] = None):
     """
-    Semi-Automated Relationship & Schema Reconciliation Analyzer:
-    - Detects naming differences (studentId vs student_id)
-    - Detects date format differences (DD/MM/YYYY vs YYYY-MM-DD)
-    - Calculates Candidate Key match rate (99.8%)
-    - Infers Cardinality (1 Student -> Many Scores)
-    - Prepares recommendations for the User Confirmation Gate (No silent auto-joins).
+    Relationship analyzer for any two tables: finds the column pair that looks like the same key
+    (overlapping values, equal names, a unique side), the cardinality, naming and date-format
+    differences, and asks for confirmation before any join. No candidate key is a normal answer
+    (status NO_CANDIDATE_KEY), not an error.
     """
-    if not os.path.exists(DEMOGRAPHICS_DATASET_PATH) or not os.path.exists(_dataset_path()):
+    payload = payload or MultiTableAnalyzePayload()
+    df_a = _resolve_table(payload.table_a_name)
+    # the legacy default pair (student demo) uses the loaded dataset as table B
+    df_b = _loaded_dataset_frame() if payload.table_b_name in _STUDENT_SCORE_ALIASES else _resolve_table(payload.table_b_name)
+    if df_a is None or df_b is None:
         raise HTTPException(status_code=404, detail="Source tables not found for multi-table analysis.")
 
-    df_a = pd.read_csv(DEMOGRAPHICS_DATASET_PATH)
-    df_b = pd.read_csv(_dataset_path())
+    pairs = find_candidate_keys(df_a, df_b)
+    name_a, name_b = payload.table_a_name, payload.table_b_name
 
-    # 1. Schema differences (Naming comparison)
+    # Naming differences between columns that mean the same thing (studentId vs student_id)
     schema_mappings = []
     for col_a in df_a.columns:
-        norm_a = _normalize_token(col_a)
         for col_b in df_b.columns:
-            norm_b = _normalize_token(col_b)
-            if norm_a == norm_b and col_a != col_b:
+            if _normalize_token(col_a) == _normalize_token(col_b) and col_a != col_b:
                 schema_mappings.append({
                     "source_a_column": col_a,
                     "source_b_column": col_b,
                     "difference_type": "Naming Convention (camelCase vs snake_case)",
                     "confidence_pct": 96.0,
                     "evidence": [
-                        f"Identical semantic token: '{norm_a}'",
+                        f"Identical semantic token: '{_normalize_token(col_a)}'",
                         f"Shared data types: {df_a[col_a].dtype} vs {df_b[col_b].dtype}",
-                        "High cardinality unique identifier role"
                     ],
-                    "suggested_standard": col_b
+                    "suggested_standard": col_b,
                 })
 
-    # 2. Date format differences
+    # Date formats that differ between the tables
+    dates_a, dates_b = _detect_date_formats(df_a), _detect_date_formats(df_b)
     date_format_differences = []
-    sample_date_a = str(df_a["enrollmentDate"].dropna().iloc[0]) if "enrollmentDate" in df_a else ""
-    sample_date_b = str(df_b["updated_at"].dropna().iloc[0]) if "updated_at" in df_b else ""
-
-    if sample_date_a and sample_date_b:
+    if dates_a and dates_b and set(dates_a.values()) != set(dates_b.values()):
+        col_a, col_b = next(iter(dates_a)), next(iter(dates_b))
         date_format_differences.append({
-            "source_a_field": "enrollmentDate",
-            "source_a_sample": sample_date_a,
-            "source_a_detected_format": "DD/MM/YYYY (UK/TH Standard)",
-            "source_b_field": "updated_at",
-            "source_b_sample": sample_date_b,
-            "source_b_detected_format": "YYYY-MM-DD HH:MM:SS (ISO-8601)",
+            "source_a_field": col_a,
+            "source_a_sample": str(df_a[col_a].dropna().iloc[0]),
+            "source_a_detected_format": dates_a[col_a],
+            "source_b_field": col_b,
+            "source_b_sample": str(df_b[col_b].dropna().iloc[0]),
+            "source_b_detected_format": dates_b[col_b],
             "suggested_standard_format": "YYYY-MM-DD",
-            "action": "Standardize to ISO-8601 YYYY-MM-DD upon join"
+            "action": "Standardize to ISO-8601 YYYY-MM-DD upon join",
         })
 
-    # 3. Key Overlap & Relationship Cardinality Analysis
-    set_a_id = set(df_a["studentId"].dropna())
-    set_b_id = set(df_b["student_id"].dropna())
-    overlap_count = len(set_a_id.intersection(set_b_id))
-    match_rate_pct = round((overlap_count / len(set_b_id)) * 100, 2) if len(set_b_id) > 0 else 0.0
-
-    is_a_unique = df_a["studentId"].is_unique
-    is_b_unique = df_b["student_id"].is_unique
-
-    if is_a_unique and not is_b_unique:
-        cardinality = "1 Student -> Many Scores (1:N)"
-    elif is_a_unique and is_b_unique:
-        cardinality = "1:1 (One-to-One)"
-    else:
-        cardinality = "N:M (Many-to-Many)"
-
-    candidate_relationship = {
-        "left_table": "student_demographics",
-        "right_table": "student_course_score",
-        "candidate_key_a": "studentId",
-        "candidate_key_b": "student_id",
-        "unique_keys_a": len(set_a_id),
-        "unique_keys_b": len(set_b_id),
-        "overlapping_keys": overlap_count,
-        "match_rate_pct": match_rate_pct,
-        "suggested_cardinality": cardinality,
-        "suggested_join_type": "left",
-        "confidence_verdict": "STRONG_PRIMARY_FOREIGN_KEY_PAIR",
-        "rationale": [
-            f"Key match rate between Student.studentId and Score.student_id is {match_rate_pct}%.",
-            "Demographics table holds master record (1 unique per student).",
-            "Scores table holds transactional semester grade entries (many entries per student).",
-            "Suggested Join Type: Left Join to preserve all course score entries with demographic attributes."
-        ]
-    }
-
     result = {
-        "status": "ANALYSIS_COMPLETE",
+        "table_a": name_a,
+        "table_b": name_b,
         "schema_differences": schema_mappings,
         "date_format_differences": date_format_differences,
-        "candidate_relationship": candidate_relationship,
-        "human_confirmation_required": True,
-        "analyzed_at": datetime.now(timezone.utc).isoformat()
+        "alternatives": [{"key_a": p["key_a"], "key_b": p["key_b"], "match_rate_pct": round(p["match_rate"] * 100, 2)} for p in pairs[1:4]],
+        "analyzed_at": datetime.now(timezone.utc).isoformat(),
     }
+    if not pairs:
+        result.update({
+            "status": "NO_CANDIDATE_KEY",
+            "human_confirmation_required": False,
+            "candidate_relationship": None,
+            "message": f"ไม่พบคอลัมน์ที่ใช้เชื่อมระหว่าง '{name_a}' กับ '{name_b}' (ไม่มีคอลัมน์ที่ค่าซ้อนทับกันพอ)",
+        })
+    else:
+        best = pairs[0]
+        base_side, lookup_side, cardinality = _roles(df_a, best["key_a"], df_b, best["key_b"])
+        base_name, lookup_name = (name_a, name_b) if base_side == "a" else (name_b, name_a)
+        distinct_base = best["distinct_a"] if base_side == "a" else best["distinct_b"]
+        rate_pct = round(best["overlap"] / distinct_base * 100, 2) if distinct_base else 0.0
+        strong = rate_pct >= 90 and (best["unique_a"] or best["unique_b"])
+        result.update({
+            "status": "ANALYSIS_COMPLETE",
+            "human_confirmation_required": True,
+            "candidate_relationship": {
+                "left_table": name_a,
+                "right_table": name_b,
+                "candidate_key_a": best["key_a"],
+                "candidate_key_b": best["key_b"],
+                "unique_keys_a": best["distinct_a"],
+                "unique_keys_b": best["distinct_b"],
+                "overlapping_keys": best["overlap"],
+                "match_rate_pct": rate_pct,
+                "suggested_cardinality": {"1:N": "1 ต่อหลายแถว (1:N)", "1:1": "1 ต่อ 1 (1:1)", "N:M": "หลายต่อหลาย (N:M)"}[cardinality],
+                "base_table": base_name,
+                "lookup_table": lookup_name,
+                "suggested_join_type": "left",
+                "confidence_verdict": "STRONG_KEY_PAIR" if strong else "POSSIBLE_KEY_PAIR",
+                "rationale": [
+                    f"ค่าคีย์ของ '{base_name}' พบใน '{lookup_name}' {rate_pct}% (จาก {name_a}.{best['key_a']} กับ {name_b}.{best['key_b']})",
+                    f"{'ชื่อคอลัมน์ตรงกัน' if best['same_name'] else 'ชื่อคอลัมน์ต่างกัน'}"
+                    f" และ{'มีฝั่งที่ค่าไม่ซ้ำ' if (best['unique_a'] or best['unique_b']) else 'ทั้งสองฝั่งมีค่าซ้ำ'}",
+                    f"เก็บทุกแถวของ '{base_name}' และเพิ่มคอลัมน์จาก '{lookup_name}' (left join)",
+                ],
+            },
+        })
     cleaned_result = _clean_for_json(result)
     _LATEST_MULTI_TABLE_ANALYSIS["latest"] = cleaned_result
     return cleaned_result
 
 
+def _to_snake(name: str) -> str:
+    import re
+    return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name).lower()
+
+
 @router.post("/multi-table/join", dependencies=[Depends(require_session)])
 def execute_multi_table_join(payload: MultiTableJoinPayload):
     """
-    Executes the Semi-Automated Multi-Table Join following User Confirmation:
-    - Renames studentId -> student_id
-    - Standardizes date format to YYYY-MM-DD
-    - Executes Left Join
-    - Persists unified dataset for downstream profiling and validation
+    The join, only when the user confirms it: keeps every row of the "many" side, adds the other
+    table's columns, optionally renames the key and standardizes DD/MM/YYYY dates, and saves the
+    unified table. It does not change the loaded dataset or any cached profile; the profile of the
+    result is returned for display.
     """
     start_time = time.time()
-
-    if not os.path.exists(DEMOGRAPHICS_DATASET_PATH) or not os.path.exists(_dataset_path()):
+    df_a = _resolve_table(payload.table_a_name)
+    df_b = _loaded_dataset_frame() if payload.table_b_name in _STUDENT_SCORE_ALIASES else _resolve_table(payload.table_b_name)
+    if df_a is None or df_b is None:
         raise HTTPException(status_code=404, detail="Source tables not found.")
+    if payload.join_key_a not in df_a.columns or payload.join_key_b not in df_b.columns:
+        raise HTTPException(status_code=400, detail="ไม่พบคอลัมน์คีย์ที่เลือกในตารางใดตารางหนึ่ง")
 
-    df_a = pd.read_csv(DEMOGRAPHICS_DATASET_PATH)
-    df_b = pd.read_csv(_dataset_path())
+    base_side, lookup_side, _ = _roles(df_a, payload.join_key_a, df_b, payload.join_key_b)
+    frames = {"a": (df_a, payload.join_key_a, payload.table_a_name), "b": (df_b, payload.join_key_b, payload.table_b_name)}
+    base_df, base_key, base_name = frames[base_side]
+    lookup_df, lookup_key, lookup_name = frames[lookup_side]
+    base_df, lookup_df = base_df.copy(), lookup_df.copy()
 
-    # 1. Date standardization on Table A
-    if payload.standardize_dates and "enrollmentDate" in df_a.columns:
-        df_a["enrollment_date"] = pd.to_datetime(df_a["enrollmentDate"], format="%d/%m/%Y", errors="coerce").dt.strftime("%Y-%m-%d")
-        df_a.drop(columns=["enrollmentDate"], inplace=True)
+    # 1. Dates of the lookup table: DD/MM/YYYY -> YYYY-MM-DD
+    if payload.standardize_dates:
+        for col, fmt in _detect_date_formats(lookup_df).items():
+            if fmt == "DD/MM/YYYY":
+                lookup_df[col] = pd.to_datetime(lookup_df[col], format="%d/%m/%Y", errors="coerce").dt.strftime("%Y-%m-%d")
+                new_name = _to_snake(col)
+                if new_name != col and new_name not in lookup_df.columns:
+                    lookup_df.rename(columns={col: new_name}, inplace=True)
 
-    # 2. Schema alignment (Rename key)
-    if payload.reconcile_schema and payload.join_key_a in df_a.columns:
-        df_a.rename(columns={payload.join_key_a: payload.join_key_b, "fullName": "student_name"}, inplace=True)
+    # 2. Schema alignment: the lookup key takes the base key's name
+    if payload.reconcile_schema:
+        renames = {}
+        if lookup_key != base_key and base_key not in lookup_df.columns:
+            renames[lookup_key] = base_key
+        if lookup_name == _STUDENT_DEMO_NAME and "fullName" in lookup_df.columns:
+            renames["fullName"] = "student_name"  # name used by the bundled student demo
+        lookup_df.rename(columns=renames, inplace=True)
+        lookup_key = renames.get(lookup_key, lookup_key)
 
-    # 3. Perform Join
-    merged_df = pd.merge(
-        df_b,
-        df_a,
-        on=payload.join_key_b,
-        how=payload.join_type
-    )
+    # 3. Join on the normalized key, so 65001 and 65001.0 match
+    def norm_key(series):
+        s = series
+        if pd.api.types.is_float_dtype(s) and bool(s.dropna().mod(1).eq(0).all()):
+            s = s.astype("Int64")
+        return s.astype(str).str.strip()
 
-    # Save unified dataset
+    base_df["__key"] = norm_key(base_df[base_key])
+    lookup_df["__key"] = norm_key(lookup_df[lookup_key])
+    lookup_df = lookup_df.drop(columns=[lookup_key])  # the base table already has the key
+    lookup_df = lookup_df.drop_duplicates(subset="__key", keep="first")
+    merged_df = pd.merge(base_df, lookup_df, on="__key", how=payload.join_type, suffixes=("", "_" + _to_snake(lookup_name)), indicator="__matched")
+    matched = int((merged_df["__matched"] == "both").sum())
+    merged_df = merged_df.drop(columns=["__key", "__matched"])
+
     merged_df.to_csv(UNIFIED_DATASET_PATH, index=False)
     exec_time_ms = round((time.time() - start_time) * 1000, 2)
-
-    # Update active profiling cache so Stage 1 can display the unified dataset immediately
-    unified_profile = _compute_profile(merged_df, "unified_student_dataset")
-    _LATEST_PROFILING["student_course_score"] = unified_profile
+    unified_name = re.sub(r"[^A-Za-z0-9_]", "_", f"{base_name}_{lookup_name}_joined")[:128]
+    unified_profile = _compute_profile(merged_df, unified_name)
 
     return _clean_for_json({
         "status": "JOIN_COMPLETED",
-        "unified_table_name": "unified_student_dataset",
+        "unified_table_name": unified_name,
+        "base_table": base_name,
+        "lookup_table": lookup_name,
         "total_rows": len(merged_df),
         "total_columns": len(merged_df.columns),
         "columns": merged_df.columns.tolist(),
-        "matched_rows": int(merged_df["faculty"].notna().sum()),
-        "unmatched_rows": int(merged_df["faculty"].isna().sum()),
+        "matched_rows": matched,
+        "unmatched_rows": len(merged_df) - matched,
         "execution_time_ms": exec_time_ms,
         "sample_unified_records": merged_df.head(5).to_dict(orient="records"),
         "persisted_file": UNIFIED_DATASET_PATH,
+        "profile": unified_profile,
         "joined_at": datetime.now(timezone.utc).isoformat()
     })
 
@@ -1298,42 +1485,61 @@ def execute_multi_table_join(payload: MultiTableJoinPayload):
 # ---------------------------------------------------------------------------
 # 7. One-Click Full Pipeline Orchestrator (Auto-Ready / Instant Demo Mode)
 # ---------------------------------------------------------------------------
-# Runs the whole pipeline and writes the output files, so GET needs a session too.
+def _run_stage(stages, name, fn):
+    """Run one stage. A stage that fails is reported in `stages`; it does not stop the others."""
+    try:
+        return fn()
+    except HTTPException as exc:
+        stages[name] = {"status": "FAILED", "detail": exc.detail}
+    except Exception as exc:
+        logger.warning("run-all stage %s failed: %s", name, exc)
+        stages[name] = {"status": "FAILED", "detail": str(exc)}
+    return None
+
+
+# Runs the stages, so GET needs a session too.
 @router.get("/run-all", dependencies=[Depends(require_session)])
 @router.post("/run-all", dependencies=[Depends(require_session)])
 def run_all_stages():
     """
-    Executes the entire end-to-end semi-automated pipeline in one fast batch.
-    Pre-populates all stages (0 through 5) so the dashboard is immediately ready for interactive demonstration.
+    Runs profiling, rule recommendation and the 3-way segregation on the dataset that is loaded now
+    and returns every result for the Audit Trail page.
+
+    - The result files that Exports serves are not rewritten (persist_outputs=False).
+    - The multi-table join is not part of it; it runs only when the user confirms it.
+    - The ground-truth benchmark and the course analytics exist only for the student evaluation
+      dataset, so other datasets get a NOT_APPLICABLE entry instead of an error.
     """
-    # 1. Multi-Table Ingestion & Join
-    prev = preview_multi_tables()
-    analysis = analyze_multi_table_relationship()
-    join_res = execute_multi_table_join(MultiTableJoinPayload())
+    stages = {}
+    dataset_name = _WORKFLOW_STATE.get("dataset_name") or "student_course_score"
 
-    # 2. Data Profiling
-    prof = get_dataset_profile("student_course_score")
+    prof = _run_stage(stages, "profile", lambda: get_dataset_profile(dataset_name))
+    default_ctx = _run_stage(stages, "context", lambda: get_default_user_context(dataset_name, prof)) if prof else None
+    recs = []
+    if default_ctx:
+        recs_res = _run_stage(stages, "recommendations", lambda: recommend_rules(UserContextPayload(**default_ctx)))
+        recs = (recs_res or {}).get("recommendations", [])
+    exec_res = None
+    if recs:
+        exec_res = _run_stage(stages, "execution", lambda: execute_pipeline(ExecuteRulesPayload(
+            dataset_name=dataset_name, rules=[RuleItem(**r) for r in recs], persist_outputs=False)))
 
-    # 3. Context & Explainable Rules
-    default_ctx = get_default_user_context()
-    recs_res = recommend_rules(UserContextPayload(**default_ctx))
-    recs = recs_res.get("recommendations", [])
+    bench_res = analytics_res = None
+    if _is_student_evaluation_loaded():
+        bench_res = _run_stage(stages, "benchmark", evaluate_ground_truth)
+        analytics_res = _run_stage(stages, "analytics", get_downstream_analytics)
+    else:
+        for name in ("benchmark", "analytics"):
+            stages[name] = {"status": "NOT_APPLICABLE", "detail": "ใช้ได้กับชุดข้อมูลประเมินของนักศึกษาเท่านั้น"}
 
-    # 4. 3-Way Segregation Execution
-    rule_items = [RuleItem(**r) for r in recs]
-    exec_res = execute_pipeline(ExecuteRulesPayload(dataset_name="student_course_score", rules=rule_items))
-
-    # 5. Ground Truth Benchmark
-    bench_res = evaluate_ground_truth()
-
-    # 6. Downstream Academic Analytics
-    analytics_res = get_downstream_analytics()
-
+    failed = [n for n, v in stages.items() if v.get("status") == "FAILED"]
     return _clean_for_json({
-        "status": "ALL_STAGES_READY",
-        "multi_table_preview": prev,
-        "multi_table_analysis": analysis,
-        "join_result": join_res,
+        "status": "PARTIAL" if failed else "ALL_STAGES_READY",
+        "dataset_name": dataset_name,
+        "stages": stages,
+        "multi_table_preview": None,
+        "multi_table_analysis": None,
+        "join_result": None,
         "profile_data": prof,
         "user_context": default_ctx,
         "recommendations": recs,
