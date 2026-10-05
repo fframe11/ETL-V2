@@ -50,7 +50,7 @@ it("says what was expected, what was found and what the system already did", asy
   await renderPage(Schema, "/schema", routes());
   fireEvent.click(screen.getByRole("button", { name: /รออนุมัติ \(2\)/ }));
   await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
-  expect(screen.getByText(/คาด BooleanType พบ StringType · ระบบแปลงเป็นข้อความให้แล้ว/)).toBeTruthy();
+  expect(screen.getByText(/ลงทะเบียนไว้ BooleanType → พบ StringType · ระบบแปลงเป็นข้อความให้แล้ว/)).toBeTruthy();
   expect(screen.getByText(/ปิดการตรวจพบซ้ำทั้ง 2 ครั้งพร้อมกัน/)).toBeTruthy();
   expect(screen.queryByText(/TYPE MISMATCH|SEV/)).toBeNull();
 });
@@ -88,4 +88,37 @@ it("hides the schema-change simulator unless ?test=1", async () => {
 it("says so when no table is registered", async () => {
   await renderPage(Schema, "/schema");
   expect(screen.getByText("ยังไม่มีตารางที่ลงทะเบียน")).toBeTruthy();
+});
+
+it("explains what approving does for a type the engine cannot read", async () => {
+  await renderPage(Schema, "/schema", routes());
+  fireEvent.click(screen.getByRole("button", { name: /รออนุมัติ \(2\)/ }));
+  await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+  const notes = screen.getByTestId("proposal-notes");
+  expect(notes.textContent).toContain("arrest: BooleanType เป็นชนิดที่ระบบอ่านไม่ได้");
+  expect(notes.textContent).toContain("การเตือนซ้ำจะหยุด");
+});
+
+it("says when the registry already matches what was found, and when a proposal came from the test tool", async () => {
+  const tables = { pending_total: 2, tables: [
+    { name: "t_same", registered: true, primary_key: "id", date_column: null, columns: [{ name: "flag", type: "StringType" }],
+      column_count: 1, runs: 1, latest_score: 95, latest_at: "2026-10-01T00:00:00+00:00", pending_proposals: 1 },
+    { name: "t_sim", registered: true, primary_key: "id", date_column: null, columns: [], column_count: 0, runs: 0,
+      latest_score: null, latest_at: null, pending_proposals: 1 }
+  ] };
+  const pending = { total: 2, proposals: [
+    { id: "a", table_name: "t_same", run_id: "run_9", proposed_at: "2026-10-02T00:00:00+00:00", last_seen: "2026-10-02T00:00:00+00:00",
+      occurrences: 1, drift_details: { flag: { error: "type_mismatch", expected: "IntegerType", actual: "StringType", action: "coerced_to_string" } },
+      proposed_schema: { flag: "StringType" } },
+    { id: "b", table_name: "t_sim", run_id: "run_evo_1790433869", proposed_at: "2026-09-26T00:00:00+00:00", last_seen: "2026-09-26T00:00:00+00:00",
+      occurrences: 1, drift_details: { gpa: { error: "new_column", actual: "DoubleType" } }, proposed_schema: { gpa: "DoubleType" } }
+  ] };
+  await renderPage(Schema, "/schema", [["/schema/tables", { body: tables }], ["/schema/proposals", { body: pending }]]);
+  fireEvent.click(screen.getByRole("button", { name: /รออนุมัติ \(2\)/ }));
+  await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+  const rows = screen.getAllByTestId("proposal-row");
+  fireEvent.click(rows.find((r) => r.textContent.includes("t_same")));
+  expect(screen.getByTestId("proposal-notes").textContent).toContain("flag: ลงทะเบียนตรงกับที่พบแล้ว การอนุมัติไม่เปลี่ยนอะไร");
+  fireEvent.click(rows.find((r) => r.textContent.includes("t_sim")));
+  expect(screen.getByTestId("proposal-notes").textContent).toContain("สร้างจากเครื่องมือทดสอบ");
 });

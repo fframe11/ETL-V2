@@ -26,11 +26,12 @@ function formatWhen(iso) {
 const keyText = (key) => (Array.isArray(key) ? key.join(", ") : key || "");
 
 // One line per changed column, in Thai, with what was expected and what the system already did.
-function describeDrift(col, d) {
+function describeDrift(col, d, registeredType) {
   const details = d && typeof d === "object" ? d : {};
   const action = details.action ? (ACTION_TEXT[details.action] || details.action) : "";
   if (details.error === "type_mismatch" || details.error === "type") {
-    const text = `คาด ${details.expected || "-"} พบ ${details.actual || "-"}${action ? ` · ${action}` : ""}`;
+    const from = registeredType || details.expected || "-";
+    const text = `ลงทะเบียนไว้ ${from} → พบ ${details.actual || "-"}${action ? ` · ${action}` : ""}`;
     return { badge: "ชนิดไม่ตรง", color: "var(--accent-yellow)", title: col, text };
   }
   if (details.error === "missing_column") {
@@ -44,6 +45,29 @@ function guessPrimaryKey(schema) {
   const names = Object.keys(schema || {});
   if (names.includes("id")) return "id";
   return names.find((n) => n.toLowerCase().endsWith("_id")) || "";
+}
+
+// Types the engine can read and produce; anything else is always read as text.
+const ENGINE_TYPES = ["StringType", "IntegerType", "DoubleType", "TimestampType"];
+
+// What approving this proposal would really do, per column, so the reviewer is not guessing.
+function proposalNotes(proposal, registeredTypes) {
+  const notes = [];
+  if (String(proposal.run_id || "").startsWith("run_evo_")) {
+    notes.push("ข้อเสนอนี้สร้างจากเครื่องมือทดสอบ ไม่ได้มาจากการนำเข้าข้อมูลจริง");
+  }
+  for (const [col, d] of Object.entries(proposal.drift_details || {})) {
+    if (d?.error !== "type_mismatch") continue;
+    const registered = registeredTypes[col];
+    if (registered && registered === d.actual) {
+      notes.push(`${col}: ลงทะเบียนตรงกับที่พบแล้ว การอนุมัติไม่เปลี่ยนอะไร`);
+    } else if (d.actual === "StringType" && !ENGINE_TYPES.includes(d.expected)) {
+      notes.push(`${col}: ${d.expected} เป็นชนิดที่ระบบอ่านไม่ได้ จึงถูกอ่านเป็นข้อความเสมอ อนุมัติเพื่อเปลี่ยนเป็น StringType แล้วการเตือนซ้ำจะหยุด`);
+    } else {
+      notes.push(`${col}: อนุมัติจะเปลี่ยนชนิดที่ลงทะเบียนเป็น ${d.actual}`);
+    }
+  }
+  return notes;
 }
 
 function Fact({ label, children }) {
@@ -130,6 +154,10 @@ export default function Schema() {
   const registered = selectedProposal ? catalogByName[selectedProposal.table_name] : null;
   const registeredKey = keyText(registered?.primary_key);
   const registeredDate = registered?.date_column || "";
+  const registeredTypes = React.useMemo(
+    () => Object.fromEntries((registered?.columns || []).map((c) => [c.name, c.type])),
+    [registered]
+  );
   React.useEffect(() => {
     if (!selectedProposal) {
       setPrimaryKeyOverride("");
@@ -523,11 +551,17 @@ export default function Schema() {
                 </div>
               )}
 
+              {tab === "PENDING" && proposalNotes(selectedProposal, registeredTypes).length > 0 && (
+                <ul data-testid="proposal-notes" style={{ margin: "0 0 12px 0", padding: "8px 12px", listStyle: "none", fontSize: "11.5px", lineHeight: 1.5, background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: "8px", color: "#92400E" }}>
+                  {proposalNotes(selectedProposal, registeredTypes).map((note, i) => <li key={i}>{note}</li>)}
+                </ul>
+              )}
+
               <div className="gs-drift-details-section">
                 <h4 style={{ fontSize: "12px", fontWeight: 800, marginBottom: "8px", color: "var(--text-muted)" }}>สิ่งที่เปลี่ยน</h4>
                 <div className="gs-drift-lines">
                   {Object.entries(selectedProposal.drift_details || {}).map(([col, d]) => {
-                    const line = describeDrift(col, d);
+                    const line = describeDrift(col, d, registeredTypes[col]);
                     return (
                       <div key={col} className="gs-drift-line">
                         <span className="gs-drift-badge" style={{ backgroundColor: line.color }}>{line.badge}</span>
