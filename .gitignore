@@ -35,8 +35,8 @@ node_modules/
 **/node_modules/
 dist/
 **/dist/
-ui/
-n8n/
+/ui/
+/n8n/
 services/ui/node_modules/
 services/ui/dist/
 scripts/*.log

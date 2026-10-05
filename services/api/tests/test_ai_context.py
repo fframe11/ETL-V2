@@ -22,7 +22,7 @@ def test_text_uses_real_counts_including_zero():
         "quality_score_pct": 95.1, "missing_score_count": 0, "invalid_range_count": 1,
         "gate2_quarantined": 1, "upper_fence": 9.0, "q1": 4.0, "q3": 6.0, "iqr": 2.0,
     }
-    profile = {"columns_profile": {"score": {"min": 50.0, "max": 150.0}}}
+    profile = {"columns_profile": {"score": {"data_type": "Integer", "min": 50.0, "max": 150.0}}}
     result = _build_dynamic_context_fallback("ui_check", metrics, STATE, profile)
     text = " ".join(
         v for section in ("step1_findings", "step2_rules", "step5_lineage") for v in result[section].values()

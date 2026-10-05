@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 from pyspark.sql import functions as F
 
+from sdoqap.common.reasons import bound_breakdown, split_reasons
 from sdoqap.pipeline.registry import stage
 
 
@@ -72,18 +73,11 @@ def quarantine_breakdown_stage(ctx):
             if "reject_reason" in quar_run_df.columns:
                 breakdown_df = quar_run_df.groupBy("reject_reason").count().collect()
                 for row in breakdown_df:
-                    reason_str = row["reject_reason"] or "unknown"
                     count = row["count"]
-                    if reason_str == "":
-                        reason_str = "unknown"
-                    reasons = [r.strip() for r in reason_str.split(";") if r.strip()]
-                    if not reasons:
-                        reasons = ["unknown"]
-                    for r in reasons:
-                        r_clean = r.replace(".", "_")
-                        if not r_clean.strip():
-                            r_clean = "unknown"
-                        quarantine_breakdown[r_clean] = quarantine_breakdown.get(r_clean, 0) + count
+                    # Keys are bounded by columns, never by data values (see sdoqap.common.reasons).
+                    for reason in split_reasons(row["reject_reason"]):
+                        quarantine_breakdown[reason] = quarantine_breakdown.get(reason, 0) + count
+                quarantine_breakdown = bound_breakdown(quarantine_breakdown)
                 print(f"Quarantine Breakdown: {quarantine_breakdown}")
         except Exception as e:
             print(f"Error computing quarantine breakdown: {e}")

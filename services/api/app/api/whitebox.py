@@ -65,6 +65,9 @@ STUDENT_BENCHMARK_COLUMNS = ("student_id", "course", "score", "study_hours")
 def _is_student_benchmark_schema(columns) -> bool:
     return set(STUDENT_BENCHMARK_COLUMNS).issubset(set(columns))
 
+# A column empty in more than this share of rows is optional by default (Review, not Quarantine).
+OPTIONAL_COLUMN_NULL_RATE_PCT = 50.0
+
 router = APIRouter(prefix="/api/v1/whitebox", tags=["Transparent Quality Governance"])
 
 # Robust dataset and output path resolution (works on Windows host and Linux containers)
@@ -216,6 +219,8 @@ class RuleItem(BaseModel):
 class ExecuteRulesPayload(BaseModel):
     dataset_name: str = ""
     rules: List[RuleItem]
+    # The interactive Pipeline page sets this so reviewer approvals and rejections change the result.
+    apply_reviewer_decisions: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -403,6 +408,8 @@ async def profile_uploaded_file(file: UploadFile = File(...), dataset_name: str 
         logger.warning("Could not persist uploaded dataset to %s: %s", WORKING_DATASET_PATH, exc)
     _WORKFLOW_STATE["dataset_source"] = "upload"
     _WORKFLOW_STATE["dataset_name"] = clean_ds_name
+    _WORKFLOW_STATE["active_rules"] = []
+    _reset_dataset_scoped_state()
     _save_workflow_state()
 
     profile = _compute_profile(df, clean_ds_name)
@@ -511,10 +518,9 @@ def _generate_recommendations(profile: Dict[str, Any], context: Dict[str, Any]) 
                 elif any(k in c_low for k in ("price", "salary", "income", "stock", "cost", "revenue", "amount", "fee", "balance")):
                     sug_min = 0.0
                     rec_title = f"Domain Boundary Range on {col} (>= 0)"
-                elif obs_min is not None and obs_min >= 0:
-                    sug_min = 0.0
-                    rec_title = f"Non-Negative Range on {col} (>= 0)"
                 else:
+                    # No domain evidence in the name. A ">= 0" guard on a column that has no
+                    # negative value today would flag nothing, so it is not recommended.
                     rec_title = f"Domain Range on {col}"
 
                 if sug_min is not None or sug_max is not None:
@@ -640,7 +646,9 @@ def get_default_user_context(dataset_name: Optional[str] = None, profile: Option
 
             fields_ctx[col] = {
                 "business_meaning": f"Observed field '{col}' ({dtype})",
-                "required": null_rate < 1.0,  # Required if almost no nulls observed
+                # Observed nulls are the defect to catch, not proof the field is optional.
+                # Only a column that is mostly empty is treated as optional by default.
+                "required": null_rate <= OPTIONAL_COLUMN_NULL_RATE_PCT,
                 "known_domain": False,  # Observed data is evidence, not business truth
                 "min_domain": None,
                 "max_domain": None,
@@ -685,6 +693,31 @@ def recommend_rules(payload: Optional[UserContextPayload] = None):
 # ---------------------------------------------------------------------------
 # 3. Execution & 3-Way Segregation Engine
 # ---------------------------------------------------------------------------
+def _apply_reviewer_decisions(df: pd.DataFrame) -> None:
+    """Human-in-the-loop: bulk review action first, then per-row overrides (by dirty_row_id)."""
+    review_mask = df["whitebox_status"] == "Review"
+    action = str(_WORKFLOW_STATE.get("review_action") or "KEEP").upper()
+    if action == "APPROVE":
+        df.loc[review_mask, "whitebox_rule_applied"] = "Human Approved -> Clean Asset"
+        df.loc[review_mask, "whitebox_status"] = "Valid"
+    elif action == "REJECT":
+        df.loc[review_mask, "whitebox_rule_applied"] = "Human Rejected -> Quarantine Lake"
+        df.loc[review_mask, "whitebox_status"] = "Quarantine"
+
+    for row_key, decision in (_WORKFLOW_STATE.get("row_decisions") or {}).items():
+        try:
+            row_id = int(str(row_key).replace("#", ""))
+        except ValueError:
+            continue
+        mask = df["dirty_row_id"] == row_id
+        if str(decision).upper() == "APPROVE":
+            df.loc[mask, "whitebox_status"] = "Valid"
+            df.loc[mask, "whitebox_rule_applied"] = f"Row #{row_id} Approved by Reviewer"
+        elif str(decision).upper() == "REJECT":
+            df.loc[mask, "whitebox_status"] = "Quarantine"
+            df.loc[mask, "whitebox_rule_applied"] = f"Row #{row_id} Quarantined by Reviewer"
+
+
 @router.post("/execute", dependencies=[Depends(require_session)])
 def execute_pipeline(payload: ExecuteRulesPayload):
     """
@@ -796,6 +829,9 @@ def execute_pipeline(payload: ExecuteRulesPayload):
             df.loc[affected, "whitebox_status"] = target_status
             df.loc[affected, "whitebox_error_type"] = f"Inconsistent {field}"
             df.loc[affected, "whitebox_rule_applied"] = f"Category Consistency ({field})"
+
+    if payload.apply_reviewer_decisions:
+        _apply_reviewer_decisions(df)
 
     # Segregate into 3 explicit data assets
     df_clean = df[df["whitebox_status"] == "Valid"].copy()
@@ -1312,10 +1348,27 @@ def run_all_stages():
 # ---------------------------------------------------------------------------
 from fastapi.responses import FileResponse
 
+# Reviewer work that only makes sense for the dataset it was done on. POST /state ignores
+# keys that are not present, so these must always exist (also on a fresh install).
+def _dataset_scoped_defaults() -> Dict[str, Any]:
+    return {
+        "selected_findings": {"range": True, "duplicate": True, "outlier": True},
+        "rule1_confirmed": True,
+        "rule2_confirmed": True,
+        "rule3_confirmed": True,
+        "confirmed_at": None,
+        "review_action": "KEEP",  # "KEEP" | "APPROVE" | "REJECT"
+        "row_decisions": {},
+        "row_edits": {},
+        "upstream_ticket_sent": False,
+    }
+
+
 _WORKFLOW_STATE: Dict[str, Any] = {
     "dataset_name": "",
     "dataset_source": "",
-    # Workflow state is populated dynamically when a dataset is loaded
+    **_dataset_scoped_defaults(),
+    # Rules and the dataset itself are populated dynamically when a dataset is loaded
 }
 
 _WORKFLOW_STATE_PATH = os.path.join(OUTPUT_DIR, "workflow_state.json")
@@ -1329,6 +1382,11 @@ def _save_workflow_state() -> None:
         os.replace(tmp_path, _WORKFLOW_STATE_PATH)
     except OSError as exc:
         logger.warning("Could not persist workflow state to %s: %s", _WORKFLOW_STATE_PATH, exc)
+
+
+def _reset_dataset_scoped_state() -> None:
+    """Put reviewer work back to defaults so a new dataset never inherits the old one's decisions."""
+    _WORKFLOW_STATE.update(_dataset_scoped_defaults())
 
 
 def _load_workflow_state() -> None:
@@ -1382,7 +1440,7 @@ def _recompute_interactive_state() -> Dict[str, Any]:
     and returns the complete live metrics for /ingestion, /rules, /pipeline, /export, and /dashboard.
     """
     ds_name = _WORKFLOW_STATE.get("dataset_name", "generic_dataset")
-    if ds_name in _UPLOADED_DATASETS:
+    if _WORKFLOW_STATE.get("dataset_source") != "evaluation" and ds_name in _UPLOADED_DATASETS:
         df = _UPLOADED_DATASETS[ds_name].copy()
     elif _WORKFLOW_STATE.get("dataset_source") == "upload" and os.path.isfile(WORKING_DATASET_PATH):
         df = pd.read_csv(WORKING_DATASET_PATH)
@@ -1415,8 +1473,15 @@ def _recompute_interactive_state() -> Dict[str, Any]:
         _save_workflow_state()
 
     rule_items = [RuleItem(**r) if isinstance(r, dict) else r for r in (active_rules or [])]
-    payload = ExecuteRulesPayload(dataset_name=ds_name, rules=rule_items)
+    payload = ExecuteRulesPayload(dataset_name=ds_name, rules=rule_items, apply_reviewer_decisions=True)
     exec_res = execute_pipeline(payload)
+
+    # Gate 2 is the duplicate gate: it only counts duplicates that the active rule quarantines.
+    quarantine_total = exec_res.get("quarantine_rows", 0)
+    dedup_quarantines = any(r.rule_type == "composite_unique" and r.accepted and r.action.lower() == "quarantine"
+                            for r in rule_items)
+    gate2_quarantined = min(exec_res.get("error_distribution", {}).get("Duplicate", 0), quarantine_total) if dedup_quarantines else 0
+    gate1_quarantined = quarantine_total - gate2_quarantined
 
     metrics = {
         "total_rows": total_rows,
@@ -1428,10 +1493,10 @@ def _recompute_interactive_state() -> Dict[str, Any]:
         "invalid_range_count": sum(v for k, v in exec_res.get("error_distribution", {}).items() if "Range" in k),
         "duplicate_count": exec_res.get("error_distribution", {}).get("Duplicate", 0),
         "initial_outlier_count": sum(v for k, v in exec_res.get("error_distribution", {}).items() if "Outlier" in k),
-        "gate1_quarantined": exec_res.get("quarantine_rows", 0),
-        "gate1_passed": total_rows - exec_res.get("quarantine_rows", 0),
-        "gate2_quarantined": 0,
-        "gate2_passed": total_rows,
+        "gate1_quarantined": gate1_quarantined,
+        "gate1_passed": total_rows - gate1_quarantined,
+        "gate2_quarantined": gate2_quarantined,
+        "gate2_passed": total_rows - quarantine_total,
         "sample_clean": exec_res.get("sample_clean") or (pd.read_csv(os.path.join(OUTPUT_DIR, "clean_dataset_run.csv")).head(5).to_dict(orient="records") if os.path.isfile(os.path.join(OUTPUT_DIR, "clean_dataset_run.csv")) else []),
         "sample_review": exec_res.get("sample_review", []),
         "sample_quarantine": exec_res.get("sample_quarantined", [])
@@ -1451,6 +1516,12 @@ def update_workflow_state(payload: Dict[str, Any] = Body(default_factory=dict)):
         if source in ("evaluation", "upload") and source != _WORKFLOW_STATE.get("dataset_source"):
             _WORKFLOW_STATE["dataset_source"] = source
             _LATEST_PROFILING.clear()
+            if source == "evaluation":
+                # Rules and the dataset name belong to the uploaded file; drop them so the
+                # engine regenerates rules for the evaluation dataset instead of reusing them.
+                _WORKFLOW_STATE["dataset_name"] = "student_course_score"
+                _WORKFLOW_STATE["active_rules"] = []
+            _reset_dataset_scoped_state()
         payload = {k: v for k, v in payload.items() if k != "dataset_source"}
     for k, v in payload.items():
         if k in _WORKFLOW_STATE:
@@ -1564,6 +1635,7 @@ async def upload_csv_dataset(
     _WORKFLOW_STATE["dataset_source"] = "upload"
     _WORKFLOW_STATE["dataset_name"] = clean_tbl
     _WORKFLOW_STATE["source_type"] = "FILE_UPLOAD"
+    _reset_dataset_scoped_state()
     _save_workflow_state()
     _LATEST_PROFILING.clear()
     prof = _compute_profile(df_up, clean_tbl)

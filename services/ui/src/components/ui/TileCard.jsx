@@ -19,6 +19,7 @@ export default function TileCard({
   onClick = null,
   footerSlot = null
 }) {
+  const showRing = percent !== null; // pass percent={null} when there is no real percentage to show
   const safePct = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
   const radius = 13;
   const circumference = 2 * Math.PI * radius;
@@ -70,6 +71,7 @@ export default function TileCard({
           </div>
 
           {/* Compact Circular Ring */}
+          {showRing && (
           <div style={{ position: "relative", width: "30px", height: "30px", flexShrink: 0 }} title={`${safePct}%`}>
             <svg width="30" height="30" viewBox="0 0 30 30">
               <circle cx="15" cy="15" r={radius} fill="none" stroke="#F1F5F9" strokeWidth="2.5" />
@@ -101,6 +103,7 @@ export default function TileCard({
               {safePct}%
             </span>
           </div>
+          )}
         </div>
 
         {subtitle && (

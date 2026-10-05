@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { useApi, postApi } from "../hooks/useApi";
 import ConfirmationModal from "../components/ConfirmationModal";
 import TileCard from "../components/ui/TileCard";
+import RuleGroupCard from "../components/ui/RuleGroupCard";
 import { PageHeader, InfoHint, NextStepLink } from "../components/ui";
 import "./RulesConfig.css";
 
@@ -169,6 +170,43 @@ export default function RulesConfig() {
       copy[index] = { ...copy[index], accepted };
       return copy;
     });
+  };
+
+  // The same kind of rule on many columns is shown as one card (2+ columns), so the page
+  // lists a handful of decisions instead of one card per column.
+  const indexedGenericRules = wbGenericRules.map((r, idx) => ({ r, idx }));
+  const RULE_GROUPS = [
+    {
+      type: "null_check", label: "ความสมบูรณ์", iconName: "alert", subtitleLabel: "ห้ามว่าง (NOT NULL)",
+      gradient: "linear-gradient(135deg, #DC2626 0%, #F87171 100%)",
+      title: (n) => `ห้ามมีค่าว่าง ${n} คอลัมน์`
+    },
+    {
+      type: "range_check", label: "ขอบเขตค่า", iconName: "chart", subtitleLabel: "ช่วงค่าที่ยอมรับ",
+      gradient: "linear-gradient(135deg, #7E22CE 0%, #C084FC 100%)",
+      title: (n) => `ขอบเขตค่า ${n} คอลัมน์`
+    },
+    {
+      type: "auto_iqr", label: "ค่าผิดปกติ", iconName: "clock", subtitleLabel: "ส่ง Review เมื่อเกินรั้วสถิติ",
+      gradient: "linear-gradient(135deg, #D97706 0%, #FBBF24 100%)",
+      title: (n) => `ค่าผิดปกติ ${n} คอลัมน์`
+    }
+  ];
+  const ruleGroups = RULE_GROUPS
+    .map((g) => ({ ...g, entries: indexedGenericRules.filter(({ r }) => r.rule_type === g.type) }))
+    .filter((g) => g.entries.length >= 2);
+  const groupedTypes = new Set(ruleGroups.map((g) => g.type));
+  const ruleCardEntries = indexedGenericRules.filter(({ r }) => !groupedTypes.has(r.rule_type));
+
+  const setAllRulesAccepted = (type, accepted) => {
+    setWbGenericRules((prev) => prev.map((r) => (r.rule_type === type ? { ...r, accepted } : r)));
+  };
+
+  // One Tukey multiplier for every outlier rule at once; each column can still be edited alone.
+  const setAllIqrMultiplier = (multiplier) => {
+    setWbGenericRules((prev) => prev.map((r) => (
+      r.rule_type === "auto_iqr" ? { ...r, parameters: { ...r.parameters, multiplier } } : r
+    )));
   };
 
   const updateGenericRuleParam = (index, paramKey, paramValue) => {
@@ -749,14 +787,14 @@ export default function RulesConfig() {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
                 <div>
                   <strong style={{ fontSize: "13px", color: "#0F172A" }}>
-                    คำแนะนำกฎคุณภาพข้อมูลจากผลการสำรวจ (Profile-Driven Rule Recommendations)
+                    คำแนะนำกฎคุณภาพข้อมูลจากผลการสำรวจ
                   </strong>
                   <p style={{ margin: "2px 0 0 0", fontSize: "11px", color: "#64748B" }}>
-                    ระบบวิเคราะห์จากหลักฐานโครงสร้างและสถิติจริงของ <code>{wbDatasetName}</code> โดยแยกบริบททางธุรกิจ (Business Context) ให้ผู้ใช้ควบคุมอย่างอิสระ
+                    ระบบวิเคราะห์จากหลักฐานโครงสร้างและสถิติจริงของ <code>{wbDatasetName}</code> โดยแยกบริบททางธุรกิจ ให้ผู้ใช้ควบคุมอย่างอิสระ
                   </p>
                 </div>
                 <span style={{ fontSize: "11px", background: "#EFF6FF", color: "#1D4ED8", padding: "3px 8px", borderRadius: "12px", fontWeight: 600 }}>
-                  {wbGenericRules.filter(r => r.accepted !== false).length} / {wbGenericRules.length} กฎที่เลือกใช้งาน
+                  {wbGenericRules.filter(r => r.accepted !== false).length} / {wbGenericRules.length} ข้อใช้งาน · แสดง {ruleGroups.length + ruleCardEntries.length} การ์ด
                 </span>
               </div>
             </div>
@@ -773,7 +811,54 @@ export default function RulesConfig() {
               <>
                 {/* Dynamic Generic Rule Cards */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "14px", marginBottom: "20px" }}>
-                  {wbGenericRules.map((r, idx) => {
+                  {ruleGroups.map((g, gPos) => (
+                    <RuleGroupCard
+                      key={g.type}
+                      category={`กฎที่ ${gPos + 1} · ${g.label}`}
+                      title={g.title(g.entries.length)}
+                      subtitleLabel={g.subtitleLabel}
+                      gradient={g.gradient}
+                      iconName={g.iconName}
+                      entries={g.entries}
+                      onToggleOne={toggleGenericRuleAccepted}
+                      onToggleAll={(accepted) => setAllRulesAccepted(g.type, accepted)}
+                      headerSlot={g.type === "auto_iqr" ? (
+                        <div style={{ marginBottom: "6px" }}>
+                          <label style={{ display: "block", fontSize: "10px", color: "#64748B", marginBottom: "2px" }}>ความไวของรั้วสถิติ (ทุกคอลัมน์)</label>
+                          <select
+                            aria-label="ความไวของรั้วสถิติ"
+                            value={String(g.entries[0].r.parameters?.multiplier ?? "3.0")}
+                            onChange={(e) => setAllIqrMultiplier(Number(e.target.value))}
+                            style={{ width: "100%", padding: "4px 6px", borderRadius: "4px", border: "1px solid #CBD5E1", fontSize: "11px" }}
+                          >
+                            <option value="3.0">3.0× IQR · เฉพาะค่าสุดโต่ง</option>
+                            <option value="1.5">1.5× IQR · รวมค่าเริ่มผิดปกติ</option>
+                          </select>
+                        </div>
+                      ) : null}
+                      renderRowExtra={g.type === "range_check" ? (r, idx) => (
+                        <span style={{ display: "flex", gap: "4px", flexShrink: 0 }}>
+                          <input
+                            type="number"
+                            aria-label={`${r.field} ค่าต่ำสุด`}
+                            placeholder="ต่ำสุด"
+                            value={r.parameters?.min ?? ""}
+                            onChange={(e) => updateGenericRuleParam(idx, "min", e.target.value === "" ? null : Number(e.target.value))}
+                            style={{ width: "64px", padding: "2px 4px", borderRadius: "4px", border: "1px solid #CBD5E1", fontSize: "11px" }}
+                          />
+                          <input
+                            type="number"
+                            aria-label={`${r.field} ค่าสูงสุด`}
+                            placeholder="สูงสุด"
+                            value={r.parameters?.max ?? ""}
+                            onChange={(e) => updateGenericRuleParam(idx, "max", e.target.value === "" ? null : Number(e.target.value))}
+                            style={{ width: "64px", padding: "2px 4px", borderRadius: "4px", border: "1px solid #CBD5E1", fontSize: "11px" }}
+                          />
+                        </span>
+                      ) : null}
+                    />
+                  ))}
+                  {ruleCardEntries.map(({ r, idx }, pos) => {
                     const isAccepted = r.accepted !== false;
                     const rType = r.rule_type;
                     const isQuarantine = r.action === "quarantine";
@@ -781,40 +866,40 @@ export default function RulesConfig() {
 
                     let gradient = "linear-gradient(135deg, #0284C7 0%, #38BDF8 100%)";
                     let iconName = "key";
-                    let typeLabel = "ความไม่ซ้ำ (Uniqueness)";
+                    let typeLabel = "ความไม่ซ้ำ";
 
                     if (rType === "null_check") {
                       gradient = "linear-gradient(135deg, #DC2626 0%, #F87171 100%)";
                       iconName = "alert";
-                      typeLabel = "ความสมบูรณ์ (Completeness)";
+                      typeLabel = "ความสมบูรณ์";
                     } else if (rType === "range_check") {
                       gradient = "linear-gradient(135deg, #7E22CE 0%, #C084FC 100%)";
                       iconName = "chart";
-                      typeLabel = "ขอบเขตค่า (Domain Range)";
+                      typeLabel = "ขอบเขตค่า";
                     } else if (rType === "auto_iqr") {
                       gradient = "linear-gradient(135deg, #D97706 0%, #FBBF24 100%)";
                       iconName = "clock";
-                      typeLabel = "ค่าผิดปกติ (Auto IQR)";
+                      typeLabel = "ค่าผิดปกติ";
                     } else if (rType === "category_consistency") {
                       gradient = "linear-gradient(135deg, #059669 0%, #34D399 100%)";
                       iconName = "box";
-                      typeLabel = "ความสม่ำเสมอ (Categories)";
+                      typeLabel = "ความสม่ำเสมอของหมวด";
                     } else if (rType === "freshness") {
                       gradient = "linear-gradient(135deg, #475569 0%, #94A3B8 100%)";
                       iconName = "bolt";
-                      typeLabel = "ความสดใหม่ (Freshness SLA)";
+                      typeLabel = "ความสดใหม่";
                     }
 
                     return (
                       <TileCard
                         key={idx}
-                        category={`กฎที่ ${idx + 1} · ${typeLabel}`}
+                        category={`กฎที่ ${pos + 1 + ruleGroups.length} · ${typeLabel}`}
                         title={r.recommended_rule || r.field}
                         subtitle={
                           rType === "composite_unique"
                             ? `UNIQUE (${r.field || r.parameters?.columns?.join(" + ")})`
                             : rType === "null_check"
-                              ? `NOT NULL (${r.field}) · 0% Null Tolerance`
+                              ? `ห้ามว่าง (NOT NULL) · ${r.field}`
                               : rType === "range_check"
                                 ? `${r.field} BETWEEN ${r.parameters?.min ?? "-∞"} AND ${r.parameters?.max ?? "+∞"}`
                                 : rType === "auto_iqr"
@@ -823,7 +908,7 @@ export default function RulesConfig() {
                                     ? `IN (${(r.parameters?.allowed_values || []).slice(0, 3).join(", ")})`
                                     : `SLA Freshness <= ${r.parameters?.max_delay_hours || 24}h บน ${r.field}`
                         }
-                        percent={95}
+                        percent={null}
                         gradient={gradient}
                         iconName={iconName}
                         selected={isAccepted}
@@ -837,7 +922,7 @@ export default function RulesConfig() {
                                   onChange={(e) => toggleGenericRuleAccepted(idx, e.target.checked)}
                                 />
                                 <span>
-                                  {isAccepted ? "Active · ใช้งานกฎนี้" : "Inactive · ปิดการใช้งาน"}
+                                  {isAccepted ? "ใช้งาน" : "ปิดอยู่"}
                                   <span style={{
                                     marginLeft: "6px",
                                     fontSize: "10px",
@@ -854,11 +939,11 @@ export default function RulesConfig() {
 
                             <details>
                               <summary style={{ fontSize: "11px", fontWeight: 600, color: "#2272B4", cursor: "pointer", userSelect: "none" }}>
-                                White-Box Rationale & ปรับค่าบริบทธุรกิจ
+                                เหตุผลและการปรับค่า
                               </summary>
                               <div style={{ marginTop: "8px", fontSize: "11px" }}>
                                 <div style={{ background: "#F8FAFC", padding: "8px", borderRadius: "6px", marginBottom: "8px", border: "1px solid #E2E8F0" }}>
-                                  <strong style={{ display: "block", color: "#0F172A", marginBottom: "3px", fontSize: "10.5px" }}>สิ่งที่ระบบตรวจพบ (Profiling Evidence):</strong>
+                                  <strong style={{ display: "block", color: "#0F172A", marginBottom: "3px", fontSize: "10.5px" }}>สิ่งที่ระบบตรวจพบ:</strong>
                                   <ul style={{ margin: 0, paddingLeft: "14px", color: "#475569", fontSize: "10.5px", lineHeight: "1.4" }}>
                                     {(r.rationale || []).map((line, rIdx) => <li key={rIdx}>{line}</li>)}
                                   </ul>
@@ -868,7 +953,7 @@ export default function RulesConfig() {
                                 {rType === "range_check" && (
                                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
                                     <div>
-                                      <label style={{ display: "block", fontSize: "10px", color: "#64748B" }}>ค่าต่ำสุด (Min Domain)</label>
+                                      <label style={{ display: "block", fontSize: "10px", color: "#64748B" }}>ค่าต่ำสุด</label>
                                       <input
                                         type="number"
                                         value={r.parameters?.min ?? ""}
@@ -877,7 +962,7 @@ export default function RulesConfig() {
                                       />
                                     </div>
                                     <div>
-                                      <label style={{ display: "block", fontSize: "10px", color: "#64748B" }}>ค่าสูงสุด (Max Domain)</label>
+                                      <label style={{ display: "block", fontSize: "10px", color: "#64748B" }}>ค่าสูงสุด</label>
                                       <input
                                         type="number"
                                         value={r.parameters?.max ?? ""}
@@ -890,14 +975,14 @@ export default function RulesConfig() {
 
                                 {rType === "auto_iqr" && (
                                   <div>
-                                    <label style={{ display: "block", fontSize: "10px", color: "#64748B", marginBottom: "2px" }}>ตัวคูณ Tukey Multiplier (k)</label>
+                                    <label style={{ display: "block", fontSize: "10px", color: "#64748B", marginBottom: "2px" }}>ความไวของรั้วสถิติ</label>
                                     <select
                                       value={String(r.parameters?.multiplier ?? "3.0")}
                                       onChange={(e) => updateGenericRuleParam(idx, "multiplier", Number(e.target.value))}
                                       style={{ width: "100%", padding: "4px 6px", borderRadius: "4px", border: "1px solid #CBD5E1", fontSize: "11px" }}
                                     >
-                                      <option value="3.0">3.0× IQR (Outer Fence - Extreme Outliers)</option>
-                                      <option value="1.5">1.5× IQR (Inner Fence - Mild Outliers)</option>
+                                      <option value="3.0">3.0× IQR · เฉพาะค่าสุดโต่ง</option>
+                                      <option value="1.5">1.5× IQR · รวมค่าเริ่มผิดปกติ</option>
                                     </select>
                                   </div>
                                 )}
@@ -910,23 +995,19 @@ export default function RulesConfig() {
                   })}
                 </div>
 
-                {/* Generic White-Box Traceability & Execution Table */}
-                <div style={{ overflowX: "auto", marginBottom: "12px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                    <h4 style={{ margin: 0, fontSize: "12.5px", fontWeight: 700, color: "#1E293B" }}>
-                      ตารางความสัมพันธ์และการทำงานของกฎ (Rule Execution & Traceability)
-                    </h4>
-                    <span style={{ fontSize: "11px", color: "#64748B" }}>
-                      Data → Profile → Evidence → Rule → Validation Decision
-                    </span>
-                  </div>
+                {/* Every rule with its evidence, collapsed so the cards above stay the main view */}
+                <details style={{ marginBottom: "12px" }}>
+                  <summary style={{ fontSize: "12px", fontWeight: 700, color: "#1E293B", cursor: "pointer", userSelect: "none", marginBottom: "8px" }}>
+                    ดูรายละเอียดทุกข้อ ({wbGenericRules.length})
+                  </summary>
+                  <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", textAlign: "left", background: "#FFFFFF", borderRadius: "8px", border: "1px solid #CBD5E1" }}>
                     <thead>
                       <tr style={{ borderBottom: "1px solid #CBD5E1", background: "#F8FAFC", color: "#475569", fontSize: "11.5px" }}>
-                        <th style={{ padding: "8px 10px", fontWeight: 600 }}>กฎ (Active Rule)</th>
-                        <th style={{ padding: "8px 10px", fontWeight: 600 }}>คอลัมน์ (Field)</th>
-                        <th style={{ padding: "8px 10px", fontWeight: 600 }}>หลักฐานที่พบ (Profiling Evidence)</th>
-                        <th style={{ padding: "8px 10px", fontWeight: 600 }}>การตัดสินใจ (Action)</th>
+                        <th style={{ padding: "8px 10px", fontWeight: 600 }}>กฎ</th>
+                        <th style={{ padding: "8px 10px", fontWeight: 600 }}>คอลัมน์</th>
+                        <th style={{ padding: "8px 10px", fontWeight: 600 }}>หลักฐานที่พบ</th>
+                        <th style={{ padding: "8px 10px", fontWeight: 600 }}>การตัดสินใจ</th>
                         <th style={{ padding: "8px 10px", fontWeight: 600 }}>สถานะ</th>
                       </tr>
                     </thead>
@@ -941,7 +1022,7 @@ export default function RulesConfig() {
                             <td style={{ padding: "8px 10px", fontFamily: "monospace" }}>{r.field}</td>
                             <td style={{ padding: "8px 10px", color: "#475569" }}>{(r.rationale && r.rationale[0]) || r.sources?.join(", ")}</td>
                             <td style={{ padding: "8px 10px", color: isQuarantine ? "#DC2626" : isReview ? "#D97706" : "#2563EB", fontWeight: 600 }}>
-                              {isQuarantine ? "กักกัน (Quarantine)" : isReview ? "ส่งตรวจ (Review Queue)" : "แจ้งเตือน (Warning)"}
+                              {isQuarantine ? "กักกัน" : isReview ? "ส่งตรวจ" : "แจ้งเตือน"}
                             </td>
                             <td style={{ padding: "8px 10px" }}>
                               <span style={{
@@ -960,7 +1041,8 @@ export default function RulesConfig() {
                       })}
                     </tbody>
                   </table>
-                </div>
+                  </div>
+                </details>
               </>
             )}
 

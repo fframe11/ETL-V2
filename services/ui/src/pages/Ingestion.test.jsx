@@ -35,18 +35,25 @@ it("explains a missing dataset instead of showing a server file path", async () 
   expect(screen.queryByText(/\/app\//)).toBeNull();
 });
 
-it("says the automatic checks need specific columns instead of reporting no problems", async () => {
+it("reports issues found in any dataset's own columns, not only student columns", async () => {
   await renderPage(Ingestion, "/ingestion", [
     ["/whitebox/profile", { body: {
       total_rows: 562,
       total_columns: 5,
-      columns_profile: { "วันที่": {}, "รายการสินค้า": {}, "จำนวน": {}, "ราคาต่อหน่วย": {}, "ยอดขายรวม": {} },
+      columns_profile: {
+        "วันที่": {},
+        "รายการสินค้า": { null_count: 3 },
+        "จำนวน": { outlier_count: 2 },
+        "ราคาต่อหน่วย": {},
+        "ยอดขายรวม": {}
+      },
       duplicate_analysis: { tested_composite_key: [], duplicate_rows_detected: 0 }
     } }]
   ]);
-  expect(screen.getByRole("status")).toHaveTextContent("study_hours");
-  expect(screen.queryByText(/ไม่พบปัญหา/)).toBeNull();
-  expect(screen.queryByText("ค่าว่างและช่วงค่า")).toBeNull();
+  expect(screen.getByText(/พบปัญหา 2 ด้าน/)).toHaveTextContent(/ค่าว่าง 3/);
+  expect(screen.getByText(/พบปัญหา 2 ด้าน/)).toHaveTextContent(/ผิดปกติ 2/);
+  expect(screen.queryByText(/study_hours/)).toBeNull();
+  expect(screen.queryByText(/ไม่พบปัญหาผิดปกติ/)).toBeNull();
 });
 
 it("labels the interactive API connector as a demo and shows no invented row count", async () => {

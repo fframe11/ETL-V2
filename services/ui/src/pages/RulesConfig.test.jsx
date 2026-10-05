@@ -119,3 +119,66 @@ it("approving an example proposal does not claim the rules were updated", async 
   expect(screen.queryByText(/Config updated/)).toBeNull();
   expect(screen.getByText(/no rule was changed/)).toBeTruthy();
 });
+
+const nullRule = (field, action = "quarantine") => ({
+  field, rule_type: "null_check", recommended_rule: `Strict Required (${field})`, action, accepted: true,
+  parameters: { allow_null: false }, rationale: ["x"], sources: []
+});
+const iqrRule = (field) => ({
+  field, rule_type: "auto_iqr", recommended_rule: `Statistical Auto IQR on ${field}`, action: "review", accepted: true,
+  parameters: { multiplier: 3.0 }, rationale: ["x"], sources: []
+});
+
+async function renderWithRules(active_rules) {
+  await renderPage(RulesConfig, "/rules", [["/whitebox/state", { body: { dataset_name: "t", active_rules, metrics: {} } }]]);
+  await act(async () => { await new Promise((r) => setTimeout(r, 100)); });
+}
+
+it("shows the null rules of many columns as one completeness card", async () => {
+  await renderWithRules([nullRule("a"), nullRule("b"), nullRule("c", "review"), iqrRule("a")]);
+  expect(screen.getByText("ห้ามมีค่าว่าง 3 คอลัมน์")).toBeTruthy();
+  // The traceability table still lists every rule, so the name appears once (table), not twice (card + table).
+  expect(screen.getAllByText("Strict Required (a)")).toHaveLength(1);
+  expect(screen.getAllByText("Statistical Auto IQR on a")).toHaveLength(2); // other rules keep their own card
+  expect(screen.getByText(/กฎที่ 2 · /)).toBeTruthy();               // numbering stays sequential
+});
+
+it("keeps a single null rule as its own card", async () => {
+  await renderWithRules([nullRule("a"), iqrRule("a")]);
+  expect(screen.queryByText(/ห้ามมีค่าว่าง/)).toBeNull();
+  expect(screen.getAllByText("Strict Required (a)")).toHaveLength(2); // card + table row
+});
+
+it("turns every null column on or off from the completeness card and per column", async () => {
+  await renderWithRules([nullRule("a"), nullRule("b"), nullRule("c")]);
+  expect(screen.getByText(/ใช้งาน 3 จาก 3 คอลัมน์/)).toBeTruthy();
+  fireEvent.click(screen.getByLabelText("ใช้งานทุกคอลัมน์"));
+  expect(screen.getByText(/ใช้งาน 0 จาก 3 คอลัมน์/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("checkbox", { name: "a" }));
+  expect(screen.getByText(/ใช้งาน 1 จาก 3 คอลัมน์/)).toBeTruthy();
+});
+
+const rangeRule = (field, min = 0, max = null) => ({
+  field, rule_type: "range_check", recommended_rule: `Domain Range on ${field}`, action: "quarantine", accepted: true,
+  parameters: { min, max }, rationale: ["x"], sources: []
+});
+
+it("groups outlier and range rules too, so many columns stay a handful of cards", async () => {
+  await renderWithRules([
+    nullRule("a"), nullRule("b"), rangeRule("a"), rangeRule("b"), iqrRule("a"), iqrRule("b"), iqrRule("c")
+  ]);
+  expect(screen.getByText("ห้ามมีค่าว่าง 2 คอลัมน์")).toBeTruthy();
+  expect(screen.getByText("ขอบเขตค่า 2 คอลัมน์")).toBeTruthy();
+  expect(screen.getByText("ค่าผิดปกติ 3 คอลัมน์")).toBeTruthy();
+  expect(screen.getByText(/7 \/ 7 ข้อใช้งาน · แสดง 3 การ์ด/)).toBeTruthy();
+  expect(screen.queryByText("95%")).toBeNull(); // no made-up confidence ring
+});
+
+it("sets one outlier sensitivity for every column and edits a range per column", async () => {
+  await renderWithRules([iqrRule("a"), iqrRule("b"), rangeRule("a"), rangeRule("b")]);
+  fireEvent.change(screen.getByLabelText("ความไวของรั้วสถิติ"), { target: { value: "1.5" } });
+  expect(screen.getByLabelText("ความไวของรั้วสถิติ").value).toBe("1.5");
+  fireEvent.change(screen.getByLabelText("a ค่าสูงสุด"), { target: { value: "100" } });
+  expect(screen.getByLabelText("a ค่าสูงสุด").value).toBe("100");
+  expect(screen.getByLabelText("b ค่าสูงสุด").value).toBe("");
+});

@@ -92,8 +92,11 @@ def test_generate_fails_loudly_when_the_proposal_could_not_be_stored(monkeypatch
     assert exc.value.status_code == 502
 
 
-def test_approving_an_example_proposal_does_not_claim_a_merge():
-    out = dynamic_rules.approve_proposal("prop_ai_score_bounds", _user="u")
+def test_approving_an_example_proposal_does_not_claim_a_merge(monkeypatch):
+    # The built-in examples were removed with the student presets, so register one here.
+    example = {"_id": "prop_example", "table_name": "any_table", "status": "PROPOSED", "suggested_rules": {}}
+    monkeypatch.setattr(dynamic_rules, "_FALLBACK_AI_PROPOSALS", [example])
+    out = dynamic_rules.approve_proposal("prop_example", _user="u")
     assert out["is_example"] is True
     assert "merged" not in out["message"].lower()
-    dynamic_rules.reset_ai_proposals(_user="u")  # restore the module-level sample state
+    assert example["status"] == "APPROVED"

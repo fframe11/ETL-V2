@@ -163,3 +163,63 @@ def test_profile_handles_boolean_columns():
     assert profile["columns_profile"]["arrest"]["distinct_count"] == 2
     assert "iqr" not in profile["columns_profile"]["arrest"]
     assert profile["columns_profile"]["score"]["iqr"] > 0
+
+
+def test_app_path_keeps_student_benchmark_split():
+    """The /state path builds rules from the profile, unlike the profile-less call above.
+
+    A column with a few percent of nulls (score: 300 of 10,100) must still quarantine
+    those rows, otherwise the benchmark split drifts to 9,400 / 400 / 300.
+    """
+    df = pd.read_csv(DIRTY_DATASET_PATH)
+    profile = _compute_profile(df, "student_course_score")
+    recs = _generate_recommendations(profile, get_default_user_context("student_course_score", profile))
+    res = execute_pipeline(ExecuteRulesPayload(
+        dataset_name="student_course_score", rules=[RuleItem(**r) for r in recs]))
+    assert (res["clean_rows"], res["review_rows"], res["quarantine_rows"]) == (9400, 100, 600)
+
+
+def test_mostly_empty_column_is_optional_not_quarantined():
+    df = pd.DataFrame({"id": range(10), "note": [None] * 7 + ["a", "b", "c"], "n": range(10)})
+    profile = _compute_profile(df, "notes_table")
+    recs = _generate_recommendations(profile, get_default_user_context("notes_table", profile))
+    null_rules = {r["field"]: r["action"] for r in recs if r["rule_type"] == "null_check"}
+    assert null_rules == {"note": "review"}
+
+
+def test_gate_split_counts_quarantined_duplicates_in_gate2(tmp_path, monkeypatch):
+    from app.api import whitebox
+    out = tmp_path / "out"
+    out.mkdir()
+    monkeypatch.setattr(whitebox, "OUTPUT_DIR", str(out))
+    monkeypatch.setattr(whitebox, "WORKING_DATASET_PATH", str(out / "working_dataset.csv"))
+    monkeypatch.setattr(whitebox, "_WORKFLOW_STATE_PATH", str(tmp_path / "state.json"))
+    monkeypatch.setattr(whitebox, "_WORKFLOW_STATE", dict(whitebox._WORKFLOW_STATE))
+    caches = (whitebox._LATEST_PROFILING, whitebox._LATEST_RECOMMENDATIONS, whitebox._LATEST_USER_CONTEXT)
+    saved = [dict(c) for c in caches]
+    whitebox._WORKFLOW_STATE.update(dataset_source="evaluation", dataset_name="student_course_score", active_rules=[])
+    for c in caches:
+        c.clear()
+    try:
+        m = whitebox._recompute_interactive_state()["metrics"]
+    finally:
+        for c, old in zip(caches, saved):
+            c.clear()
+            c.update(old)
+    assert m["gate2_quarantined"] == 100  # duplicates
+    assert m["gate1_quarantined"] == m["quarantine_rows"] - 100
+    assert m["gate1_passed"] - m["gate2_quarantined"] == m["gate2_passed"]
+
+
+def test_no_range_rule_that_cannot_flag_anything():
+    df = pd.DataFrame({
+        "id": range(6),
+        "weight_g": [100, 250, 300, 80, 90, 120],      # never negative, no domain hint in the name
+        "balance_delta": [5, -3, 4, 8, -1, 2],          # has negatives, no domain hint in the name
+        "price": [10, 20, 30, 40, 50, 60],              # named domain: keeps its guard
+    })
+    profile = _compute_profile(df, "t")
+    recs = _generate_recommendations(profile, get_default_user_context("t", profile))
+    range_fields = {r["field"] for r in recs if r["rule_type"] == "range_check"}
+    assert "weight_g" not in range_fields
+    assert "price" in range_fields

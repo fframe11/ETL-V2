@@ -252,9 +252,9 @@ def test_employee_dataset_generic_profiling_and_recommendations(client):
         json={"dataset_name": "employees", "rules": recs}
     ).json()
 
-    assert exec_res["quarantine_rows"] >= 2  # Duplicate + Null salary
-    assert exec_res["review_rows"] >= 1      # Salary outlier
-    assert exec_res["clean_rows"] >= 2
+    assert exec_res["quarantine_rows"] == 2  # Duplicate EMP001 + null salary
+    assert exec_res["review_rows"] == 1      # Salary outlier
+    assert exec_res["clean_rows"] == 3
 
 
 # ---------------------------------------------------------------------------
@@ -405,3 +405,52 @@ def test_evidence_vs_business_context_separation(client):
     exec_res = client.post("/api/v1/whitebox/execute", json={"dataset_name": "cust_age", "rules": [confirmed_age_rule]}).json()
     assert exec_res["quarantine_rows"] == 1  # 17 is quarantined
     assert exec_res["clean_rows"] == 3       # 25, 40, 94 are valid
+
+
+# ---------------------------------------------------------------------------
+# Reviewer decisions on the Pipeline page must change the result and must not
+# leak into the next dataset.
+# ---------------------------------------------------------------------------
+def _upload(client, name, csv_text):
+    res = client.post("/api/v1/whitebox/upload-csv",
+                      files={"file": (f"{name}.csv", csv_text.encode("utf-8"), "text/csv")},
+                      data={"table_name": name})
+    assert res.status_code == 200
+    return res
+
+
+ORDERS = "order_id,amount\nO1,10\nO2,12\nO3,11\nO4,9000\nO5,13\n"  # O4 is an outlier -> Review
+
+
+def _metrics(client):
+    return client.get("/api/v1/whitebox/state").json()["metrics"]
+
+
+def test_review_decisions_change_the_pipeline_result(client):
+    _upload(client, "orders_rev", ORDERS)
+    base = _metrics(client)
+    assert base["review_rows"] >= 1
+
+    client.post("/api/v1/whitebox/state", json={"review_action": "APPROVE"})
+    approved = _metrics(client)
+    assert approved["review_rows"] == 0
+    assert approved["clean_rows"] == base["clean_rows"] + base["review_rows"]
+
+    client.post("/api/v1/whitebox/state", json={"review_action": "REJECT"})
+    rejected = _metrics(client)
+    assert rejected["review_rows"] == 0
+    assert rejected["quarantine_rows"] == base["quarantine_rows"] + base["review_rows"]
+
+
+def test_row_decision_moves_one_row_and_resets_on_next_dataset(client):
+    _upload(client, "orders_a", ORDERS)
+    base = _metrics(client)
+    state = client.post("/api/v1/whitebox/state", json={"row_decisions": {"4": "REJECT"}}).json()
+    assert state["row_decisions"] == {"4": "REJECT"}
+    assert state["metrics"]["quarantine_rows"] >= base["quarantine_rows"]
+
+    _upload(client, "orders_b", ORDERS)
+    fresh = client.get("/api/v1/whitebox/state").json()
+    assert fresh["row_decisions"] == {}
+    assert fresh["review_action"] == "KEEP"
+    assert fresh["metrics"]["review_rows"] == base["review_rows"]

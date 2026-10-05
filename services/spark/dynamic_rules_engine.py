@@ -55,6 +55,16 @@ def _get_es_connection():
     so that Basic-Auth credentials are never leaked into request URLs.
     """
     es_url = os.getenv("ELASTICSEARCH_URL", "")
+    if not es_url:
+        # spark-submit jobs get ELASTICSEARCH_USER/PASSWORD/HOST/PORT, not a full URL. The main
+        # engine builds its URL from them; without this the base URL was "" and every log
+        # request failed with "Invalid URL ... No scheme supplied".
+        user = os.getenv("ELASTICSEARCH_USER")
+        password = os.getenv("ELASTICSEARCH_PASSWORD")
+        if user and password:
+            host = os.getenv("ELASTICSEARCH_HOST", "localhost")
+            port = os.getenv("ELASTICSEARCH_PORT", "9200")
+            return f"http://{host}:{port}", (user, password)
     parsed = urlparse(es_url)
     auth = (parsed.username, parsed.password) if parsed.username else None
     if parsed.username:

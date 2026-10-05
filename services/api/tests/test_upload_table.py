@@ -8,7 +8,7 @@ import pytest
 API_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, API_ROOT)
 
-from app.api.whitebox import _read_uploaded_table, _is_supported_schema
+from app.api.whitebox import _read_uploaded_table
 
 
 def test_reads_csv_bytes():
@@ -63,11 +63,3 @@ def test_foreign_schema_profile_is_not_confused_with_the_fixed_dataset():
     assert profile["total_rows"] == 2
     assert profile["total_columns"] == 5
     assert set(profile["columns_profile"].keys()) == set(df.columns)
-
-
-def test_supported_schema_needs_every_column_the_rule_engine_reads():
-    assert _is_supported_schema(["student_id", "course", "semester", "score", "study_hours"])
-    # _recompute_interactive_state reads df["study_hours"] unconditionally;
-    # a file without it used to be routed into the engine and 500 with KeyError.
-    assert not _is_supported_schema(["student_id", "course", "score"])
-    assert not _is_supported_schema(["วันที่", "รายการสินค้า", "จำนวน"])

@@ -20,3 +20,12 @@ it("shows no invented counts without metrics", async () => {
   await renderPage(DataExport, "/export");
   for (const fake of ["10,100", "Null 300", "Range 200"]) expect(screen.queryAllByText(new RegExp(fake))).toHaveLength(0);
 });
+
+it("names downloads after the loaded dataset instead of a sample name", async () => {
+  await renderPage(DataExport, "/export", [
+    ["/whitebox/state", { body: { dataset_name: "olist_products_dataset", metrics: { clean_rows: 3, review_rows: 0, quarantine_rows: 1 } } }]
+  ]);
+  const input = await screen.findByPlaceholderText("olist_products_dataset");
+  expect(input.value).toBe("");
+  expect(screen.queryByPlaceholderText("student_course_scores")).toBeNull();
+});

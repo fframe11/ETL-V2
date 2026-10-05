@@ -13,7 +13,7 @@ export default function DataExport() {
   const [wbState, setWbState] = useState(null);
   const [previewSearch, setPreviewSearch] = useState("");
   const [previewLimit, setPreviewLimit] = useState(20);
-  const [customFilename, setCustomFilename] = useState("student_course_scores");
+  const [customFilename, setCustomFilename] = useState(""); // empty = use the current dataset name
   const [matchedTotal, setMatchedTotal] = useState(null);
   const [zonePreviewData, setZonePreviewData] = useState(null);
   const [zonePreviewLoading, setZonePreviewLoading] = useState(false);
@@ -73,6 +73,8 @@ export default function DataExport() {
     }).catch(() => {});
   };
 
+  // Downloads are named after the dataset that was actually loaded, not a fixed sample name.
+  const defaultFilename = wbState?.dataset_name || "dataset";
   const wbMetrics = wbState?.metrics || {};
   const cleanCount = wbMetrics.clean_rows ?? 9400;
   const reviewCount = wbMetrics.review_rows ?? 100;
@@ -83,7 +85,7 @@ export default function DataExport() {
     await loadZonePreview(zone);
     const zoneKey = zone.toLowerCase();
     const rowCount = zone === "CLEAN" ? cleanCount : zone === "REVIEW" ? reviewCount : quarantineCount;
-    const basePrefix = (customFilename || "student_course_scores").trim().replace(/\.csv$/i, "");
+    const basePrefix = (customFilename || defaultFilename).trim().replace(/\.csv$/i, "");
     const filename = `${basePrefix}_${zoneKey}_${rowCount}rows.csv`;
     setExportStatus({ loading: true, message: `กำลังสร้างและดาวน์โหลดไฟล์ ${filename} (${rowCount.toLocaleString()} แถว)...` });
     try {
@@ -452,7 +454,7 @@ export default function DataExport() {
               type="text"
               value={customFilename}
               onChange={(e) => setCustomFilename(e.target.value)}
-              placeholder="student_course_scores"
+              placeholder={defaultFilename}
               style={{ width: "175px", padding: "5px 8px", borderRadius: "6px", border: "1px solid #94A3B8", fontSize: "12px", fontFamily: "monospace", background: "#FFFFFF", color: "#0F172A" }}
             />
           </div>
