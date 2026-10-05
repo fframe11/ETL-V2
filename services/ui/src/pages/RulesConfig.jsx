@@ -124,11 +124,11 @@ export default function RulesConfig() {
 
   // Interactive Rule Formulation States (Synchronized with /api/v1/whitebox/state)
   const [wbProfile, setWbProfile] = useState(null);
-  const [wbMinRange, setWbMinRange] = useState(0);
-  const [wbMaxRange, setWbMaxRange] = useState(100);
+  const [wbMinRange, setWbMinRange] = useState(null);
+  const [wbMaxRange, setWbMaxRange] = useState(null);
   const [wbNullPolicy, setWbNullPolicy] = useState("strict_0");
   const [wbMaxNullPct, setWbMaxNullPct] = useState(5.0);
-  const [wbCompositeKey, setWbCompositeKey] = useState("student_id + course + semester");
+  const [wbCompositeKey, setWbCompositeKey] = useState("");
   const [wbDedupStrategy, setWbDedupStrategy] = useState("keep_first_quarantine");
   const [wbTukeyMultiplier, setWbTukeyMultiplier] = useState("3.0");
   const [wbCustomUpperFence, setWbCustomUpperFence] = useState(12.0);
@@ -138,7 +138,49 @@ export default function RulesConfig() {
   const [wbConfirming, setWbConfirming] = useState(false);
   const [wbConfirmedAt, setWbConfirmedAt] = useState(null);
   const [wbLiveMetrics, setWbLiveMetrics] = useState(null);
-  const [wbDatasetName, setWbDatasetName] = useState("student_course_scores");
+  const [wbDatasetName, setWbDatasetName] = useState("");
+  const [wbGenericRules, setWbGenericRules] = useState([]);
+  const [wbGenericRulesLoading, setWbGenericRulesLoading] = useState(false);
+
+  const fetchGenericRecommendations = async (datasetName) => {
+    setWbGenericRulesLoading(true);
+    try {
+      const res = await fetch("/api/v1/whitebox/recommend-rules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dataset_name: datasetName })
+      });
+      if (res.ok) {
+        const d = await res.json();
+        if (d.recommendations && Array.isArray(d.recommendations)) {
+          setWbGenericRules(d.recommendations);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to fetch recommendations:", e);
+    } finally {
+      setWbGenericRulesLoading(false);
+    }
+  };
+
+  const toggleGenericRuleAccepted = (index, accepted) => {
+    setWbGenericRules((prev) => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], accepted };
+      return copy;
+    });
+  };
+
+  const updateGenericRuleParam = (index, paramKey, paramValue) => {
+    setWbGenericRules((prev) => {
+      const copy = [...prev];
+      copy[index] = {
+        ...copy[index],
+        parameters: { ...copy[index].parameters, [paramKey]: paramValue }
+      };
+      return copy;
+    });
+  };
 
   const wbTotalRows = wbProfile?.total_rows ?? wbLiveMetrics?.total_rows ?? null;
   const wbFmt = (n) => (typeof n === "number" ? n.toLocaleString() : "—");
@@ -146,8 +188,8 @@ export default function RulesConfig() {
   const syncWbState = async (overrides = {}) => {
     try {
       const payload = {
-        min_score: Number(overrides.min_score ?? (wbMinRange === "" ? 0 : wbMinRange)),
-        max_score: Number(overrides.max_score ?? (wbMaxRange === "" ? 100 : wbMaxRange)),
+        min_score: Number(overrides.min_score ?? wbMinRange),
+        max_score: Number(overrides.max_score ?? wbMaxRange),
         null_policy: overrides.null_policy ?? wbNullPolicy,
         max_null_pct: Number(overrides.max_null_pct ?? (wbMaxNullPct === "" ? 5.0 : wbMaxNullPct)),
         composite_key: overrides.composite_key ?? wbCompositeKey,
@@ -156,7 +198,8 @@ export default function RulesConfig() {
         custom_upper_fence: Number(overrides.custom_upper_fence ?? (wbCustomUpperFence === "" ? 12.0 : wbCustomUpperFence)),
         rule1_confirmed: overrides.rule1_confirmed ?? wbRule1Confirmed,
         rule2_confirmed: overrides.rule2_confirmed ?? wbRule2Confirmed,
-        rule3_confirmed: overrides.rule3_confirmed ?? wbRule3Confirmed
+        rule3_confirmed: overrides.rule3_confirmed ?? wbRule3Confirmed,
+        active_rules: wbGenericRules
       };
       const res = await fetch("/api/v1/whitebox/state", {
         method: "POST",
@@ -199,6 +242,11 @@ export default function RulesConfig() {
           if (d.rule2_confirmed !== undefined) setWbRule2Confirmed(d.rule2_confirmed);
           if (d.rule3_confirmed !== undefined) setWbRule3Confirmed(d.rule3_confirmed);
           if (d.metrics) setWbLiveMetrics(d.metrics);
+          if (d.active_rules && Array.isArray(d.active_rules) && d.active_rules.length > 0) {
+            setWbGenericRules(d.active_rules);
+          } else {
+            fetchGenericRecommendations(d.dataset_name || "generic_dataset");
+          }
         }
       })
       .catch(() => {});
@@ -207,6 +255,38 @@ export default function RulesConfig() {
   const handleConfirmWhiteBoxRules = async () => {
     setWbConfirming(true);
     try {
+      if (wbGenericRules.length > 0) {
+        const execRes = await fetch("/api/v1/whitebox/execute", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            dataset_name: wbDatasetName,
+            rules: wbGenericRules
+          })
+        });
+        if (execRes.ok) {
+          const resJson = await execRes.json();
+          setWbLiveMetrics({
+            total_rows: resJson.total_rows_ingested,
+            clean_rows: resJson.clean_rows,
+            review_rows: resJson.review_rows,
+            quarantine_rows: resJson.quarantine_rows,
+            quality_score_pct: resJson.raw_quality_score_pct
+          });
+          await fetch("/api/v1/whitebox/state", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ active_rules: wbGenericRules, confirm_rules: true })
+          });
+          setWbConfirmedAt(new Date().toLocaleTimeString());
+          setActionResult({
+            success: true,
+            message: `ยืนยันและประมวลผลกฎบน ${wbFmt(resJson.total_rows_ingested)} แถวสำเร็จ: Clean ${wbFmt(resJson.clean_rows)} แถว | Review ${wbFmt(resJson.review_rows)} แถว | Quarantine ${wbFmt(resJson.quarantine_rows)} แถว`
+          });
+          return;
+        }
+      }
+
       const updated = await syncWbState();
       setWbConfirmedAt(new Date().toLocaleTimeString());
       const m = updated?.metrics || wbLiveMetrics;
@@ -664,207 +744,225 @@ export default function RulesConfig() {
           ชุดข้อมูล <code>{wbDatasetName}</code> · {wbFmt(wbTotalRows)} แถว
         </div>
 
-        {/* 3 Databricks Tile Cards — Exact 3-Element Card Anatomy from Databricks Learn UI */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: "14px", marginBottom: "20px" }}>
-          {/* Card 1: Value Range & Completeness */}
-          <TileCard
-            category="กฎที่ 1"
-            title="ช่วงคะแนนและค่าว่าง"
-            subtitle={`score BETWEEN ${wbMinRange} AND ${wbMaxRange} AND NOT NULL`}
-            percent={95}
-            gradient="linear-gradient(135deg, #7E22CE 0%, #C084FC 100%)"
-            iconName="chart"
-            selected={wbRule1Confirmed}
-            footerSlot={
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11.5px", marginBottom: "6px" }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontWeight: 600, color: "#0F172A" }}>
-                    <input
-                      type="checkbox"
-                      checked={wbRule1Confirmed}
-                      onChange={(e) => {
-                        const val = e.target.checked;
-                        setWbRule1Confirmed(val);
-                        syncWbState({ rule1_confirmed: val });
-                      }}
-                    />
-                    <span>Active ({wbFmt(wbLiveMetrics?.gate1_quarantined)} failing rows)</span>
-                  </label>
+        {/* Generic Profile-Driven Rule Candidate Workspace */}
+            <div style={{ marginBottom: "16px", padding: "12px 14px", background: "#F8FAFC", borderRadius: "8px", border: "1px solid #E2E8F0" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+                <div>
+                  <strong style={{ fontSize: "13px", color: "#0F172A" }}>
+                    คำแนะนำกฎคุณภาพข้อมูลจากผลการสำรวจ (Profile-Driven Rule Recommendations)
+                  </strong>
+                  <p style={{ margin: "2px 0 0 0", fontSize: "11px", color: "#64748B" }}>
+                    ระบบวิเคราะห์จากหลักฐานโครงสร้างและสถิติจริงของ <code>{wbDatasetName}</code> โดยแยกบริบททางธุรกิจ (Business Context) ให้ผู้ใช้ควบคุมอย่างอิสระ
+                  </p>
                 </div>
-                <details>
-                  <summary style={{ fontSize: "11px", fontWeight: 600, color: "#2272B4", cursor: "pointer", userSelect: "none" }}>
-                    ปรับค่า
-                  </summary>
-                  <div style={{ marginTop: "8px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", fontSize: "11px" }}>
-                    <div>
-                      <label style={{ display: "block", fontSize: "10px", color: "#64748B" }}>คะแนนต่ำสุด</label>
-                      <input
-                        type="number"
-                        value={wbMinRange}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setWbMinRange(val);
-                          if (val !== "" && !isNaN(Number(val))) syncWbState({ min_score: Number(val) });
-                        }}
-                        style={{ width: "100%", padding: "4px 6px", borderRadius: "4px", border: "1px solid #CBD5E1", fontSize: "11.5px" }}
+                <span style={{ fontSize: "11px", background: "#EFF6FF", color: "#1D4ED8", padding: "3px 8px", borderRadius: "12px", fontWeight: 600 }}>
+                  {wbGenericRules.filter(r => r.accepted !== false).length} / {wbGenericRules.length} กฎที่เลือกใช้งาน
+                </span>
+              </div>
+            </div>
+
+            {wbGenericRulesLoading && wbGenericRules.length === 0 ? (
+              <div style={{ padding: "24px", textAlign: "center", color: "#64748B", fontSize: "12px" }}>
+                กำลังสร้างคำแนะนำกฎจากผลการตรวจข้อมูล...
+              </div>
+            ) : wbGenericRules.length === 0 ? (
+              <div style={{ padding: "24px", textAlign: "center", color: "#64748B", fontSize: "12px" }}>
+                ไม่พบคำแนะนำกฎสำหรับชุดข้อมูลนี้ สามารถนำเข้าไฟล์ใหม่ได้ที่หน้า Ingestion
+              </div>
+            ) : (
+              <>
+                {/* Dynamic Generic Rule Cards */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "14px", marginBottom: "20px" }}>
+                  {wbGenericRules.map((r, idx) => {
+                    const isAccepted = r.accepted !== false;
+                    const rType = r.rule_type;
+                    const isQuarantine = r.action === "quarantine";
+                    const isReview = r.action === "review";
+
+                    let gradient = "linear-gradient(135deg, #0284C7 0%, #38BDF8 100%)";
+                    let iconName = "key";
+                    let typeLabel = "ความไม่ซ้ำ (Uniqueness)";
+
+                    if (rType === "null_check") {
+                      gradient = "linear-gradient(135deg, #DC2626 0%, #F87171 100%)";
+                      iconName = "alert";
+                      typeLabel = "ความสมบูรณ์ (Completeness)";
+                    } else if (rType === "range_check") {
+                      gradient = "linear-gradient(135deg, #7E22CE 0%, #C084FC 100%)";
+                      iconName = "chart";
+                      typeLabel = "ขอบเขตค่า (Domain Range)";
+                    } else if (rType === "auto_iqr") {
+                      gradient = "linear-gradient(135deg, #D97706 0%, #FBBF24 100%)";
+                      iconName = "clock";
+                      typeLabel = "ค่าผิดปกติ (Auto IQR)";
+                    } else if (rType === "category_consistency") {
+                      gradient = "linear-gradient(135deg, #059669 0%, #34D399 100%)";
+                      iconName = "box";
+                      typeLabel = "ความสม่ำเสมอ (Categories)";
+                    } else if (rType === "freshness") {
+                      gradient = "linear-gradient(135deg, #475569 0%, #94A3B8 100%)";
+                      iconName = "bolt";
+                      typeLabel = "ความสดใหม่ (Freshness SLA)";
+                    }
+
+                    return (
+                      <TileCard
+                        key={idx}
+                        category={`กฎที่ ${idx + 1} · ${typeLabel}`}
+                        title={r.recommended_rule || r.field}
+                        subtitle={
+                          rType === "composite_unique"
+                            ? `UNIQUE (${r.field || r.parameters?.columns?.join(" + ")})`
+                            : rType === "null_check"
+                              ? `NOT NULL (${r.field}) · 0% Null Tolerance`
+                              : rType === "range_check"
+                                ? `${r.field} BETWEEN ${r.parameters?.min ?? "-∞"} AND ${r.parameters?.max ?? "+∞"}`
+                                : rType === "auto_iqr"
+                                  ? `Tukey Outer Fence (k=${r.parameters?.multiplier || 3.0}×IQR) บน ${r.field}`
+                                  : rType === "category_consistency"
+                                    ? `IN (${(r.parameters?.allowed_values || []).slice(0, 3).join(", ")})`
+                                    : `SLA Freshness <= ${r.parameters?.max_delay_hours || 24}h บน ${r.field}`
+                        }
+                        percent={95}
+                        gradient={gradient}
+                        iconName={iconName}
+                        selected={isAccepted}
+                        footerSlot={
+                          <div>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11.5px", marginBottom: "6px" }}>
+                              <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontWeight: 600, color: "#0F172A" }}>
+                                <input
+                                  type="checkbox"
+                                  checked={isAccepted}
+                                  onChange={(e) => toggleGenericRuleAccepted(idx, e.target.checked)}
+                                />
+                                <span>
+                                  {isAccepted ? "Active · ใช้งานกฎนี้" : "Inactive · ปิดการใช้งาน"}
+                                  <span style={{
+                                    marginLeft: "6px",
+                                    fontSize: "10px",
+                                    padding: "1px 5px",
+                                    borderRadius: "3px",
+                                    background: isQuarantine ? "#FEE2E2" : isReview ? "#FEF3C7" : "#E0F2FE",
+                                    color: isQuarantine ? "#B91C1C" : isReview ? "#B45309" : "#0369A1"
+                                  }}>
+                                    {isQuarantine ? "กักกัน" : isReview ? "ส่ง Review" : "แจ้งเตือน"}
+                                  </span>
+                                </span>
+                              </label>
+                            </div>
+
+                            <details>
+                              <summary style={{ fontSize: "11px", fontWeight: 600, color: "#2272B4", cursor: "pointer", userSelect: "none" }}>
+                                White-Box Rationale & ปรับค่าบริบทธุรกิจ
+                              </summary>
+                              <div style={{ marginTop: "8px", fontSize: "11px" }}>
+                                <div style={{ background: "#F8FAFC", padding: "8px", borderRadius: "6px", marginBottom: "8px", border: "1px solid #E2E8F0" }}>
+                                  <strong style={{ display: "block", color: "#0F172A", marginBottom: "3px", fontSize: "10.5px" }}>สิ่งที่ระบบตรวจพบ (Profiling Evidence):</strong>
+                                  <ul style={{ margin: 0, paddingLeft: "14px", color: "#475569", fontSize: "10.5px", lineHeight: "1.4" }}>
+                                    {(r.rationale || []).map((line, rIdx) => <li key={rIdx}>{line}</li>)}
+                                  </ul>
+                                </div>
+
+                                {/* Parameter Controls for User Business Context */}
+                                {rType === "range_check" && (
+                                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+                                    <div>
+                                      <label style={{ display: "block", fontSize: "10px", color: "#64748B" }}>ค่าต่ำสุด (Min Domain)</label>
+                                      <input
+                                        type="number"
+                                        value={r.parameters?.min ?? ""}
+                                        onChange={(e) => updateGenericRuleParam(idx, "min", e.target.value === "" ? null : Number(e.target.value))}
+                                        style={{ width: "100%", padding: "4px 6px", borderRadius: "4px", border: "1px solid #CBD5E1", fontSize: "11.5px" }}
+                                      />
+                                    </div>
+                                    <div>
+                                      <label style={{ display: "block", fontSize: "10px", color: "#64748B" }}>ค่าสูงสุด (Max Domain)</label>
+                                      <input
+                                        type="number"
+                                        value={r.parameters?.max ?? ""}
+                                        onChange={(e) => updateGenericRuleParam(idx, "max", e.target.value === "" ? null : Number(e.target.value))}
+                                        style={{ width: "100%", padding: "4px 6px", borderRadius: "4px", border: "1px solid #CBD5E1", fontSize: "11.5px" }}
+                                      />
+                                    </div>
+                                  </div>
+                                )}
+
+                                {rType === "auto_iqr" && (
+                                  <div>
+                                    <label style={{ display: "block", fontSize: "10px", color: "#64748B", marginBottom: "2px" }}>ตัวคูณ Tukey Multiplier (k)</label>
+                                    <select
+                                      value={String(r.parameters?.multiplier ?? "3.0")}
+                                      onChange={(e) => updateGenericRuleParam(idx, "multiplier", Number(e.target.value))}
+                                      style={{ width: "100%", padding: "4px 6px", borderRadius: "4px", border: "1px solid #CBD5E1", fontSize: "11px" }}
+                                    >
+                                      <option value="3.0">3.0× IQR (Outer Fence - Extreme Outliers)</option>
+                                      <option value="1.5">1.5× IQR (Inner Fence - Mild Outliers)</option>
+                                    </select>
+                                  </div>
+                                )}
+                              </div>
+                            </details>
+                          </div>
+                        }
                       />
-                    </div>
-                    <div>
-                      <label style={{ display: "block", fontSize: "10px", color: "#64748B" }}>คะแนนสูงสุด</label>
-                      <input
-                        type="number"
-                        value={wbMaxRange}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setWbMaxRange(val);
-                          if (val !== "" && !isNaN(Number(val))) syncWbState({ max_score: Number(val) });
-                        }}
-                        style={{ width: "100%", padding: "4px 6px", borderRadius: "4px", border: "1px solid #CBD5E1", fontSize: "11.5px" }}
-                      />
-                    </div>
-                  </div>
-                </details>
-              </div>
-            }
-          />
-
-          {/* Card 2: Primary Key & Deduplication */}
-          <TileCard
-            category="กฎที่ 2"
-            title="ห้ามคีย์ซ้ำ"
-            subtitle={`UNIQUE (${wbCompositeKey})`}
-            percent={99}
-            gradient="linear-gradient(135deg, #0284C7 0%, #38BDF8 100%)"
-            iconName="key"
-            selected={wbRule2Confirmed}
-            footerSlot={
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11.5px", marginBottom: "6px" }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontWeight: 600, color: "#0F172A" }}>
-                    <input
-                      type="checkbox"
-                      checked={wbRule2Confirmed}
-                      onChange={(e) => {
-                        const val = e.target.checked;
-                        setWbRule2Confirmed(val);
-                        syncWbState({ rule2_confirmed: val });
-                      }}
-                    />
-                    <span>Active ({wbFmt(wbLiveMetrics?.gate2_quarantined)} duplicate rows)</span>
-                  </label>
+                    );
+                  })}
                 </div>
-                <details>
-                  <summary style={{ fontSize: "11px", fontWeight: 600, color: "#2272B4", cursor: "pointer", userSelect: "none" }}>
-                    ปรับค่า
-                  </summary>
-                  <div style={{ marginTop: "8px", fontSize: "11px" }}>
-                    <label style={{ display: "block", fontSize: "10px", color: "#64748B", marginBottom: "3px" }}>คีย์หลัก</label>
-                    <select
-                      value={wbCompositeKey}
-                      onChange={(e) => {
-                        setWbCompositeKey(e.target.value);
-                        syncWbState({ composite_key: e.target.value });
-                      }}
-                      style={{ width: "100%", padding: "4px 6px", borderRadius: "4px", border: "1px solid #CBD5E1", fontSize: "11px" }}
-                    >
-                      <option value="student_id + course + semester">student_id + course + semester</option>
-                      <option value="record_id">record_id</option>
-                    </select>
-                  </div>
-                </details>
-              </div>
-            }
-          />
 
-          {/* Card 3: Statistical Outlier Fence */}
-          <TileCard
-            category="กฎที่ 3"
-            title="ค่าผิดปกติ"
-            subtitle={`study_hours <= Q3 + ${wbTukeyMultiplier || "3.0"} × IQR`}
-            percent={99}
-            gradient="linear-gradient(135deg, #D97706 0%, #FBBF24 100%)"
-            iconName="clock"
-            selected={wbRule3Confirmed}
-            footerSlot={
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11.5px", marginBottom: "6px" }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontWeight: 600, color: "#0F172A" }}>
-                    <input
-                      type="checkbox"
-                      checked={wbRule3Confirmed}
-                      onChange={(e) => {
-                        const val = e.target.checked;
-                        setWbRule3Confirmed(val);
-                        syncWbState({ rule3_confirmed: val });
-                      }}
-                    />
-                    <span>Active ({wbFmt(wbLiveMetrics?.initial_outlier_count)} review rows)</span>
-                  </label>
+                {/* Generic White-Box Traceability & Execution Table */}
+                <div style={{ overflowX: "auto", marginBottom: "12px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                    <h4 style={{ margin: 0, fontSize: "12.5px", fontWeight: 700, color: "#1E293B" }}>
+                      ตารางความสัมพันธ์และการทำงานของกฎ (Rule Execution & Traceability)
+                    </h4>
+                    <span style={{ fontSize: "11px", color: "#64748B" }}>
+                      Data → Profile → Evidence → Rule → Validation Decision
+                    </span>
+                  </div>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", textAlign: "left", background: "#FFFFFF", borderRadius: "8px", border: "1px solid #CBD5E1" }}>
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid #CBD5E1", background: "#F8FAFC", color: "#475569", fontSize: "11.5px" }}>
+                        <th style={{ padding: "8px 10px", fontWeight: 600 }}>กฎ (Active Rule)</th>
+                        <th style={{ padding: "8px 10px", fontWeight: 600 }}>คอลัมน์ (Field)</th>
+                        <th style={{ padding: "8px 10px", fontWeight: 600 }}>หลักฐานที่พบ (Profiling Evidence)</th>
+                        <th style={{ padding: "8px 10px", fontWeight: 600 }}>การตัดสินใจ (Action)</th>
+                        <th style={{ padding: "8px 10px", fontWeight: 600 }}>สถานะ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {wbGenericRules.map((r, rIdx) => {
+                        const isAccepted = r.accepted !== false;
+                        const isQuarantine = r.action === "quarantine";
+                        const isReview = r.action === "review";
+                        return (
+                          <tr key={rIdx} style={{ borderBottom: "1px solid #F1F5F9", opacity: isAccepted ? 1 : 0.5 }}>
+                            <td style={{ padding: "8px 10px", color: "#2272B4", fontWeight: 600 }}>{r.recommended_rule || r.field}</td>
+                            <td style={{ padding: "8px 10px", fontFamily: "monospace" }}>{r.field}</td>
+                            <td style={{ padding: "8px 10px", color: "#475569" }}>{(r.rationale && r.rationale[0]) || r.sources?.join(", ")}</td>
+                            <td style={{ padding: "8px 10px", color: isQuarantine ? "#DC2626" : isReview ? "#D97706" : "#2563EB", fontWeight: 600 }}>
+                              {isQuarantine ? "กักกัน (Quarantine)" : isReview ? "ส่งตรวจ (Review Queue)" : "แจ้งเตือน (Warning)"}
+                            </td>
+                            <td style={{ padding: "8px 10px" }}>
+                              <span style={{
+                                padding: "2px 6px",
+                                borderRadius: "4px",
+                                fontSize: "11px",
+                                fontWeight: 600,
+                                background: isAccepted ? "#ECFDF5" : "#F1F5F9",
+                                color: isAccepted ? "#047857" : "#64748B"
+                              }}>
+                                {isAccepted ? "✓ เปิดใช้งาน" : "✕ ปิดไว้"}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
-                <details>
-                  <summary style={{ fontSize: "11px", fontWeight: 600, color: "#2272B4", cursor: "pointer", userSelect: "none" }}>
-                    ปรับค่า
-                  </summary>
-                  <div style={{ marginTop: "8px", fontSize: "11px" }}>
-                    <label style={{ display: "block", fontSize: "10px", color: "#64748B", marginBottom: "3px" }}>ตัวคูณ k<InfoHint text="ใช้ Tukey fence: ค่าที่เกิน Q3 + k×IQR ถูกส่งไป Review k=3.0 เข้มน้อยกว่า k=1.5" /></label>
-                    <select
-                      value={wbTukeyMultiplier}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setWbTukeyMultiplier(val);
-                        const fence = val === "3.0" ? 12.0 : val === "1.5" ? 9.0 : wbCustomUpperFence;
-                        setWbCustomUpperFence(fence);
-                        syncWbState({ tukey_multiplier: val, custom_upper_fence: Number(fence) });
-                      }}
-                      style={{ width: "100%", padding: "4px 6px", borderRadius: "4px", border: "1px solid #CBD5E1", fontSize: "11px" }}
-                    >
-                      <option value="3.0">3.0× IQR (&gt; 12.0h)</option>
-                      <option value="1.5">1.5× IQR (&gt; 9.0h)</option>
-                    </select>
-                  </div>
-                </details>
-              </div>
-            }
-          />
-        </div>
-
-        {/* Databricks Borderless Table Summary (Matches Screenshot 2 Workspace Table View) */}
-        <div style={{ overflowX: "auto", marginBottom: "12px" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12.5px", textAlign: "left" }}>
-            <thead>
-              <tr style={{ borderBottom: "1px solid #CBD5E1", color: "#475569", fontSize: "11.5px" }}>
-                <th style={{ padding: "8px 10px", fontWeight: 600 }}>กฎ</th>
-                <th style={{ padding: "8px 10px", fontWeight: 600 }}>คอลัมน์</th>
-                <th style={{ padding: "8px 10px", fontWeight: 600 }}>เมื่อไม่ผ่าน</th>
-                <th style={{ padding: "8px 10px", fontWeight: 600 }}>แถวที่ติด</th>
-                <th style={{ padding: "8px 10px", fontWeight: 600 }}>ผ่าน</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr style={{ borderBottom: "1px solid #F1F5F9" }}>
-                <td style={{ padding: "9px 10px", color: "#2272B4", fontWeight: 600 }}>valid_score_range_and_not_null</td>
-                <td style={{ padding: "9px 10px", fontFamily: "monospace" }}>score</td>
-                <td style={{ padding: "9px 10px", color: "#DC2626" }}>กักกัน</td>
-                <td style={{ padding: "9px 10px" }}>{wbFlaggedText(wbLiveMetrics?.gate1_quarantined)}</td>
-                <td style={{ padding: "9px 10px", fontWeight: 600 }}>{wbPassRateText(wbLiveMetrics?.gate1_quarantined)}</td>
-              </tr>
-              <tr style={{ borderBottom: "1px solid #F1F5F9" }}>
-                <td style={{ padding: "9px 10px", color: "#2272B4", fontWeight: 600 }}>unique_composite_student_key</td>
-                <td style={{ padding: "9px 10px", fontFamily: "monospace" }}>{wbCompositeKey}</td>
-                <td style={{ padding: "9px 10px", color: "#DC2626" }}>กักกันแถวซ้ำ</td>
-                <td style={{ padding: "9px 10px" }}>{wbFlaggedText(wbLiveMetrics?.gate2_quarantined)}</td>
-                <td style={{ padding: "9px 10px", fontWeight: 600 }}>{wbPassRateText(wbLiveMetrics?.gate2_quarantined)}</td>
-              </tr>
-              <tr style={{ borderBottom: "1px solid #F1F5F9" }}>
-                <td style={{ padding: "9px 10px", color: "#2272B4", fontWeight: 600 }}>study_hours_tukey_iqr_fence</td>
-                <td style={{ padding: "9px 10px", fontFamily: "monospace" }}>study_hours</td>
-                <td style={{ padding: "9px 10px", color: "#D97706" }}>ส่ง Review</td>
-                <td style={{ padding: "9px 10px" }}>{wbFlaggedText(wbLiveMetrics?.initial_outlier_count)}</td>
-                <td style={{ padding: "9px 10px", fontWeight: 600 }}>{wbPassRateText(wbLiveMetrics?.initial_outlier_count)}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+              </>
+            )}
 
           <div className="gs-rules-next">
             <NextStepLink from="rules" />

@@ -1,0 +1,26 @@
+# ==============================================================================
+# 📦 .gitattributes - Clean Client Delivery & Anti-Build-Pollution Rules
+# These files exist for local engineering safety, but are automatically stripped
+# from the client delivery archive when running: git archive -o delivery-package.zip HEAD
+# ==============================================================================
+
+# 1. Agent & Operational Rules (Strip from client)
+CLAUDE.md export-ignore
+GEMINI.md export-ignore
+.gemini/ export-ignore
+
+# 2. Local Safety & Backup Scripts (Strip from client)
+backup-project.ps1 export-ignore
+watch-autocommit.ps1 export-ignore
+export-clean-delivery.ps1 export-ignore
+audit-ai-slop.ps1 export-ignore
+audit-mermaid-parity.ps1 export-ignore
+audit-architecture-boundaries.ps1 export-ignore
+.dependency-cruiser.js export-ignore
+
+# 3. CI/CD & Local Testing (Strip if client requests pure application code)
+.github/ export-ignore
+*.bak export-ignore
+logs/ export-ignore
+test/concurrency/ export-ignore
+e2e/ export-ignore

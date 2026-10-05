@@ -24,12 +24,11 @@ function HistoryPager({ page, pages, total, onChange }) {
   );
 }
 
-const ZONE_ROW_COLUMNS = [
-  { key: "dirty_row_id", label: "Row ID" },
-  { key: "student_id", label: "รหัสนักศึกษา" },
-  { key: "course", label: "วิชา" },
-  { key: "score", label: "คะแนน" },
-  { key: "study_hours", label: "ชม.เรียน" },
+const ZONE_META_COLUMNS = [
+  { key: "dirty_row_id", label: "Row ID" }
+];
+
+const ZONE_STATUS_COLUMNS = [
   { key: "whitebox_status", label: "โซนปัจจุบัน" },
   { key: "whitebox_error_type", label: "ประเภทปัญหา" },
   { key: "whitebox_rule_applied", label: "เหตุผล" }
@@ -162,6 +161,9 @@ export default function Pipeline() {
   const invalidRangeCount = m?.invalid_range_count ?? null;
   const fmt = (n) => (typeof n === "number" ? n.toLocaleString() : "—");
   const pct = (n) => (typeof n === "number" && totalRows ? Math.round((n / totalRows) * 100) : 0);
+
+  const activeRangeCol = wbState?.active_rules?.find(r => r.rule_type === "range_check")?.field || "";
+  const activeOutlierCol = wbState?.active_rules?.find(r => r.rule_type === "auto_iqr")?.field || "";
 
   useEffect(() => {
     fetch('/api/v1/whitebox/benchmark')
@@ -299,7 +301,7 @@ export default function Pipeline() {
             <TileCard
               category="Clean"
               title={`${fmt(cleanRowsCount)} แถว`}
-              subtitle={`score ${wbState?.min_score ?? 0}–${wbState?.max_score ?? 100} · ไม่มีค่าว่าง`}
+              subtitle={activeRangeCol ? `${activeRangeCol} ในช่วงปกติ · ไม่มีค่าว่าง` : `ข้อมูลสมบูรณ์ · ผ่านเกณฑ์ทั้งหมด`}
               percent={pct(cleanRowsCount)}
               gradient="linear-gradient(135deg, #059669 0%, #34D399 100%)"
               iconName="check"
@@ -320,7 +322,7 @@ export default function Pipeline() {
             <TileCard
               category="Review"
               title={`${fmt(reviewRowsCount)} แถว`}
-              subtitle="study_hours สูงผิดปกติ"
+              subtitle={activeOutlierCol ? `${activeOutlierCol} ค่าผิดปกติ` : `รอตรวจสอบ`}
               percent={Math.max(1, pct(reviewRowsCount))}
               gradient="linear-gradient(135deg, #D97706 0%, #FBBF24 100%)"
               iconName="search"
@@ -361,7 +363,7 @@ export default function Pipeline() {
                       คืนค่า
                     </button>
                   )}
-                  <InfoHint text={`แถวที่ study_hours เกิน Q3 + ${wbState?.tukey_multiplier || "3.0"}×IQR ถูกส่งให้คนตรวจแทนการลบทิ้ง`} />
+                  <InfoHint text={`แถวที่เกินขอบเขตปกติ (Tukey IQR) ถูกส่งให้คนตรวจแทนการลบทิ้ง`} />
                 </div>
               }
             />
@@ -371,6 +373,7 @@ export default function Pipeline() {
               category="Quarantine"
               title={`${fmt(quarantineRowsCount)} แถว`}
               subtitle={`ค่าว่าง ${fmt(missingScoreCount)} · นอกช่วง ${fmt(invalidRangeCount)} · ซ้ำ ${fmt(gate2Quarantined)}`}
+
               percent={pct(quarantineRowsCount)}
               gradient="linear-gradient(135deg, #DC2626 0%, #F87171 100%)"
               iconName="alert"
@@ -408,7 +411,7 @@ export default function Pipeline() {
                   type="text"
                   value={recordSearch}
                   onChange={(e) => setRecordSearch(e.target.value)}
-                  placeholder="ค้นหา Row ID, รหัสนักศึกษา, วิชา"
+                  placeholder="ค้นหา Row ID หรือค่าอื่น"
                   style={{
                     padding: '4px 10px',
                     borderRadius: '6px',
@@ -448,7 +451,12 @@ export default function Pipeline() {
             </div>
             <div style={{ overflowX: 'auto' }}>
               {(() => {
-                const displayCols = ZONE_ROW_COLUMNS.filter(c => zoneData?.columns?.includes(c.key));
+                const dataCols = (zoneData?.columns || []).filter(c => !ZONE_META_COLUMNS.find(m => m.key === c) && !ZONE_STATUS_COLUMNS.find(m => m.key === c));
+                const dynamicCols = dataCols.slice(0, 4).map(k => ({ key: k, label: k }));
+                
+                const allDisplayCols = [...ZONE_META_COLUMNS, ...dynamicCols, ...ZONE_STATUS_COLUMNS];
+                
+                const displayCols = allDisplayCols.filter(c => zoneData?.columns?.includes(c.key));
                 const cols = displayCols.length > 0 ? displayCols : (zoneData?.columns || []).slice(0, 6).map(k => ({ key: k, label: k }));
                 const rows = zoneData?.rows || [];
                 return (

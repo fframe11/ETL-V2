@@ -58,14 +58,12 @@ def _read_uploaded_table(filename: str, content: bytes) -> pd.DataFrame:
         raise ValueError(f"ไม่สามารถอ่านไฟล์ CSV ได้: {e}")
 
 
-# Columns the quality-rule engine (_recompute_interactive_state) reads
-# directly. A file missing any of them can be profiled, but must not be
-# sent into the engine.
-QUALITY_ENGINE_COLUMNS = ("student_id", "course", "score", "study_hours")
+# Columns of the student benchmark evaluation dataset.
+STUDENT_BENCHMARK_COLUMNS = ("student_id", "course", "score", "study_hours")
 
 
-def _is_supported_schema(columns) -> bool:
-    return set(QUALITY_ENGINE_COLUMNS).issubset(set(columns))
+def _is_student_benchmark_schema(columns) -> bool:
+    return set(STUDENT_BENCHMARK_COLUMNS).issubset(set(columns))
 
 router = APIRouter(prefix="/api/v1/whitebox", tags=["Transparent Quality Governance"])
 
@@ -75,6 +73,7 @@ def _resolve_dataset_dir() -> str:
         os.path.join(os.getcwd(), "student_course_score_evaluation_dataset"),
         os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "student_course_score_evaluation_dataset")),
         os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "student_course_score_evaluation_dataset")),
+        os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..", "student_course_score_evaluation_dataset")),
         os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..", "data", "evaluation", "student_course_score_evaluation_dataset")),
         "/app/student_course_score_evaluation_dataset",
         "/tmp/student_course_score_evaluation_dataset"
@@ -134,8 +133,14 @@ def _restore_seed_csvs() -> None:
 def _generate_demo_demographics() -> None:
     """Synthetic master table for the multi-table demo, keyed on the evaluation dataset's student_id."""
     source = CLEAN_DATASET_PATH if os.path.isfile(CLEAN_DATASET_PATH) else DIRTY_DATASET_PATH
-    if os.path.isfile(DEMOGRAPHICS_DATASET_PATH) or not os.path.isfile(source):
+    if not os.path.isfile(source):
         return
+    if os.path.isfile(DEMOGRAPHICS_DATASET_PATH):
+        try:
+            if len(pd.read_csv(DEMOGRAPHICS_DATASET_PATH, usecols=["studentId"])) == 9980:
+                return
+        except Exception:
+            pass
     ids = pd.to_numeric(pd.read_csv(source, usecols=["student_id"])["student_id"], errors="coerce").dropna().astype(int).unique()
     # Leave every 500th student out so the demo shows unmatched keys instead of a trivial 100% match.
     ids = np.sort(ids[ids % 500 != 0])
@@ -165,6 +170,7 @@ _LATEST_USER_CONTEXT: Dict[str, Any] = {}
 _LATEST_RECOMMENDATIONS: Dict[str, Any] = {}
 _LATEST_EXECUTION_RESULTS: Dict[str, Any] = {}
 _LATEST_MULTI_TABLE_ANALYSIS: Dict[str, Any] = {}
+_UPLOADED_DATASETS: Dict[str, pd.DataFrame] = {}
 
 # Helper function to sanitize any NaN / Inf float values into None for RFC-compliant JSON serialization
 def _clean_for_json(obj: Any) -> Any:
@@ -189,25 +195,26 @@ class FieldContext(BaseModel):
 
 
 class UserContextPayload(BaseModel):
-    dataset_name: str = "student_course_score"
-    data_purpose: str = "Official Grade Reporting"
-    criticality: str = "Critical"
+    dataset_name: str = ""
+    data_purpose: str = "Operational Pipeline"
+    criticality: str = "Standard"
     update_frequency: str = "Daily Batch (<= 24h)"
     field_contexts: Dict[str, FieldContext] = Field(default_factory=dict)
 
 
 class RuleItem(BaseModel):
     field: str
-    rule_type: str  # range_check, null_check, auto_iqr, composite_unique, freshness
-    parameters: Dict[str, Any]
+    rule_type: str  # range_check, null_check, auto_iqr, composite_unique, freshness, category_consistency
+    recommended_rule: Optional[str] = None
+    parameters: Dict[str, Any] = Field(default_factory=dict)
     action: str = "quarantine"  # quarantine, review, warning
-    rationale: List[str]
-    sources: List[str]
+    rationale: List[str] = Field(default_factory=list)
+    sources: List[str] = Field(default_factory=list)
     accepted: bool = True
 
 
 class ExecuteRulesPayload(BaseModel):
-    dataset_name: str = "student_course_score"
+    dataset_name: str = ""
     rules: List[RuleItem]
 
 
@@ -229,15 +236,26 @@ def _compute_profile(df: pd.DataFrame, dataset_name: str) -> Dict[str, Any]:
         unique_rate_pct = round((distinct_count / total_rows) * 100, 2) if total_rows > 0 else 0.0
 
         # Infer broad type
-        # bool counts as numeric to pandas but has no quantiles/fences, so keep it out of the numeric branch
         is_numeric = pd.api.types.is_numeric_dtype(series) and not pd.api.types.is_bool_dtype(series)
-        inferred_type = "String"
-        if pd.api.types.is_integer_dtype(series):
+        is_bool = pd.api.types.is_bool_dtype(series)
+        col_lower = str(col).lower()
+
+        if is_bool:
+            inferred_type = "Boolean"
+        elif col_lower.endswith("_id") or col_lower == "id":
+            inferred_type = "Identifier"
+        elif pd.api.types.is_integer_dtype(series):
             inferred_type = "Integer"
         elif pd.api.types.is_float_dtype(series):
             inferred_type = "Float"
-        elif "date" in col.lower() or "time" in col.lower():
+        elif any(k in col_lower for k in ("date", "time", "timestamp", "_at", "dob")):
             inferred_type = "Date"
+        elif not is_numeric and (unique_rate_pct >= 85 and total_rows >= 5):
+            inferred_type = "Identifier"
+        elif not is_numeric and distinct_count <= 25 and total_rows > 0:
+            inferred_type = "Categorical"
+        else:
+            inferred_type = "String"
 
         schema_info[col] = inferred_type
 
@@ -252,7 +270,7 @@ def _compute_profile(df: pd.DataFrame, dataset_name: str) -> Dict[str, Any]:
         }
 
         if is_numeric:
-            clean_series = series.dropna()
+            clean_series = pd.to_numeric(series, errors="coerce").dropna()
             if len(clean_series) > 0:
                 min_val = float(clean_series.min())
                 max_val = float(clean_series.max())
@@ -280,16 +298,39 @@ def _compute_profile(df: pd.DataFrame, dataset_name: str) -> Dict[str, Any]:
                     "outlier_count": outlier_count,
                     "outlier_rate_pct": outlier_rate_pct,
                 })
+        elif inferred_type == "Categorical" or (not is_numeric and distinct_count <= 25):
+            top_counts = series.value_counts(dropna=True).head(10).to_dict()
+            col_stat["top_categories"] = {str(k): int(v) for k, v in top_counts.items()}
 
         columns_profile[col] = col_stat
 
-    # Composite duplicate analysis
-    composite_key = ["student_id", "course", "semester"]
+    # Generic duplicate & key analysis
+    tested_keys: List[str] = []
     duplicate_count = 0
-    composite_tested = False
-    if all(k in df.columns for k in composite_key):
-        composite_tested = True
-        duplicate_count = int(df.duplicated(subset=composite_key, keep='first').sum())
+    full_row_dups = int(df.duplicated().sum())
+
+    # Detect candidate identifier columns
+    candidate_ids = [c for c in df.columns if c != "dirty_row_id" and (c.lower().endswith("_id") or c.lower() == "id")]
+    if candidate_ids:
+        tested_keys = candidate_ids
+        duplicate_count = int(df.duplicated(subset=candidate_ids, keep="first").sum())
+    elif full_row_dups > 0:
+        tested_keys = [c for c in df.columns if c != "dirty_row_id"]
+        duplicate_count = full_row_dups
+    elif len(df.columns) > 0:
+        tested_keys = [df.columns[0]]
+
+    # Detect domain range anomalies generically
+    range_anomalies = {}
+    for col, stat in columns_profile.items():
+        if stat.get("min") is not None and stat.get("max") is not None:
+            c_low = col.lower()
+            if any(k in c_low for k in ("price", "salary", "income", "stock", "cost", "revenue", "amount")) and stat["min"] < 0:
+                range_anomalies[col] = f"Negative value detected ({stat['min']})"
+            elif "age" in c_low and stat["max"] > 120:
+                range_anomalies[col] = f"Extreme age detected ({stat['max']} > 120)"
+            elif ("humidity" in c_low or "percentage" in c_low or "rate" in c_low) and (stat["min"] < 0 or stat["max"] > 100):
+                range_anomalies[col] = f"Percentage bounds [0, 100] exceeded ({stat['min']} -> {stat['max']})"
 
     profile_result = {
         "dataset_name": dataset_name,
@@ -298,17 +339,14 @@ def _compute_profile(df: pd.DataFrame, dataset_name: str) -> Dict[str, Any]:
         "schema": schema_info,
         "columns_profile": columns_profile,
         "duplicate_analysis": {
-            "tested_composite_key": composite_key if composite_tested else [],
+            "tested_composite_key": tested_keys,
             "duplicate_rows_detected": duplicate_count,
-            "has_duplicates": duplicate_count > 0
+            "full_row_duplicates": full_row_dups,
+            "has_duplicates": (duplicate_count > 0 or full_row_dups > 0)
         },
         "quality_profile_summary": {
             "null_issues": {col: stat["null_count"] for col, stat in columns_profile.items() if stat["null_count"] > 0},
-            "range_anomalies": {
-                col: f"{stat['min']} -> {stat['max']}"
-                for col, stat in columns_profile.items()
-                if stat.get("min") is not None and (stat["min"] < 0 or stat["max"] > 100) and col.lower() == "score"
-            },
+            "range_anomalies": range_anomalies,
             "outlier_anomalies": {
                 col: stat["outlier_count"]
                 for col, stat in columns_profile.items()
@@ -322,7 +360,7 @@ def _compute_profile(df: pd.DataFrame, dataset_name: str) -> Dict[str, Any]:
 
 
 @router.get("/profile")
-def get_dataset_profile(dataset_name: str = "student_course_score"):
+def get_dataset_profile(dataset_name: str = ""):
     """
     Get Data Profiling metrics for a dataset. Uses dirty_dataset.csv as default evaluation benchmark.
     """
@@ -353,7 +391,22 @@ async def profile_uploaded_file(file: UploadFile = File(...), dataset_name: str 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    profile = _compute_profile(df, dataset_name)
+    if "dirty_row_id" not in df.columns:
+        df.insert(0, "dirty_row_id", range(1, len(df) + 1))
+
+    clean_ds_name = re.sub(r"[^A-Za-z0-9_-]", "_", dataset_name)[:128] or "uploaded_dataset"
+    _UPLOADED_DATASETS[clean_ds_name] = df.copy()
+    _UPLOADED_DATASETS[dataset_name] = df.copy()
+    try:
+        df.to_csv(WORKING_DATASET_PATH, index=False)
+    except Exception as exc:
+        logger.warning("Could not persist uploaded dataset to %s: %s", WORKING_DATASET_PATH, exc)
+    _WORKFLOW_STATE["dataset_source"] = "upload"
+    _WORKFLOW_STATE["dataset_name"] = clean_ds_name
+    _save_workflow_state()
+
+    profile = _compute_profile(df, clean_ds_name)
+    _LATEST_PROFILING[clean_ds_name] = profile
     _LATEST_PROFILING[dataset_name] = profile
     return profile
 
@@ -365,209 +418,240 @@ def _generate_recommendations(profile: Dict[str, Any], context: Dict[str, Any]) 
     recommendations: List[Dict[str, Any]] = []
     cols_prof = profile.get("columns_profile", {})
     fields_ctx = context.get("field_contexts", {})
+    schema_cols = list(profile.get("schema", {}).keys())
 
-    # 1. Score checks (Known Domain vs Unknown Domain)
-    score_ctx = fields_ctx.get("score") or fields_ctx.get("Score")
-    score_prof = cols_prof.get("score") or cols_prof.get("Score")
-
-    if score_prof:
-        # Null check
-        if score_ctx and score_ctx.get("required"):
-            null_count = score_prof.get("null_count", 0)
-            null_rate = score_prof.get("null_rate_pct", 0)
-            recommendations.append({
-                "field": "score",
-                "rule_type": "null_check",
-                "recommended_rule": "Strict Required (0% Null Tolerance)",
-                "action": "quarantine",
-                "parameters": {"allow_null": False, "threshold_pct": 0.0},
-                "rationale": [
-                    f"User marked 'score' as Required for {context.get('data_purpose', 'Official Reporting')}.",
-                    f"Data Profiling detected {null_count} missing records ({null_rate}% Null Rate).",
-                    "Missing scores directly invalidate student grade point calculation and graduation audits."
-                ],
-                "sources": ["User Context", "Business Criticality", "Data Profiling"],
-                "accepted": True
-            })
-
-        # Range check vs IQR
-        if score_ctx and score_ctx.get("known_domain"):
-            min_d = score_ctx.get("min_domain", 0.0)
-            max_d = score_ctx.get("max_domain", 100.0)
-            obs_min = score_prof.get("min")
-            obs_max = score_prof.get("max")
-            out_of_bound_desc = f"Observed Range is {obs_min} to {obs_max}" if obs_min is not None else ""
-            recommendations.append({
-                "field": "score",
-                "rule_type": "range_check",
-                "recommended_rule": f"Known Domain Range Check [{int(min_d)}–{int(max_d)}]",
-                "action": "quarantine",
-                "parameters": {"min": min_d, "max": max_d},
-                "rationale": [
-                    f"User Context explicitly defined Known Domain as [{int(min_d)}, {int(max_d)}].",
-                    f"Data Profiling identified values violating domain bounds ({out_of_bound_desc}).",
-                    "Grades below 0 or above 100 represent input corruption or schema scale mismatch."
-                ],
-                "sources": ["User Context", "Business Rule", "Data Profiling"],
-                "accepted": True
-            })
-
-    # 2. Study Hours check (Unknown Domain -> Auto IQR)
-    study_prof = cols_prof.get("study_hours") or cols_prof.get("StudyHours")
-    study_ctx = fields_ctx.get("study_hours") or fields_ctx.get("StudyHours")
-
-    if study_prof:
-        is_known = study_ctx.get("known_domain", False) if study_ctx else False
-        outlier_count = study_prof.get("outlier_count", 0)
-        iqr_val = study_prof.get("iqr", 0)
-        lower_f = study_prof.get("lower_fence", 0)
-        upper_f = study_prof.get("upper_fence", 0)
-
-        if not is_known and outlier_count > 0:
-            q1_val = float(study_prof.get("q1", 4.0))
-            q3_val = float(study_prof.get("q3", 6.0))
-            iqr_val = float(study_prof.get("iqr", 2.0))
-            mult = 3.0  # Tukey's extreme outlier fence (outer fence)
-            upper_fence_extreme = q3_val + mult * iqr_val
-            lower_fence_extreme = max(0.0, q1_val - mult * iqr_val)
-
-            inner_mult = 1.5
-            upper_fence_inner = q3_val + inner_mult * iqr_val
-            lower_fence_inner = max(0.0, q1_val - inner_mult * iqr_val)
-
-            recommendations.append({
-                "field": "study_hours",
-                "rule_type": "auto_iqr",
-                "recommended_rule": "Statistical Auto IQR (Tukey's Non-Parametric Fences)",
-                "action": "review",  # Human Review rather than hard quarantine!
-                "parameters": {
-                    "multiplier": mult,
-                    "preset": "outer_fence",
-                    "q1": q1_val,
-                    "q3": q3_val,
-                    "iqr": iqr_val,
-                    "lower_fence": round(lower_fence_extreme, 2),
-                    "upper_fence": round(upper_fence_extreme, 2),
-                    "inner_fence_lower": round(lower_fence_inner, 2),
-                    "inner_fence_upper": round(upper_fence_inner, 2),
-                    "inner_fence_flagged_count": 154,
-                    "outer_fence_lower": round(lower_fence_extreme, 2),
-                    "outer_fence_upper": round(upper_fence_extreme, 2),
-                    "outer_fence_flagged_count": 100,
-                    "mathematical_formula": "Lower = max(0, Q1 - k*IQR), Upper = Q3 + k*IQR",
-                    "derivation_steps": [
-                        f"1. 25th Percentile (Q1) = {q1_val} hrs",
-                        f"2. 75th Percentile (Q3) = {q3_val} hrs",
-                        f"3. Interquartile Range (IQR) = Q3 - Q1 = {iqr_val} hrs",
-                        f"4. Tukey Inner Fence (k=1.5): Upper = {q3_val} + 1.5×{iqr_val} = {round(upper_fence_inner, 2)} hrs (Flags 154 rows: 100 true outliers + 54 borderline valid)",
-                        f"5. Tukey Outer Fence (k=3.0): Upper = {q3_val} + 3.0×{iqr_val} = {round(upper_fence_extreme, 2)} hrs (Flags exactly 100 extreme outliers with 0 false positives)"
-                    ]
-                },
-                "rationale": [
-                    "Domain boundaries for study_hours are Unknown (no regulatory/system policy specifies an upper cap).",
-                    f"Statistical Data Profiling computed Q1={q1_val}h, Q3={q3_val}h, IQR={iqr_val}h.",
-                    f"Under Tukey's Outer Fence (3.0×, upper={round(upper_fence_extreme, 2)}h), exactly 100 extreme outliers (30–60h) are isolated.",
-                    f"Under Tukey's Inner Fence (1.5×, upper={round(upper_fence_inner, 2)}h), 154 rows are flagged (including 54 diligent students studying 10–12h).",
-                    "Routed to Human Review Queue (NOT Quarantine) to protect valid high-effort students from irreversible data loss."
-                ],
-                "sources": ["Data Profiling (IQR)", "Statistical Non-Parametric Theory", "User Business Context (Unknown Domain)", "Semi-Auto Human Review Safeguard"],
-                "accepted": True
-            })
-
-    # 3. Composite Uniqueness Check
+    # Generic Profile-Driven Rule Recommendation Engine
+    # 1. Candidate Key / Entity Uniqueness Rule
     dup_info = profile.get("duplicate_analysis", {})
     if dup_info.get("has_duplicates"):
         dup_count = dup_info.get("duplicate_rows_detected", 0)
-        comp_keys = dup_info.get("tested_composite_key", ["student_id", "course", "semester"])
+        comp_keys = dup_info.get("tested_composite_key", [])
+        if not comp_keys:
+            comp_keys = [c for c in schema_cols if c != "dirty_row_id"][:3]
         recommendations.append({
             "field": " + ".join(comp_keys),
             "rule_type": "composite_unique",
-            "recommended_rule": f"Composite Natural Key Uniqueness ({' + '.join(comp_keys)})",
+            "recommended_rule": f"Entity Key Uniqueness ({' + '.join(comp_keys)})",
             "action": "quarantine",
             "parameters": {"columns": comp_keys, "keep": "first"},
             "rationale": [
-                f"A student cannot be enrolled or receive distinct final grades for the same course in the same semester multiple times.",
-                f"Data Profiling detected {dup_count} duplicate composite instances.",
-                "Enforces relational integrity before analytical aggregations."
+                f"Data Profiling detected {dup_count} duplicate records across key [{', '.join(comp_keys)}].",
+                "Duplicate entities violate relational integrity and cause duplicate metric counting.",
+                "Quarantines redundant occurrences while retaining the initial valid record."
             ],
             "sources": ["Data Profiling", "Identity Integrity", "Relational Model"],
             "accepted": True
         })
 
-    # 4. Freshness SLA Check
-    date_prof = cols_prof.get("updated_at")
-    if date_prof and context.get("update_frequency"):
-        recommendations.append({
-            "field": "updated_at",
-            "rule_type": "freshness",
-            "recommended_rule": "SLA Freshness Check (<= 24h Delay)",
-            "action": "warning",
-            "parameters": {"max_delay_hours": 24},
-            "rationale": [
-                f"User declared Update Frequency as '{context.get('update_frequency')}'.",
-                "Verifies data ingestion pipeline meets daily batch timeliness SLAs."
-            ],
-            "sources": ["User Context", "SLA Policy"],
-            "accepted": True
-        })
+    # 2. Completeness / Null Check Rules
+    for col, stat in cols_prof.items():
+        if col == "dirty_row_id":
+            continue
+        null_count = stat.get("null_count", 0)
+        null_rate = stat.get("null_rate_pct", 0.0)
+        col_ctx = fields_ctx.get(col, {})
+        is_req = col_ctx.get("required", True) or col.lower().endswith("_id") or col.lower() == "id"
+        if null_count > 0:
+            action = "quarantine" if is_req else "review"
+            title = f"Strict Required ({col}): 0% Null Tolerance" if is_req else f"Completeness Review ({col}): Null Rate Flag"
+            recommendations.append({
+                "field": col,
+                "rule_type": "null_check",
+                "recommended_rule": title,
+                "action": action,
+                "parameters": {"allow_null": False, "threshold_pct": 0.0},
+                "rationale": [
+                    f"Data Profiling detected {null_count} missing records ({null_rate}% Null Rate) in '{col}'.",
+                    f"Field '{col}' integrity is essential for operational processing and reporting.",
+                    "Quarantined to protect pipeline integrity and avoid incomplete record processing." if is_req else "Routed to Human Review Queue to evaluate imputation or source data quality."
+                ],
+                "sources": ["Data Profiling", "Data Completeness", "Business Context"],
+                "accepted": True
+            })
+
+    # 3. Domain Range & Outlier Rules
+    for col, stat in cols_prof.items():
+        if col == "dirty_row_id":
+            continue
+        dtype = stat.get("data_type", "")
+        if dtype in ("Integer", "Float"):
+            col_ctx = fields_ctx.get(col, {})
+            obs_min = stat.get("min")
+            obs_max = stat.get("max")
+            c_low = col.lower()
+
+            # User Context Known Domain
+            if col_ctx.get("known_domain") and col_ctx.get("min_domain") is not None and col_ctx.get("max_domain") is not None:
+                min_d = float(col_ctx["min_domain"])
+                max_d = float(col_ctx["max_domain"])
+                recommendations.append({
+                    "field": col,
+                    "rule_type": "range_check",
+                    "recommended_rule": f"Known Domain Range [{int(min_d) if min_d == int(min_d) else min_d}–{int(max_d) if max_d == int(max_d) else max_d}] on {col}",
+                    "action": "quarantine",
+                    "parameters": {"min": min_d, "max": max_d},
+                    "rationale": [
+                        f"User Business Context explicitly defined Known Domain as [{min_d}, {max_d}].",
+                        f"Data Profiling observed values ranging from {obs_min} to {obs_max}.",
+                        "Records outside confirmed business limits represent corrupted or invalid input."
+                    ],
+                    "sources": ["User Business Context", "Business Rule", "Data Profiling"],
+                    "accepted": True
+                })
+            else:
+                # Domain Boundary Heuristics from Profiling Evidence
+                sug_min = None
+                sug_max = None
+                if "age" in c_low:
+                    sug_min, sug_max = 0.0, 120.0
+                    rec_title = f"Domain Boundary Range on {col} [0–120]"
+                elif any(k in c_low for k in ("score", "humidity", "percent", "rate", "ratio")):
+                    sug_min, sug_max = 0.0, 100.0
+                    rec_title = f"Domain Boundary Range on {col} [0–100]"
+                elif any(k in c_low for k in ("price", "salary", "income", "stock", "cost", "revenue", "amount", "fee", "balance")):
+                    sug_min = 0.0
+                    rec_title = f"Domain Boundary Range on {col} (>= 0)"
+                elif obs_min is not None and obs_min >= 0:
+                    sug_min = 0.0
+                    rec_title = f"Non-Negative Range on {col} (>= 0)"
+                else:
+                    rec_title = f"Domain Range on {col}"
+
+                if sug_min is not None or sug_max is not None:
+                    recommendations.append({
+                        "field": col,
+                        "rule_type": "range_check",
+                        "recommended_rule": rec_title,
+                        "action": "quarantine",
+                        "parameters": {"min": sug_min, "max": sug_max, "is_suggested": True},
+                        "rationale": [
+                            f"Data Profiling observed '{col}' values in data range [{obs_min}, {obs_max}].",
+                            f"System recommends plausible boundary [{sug_min if sug_min is not None else '-inf'}, {sug_max if sug_max is not None else 'inf'}] pending User Confirmation.",
+                            "Observed data is evidence, not business truth: confirm or adjust boundaries in Rule Configuration."
+                        ],
+                        "sources": ["Data Profiling", "Domain Heuristic", "User Confirmation Gate"],
+                        "accepted": True
+                    })
+
+            # Statistical Outlier Check
+            outlier_count = stat.get("outlier_count", 0)
+            if outlier_count > 0:
+                q1 = float(stat.get("q1", 0.0))
+                q3 = float(stat.get("q3", 0.0))
+                iqr = float(stat.get("iqr", 0.0))
+                mult = 3.0
+                lower_f = round(q1 - mult * iqr, 2)
+                upper_f = round(q3 + mult * iqr, 2)
+                recommendations.append({
+                    "field": col,
+                    "rule_type": "auto_iqr",
+                    "recommended_rule": f"Statistical Auto IQR (Tukey 3.0×) on {col}",
+                    "action": "review",
+                    "parameters": {
+                        "multiplier": mult,
+                        "preset": "outer_fence",
+                        "q1": q1,
+                        "q3": q3,
+                        "iqr": iqr,
+                        "lower_fence": lower_f,
+                        "upper_fence": upper_f,
+                        "mathematical_formula": f"Lower = Q1 - {mult}×IQR ({lower_f}), Upper = Q3 + {mult}×IQR ({upper_f})"
+                    },
+                    "rationale": [
+                        f"Domain boundaries for '{col}' are statistical; profiling computed Q1={q1}, Q3={q3}, IQR={iqr}.",
+                        f"Under Tukey's Outer Fence (3.0×), {outlier_count} records lie outside [{lower_f}, {upper_f}].",
+                        "Routed to Human Review Queue rather than Quarantine to prevent false-positive data loss."
+                    ],
+                    "sources": ["Data Profiling (IQR)", "Statistical Non-Parametric Theory", "Semi-Auto Human Review Safeguard"],
+                    "accepted": True
+                })
+
+    # 4. Category Consistency Rules
+    for col, stat in cols_prof.items():
+        if col == "dirty_row_id":
+            continue
+        dtype = stat.get("data_type", "")
+        top_cats = stat.get("top_categories", {})
+        distinct_cnt = stat.get("distinct_count", 0)
+        if (dtype == "Categorical" or (dtype == "String" and 2 <= distinct_cnt <= 20)) and len(top_cats) >= 2:
+            allowed = list(top_cats.keys())
+            recommendations.append({
+                "field": col,
+                "rule_type": "category_consistency",
+                "recommended_rule": f"Category Consistency Check on {col}",
+                "action": "review",
+                "parameters": {"allowed_values": allowed},
+                "rationale": [
+                    f"Data Profiling detected {distinct_cnt} distinct categories in '{col}': {allowed[:5]}.",
+                    "Flags unrecognized or corrupted categorical variants for human review and standardization."
+                ],
+                "sources": ["Data Profiling", "Categorical Distribution"],
+                "accepted": True
+            })
+
+    # 5. Temporal Freshness Rules
+    for col, stat in cols_prof.items():
+        dtype = stat.get("data_type", "")
+        c_low = col.lower()
+        if dtype in ("Date", "DateTime") or any(k in c_low for k in ("date", "timestamp", "time")):
+            recommendations.append({
+                "field": col,
+                "rule_type": "freshness",
+                "recommended_rule": f"Temporal Freshness SLA Check on {col}",
+                "action": "warning",
+                "parameters": {"max_delay_hours": 24},
+                "rationale": [
+                    f"Column '{col}' detected as temporal timeline attribute.",
+                    "Verifies data ingestion pipeline meets freshness SLAs and flags stale records."
+                ],
+                "sources": ["Data Profiling", "Temporal Timeline Policy"],
+                "accepted": True
+            })
 
     return recommendations
 
 
 @router.get("/context/default")
-def get_default_user_context():
+def get_default_user_context(dataset_name: Optional[str] = None, profile: Optional[Dict[str, Any]] = None):
     """
-    Get the standard default User Context for the Student Course Score dataset.
+    Generate default User Context dynamically from Data Profile evidence.
+    Every dataset gets its context from actual profiling — no hardcoded presets.
+    Numeric columns get observed min/max pre-filled as starting suggestions.
+    Users review and override with actual business constraints.
     """
-    return {
-        "dataset_name": "student_course_score",
-        "data_purpose": "Official Grade Reporting",
-        "criticality": "Critical",
-        "update_frequency": "Daily Batch (<= 24h)",
-        "field_contexts": {
-            "student_id": {
-                "business_meaning": "Unique Student Identifier",
-                "required": True,
-                "known_domain": False,
+    ds_name = dataset_name or _WORKFLOW_STATE.get("dataset_name", "")
+
+    # All datasets derive context from actual data profiling — no hardcoded presets.
+    # Profile evidence sets sensible starting defaults; user adjusts via Business Context.
+    fields_ctx = {}
+    if profile and "columns_profile" in profile:
+        for col, stat in profile["columns_profile"].items():
+            if col == "dirty_row_id":
+                continue
+            dtype = stat.get("data_type", "String")
+            is_numeric = dtype in ("Integer", "Float")
+            is_id = col.lower().endswith("_id") or col.lower() == "id" or stat.get("unique_rate_pct", 0) > 95
+            null_rate = stat.get("null_rate_pct", 0)
+
+            # For numeric columns, pre-fill observed min/max as starting suggestion
+            # Users should review and override with actual business constraints
+            min_val = stat.get("min") if is_numeric else None
+            max_val = stat.get("max") if is_numeric else None
+
+            fields_ctx[col] = {
+                "business_meaning": f"Observed field '{col}' ({dtype})",
+                "required": null_rate < 1.0,  # Required if almost no nulls observed
+                "known_domain": False,  # Observed data is evidence, not business truth
                 "min_domain": None,
-                "max_domain": None
-            },
-            "course": {
-                "business_meaning": "Course Subject Name",
-                "required": True,
-                "known_domain": False,
-                "min_domain": None,
-                "max_domain": None
-            },
-            "score": {
-                "business_meaning": "Official Course Final Grade Score",
-                "required": True,
-                "known_domain": True,
-                "min_domain": 0.0,
-                "max_domain": 100.0
-            },
-            "study_hours": {
-                "business_meaning": "Weekly Study Effort Hours",
-                "required": False,
-                "known_domain": False,
-                "min_domain": None,
-                "max_domain": None
-            },
-            "semester": {
-                "business_meaning": "Academic Semester Tag",
-                "required": True,
-                "known_domain": False,
-                "min_domain": None,
-                "max_domain": None
-            },
-            "updated_at": {
-                "business_meaning": "Batch Record Timestamp",
-                "required": True,
-                "known_domain": False,
-                "min_domain": None,
-                "max_domain": None
+                "max_domain": None,
             }
-        }
+
+    return {
+        "dataset_name": ds_name,
+        "data_purpose": f"Operational Pipeline for {ds_name}" if ds_name else "Operational Pipeline",
+        "criticality": "Standard",
+        "update_frequency": "Daily Batch (<= 24h)",
+        "field_contexts": fields_ctx
     }
 
 
@@ -576,7 +660,7 @@ def recommend_rules(payload: Optional[UserContextPayload] = None):
     """
     Generate explainable Data Quality rules combining Data Profiling metrics + User Business Context.
     """
-    dataset_name = payload.dataset_name if payload else "student_course_score"
+    dataset_name = payload.dataset_name if payload and payload.dataset_name else _WORKFLOW_STATE.get("dataset_name", "")
 
     # Fetch or run profile
     if dataset_name in _LATEST_PROFILING:
@@ -605,19 +689,29 @@ def recommend_rules(payload: Optional[UserContextPayload] = None):
 def execute_pipeline(payload: ExecuteRulesPayload):
     """
     Executes the Semi-Automated Transformation & 3-Way Segregation:
-    - Clean: Valid records (e.g. 9,400 rows)
-    - Review: Statistical anomalies requiring human attention (e.g. 100 rows)
-    - Quarantine: Invalid/corrupt records violating hard constraints (e.g. 600 rows)
+    - Clean: Valid records
+    - Review: Statistical anomalies requiring human attention
+    - Quarantine: Invalid/corrupt records violating hard constraints
     """
     start_time = time.time()
     dataset_name = payload.dataset_name
 
-    dataset_path = _dataset_path()
-    if not os.path.isfile(dataset_path):
-        raise HTTPException(status_code=404, detail=f"Dirty dataset not found at {dataset_path}")
-
-    df = pd.read_csv(dataset_path)
+    if dataset_name in ("student_course_score", "student_course_scores"):
+        df = pd.read_csv(DIRTY_DATASET_PATH)
+    elif dataset_name and dataset_name in _UPLOADED_DATASETS:
+        df = _UPLOADED_DATASETS[dataset_name].copy()
+    elif _WORKFLOW_STATE.get("dataset_name") and _WORKFLOW_STATE.get("dataset_name") in _UPLOADED_DATASETS:
+        df = _UPLOADED_DATASETS[_WORKFLOW_STATE["dataset_name"]].copy()
+    elif _WORKFLOW_STATE.get("dataset_source") == "upload" and os.path.isfile(WORKING_DATASET_PATH):
+        df = pd.read_csv(WORKING_DATASET_PATH)
+    else:
+        dataset_path = _dataset_path()
+        if not os.path.isfile(dataset_path):
+            raise HTTPException(status_code=404, detail=f"Dirty dataset not found at {dataset_path}")
+        df = pd.read_csv(dataset_path)
     total_raw_rows = len(df)
+    if "dirty_row_id" not in df.columns:
+        df.insert(0, "dirty_row_id", range(1, total_raw_rows + 1))
 
     # Initialize tracking columns
     df["whitebox_status"] = "Valid"
@@ -627,69 +721,81 @@ def execute_pipeline(payload: ExecuteRulesPayload):
     # Parse active accepted rules
     accepted_rules = [r for r in payload.rules if r.accepted]
 
-    # Pre-calculate IQR fence for study_hours if auto_iqr rule exists
-    iqr_rule = next((r for r in accepted_rules if r.rule_type == "auto_iqr" and r.field == "study_hours"), None)
-    upper_fence = None
-    lower_fence = None
-    if iqr_rule:
-        clean_hours = df["study_hours"].dropna()
-        q1 = clean_hours.quantile(0.25)
-        q3 = clean_hours.quantile(0.75)
-        mult = float(iqr_rule.parameters.get("multiplier", 1.5))
-        iqr = q3 - q1
-        lower_fence = q1 - mult * iqr
-        upper_fence = q3 + mult * iqr
+    # Generic Rule Execution Engine (applies rules by field name for any dataset)
+    # 1. Uniqueness / Candidate Key rules
+    for r in [rule for rule in accepted_rules if rule.rule_type == "composite_unique"]:
+        cols = r.parameters.get("columns", [r.field])
+        if isinstance(cols, str):
+            cols = [c.strip() for c in cols.split("+")]
+        valid_cols = [c for c in cols if c in df.columns]
+        if valid_cols:
+            dup_mask = df.duplicated(subset=valid_cols, keep=r.parameters.get("keep", "first"))
+            target_status = "Quarantine" if r.action.lower() == "quarantine" else "Review"
+            affected = dup_mask & (df["whitebox_status"] == "Valid")
+            df.loc[affected, "whitebox_status"] = target_status
+            df.loc[affected, "whitebox_error_type"] = "Duplicate"
+            df.loc[affected, "whitebox_rule_applied"] = f"Composite Uniqueness ({' + '.join(valid_cols)})"
 
-    # Root Cause Fix: this rule (like composite_unique and auto_iqr below) must only run
-    # when a reviewer has actually accepted it — previously it ran unconditionally, so
-    # rejecting the rule at the Human Review gate had no effect on execution.
-    null_check_rule = next((r for r in accepted_rules if r.rule_type == "null_check" and r.field == "score"), None)
+    # 2. Completeness / Null rules
+    for r in [rule for rule in accepted_rules if rule.rule_type == "null_check"]:
+        field = r.field
+        if field in df.columns:
+            null_mask = df[field].isna()
+            target_status = "Quarantine" if r.action.lower() == "quarantine" else "Review"
+            affected = null_mask & (df["whitebox_status"] == "Valid")
+            df.loc[affected, "whitebox_status"] = target_status
+            df.loc[affected, "whitebox_error_type"] = f"Missing {field}"
+            df.loc[affected, "whitebox_rule_applied"] = f"Strict Required ({field})"
 
-    # Range rule for score
-    range_rule = next((r for r in accepted_rules if r.rule_type == "range_check" and r.field == "score"), None)
-    min_score = range_rule.parameters.get("min", 0.0) if range_rule else 0.0
-    max_score = range_rule.parameters.get("max", 100.0) if range_rule else 100.0
+    # 3. Domain Range rules
+    for r in [rule for rule in accepted_rules if rule.rule_type == "range_check"]:
+        field = r.field
+        if field in df.columns:
+            min_v = r.parameters.get("min")
+            max_v = r.parameters.get("max")
+            num_s = pd.to_numeric(df[field], errors="coerce")
+            out_mask = pd.Series(False, index=df.index)
+            if min_v is not None:
+                out_mask |= (num_s < float(min_v))
+            if max_v is not None:
+                out_mask |= (num_s > float(max_v))
+            target_status = "Quarantine" if r.action.lower() == "quarantine" else "Review"
+            affected = out_mask & num_s.notna() & (df["whitebox_status"] == "Valid")
+            df.loc[affected, "whitebox_status"] = target_status
+            df.loc[affected, "whitebox_error_type"] = f"Invalid {field} Range"
+            df.loc[affected, "whitebox_rule_applied"] = f"Domain Range Check [{min_v}, {max_v}] on {field}"
 
-    # Composite duplicate rule
-    dup_rule = next((r for r in accepted_rules if r.rule_type == "composite_unique"), None)
-    dup_mask = pd.Series(False, index=df.index)
-    if dup_rule:
-        cols = dup_rule.parameters.get("columns", ["student_id", "course", "semester"])
-        if all(c in df.columns for c in cols):
-            dup_mask = df.duplicated(subset=cols, keep="first")
+    # 4. Statistical Auto IQR Outlier rules
+    for r in [rule for rule in accepted_rules if rule.rule_type == "auto_iqr"]:
+        field = r.field
+        if field in df.columns:
+            num_s = pd.to_numeric(df[field], errors="coerce")
+            clean_s = num_s.dropna()
+            if len(clean_s) > 0:
+                q1 = float(clean_s.quantile(0.25))
+                q3 = float(clean_s.quantile(0.75))
+                iqr = float(q3 - q1)
+                mult = float(r.parameters.get("multiplier", 3.0))
+                lower_f = float(r.parameters.get("lower_fence", q1 - mult * iqr))
+                upper_f = float(r.parameters.get("upper_fence", q3 + mult * iqr))
+                outlier_mask = (num_s < lower_f) | (num_s > upper_f)
+                target_status = "Review" if r.action.lower() == "review" else "Quarantine"
+                affected = outlier_mask & num_s.notna() & (df["whitebox_status"] == "Valid")
+                df.loc[affected, "whitebox_status"] = target_status
+                df.loc[affected, "whitebox_error_type"] = f"{field} Outlier"
+                df.loc[affected, "whitebox_rule_applied"] = f"Statistical Auto IQR ({field} > {round(upper_f, 2)})"
 
-    # Row-by-row categorization adhering strictly to Root Cause & Upstream Segregation
-    for idx, row in df.iterrows():
-        # 1. Duplicate Composite Key Check (Identity constraint checked first)
-        if dup_mask.iloc[idx]:
-            df.at[idx, "whitebox_status"] = "Quarantine"
-            df.at[idx, "whitebox_error_type"] = "Duplicate"
-            df.at[idx, "whitebox_rule_applied"] = "Composite Uniqueness (student_id + course + semester)"
-            continue
-
-        # 2. Missing Score (Null Check) — only enforced if the reviewer accepted this rule
-        if null_check_rule and pd.isna(row.get("score")):
-            df.at[idx, "whitebox_status"] = "Quarantine"
-            df.at[idx, "whitebox_error_type"] = "Missing Score"
-            df.at[idx, "whitebox_rule_applied"] = "Strict Required (Null Tolerance = 0%)"
-            continue
-
-        # 3. Invalid Score Range Check — only enforced if the reviewer accepted this rule
-        score_val = row.get("score")
-        if range_rule and not pd.isna(score_val) and (score_val < min_score or score_val > max_score):
-            df.at[idx, "whitebox_status"] = "Quarantine"
-            df.at[idx, "whitebox_error_type"] = "Invalid Score Range"
-            df.at[idx, "whitebox_rule_applied"] = f"Known Domain Range [{int(min_score)}-{int(max_score)}]"
-            continue
-
-        # 4. Statistical Outlier Check (Study Hours)
-        hours_val = row.get("study_hours")
-        if upper_fence is not None and not pd.isna(hours_val):
-            if hours_val > upper_fence or hours_val < lower_fence:
-                df.at[idx, "whitebox_status"] = "Review"
-                df.at[idx, "whitebox_error_type"] = "Study Hours Outlier"
-                df.at[idx, "whitebox_rule_applied"] = f"Statistical Auto IQR (Tukey's > {round(upper_fence, 2)}h)"
-                continue
+    # 5. Category Consistency rules
+    for r in [rule for rule in accepted_rules if rule.rule_type == "category_consistency"]:
+        field = r.field
+        allowed = r.parameters.get("allowed_values", [])
+        if field in df.columns and allowed:
+            inconsistent_mask = df[field].notna() & (~df[field].astype(str).isin([str(x) for x in allowed]))
+            target_status = "Review" if r.action.lower() == "review" else "Quarantine"
+            affected = inconsistent_mask & (df["whitebox_status"] == "Valid")
+            df.loc[affected, "whitebox_status"] = target_status
+            df.loc[affected, "whitebox_error_type"] = f"Inconsistent {field}"
+            df.loc[affected, "whitebox_rule_applied"] = f"Category Consistency ({field})"
 
     # Segregate into 3 explicit data assets
     df_clean = df[df["whitebox_status"] == "Valid"].copy()
@@ -706,9 +812,14 @@ def execute_pipeline(payload: ExecuteRulesPayload):
     df_quarantine.to_csv(quarantine_path, index=False)
 
     exec_time_ms = round((time.time() - start_time) * 1000, 2)
-    quality_score_raw = round((len(df_clean) / total_raw_rows) * 100, 2)
+    quality_score_raw = round((len(df_clean) / total_raw_rows) * 100, 2) if total_raw_rows > 0 else 0.0
 
     error_summary = df["whitebox_error_type"].value_counts().to_dict()
+
+    # Safely select dynamic sample columns without risking KeyError
+    sample_cols = [c for c in ["dirty_row_id", *[col for col in df.columns if col not in ("dirty_row_id", "whitebox_status", "whitebox_error_type", "whitebox_rule_applied")][:4], "whitebox_error_type", "whitebox_rule_applied"] if c in df.columns]
+    sample_quarantined = df_quarantine[sample_cols].head(5).to_dict(orient="records") if len(df_quarantine) > 0 else []
+    sample_review = df_review[sample_cols].head(5).to_dict(orient="records") if len(df_review) > 0 else []
 
     result = {
         "dataset_name": dataset_name,
@@ -725,8 +836,8 @@ def execute_pipeline(payload: ExecuteRulesPayload):
             "review_file": review_path,
             "quarantine_file": quarantine_path
         },
-        "sample_quarantined": df_quarantine[["dirty_row_id", "student_id", "course", "score", "whitebox_error_type", "whitebox_rule_applied"]].head(5).to_dict(orient="records"),
-        "sample_review": df_review[["dirty_row_id", "student_id", "course", "study_hours", "whitebox_error_type", "whitebox_rule_applied"]].head(5).to_dict(orient="records"),
+        "sample_quarantined": sample_quarantined,
+        "sample_review": sample_review,
         "executed_at": datetime.now(timezone.utc).isoformat()
     }
     cleaned_result = _clean_for_json(result)
@@ -752,13 +863,12 @@ def evaluate_ground_truth():
     if not os.path.isfile(GROUND_TRUTH_PATH):
         raise HTTPException(status_code=404, detail=f"Ground truth file not found at {GROUND_TRUTH_PATH}")
 
-    # Ensure pipeline has been executed
-    if "student_course_score" not in _LATEST_EXECUTION_RESULTS:
-        default_ctx = get_default_user_context()
-        prof = get_dataset_profile("student_course_score")
-        recs = _generate_recommendations(prof, default_ctx)
-        rule_items = [RuleItem(**r) for r in recs]
-        execute_pipeline(ExecuteRulesPayload(dataset_name="student_course_score", rules=rule_items))
+    # Always execute pipeline for evaluation dataset before evaluating benchmark metrics
+    default_ctx = get_default_user_context("student_course_score")
+    prof = get_dataset_profile("student_course_score")
+    recs = _generate_recommendations(prof, default_ctx)
+    rule_items = [RuleItem(**r) for r in recs]
+    execute_pipeline(ExecuteRulesPayload(dataset_name="student_course_score", rules=rule_items))
 
     clean_file = os.path.join(OUTPUT_DIR, "clean_dataset_run.csv")
     review_file = os.path.join(OUTPUT_DIR, "review_queue_run.csv")
@@ -776,6 +886,20 @@ def evaluate_ground_truth():
     merged = pd.merge(df_actual, df_gt, on="dirty_row_id", suffixes=("_actual", "_gt"))
     merged["whitebox_status_mapped"] = merged["whitebox_status"].replace({"Quarantine": "Invalid"})
 
+    # Map generic error type strings to benchmark expected categories
+    def _map_err(val: str) -> str:
+        s = str(val).strip().lower()
+        if "missing" in s and "score" in s:
+            return "Missing Score"
+        if "range" in s and "score" in s:
+            return "Invalid Score Range"
+        if ("outlier" in s or "iqr" in s) and ("study" in s or "hour" in s):
+            return "Study Hours Outlier"
+        if "duplicate" in s:
+            return "Duplicate"
+        return "None"
+    merged["whitebox_error_type_mapped"] = merged["whitebox_error_type"].apply(_map_err)
+
     # Error type comparison
     categories = [
         "Missing Score",
@@ -790,7 +914,7 @@ def evaluate_ground_truth():
 
     for cat in categories:
         expected_cat = cat
-        actual_matches = (merged["whitebox_error_type"] == expected_cat)
+        actual_matches = (merged["whitebox_error_type_mapped"] == expected_cat)
         ground_truth_matches = (merged["expected_error_type"] == expected_cat)
 
         tp = int((actual_matches & ground_truth_matches).sum())
@@ -813,7 +937,7 @@ def evaluate_ground_truth():
             "f1_score": f1
         }
 
-    overall_error_match = (merged["whitebox_error_type"] == merged["expected_error_type"]).sum()
+    overall_error_match = (merged["whitebox_error_type_mapped"] == merged["expected_error_type"]).sum()
     overall_status_match = (merged["whitebox_status_mapped"] == merged["expected_status"]).sum()
     overall_accuracy_pct = round((overall_error_match / total_samples) * 100, 2)
     overall_status_accuracy_pct = round((overall_status_match / total_samples) * 100, 2)
@@ -1189,26 +1313,9 @@ def run_all_stages():
 from fastapi.responses import FileResponse
 
 _WORKFLOW_STATE: Dict[str, Any] = {
-    "dataset_name": "student_course_scores",
-    "dataset_source": "evaluation",  # "evaluation" = dirty_dataset.csv, "upload" = WORKING_DATASET_PATH
-    "selected_findings": {"range": True, "duplicate": True, "outlier": True},
-    "min_score": 0.0,
-    "max_score": 100.0,
-    "null_policy": "strict_0",  # "strict_0" | "adaptive_5"
-    "max_null_pct": 5.0,
-    "composite_key": "student_id + course + semester",
-    "dedup_strategy": "keep_first_quarantine",  # "keep_first_quarantine" | "review_all"
-    "tukey_multiplier": "3.0",  # "3.0" | "1.5" | "custom"
-    "custom_upper_fence": 12.0,
-    "rule1_confirmed": True,
-    "rule2_confirmed": True,
-    "rule3_confirmed": True,
-    "confirmed_at": None,
-    "review_action": "KEEP",  # "KEEP" | "APPROVE" | "REJECT"
-    "row_decisions": {},
-    "row_edits": {},
-    "upstream_ticket_sent": False,
-    "upstream_ticket_id": "#UP-2026-089"
+    "dataset_name": "",
+    "dataset_source": "",
+    # Workflow state is populated dynamically when a dataset is loaded
 }
 
 _WORKFLOW_STATE_PATH = os.path.join(OUTPUT_DIR, "workflow_state.json")
@@ -1250,15 +1357,15 @@ def _dataset_path() -> str:
 def _normalize_selected_findings(val: Any) -> Dict[str, bool]:
     if isinstance(val, dict):
         return {
-            "range": bool(val.get("range", val.get("score_range_null", True))),
-            "duplicate": bool(val.get("duplicate", val.get("composite_key_dup", True))),
-            "outlier": bool(val.get("outlier", val.get("study_hours_outlier", True))),
+            "range": bool(val.get("range", True)),
+            "duplicate": bool(val.get("duplicate", True)),
+            "outlier": bool(val.get("outlier", True)),
         }
     if isinstance(val, list):
         return {
-            "range": ("range" in val) or ("score_range_null" in val),
-            "duplicate": ("duplicate" in val) or ("composite_key_dup" in val),
-            "outlier": ("outlier" in val) or ("study_hours_outlier" in val),
+            "range": any(k for k in val if "range" in k.lower()),
+            "duplicate": any(k for k in val if "duplicate" in k.lower() or "composite" in k.lower()),
+            "outlier": any(k for k in val if "outlier" in k.lower() or "iqr" in k.lower()),
         }
     return {"range": True, "duplicate": True, "outlier": True}
 
@@ -1274,162 +1381,60 @@ def _recompute_interactive_state() -> Dict[str, Any]:
     using the current _WORKFLOW_STATE parameters, persists the 3 CSV files on disk,
     and returns the complete live metrics for /ingestion, /rules, /pipeline, /export, and /dashboard.
     """
-    dataset_path = _dataset_path()
-    if not os.path.isfile(dataset_path):
-        return _WORKFLOW_STATE
-
-    df = pd.read_csv(dataset_path)
-    total_rows = int(len(df))
-
-    # Apply any inline row value edits from Pipeline table first
-    row_edits = _WORKFLOW_STATE.get("row_edits", {}) or {}
-    for row_key, edits in row_edits.items():
-        try:
-            rid = int(str(row_key).replace("#", ""))
-            if "dirty_row_id" in df.columns and isinstance(edits, dict):
-                mask = df["dirty_row_id"] == rid
-                if "score" in edits and edits["score"] is not None and edits["score"] != "":
-                    df.loc[mask, "score"] = float(edits["score"])
-                if "study_hours" in edits and edits["study_hours"] is not None and edits["study_hours"] != "":
-                    df.loc[mask, "study_hours"] = float(edits["study_hours"])
-        except Exception:
-            pass
-
-    min_s = float(_WORKFLOW_STATE.get("min_score", 0.0))
-    max_s = float(_WORKFLOW_STATE.get("max_score", 100.0))
-    null_policy = _WORKFLOW_STATE.get("null_policy", "strict_0")
-    max_null_pct = float(_WORKFLOW_STATE.get("max_null_pct", 5.0))
-    comp_key_str = _WORKFLOW_STATE.get("composite_key", "student_id + course + semester")
-    comp_cols = [c.strip() for c in comp_key_str.split("+") if c.strip() in df.columns]
-    if not comp_cols:
-        comp_cols = ["student_id", "course", "semester"]
-    dedup_strategy = _WORKFLOW_STATE.get("dedup_strategy", "keep_first_quarantine")
-    tukey_str = str(_WORKFLOW_STATE.get("tukey_multiplier", "3.0"))
-    tukey_mult = float(tukey_str) if tukey_str in ("3.0", "1.5") else 3.0
-
-    findings = _WORKFLOW_STATE.get("selected_findings", ["score_range_null", "composite_key_dup", "study_hours_outlier"])
-    r1_active = bool(_WORKFLOW_STATE.get("rule1_confirmed", True)) and _is_finding_enabled(findings, "range", "score_range_null")
-    r2_active = bool(_WORKFLOW_STATE.get("rule2_confirmed", True)) and _is_finding_enabled(findings, "duplicate", "composite_key_dup")
-    r3_active = bool(_WORKFLOW_STATE.get("rule3_confirmed", True)) and _is_finding_enabled(findings, "outlier", "study_hours_outlier")
-
-    # 1. Duplicate mask (Gate 2)
-    dup_mask = df.duplicated(subset=comp_cols, keep="first") if r2_active else pd.Series(False, index=df.index)
-
-    # 2. Missing score & out-of-range masks (Gate 1, evaluated on non-duplicate rows)
-    observed_null_pct = (df["score"].isna().sum() / total_rows) * 100.0 if total_rows > 0 else 0.0
-    should_quarantine_nulls = (null_policy == "strict_0") or (observed_null_pct > max_null_pct)
-    null_mask = (~dup_mask) & df["score"].isna() if r1_active else pd.Series(False, index=df.index)
-    range_mask = (~dup_mask) & (~df["score"].isna()) & ((df["score"] < min_s) | (df["score"] > max_s)) if r1_active else pd.Series(False, index=df.index)
-
-    # 3. Tukey IQR Outlier mask (Gate 3, evaluated on rows passing Gate 1 & Gate 2)
-    clean_hours = df["study_hours"].dropna()
-    q1 = float(clean_hours.quantile(0.25))
-    q3 = float(clean_hours.quantile(0.75))
-    iqr = float(q3 - q1)
-    if _WORKFLOW_STATE.get("custom_upper_fence") is not None and tukey_str == "custom":
-        upper_fence = float(_WORKFLOW_STATE["custom_upper_fence"])
+    ds_name = _WORKFLOW_STATE.get("dataset_name", "generic_dataset")
+    if ds_name in _UPLOADED_DATASETS:
+        df = _UPLOADED_DATASETS[ds_name].copy()
+    elif _WORKFLOW_STATE.get("dataset_source") == "upload" and os.path.isfile(WORKING_DATASET_PATH):
+        df = pd.read_csv(WORKING_DATASET_PATH)
     else:
-        upper_fence = float(q3 + tukey_mult * iqr)
-        _WORKFLOW_STATE["custom_upper_fence"] = upper_fence
-    lower_fence = float(q1 - tukey_mult * iqr)
+        dataset_path = _dataset_path()
+        if not os.path.isfile(dataset_path):
+            return _WORKFLOW_STATE
+        df = pd.read_csv(dataset_path)
 
-    passed_g1_g2 = (~dup_mask) & (~null_mask) & (~range_mask)
-    outlier_mask = passed_g1_g2 & (~df["study_hours"].isna()) & ((df["study_hours"] > upper_fence) | (df["study_hours"] < lower_fence)) if r3_active else pd.Series(False, index=df.index)
+    total_rows = int(len(df))
+    if "dirty_row_id" not in df.columns:
+        df.insert(0, "dirty_row_id", range(1, total_rows + 1))
+    active_rules = _WORKFLOW_STATE.get("active_rules")
+    if not active_rules:
+        recs_obj = _LATEST_RECOMMENDATIONS.get(ds_name)
+        if recs_obj and "recommendations" in recs_obj:
+            active_rules = recs_obj["recommendations"]
+        else:
+            prof = _LATEST_PROFILING.get(ds_name) or _compute_profile(df, ds_name)
+            _LATEST_PROFILING[ds_name] = prof
+            ctx = _LATEST_USER_CONTEXT.get(ds_name) or get_default_user_context(ds_name, prof)
+            active_rules = _generate_recommendations(prof, ctx)
+            _LATEST_RECOMMENDATIONS[ds_name] = {
+                "dataset_name": ds_name,
+                "recommendations_count": len(active_rules),
+                "recommendations": active_rules,
+                "generated_at": datetime.now(timezone.utc).isoformat()
+            }
+        _WORKFLOW_STATE["active_rules"] = active_rules
+        _save_workflow_state()
 
-    df["whitebox_status"] = "Valid"
-    df["whitebox_error_type"] = "None"
-    df["whitebox_rule_applied"] = "Passed All Active Rules"
-
-    dup_target_status = "Review" if dedup_strategy == "review_all" else "Quarantine"
-    df.loc[dup_mask, "whitebox_status"] = dup_target_status
-    df.loc[dup_mask, "whitebox_error_type"] = "Duplicate"
-    df.loc[dup_mask, "whitebox_rule_applied"] = f"Composite Key Uniqueness ({comp_key_str})"
-
-    null_target_status = "Quarantine" if should_quarantine_nulls else "Review"
-    df.loc[null_mask, "whitebox_status"] = null_target_status
-    df.loc[null_mask, "whitebox_error_type"] = "Missing Score"
-    df.loc[null_mask, "whitebox_rule_applied"] = "Strict Completeness (0% Null)" if should_quarantine_nulls else f"Adaptive Null Review (<={max_null_pct}%)"
-
-    df.loc[range_mask, "whitebox_status"] = "Quarantine"
-    df.loc[range_mask, "whitebox_error_type"] = "Invalid Score Range"
-    df.loc[range_mask, "whitebox_rule_applied"] = f"Value Range Check [{min_s}, {max_s}]"
-
-    df.loc[outlier_mask, "whitebox_status"] = "Review"
-    df.loc[outlier_mask, "whitebox_error_type"] = "Study Hours Outlier"
-    df.loc[outlier_mask, "whitebox_rule_applied"] = f"Tukey IQR Fence (> {round(upper_fence, 1)}h)"
-
-    # Apply Human-in-the-Loop Review Action ("KEEP" | "APPROVE" | "REJECT")
-    rev_action = _WORKFLOW_STATE.get("review_action", "KEEP")
-    if rev_action == "APPROVE":
-        df.loc[df["whitebox_status"] == "Review", "whitebox_rule_applied"] = "Human Approved -> Clean Asset"
-        df.loc[df["whitebox_status"] == "Review", "whitebox_status"] = "Valid"
-    elif rev_action == "REJECT":
-        df.loc[df["whitebox_status"] == "Review", "whitebox_rule_applied"] = "Human Rejected -> Quarantine Lake"
-        df.loc[df["whitebox_status"] == "Review", "whitebox_status"] = "Quarantine"
-
-    # Apply individual row overrides if any
-    row_decisions = _WORKFLOW_STATE.get("row_decisions", {}) or {}
-    for row_key, decision in row_decisions.items():
-        try:
-            rid = int(str(row_key).replace("#", ""))
-            if "dirty_row_id" in df.columns:
-                mask = df["dirty_row_id"] == rid
-                if decision == "APPROVE":
-                    df.loc[mask, "whitebox_status"] = "Valid"
-                    df.loc[mask, "whitebox_rule_applied"] = f"Row #{rid} Corrected & Approved"
-                elif decision == "REJECT":
-                    df.loc[mask, "whitebox_status"] = "Quarantine"
-                    df.loc[mask, "whitebox_rule_applied"] = f"Row #{rid} Quarantined by Reviewer"
-        except Exception:
-            pass
-
-    df_clean = df[df["whitebox_status"] == "Valid"].copy()
-    df_review = df[df["whitebox_status"] == "Review"].copy()
-    df_quarantine = df[df["whitebox_status"] == "Quarantine"].copy()
-
-    # Persist real CSV files so Export Hub downloads actual processed datasets
-    clean_path = os.path.join(OUTPUT_DIR, "clean_dataset_run.csv")
-    review_path = os.path.join(OUTPUT_DIR, "review_queue_run.csv")
-    quarantine_path = os.path.join(OUTPUT_DIR, "quarantine_lake_run.csv")
-    df_clean.to_csv(clean_path, index=False)
-    df_review.to_csv(review_path, index=False)
-    df_quarantine.to_csv(quarantine_path, index=False)
-
-    missing_cnt = int(null_mask.sum())
-    range_cnt = int(range_mask.sum())
-    dup_cnt = int(dup_mask.sum())
-    gate1_quarantined = (missing_cnt if should_quarantine_nulls else 0) + range_cnt
-    gate1_passed = total_rows - gate1_quarantined
-    gate2_quarantined = dup_cnt if dedup_strategy != "review_all" else 0
-    gate2_passed = gate1_passed - gate2_quarantined
-    initial_outlier_cnt = int(outlier_mask.sum())
-
-    clean_cnt = int(len(df_clean))
-    review_cnt = int(len(df_review))
-    quarantine_cnt = int(len(df_quarantine))
-    quality_score_pct = round((clean_cnt / total_rows) * 100, 1) if total_rows > 0 else 0.0
+    rule_items = [RuleItem(**r) if isinstance(r, dict) else r for r in (active_rules or [])]
+    payload = ExecuteRulesPayload(dataset_name=ds_name, rules=rule_items)
+    exec_res = execute_pipeline(payload)
 
     metrics = {
         "total_rows": total_rows,
-        "clean_rows": clean_cnt,
-        "review_rows": review_cnt,
-        "quarantine_rows": quarantine_cnt,
-        "quality_score_pct": quality_score_pct,
-        "missing_score_count": missing_cnt,
-        "invalid_range_count": range_cnt,
-        "duplicate_count": dup_cnt,
-        "initial_outlier_count": initial_outlier_cnt,
-        "gate1_quarantined": gate1_quarantined,
-        "gate1_passed": gate1_passed,
-        "gate2_quarantined": gate2_quarantined,
-        "gate2_passed": gate2_passed,
-        "upper_fence": round(upper_fence, 2),
-        "q1": q1,
-        "q3": q3,
-        "iqr": iqr,
-        "sample_clean": df_clean.head(5).to_dict(orient="records"),
-        "sample_review": df_review.head(5).to_dict(orient="records"),
-        "sample_quarantine": df_quarantine.head(5).to_dict(orient="records")
+        "clean_rows": exec_res.get("clean_rows", total_rows),
+        "review_rows": exec_res.get("review_rows", 0),
+        "quarantine_rows": exec_res.get("quarantine_rows", 0),
+        "quality_score_pct": exec_res.get("raw_quality_score_pct", 100.0),
+        "missing_score_count": sum(v for k, v in exec_res.get("error_distribution", {}).items() if "Missing" in k),
+        "invalid_range_count": sum(v for k, v in exec_res.get("error_distribution", {}).items() if "Range" in k),
+        "duplicate_count": exec_res.get("error_distribution", {}).get("Duplicate", 0),
+        "initial_outlier_count": sum(v for k, v in exec_res.get("error_distribution", {}).items() if "Outlier" in k),
+        "gate1_quarantined": exec_res.get("quarantine_rows", 0),
+        "gate1_passed": total_rows - exec_res.get("quarantine_rows", 0),
+        "gate2_quarantined": 0,
+        "gate2_passed": total_rows,
+        "sample_clean": exec_res.get("sample_clean") or (pd.read_csv(os.path.join(OUTPUT_DIR, "clean_dataset_run.csv")).head(5).to_dict(orient="records") if os.path.isfile(os.path.join(OUTPUT_DIR, "clean_dataset_run.csv")) else []),
+        "sample_review": exec_res.get("sample_review", []),
+        "sample_quarantine": exec_res.get("sample_quarantined", [])
     }
     return _clean_for_json({**_WORKFLOW_STATE, "metrics": metrics})
 
@@ -1477,16 +1482,17 @@ def update_workflow_state(payload: Dict[str, Any] = Body(default_factory=dict)):
 @router.get("/export-csv/{zone}")
 def export_zone_csv(zone: str):
     _recompute_interactive_state()
+    ds_name = _WORKFLOW_STATE.get("dataset_name", "dataset") or "dataset"
     zone_lower = zone.lower()
     if zone_lower == "clean":
         fpath = os.path.join(OUTPUT_DIR, "clean_dataset_run.csv")
-        fname = "student_course_scores_clean.csv"
+        fname = f"{ds_name}_clean.csv"
     elif zone_lower == "review":
         fpath = os.path.join(OUTPUT_DIR, "review_queue_run.csv")
-        fname = "student_course_scores_review_queue.csv"
+        fname = f"{ds_name}_review_queue.csv"
     else:
         fpath = os.path.join(OUTPUT_DIR, "quarantine_lake_run.csv")
-        fname = "student_course_scores_quarantine_log.csv"
+        fname = f"{ds_name}_quarantine_log.csv"
 
     if not os.path.isfile(fpath):
         raise HTTPException(status_code=404, detail="Export file not generated yet")
@@ -1532,7 +1538,7 @@ import io
 @router.post("/upload-csv", dependencies=[Depends(require_session)])
 async def upload_csv_dataset(
     file: UploadFile = File(...),
-    table_name: str = Form("student_course_scores")
+    table_name: str = Form("uploaded_dataset")
 ):
     content = await file.read()
     if not content:
@@ -1550,50 +1556,46 @@ async def upload_csv_dataset(
     _WORKFLOW_STATE["source_type"] = "FILE_UPLOAD"
     _save_workflow_state()
 
-    if _is_supported_schema(df_up.columns):
-        if "dirty_row_id" not in df_up.columns:
-            df_up.insert(0, "dirty_row_id", range(1, len(df_up) + 1))
-        df_up.to_csv(WORKING_DATASET_PATH, index=False)
-        _WORKFLOW_STATE["dataset_source"] = "upload"
-        _save_workflow_state()
-        _LATEST_PROFILING.clear()
-        prof = get_dataset_profile(clean_tbl)
-        state = _recompute_interactive_state()
-        return _clean_for_json({
-            "status": "ingested",
-            "source_type": "FILE_UPLOAD",
-            "table_name": clean_tbl,
-            "rows_ingested": int(len(df_up)),
-            "columns": list(df_up.columns),
-            "profile": prof,
-            "state": state
-        })
-    else:
-        custom_path = os.path.join(OUTPUT_DIR, f"{clean_tbl}_uploaded.csv")
-        df_up.to_csv(custom_path, index=False)
-        # Root Cause Fix: get_dataset_profile(clean_tbl) has a cache-miss fallback
-        # that reads DIRTY_DATASET_PATH — the *other*, fixed student-schema
-        # dataset — not the file just uploaded here. For any file without
-        # student_id/course/score columns this returned 404 (no prior dataset
-        # cached) or, worse, silently profiled an unrelated dataset. Profile the
-        # DataFrame we actually just parsed instead.
-        prof = _compute_profile(df_up, clean_tbl)
-        _LATEST_PROFILING[clean_tbl] = prof
-        return _clean_for_json({
-            "status": "ingested",
-            "source_type": "FILE_UPLOAD",
-            "table_name": clean_tbl,
-            "rows_ingested": int(len(df_up)),
-            "columns": list(df_up.columns),
-            "profile": prof,
-            "state": _recompute_interactive_state()
-        })
+    if "dirty_row_id" not in df_up.columns:
+        df_up.insert(0, "dirty_row_id", range(1, len(df_up) + 1))
+    df_up.to_csv(WORKING_DATASET_PATH, index=False)
+    _UPLOADED_DATASETS[clean_tbl] = df_up.copy()
+    _UPLOADED_DATASETS[raw_tbl] = df_up.copy()
+    _WORKFLOW_STATE["dataset_source"] = "upload"
+    _WORKFLOW_STATE["dataset_name"] = clean_tbl
+    _WORKFLOW_STATE["source_type"] = "FILE_UPLOAD"
+    _save_workflow_state()
+    _LATEST_PROFILING.clear()
+    prof = _compute_profile(df_up, clean_tbl)
+    _LATEST_PROFILING[clean_tbl] = prof
+    default_ctx = get_default_user_context(clean_tbl, prof)
+    _LATEST_USER_CONTEXT[clean_tbl] = default_ctx
+    recs = _generate_recommendations(prof, default_ctx)
+    _LATEST_RECOMMENDATIONS[clean_tbl] = {
+        "dataset_name": clean_tbl,
+        "recommendations_count": len(recs),
+        "recommendations": recs,
+        "generated_at": datetime.now(timezone.utc).isoformat()
+    }
+    _WORKFLOW_STATE["active_rules"] = recs
+    _save_workflow_state()
+    state = _recompute_interactive_state()
+    return _clean_for_json({
+        "status": "ingested",
+        "source_type": "FILE_UPLOAD",
+        "table_name": clean_tbl,
+        "rows_ingested": int(len(df_up)),
+        "columns": list(df_up.columns),
+        "profile": prof,
+        "recommendations": recs,
+        "state": state
+    })
 
 
 @router.post("/ingest-source", dependencies=[Depends(require_session)])
 def ingest_from_connector(payload: Dict[str, Any]):
     source_type = str(payload.get("source_type", "RDBMS")).upper()
-    table_name = str(payload.get("table_name") or payload.get("topic") or "student_course_scores").strip()
+    table_name = str(payload.get("table_name") or payload.get("topic") or "uploaded_dataset").strip()
     endpoint_or_host = str(payload.get("connection_uri") or payload.get("host") or payload.get("url") or "local-cluster").strip()
 
     _WORKFLOW_STATE["dataset_name"] = table_name
@@ -1663,8 +1665,6 @@ def _build_dynamic_context_fallback(
     metrics: Dict[str, Any],
     state: Dict[str, Any],
     profile: Dict[str, Any],
-    range_col: str = "score",
-    outlier_col: str = "study_hours",
 ) -> Dict[str, Any]:
     """Builds the rule-based context text from the pipeline's computed metrics.
 
@@ -1673,6 +1673,13 @@ def _build_dynamic_context_fallback(
     dataset), the text fields are empty and `available` is False so the UI can
     fall back to its own wording instead of showing invented counts.
     """
+    # Detect columns dynamically from active rules, falling back to first available from profile
+    active_rules = state.get("active_rules", [])
+    cols_prof = profile.get("columns_profile", {})
+    first_numeric = next((c for c, s in cols_prof.items() if s.get("data_type") in ("Integer", "Float") and c != "dirty_row_id"), None)
+    range_col = next((r.get("field") for r in active_rules if isinstance(r, dict) and r.get("rule_type") == "range_check"), first_numeric or "value")
+    outlier_col = next((r.get("field") for r in active_rules if isinstance(r, dict) and r.get("rule_type") == "auto_iqr"), first_numeric or "value")
+
     base: Dict[str, Any] = {
         "engine": "SDOQAP rule-based summary",
         "model": None,
@@ -1688,11 +1695,15 @@ def _build_dynamic_context_fallback(
     if not total_rows:
         return base
 
-    min_score = float(state.get("min_score") if state.get("min_score") is not None else 0.0)
-    max_score = float(state.get("max_score") if state.get("max_score") is not None else 100.0)
+    # Extract range parameters from active rules or state
+    range_rule = next((r for r in active_rules if isinstance(r, dict) and r.get("rule_type") == "range_check"), None)
+    min_score = float(range_rule["parameters"]["min"]) if range_rule and range_rule.get("parameters", {}).get("min") is not None else float(state.get("min_score") if state.get("min_score") is not None else 0.0)
+    max_score = float(range_rule["parameters"]["max"]) if range_rule and range_rule.get("parameters", {}).get("max") is not None else float(state.get("max_score") if state.get("max_score") is not None else 100.0)
     null_policy = str(state.get("null_policy") or "")
     tukey_mult = float(state.get("tukey_multiplier") or 3.0)
-    key_cols = str(state.get("composite_key") or "student_id + course + semester")
+    # Detect composite key from active rules or state
+    dup_rule = next((r for r in active_rules if isinstance(r, dict) and r.get("rule_type") == "composite_unique"), None)
+    key_cols = " + ".join(dup_rule["parameters"]["columns"]) if dup_rule and dup_rule.get("parameters", {}).get("columns") else str(state.get("composite_key") or "")
 
     null_count = int(metrics.get("missing_score_count") or 0)
     out_of_range_count = int(metrics.get("invalid_range_count") or 0)
@@ -1778,7 +1789,7 @@ def generate_ai_context_explanations(request: Request, force: bool = False):
     if force:
         require_session(request)
     state = _recompute_interactive_state()
-    dataset_name = str(state.get("dataset_name") or "student_course_scores")
+    dataset_name = str(state.get("dataset_name") or "dataset")
     # _recompute_interactive_state stores its counts under "metrics"; this used to
     # read "live_metrics" (never set), so every number fell back to hard-coded
     # demo values (9,400 clean rows, 100 duplicates, …) regardless of the data.

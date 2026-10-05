@@ -4,12 +4,13 @@ import argparse
 import csv
 import os
 
-COLUMNS = ["dirty_row_id", "record_id", "student_id", "course", "semester", "score", "study_hours", "reject_reason"]
+_EXCLUDE_META = {"run_id", "processed_at", "_hoodie_commit_time", "__index_level_0__"}
 
 
-def select_run_rows(df, run_id, columns):
+def select_run_rows(df, run_id):
     from pyspark.sql import functions as F
-    return df.filter(F.col("run_id") == run_id).select(*[c for c in columns if c in df.columns])
+    columns = [c for c in df.columns if c not in _EXCLUDE_META]
+    return df.filter(F.col("run_id") == run_id).select(*columns)
 
 
 def main():
@@ -24,7 +25,7 @@ def main():
     os.makedirs(a.out, exist_ok=True)
     for layer in ("active", "quarantine"):
         df = spark.read.format("delta").load(f"{hdfs}/data/{layer}/{a.table}")
-        selected = select_run_rows(df, a.run_id, COLUMNS)
+        selected = select_run_rows(df, a.run_id)
         rows = selected.collect()  # small per-run result; avoids needing pandas on the image
         with open(os.path.join(a.out, f"{layer}.csv"), "w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)

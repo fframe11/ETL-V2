@@ -394,6 +394,25 @@ def create_schema_proposal(payload: dict = None, _user: str = Depends(require_se
 
     now_iso = datetime.now(timezone.utc).isoformat()
     run_id = f"run_evo_{int(datetime.now(timezone.utc).timestamp())}"
+
+    proposed_schema = {column_name: column_type}
+    try:
+        es = get_es()
+        schema_res = es.search(
+            index="sdoqap_schema_registry",
+            body={
+                "query": {"term": {"table_name.keyword": table_name}},
+                "size": 1
+            }
+        )
+        schema_hits = schema_res.get("hits", {}).get("hits", [])
+        if schema_hits:
+            existing_schema_spec = schema_hits[0]["_source"].get("schema_spec", {})
+            if isinstance(existing_schema_spec, dict):
+                proposed_schema = {**existing_schema_spec, column_name: column_type}
+    except Exception:
+        pass
+
     doc = {
         "table_name": table_name,
         "run_id": run_id,
@@ -407,13 +426,7 @@ def create_schema_proposal(payload: dict = None, _user: str = Depends(require_se
                 "expected": "None (New Column)" if drift_type == "new_column" else "StringType"
             }
         },
-        "proposed_schema": {
-            "student_id": "StringType",
-            "course": "StringType",
-            "score": "DoubleType",
-            "study_hours": "DoubleType",
-            column_name: column_type
-        }
+        "proposed_schema": proposed_schema
     }
     try:
         es = get_es()

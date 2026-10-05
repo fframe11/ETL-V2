@@ -8,7 +8,7 @@ import RunStatusLine from "../components/RunStatusLine";
 import "./Ingestion.css";
 
 // Must match QUALITY_ENGINE_COLUMNS in api/app/api/whitebox.py.
-const QUALITY_CHECK_COLUMNS = ["student_id", "course", "score", "study_hours"];
+// QUALITY_CHECK_COLUMNS removed to support generic datasets.
 
 export default function Ingestion() {
   // Empirical Data Profiling State (White-Box Foundation)
@@ -57,7 +57,7 @@ export default function Ingestion() {
 
   // Kafka / Event Stream Ingest State
   const [streamBrokers, setStreamBrokers] = useState("kafka:9092");
-  const [streamTopic, setStreamTopic] = useState("student_course_scores");
+  const [streamTopic, setStreamTopic] = useState("");
   const [streamGroup, setStreamGroup] = useState("sdoqap-profiler-group");
   const [redditTopic, setRedditTopic] = useState("#Technology, #AI");
   const [redditDuration, setRedditDuration] = useState(40);
@@ -110,16 +110,16 @@ export default function Ingestion() {
   const normalizeFindingsObj = (sf) => {
     if (Array.isArray(sf)) {
       return {
-        range: sf.includes("score_range_null") || sf.includes("range"),
-        duplicate: sf.includes("composite_key_dup") || sf.includes("duplicate"),
-        outlier: sf.includes("study_hours_outlier") || sf.includes("outlier")
+        range: sf.includes("range") || sf.includes("Range"),
+        duplicate: sf.includes("duplicate") || sf.includes("Duplicate") || sf.includes("composite_key"),
+        outlier: sf.includes("outlier") || sf.includes("Outlier") || sf.includes("iqr") || sf.includes("IQR")
       };
     }
     if (sf && typeof sf === "object") {
       return {
-        range: Boolean(sf.range ?? sf.score_range_null ?? true),
-        duplicate: Boolean(sf.duplicate ?? sf.composite_key_dup ?? true),
-        outlier: Boolean(sf.outlier ?? sf.study_hours_outlier ?? true)
+        range: Boolean(sf.range ?? true),
+        duplicate: Boolean(sf.duplicate ?? true),
+        outlier: Boolean(sf.outlier ?? true)
       };
     }
     return { range: true, duplicate: true, outlier: true };
@@ -129,8 +129,8 @@ export default function Ingestion() {
   const [expandedFinding, setExpandedFinding] = useState(null);
   const [findingRecords, setFindingRecords] = useState({});
   const [activeSourceTab, setActiveSourceTab] = useState("csv");
-  const [activeSourceSummary, setActiveSourceSummary] = useState("FILE_UPLOAD · student_course_scores.csv");
-  const [primaryDatasetName, setPrimaryDatasetName] = useState("student_course_scores");
+  const [activeSourceSummary, setActiveSourceSummary] = useState("");
+  const [primaryDatasetName, setPrimaryDatasetName] = useState("");
   const [rawSearchQuery, setRawSearchQuery] = useState("");
   const [rawSearchResults, setRawSearchResults] = useState(null);
   const [quickUploadNotice, setQuickUploadNotice] = useState("");
@@ -159,7 +159,7 @@ export default function Ingestion() {
     setProfilingLoading(true);
     setUploadError("");
     setQuickUploadNotice("");
-    const cleanTbl = String(tableName || "student_course_scores").replace(/[^a-zA-Z0-9_]/g, "_");
+    const cleanTbl = String(tableName || "uploaded_dataset").replace(/[^a-zA-Z0-9_]/g, "_");
     setPrimaryDatasetName(cleanTbl);
     setActiveSourceSummary(`${sourceType} · ${connectionUri || cleanTbl}`);
     try {
@@ -674,27 +674,34 @@ export default function Ingestion() {
   // An empty object is not a profile; only a response with a row count is.
   const hasProfile = profilingData?.total_rows != null;
   const colProfiles = profilingData?.columns_profile || profilingData?.column_profiles || {};
-  const missingCheckColumns = QUALITY_CHECK_COLUMNS.filter((c) => !(c in colProfiles));
-  const checksSupported = missingCheckColumns.length === 0;
-  const scoreProf = colProfiles.score || {};
-  const hoursProf = colProfiles.study_hours || {};
+  
+  // Dynamic finding extraction from profile
+  const numericCols = Object.entries(colProfiles).filter(([k, v]) => ["Integer", "Float"].includes(v?.data_type)).map(([k]) => k);
+  const nullCols = Object.entries(colProfiles).filter(([k, v]) => (v?.null_count || 0) > 0).sort((a, b) => b[1].null_count - a[1].null_count).map(([k]) => k);
+  const outlierCols = Object.entries(colProfiles).filter(([k, v]) => (v?.outlier_count || 0) > 0).sort((a, b) => b[1].outlier_count - a[1].outlier_count).map(([k]) => k);
+  
   const totalIngestedRows = profilingData?.total_rows;
-  const duplicateRows = profilingData?.duplicate_analysis?.duplicate_rows_detected;
+  const duplicateRows = profilingData?.duplicate_analysis?.duplicate_rows_detected || 0;
   const duplicateKey = profilingData?.duplicate_analysis?.tested_composite_key || [];
-  const distinctRows = totalIngestedRows != null && duplicateRows != null ? totalIngestedRows - duplicateRows : null;
+  const distinctRows = totalIngestedRows != null ? totalIngestedRows - duplicateRows : null;
   const fmtNum = (v) => (v == null ? "—" : Number(v).toLocaleString());
+  const fmtStat = (v) => (v == null ? "—" : Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 }));
+
+  // Collect generic quality issues across all columns
+  const nullEntries = Object.entries(colProfiles).filter(([c, p]) => c !== "dirty_row_id" && (p.null_count || 0) > 0);
+  const outlierEntries = Object.entries(colProfiles).filter(([c, p]) => c !== "dirty_row_id" && (p.outlier_count || 0) > 0);
+  const totalNullCount = nullEntries.reduce((acc, [, p]) => acc + (p.null_count || 0), 0);
+  const totalOutlierCount = outlierEntries.reduce((acc, [, p]) => acc + (p.outlier_count || 0), 0);
+
   const issueParts = [
-    ["ค่าว่าง", scoreProf.null_count],
+    ["ค่าว่าง", totalNullCount],
     ["ซ้ำ", duplicateRows],
-    ["ผิดปกติ", hoursProf.outlier_count]
+    ["ผิดปกติ", totalOutlierCount]
   ].filter(([, v]) => v > 0);
   const issueCount = issueParts.length;
-  const issueSummary = !checksSupported
-    ? "ตรวจอัตโนมัติไม่ได้ (คอลัมน์ไม่ครบ)"
-    : issueCount
-      ? `พบปัญหา ${issueCount} ด้าน: ${issueParts.map(([label, v]) => `${label} ${Number(v).toLocaleString()}`).join(" · ")}`
-      : "ไม่พบปัญหา";
-  const fmtStat = (v) => (v == null ? "—" : Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 }));
+  const issueSummary = issueCount
+    ? `พบปัญหา ${issueCount} ด้าน: ${issueParts.map(([label, v]) => `${label} ${Number(v).toLocaleString()}`).join(" · ")}`
+    : "ไม่พบปัญหาผิดปกติในข้อมูล";
 
   return (
     <div className="gs-ingestion">
@@ -828,14 +835,14 @@ export default function Ingestion() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              handleConnectSourceAndProfile("REST_API", apiTableName || "student_course_scores", apiUrl || "https://api.internal.org/v1/records");
+              handleConnectSourceAndProfile("REST_API", apiTableName || "uploaded_dataset", apiUrl || "https://api.internal.org/v1/records");
             }}
             style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: "8px", padding: "16px" }}
           >
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px", alignItems: "end" }}>
               <div>
                 <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>Target Table Name</label>
-                <input type="text" value={apiTableName} onChange={(e) => setApiTableName(e.target.value)} placeholder="student_course_scores" style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12px", fontWeight: 700, background: "#FFFFFF" }} />
+                <input type="text" value={apiTableName} onChange={(e) => setApiTableName(e.target.value)} placeholder="uploaded_dataset" style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12px", fontWeight: 700, background: "#FFFFFF" }} />
               </div>
               <div style={{ flex: 2 }}>
                 <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>REST Endpoint URL</label>
@@ -865,7 +872,7 @@ export default function Ingestion() {
             onSubmit={(e) => {
               e.preventDefault();
               handleStreamSubmit(e);
-              handleConnectSourceAndProfile("KAFKA_STREAM", streamTopic || "student_course_scores", `${streamBrokers}/${streamTopic}`);
+              handleConnectSourceAndProfile("KAFKA_STREAM", streamTopic || "uploaded_dataset", `${streamBrokers}/${streamTopic}`);
             }}
             style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: "8px", padding: "16px" }}
           >
@@ -876,7 +883,7 @@ export default function Ingestion() {
               </div>
               <div>
                 <label style={{ display: "block", fontSize: "11px", fontWeight: 800, color: "#334155", marginBottom: "4px" }}>Topic Name</label>
-                <input type="text" value={streamTopic} onChange={(e) => setStreamTopic(e.target.value)} placeholder="student_course_scores" style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12px", fontWeight: 700, background: "#FFFFFF" }} />
+                <input type="text" value={streamTopic} onChange={(e) => setStreamTopic(e.target.value)} placeholder="" style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12px", fontWeight: 700, background: "#FFFFFF" }} />
               </div>
               <div>
                 <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>Consumer Group ID</label>
@@ -939,9 +946,9 @@ export default function Ingestion() {
             <div><span>แถวทั้งหมด</span><strong>{fmtNum(totalIngestedRows)}</strong></div>
             <div><span>คอลัมน์</span><strong>{fmtNum(profilingData.total_columns)}</strong></div>
             <div><span>แถวไม่ซ้ำ</span><strong>{fmtNum(distinctRows)}</strong></div>
-            <div className={!checksSupported ? "" : issueCount ? "is-warn" : "is-ok"}>
+            <div className={issueCount ? "is-warn" : "is-ok"}>
               <span>ประเด็นที่ต้องดูแล</span>
-              <strong>{checksSupported ? `${issueCount} / 3` : "—"}</strong>
+              <strong>{issueCount ? `${issueCount} ด้าน` : "0 (ปกติ)"}</strong>
             </div>
           </div>
         )}
@@ -952,74 +959,147 @@ export default function Ingestion() {
 
         {hasProfile && (
           <>
-            {!checksSupported && (
-              <div className="ing-notice ing-notice-info" role="status">
-                การตรวจคุณภาพอัตโนมัติรองรับเฉพาะข้อมูลที่มีคอลัมน์ {QUALITY_CHECK_COLUMNS.join(", ")} · ไฟล์นี้ไม่มี: {missingCheckColumns.join(", ")}
+            {/* Generic Schema & Column Profiling Evidence Table */}
+            <div style={{ marginTop: "14px", marginBottom: "16px", overflowX: "auto" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                <h4 style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "#1E293B" }}>
+                  หลักฐานการสำรวจข้อมูล (Profiling Evidence Layer)
+                </h4>
+                <span style={{ fontSize: "11px", color: "#64748B" }}>
+                  ตรวจพบ {Object.keys(colProfiles).filter(c => c !== "dirty_row_id").length} คอลัมน์ · พร้อมส่งต่อไปยัง Rule Recommendation
+                </span>
               </div>
-            )}
-            {checksSupported && (
-            <div className="ing-findings">
-              <FindingCard
-                tone="critical"
-                column="score"
-                title="ค่าว่างและช่วงค่า"
-                icon="alert"
-                count={scoreProf.null_count}
-                countLabel="แถวว่าง"
-                stats={[
-                  ["ต่ำสุด → สูงสุด", scoreProf.min != null ? `${fmtStat(scoreProf.min)} → ${fmtStat(scoreProf.max)}` : "—"],
-                  ["ค่าว่าง", scoreProf.null_count != null ? `${fmtNum(scoreProf.null_count)} แถว (${fmtStat(scoreProf.null_rate_pct)}%)` : "—"]
-                ]}
-                explanation="ค่าว่างหรือค่านอกช่วงทำให้ค่าเฉลี่ยและรายงานคลาดเคลื่อน"
-                selected={selectedFindings.range}
-                onToggle={(v) => toggleFinding("range", v)}
-                expanded={expandedFinding === "range"}
-                onInspect={() => handleInspectFindingRows("range", "quarantine", "Score")}
-                samples={findingRecords.range}
-                renderSample={(r) => `#${r.dirty_row_id} · ${r.student_id} · ${r.course} · score=${String(r.score ?? "NULL")}`}
-              />
-
-              <FindingCard
-                tone="warning"
-                column={duplicateKey.length ? duplicateKey.join(" + ") : "student_id + course + semester"}
-                title="เรคคอร์ดซ้ำ"
-                icon="key"
-                count={duplicateRows}
-                countLabel="แถวซ้ำ"
-                stats={[
-                  ["ไม่ซ้ำ", distinctRows != null ? `${fmtNum(distinctRows)} / ${fmtNum(totalIngestedRows)}` : "—"],
-                  ["ซ้ำ", duplicateRows != null ? `${fmtNum(duplicateRows)} แถว` : "—"]
-                ]}
-                explanation="เรคคอร์ดที่คีย์ซ้ำกันทำให้นับยอดเกินจริง ต้องแยกออกก่อนประมวลผล"
-                selected={selectedFindings.duplicate}
-                onToggle={(v) => toggleFinding("duplicate", v)}
-                expanded={expandedFinding === "dup"}
-                onInspect={() => handleInspectFindingRows("dup", "quarantine", "Duplicate")}
-                samples={findingRecords.dup}
-                renderSample={(r) => `#${r.dirty_row_id} · ${r.student_id} + ${r.course} + ${r.semester}`}
-              />
-
-              <FindingCard
-                tone="info"
-                column="study_hours"
-                title="ค่าผิดปกติ"
-                icon="chart"
-                count={hoursProf.outlier_count}
-                countLabel="ค่าผิดปกติ"
-                stats={[
-                  ["Q1 / Q3", hoursProf.q1 != null ? `${fmtStat(hoursProf.q1)} / ${fmtStat(hoursProf.q3)}` : "—"],
-                  ["ช่วงปกติ", hoursProf.lower_fence != null ? `${fmtStat(hoursProf.lower_fence)} ถึง ${fmtStat(hoursProf.upper_fence)}` : "—"]
-                ]}
-                explanation="ค่าที่อยู่นอกช่วงปกติควรส่งเข้าคิวตรวจสอบ แทนการตัดทิ้งอัตโนมัติ (การ์ดนี้ใช้ตัวคูณ 1.5×IQR ตายตัวเสมอ แม้เปลี่ยนค่าตัวคูณในหน้า Expectations & Alerts แล้ว การ์ดนี้จะยังไม่อัปเดตตาม)"
-                selected={selectedFindings.outlier}
-                onToggle={(v) => toggleFinding("outlier", v)}
-                expanded={expandedFinding === "outlier"}
-                onInspect={() => handleInspectFindingRows("outlier", "review", "Outlier")}
-                samples={findingRecords.outlier}
-                renderSample={(r) => `#${r.dirty_row_id} · ${r.student_id} · study_hours=${r.study_hours}`}
-              />
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", textAlign: "left", background: "#FFFFFF", borderRadius: "8px", border: "1px solid #CBD5E1" }}>
+                <thead>
+                  <tr style={{ background: "#F8FAFC", borderBottom: "1px solid #CBD5E1", color: "#475569" }}>
+                    <th style={{ padding: "8px 12px", fontWeight: 600 }}>คอลัมน์</th>
+                    <th style={{ padding: "8px 12px", fontWeight: 600 }}>ชนิดข้อมูล (Inferred Type)</th>
+                    <th style={{ padding: "8px 12px", fontWeight: 600 }}>ค่าว่าง (Null Rate)</th>
+                    <th style={{ padding: "8px 12px", fontWeight: 600 }}>ความไม่ซ้ำ (Unique)</th>
+                    <th style={{ padding: "8px 12px", fontWeight: 600 }}>ขอบเขตค่า / หมวดหมู่</th>
+                    <th style={{ padding: "8px 12px", fontWeight: 600 }}>ข้อสังเกตคุณภาพ (Evidence)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(colProfiles).filter(([col]) => col !== "dirty_row_id").map(([col, p]) => {
+                    const hasNull = (p.null_count || 0) > 0;
+                    const hasOutlier = (p.outlier_count || 0) > 0;
+                    const isId = p.data_type === "Identifier" || col.toLowerCase().endsWith("_id") || col.toLowerCase() === "id";
+                    return (
+                      <tr key={col} style={{ borderBottom: "1px solid #F1F5F9" }}>
+                        <td style={{ padding: "8px 12px", fontWeight: 600, fontFamily: "monospace", color: "#0F172A" }}>{col}</td>
+                        <td style={{ padding: "8px 12px" }}>
+                          <span style={{
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            background: isId ? "#EFF6FF" : p.data_type === "Date" ? "#F5F3FF" : (p.data_type === "Integer" || p.data_type === "Float") ? "#ECFDF5" : "#F1F5F9",
+                            color: isId ? "#1D4ED8" : p.data_type === "Date" ? "#6D28D9" : (p.data_type === "Integer" || p.data_type === "Float") ? "#047857" : "#475569"
+                          }}>
+                            {p.data_type || "String"}
+                          </span>
+                        </td>
+                        <td style={{ padding: "8px 12px", color: hasNull ? "#DC2626" : "#64748B" }}>
+                          {hasNull ? `${p.null_count.toLocaleString()} แถว (${fmtStat(p.null_rate_pct)}%)` : "0 (สมบูรณ์ 100%)"}
+                        </td>
+                        <td style={{ padding: "8px 12px" }}>
+                          {fmtNum(p.distinct_count)} ค่า ({fmtStat(p.unique_rate_pct)}%)
+                        </td>
+                        <td style={{ padding: "8px 12px", color: "#334155" }}>
+                          {p.min != null && p.max != null
+                            ? `[${fmtStat(p.min)} → ${fmtStat(p.max)}]`
+                            : p.top_categories && Object.keys(p.top_categories).length > 0
+                              ? Object.keys(p.top_categories).slice(0, 3).join(", ") + (Object.keys(p.top_categories).length > 3 ? "..." : "")
+                              : (p.sample_values || []).slice(0, 3).join(", ") || "—"}
+                        </td>
+                        <td style={{ padding: "8px 12px" }}>
+                          <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+                            {hasNull && <span style={{ background: "#FEE2E2", color: "#B91C1C", fontSize: "10px", padding: "1px 5px", borderRadius: "3px" }}>มีค่าว่าง</span>}
+                            {hasOutlier && <span style={{ background: "#FEF3C7", color: "#B45309", fontSize: "10px", padding: "1px 5px", borderRadius: "3px" }}>ค่าผิดปกติ ({p.outlier_count})</span>}
+                            {isId && <span style={{ background: "#E0E7FF", color: "#3730A3", fontSize: "10px", padding: "1px 5px", borderRadius: "3px" }}>คีย์หลัก</span>}
+                            {!hasNull && !hasOutlier && !isId && <span style={{ color: "#10B981", fontSize: "11px" }}>✓ ปกติ</span>}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-            )}
+
+            {/* Quality Finding Cards */}
+            <div className="ing-findings">
+              <>
+                {duplicateRows > 0 && (
+                  <FindingCard
+                    tone="warning"
+                    column={duplicateKey.length ? duplicateKey.join(" + ") : "Entity Natural Key"}
+                    title="เรคคอร์ดซ้ำ (Uniqueness)"
+                    icon="key"
+                    count={duplicateRows}
+                    countLabel="แถวซ้ำ"
+                    stats={[
+                      ["แถวไม่ซ้ำ", distinctRows != null ? `${fmtNum(distinctRows)} / ${fmtNum(totalIngestedRows)}` : "—"],
+                      ["แถวซ้ำ", `${fmtNum(duplicateRows)} แถว`]
+                    ]}
+                    explanation="พบเรคคอร์ดที่มีคีย์หรือข้อมูลซ้ำซ้อนกัน ละเมิดความถูกต้องเชิงสัมพันธ์ (Relational Integrity)"
+                    selected={selectedFindings.duplicate ?? true}
+                    onToggle={(v) => toggleFinding("duplicate", v)}
+                    expanded={expandedFinding === "dup"}
+                    onInspect={() => handleInspectFindingRows("dup", "quarantine", "Duplicate")}
+                    samples={findingRecords.dup}
+                    renderSample={(r) => `#${r.dirty_row_id || 1} · ${duplicateKey.map(k => `${k}=${r[k]}`).join(" · ")}`}
+                  />
+                )}
+
+                {nullEntries.slice(0, 2).map(([col, p]) => (
+                  <FindingCard
+                    key={`range_${col}`}
+                    tone="critical"
+                    column={col}
+                    title={`ความสมบูรณ์ข้อมูล (${col})`}
+                    icon="alert"
+                    count={p.null_count}
+                    countLabel="แถวว่าง"
+                    stats={[
+                      ["จำนวนค่าว่าง", `${fmtNum(p.null_count)} แถว`],
+                      ["อัตราค่าว่าง", `${fmtStat(p.null_rate_pct)}%`]
+                    ]}
+                    explanation={`คอลัมน์ '${col}' มีค่าว่าง ละเมิดเกณฑ์ความสมบูรณ์ (Completeness Check) ควรกักกันเพื่อป้องกันข้อผิดพลาด`}
+                    selected={selectedFindings.range ?? true}
+                    onToggle={(v) => toggleFinding("range", v)}
+                    expanded={expandedFinding === `range_${col}`}
+                    onInspect={() => handleInspectFindingRows(`range_${col}`, "quarantine", "Null")}
+                    samples={findingRecords[`range_${col}`]}
+                    renderSample={(r) => `#${r.dirty_row_id || 1} · ${col}=NULL`}
+                  />
+                ))}
+
+                {outlierEntries.slice(0, 2).map(([col, p]) => (
+                  <FindingCard
+                    key={`outlier_${col}`}
+                    tone="info"
+                    column={col}
+                    title={`การกระจายตัวผิดปกติ (${col})`}
+                    icon="chart"
+                    count={p.outlier_count}
+                    countLabel="ค่าผิดปกติ"
+                    stats={[
+                      ["Q1 / Q3", `${fmtStat(p.q1)} / ${fmtStat(p.q3)}`],
+                      ["ช่วงปกติ (Tukey)", `${fmtStat(p.lower_fence)} ถึง ${fmtStat(p.upper_fence)}`]
+                    ]}
+                    explanation={`พบค่าที่อยู่นอกช่วง Tukey Outer Fence ใน '${col}' แนะนำให้ส่งเข้าคิว Review เพื่อให้ผู้เชี่ยวชาญตรวจสอบ`}
+                    selected={selectedFindings.outlier ?? true}
+                    onToggle={(v) => toggleFinding("outlier", v)}
+                    expanded={expandedFinding === `outlier_${col}`}
+                    onInspect={() => handleInspectFindingRows(`outlier_${col}`, "review", "Outlier")}
+                    samples={findingRecords[`outlier_${col}`]}
+                    renderSample={(r) => `#${r.dirty_row_id || 1} · ${col}=${r[col]}`}
+                  />
+                ))}
+              </>
+            </div>
 
             <LearnMore summary="ค้นหาเรคคอร์ด">
               <input
@@ -1043,11 +1123,15 @@ export default function Ingestion() {
               {rawSearchQuery.trim() !== "" && (
                 <ul className="ing-samples">
                   <li><strong>พบ {fmtNum(rawSearchResults?.matched_rows ?? 0)} แถว</strong></li>
-                  {(rawSearchResults?.rows || []).map((item, idx) => (
-                    <li key={idx}>
-                      #{item.dirty_row_id ?? item.record_id ?? idx + 1} · {String(item.student_id ?? "")} · {String(item.course ?? "")} · score={String(item.score ?? "NULL")} · study_hours={String(item.study_hours ?? "")} · {String(item.semester ?? "")}
-                    </li>
-                  ))}
+                  {(rawSearchResults?.rows || []).map((item, idx) => {
+                    // Dynamic: show first 4 non-metadata columns
+                    const displayCols = Object.keys(colProfiles || {}).filter(c => c !== "dirty_row_id").slice(0, 4);
+                    return (
+                      <li key={idx}>
+                        #{item.dirty_row_id ?? item.record_id ?? idx + 1} · {displayCols.map(c => `${c}=${String(item[c] ?? "")}`).join(" · ")}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </LearnMore>
