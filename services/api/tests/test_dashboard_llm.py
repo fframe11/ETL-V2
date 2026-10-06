@@ -13,6 +13,7 @@ from app.api import dashboard_llm  # noqa: E402
 from app.api.dashboard_compute import compute_dashboard  # noqa: E402
 from app.api.dashboard_data import prepare_frame  # noqa: E402
 from app.api.dashboard_spec import SpecError, validate_spec  # noqa: E402
+from app.api.dashboard_suggest import suggest_from_profile  # noqa: E402
 
 RAW = pd.DataFrame({
     "order_date": ["2025-01-05", "2025-02-03", "2025-03-10"] * 20,
@@ -265,3 +266,62 @@ def test_call_groq_errors_do_not_leak_the_response_body(monkeypatch):
     monkeypatch.setattr(dashboard_llm.requests, "post", offline)
     with pytest.raises(dashboard_llm.LLMUnavailable):
         dashboard_llm.call_groq([], "gsk_test", "m")
+
+
+# --- the AI layer over the rule-made suggestions ---------------------------------------------------------
+
+CANDIDATES = suggest_from_profile(PROFILE, "business", dashboard_llm.RANK_CANDIDATES)
+
+
+def ranked_answer(*items):
+    return json.dumps({"suggestions": list(items)}, ensure_ascii=False)
+
+
+def test_the_ranking_prompt_carries_the_profile_and_candidate_texts_but_no_cell_values(groq):
+    fake = groq(ranked_answer({"id": CANDIDATES[0]["id"], "text": CANDIDATES[0]["text"]}))
+    dashboard_llm.rank_suggestions("sales", PROFILE, "business", CANDIDATES)
+    system, user = fake.calls[0]
+    sent = json.dumps([system, user], ensure_ascii=False)
+    for value in ("SECRET-CUSTOMER", "North", "South", "East"):
+        assert value not in sent
+    payload = json.loads(user["content"])
+    assert payload["audience"] == "business" and payload["candidates"][0] == {
+        "id": CANDIDATES[0]["id"], "rule": CANDIDATES[0]["rule"], "text": CANDIDATES[0]["text"]}
+    assert all("widget" not in c for c in payload["candidates"])
+    assert "Never add a request that is not a candidate" in system["content"]
+
+
+def test_the_model_may_reorder_and_reword_but_only_within_the_candidates(groq):
+    first, second = CANDIDATES[0], CANDIDATES[1]
+    reworded = f"อยากเห็น {first['text']}"
+    groq(ranked_answer({"id": second["id"], "text": second["text"]}, {"id": first["id"], "text": reworded},
+                       {"id": "R9:invented", "text": "สร้างกราฟที่ไม่มีอยู่จริง"}, {"id": second["id"], "text": "ซ้ำ"}))
+    result = dashboard_llm.rank_suggestions("sales", PROFILE, "business", CANDIDATES)
+    assert result["engine"] == "groq" and result["model"] == "openai/gpt-oss-120b"
+    assert [(s["id"], s["text"]) for s in result["suggestions"]] == [(second["id"], second["text"]), (first["id"], reworded)]
+
+
+def test_a_reworded_text_that_drops_a_column_name_falls_back_to_the_rule_text(groq):
+    named = next(c for c in CANDIDATES if "amount" in c["text"])
+    groq(ranked_answer({"id": named["id"], "text": "ดูภาพรวมของยอดทั้งหมด"}, {"id": CANDIDATES[0]["id"], "text": "ok"}))
+    result = dashboard_llm.rank_suggestions("sales", PROFILE, "business", CANDIDATES)
+    assert result["suggestions"][0]["text"] == named["text"]  # the column name was lost: the original stands
+    assert all(s["text"] for s in result["suggestions"])
+
+
+def test_the_answer_is_capped_and_an_unusable_one_is_an_error(groq):
+    many = [{"id": c["id"], "text": c["text"]} for c in CANDIDATES]
+    groq(ranked_answer(*many), ranked_answer({"id": "R9:invented", "text": "x"}), "not json", json.dumps({"suggestions": "oops"}))
+    assert len(dashboard_llm.rank_suggestions("sales", PROFILE, "business", CANDIDATES)["suggestions"]) == min(len(many), dashboard_llm.RANK_LIMIT)
+    for _ in range(3):
+        with pytest.raises(SpecError):
+            dashboard_llm.rank_suggestions("sales", PROFILE, "business", CANDIDATES)
+
+
+def test_ranking_needs_a_key_and_reports_when_groq_is_down(groq):
+    groq(key="")
+    with pytest.raises(dashboard_llm.LLMUnavailable):
+        dashboard_llm.rank_suggestions("sales", PROFILE, "business", CANDIDATES)
+    groq(dashboard_llm.LLMUnavailable("Groq ตอบกลับ HTTP 503"))
+    with pytest.raises(dashboard_llm.LLMUnavailable):
+        dashboard_llm.rank_suggestions("sales", PROFILE, "business", CANDIDATES)

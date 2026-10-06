@@ -255,3 +255,62 @@ def refine_spec(table_name, profile, spec, instruction):
     new_spec, warnings, model = _ask(build_refine_messages(table_name, profile, spec, instruction), profile)
     return {"spec": new_spec, "warnings": warnings, "engine": "groq", "model": model,
             "changes": diff_specs(spec, new_spec)}
+
+
+RANK_CANDIDATES = 12  # how many rule-made suggestions the model may choose from
+RANK_LIMIT = 6        # how many it may return
+RANK_TEXT_MAX = 200
+
+RANK_PROMPT = """You choose and reword requests for a dashboard builder.
+Reply with ONE JSON object and nothing else: {"suggestions": [{"id": string, "text": string}]}
+- "candidates" are requests the builder can already fulfil. Choose at most 6 of them, by "id", and put the most useful first for the reader named in "audience".
+- Reword each "text" as one short, plain sentence in the language of the candidate text, the way that reader would ask for it. Keep every column name exactly as it is written in the candidate text.
+- Never add a request that is not a candidate. Never invent columns or numbers.
+- audience "business": what sells or what is largest. "analyst": breakdowns and comparisons. "management": headline numbers, trends and period comparisons. "steward": data health, duplicates, empty cells and value ranges."""
+
+
+def _columns_of(widget):
+    """The column names a suggestion's widget draws on."""
+    names = [widget.get("x"), widget.get("group_by"), (widget.get("metric") or {}).get("column"),
+             (widget.get("compare") or {}).get("date_column")]
+    return [n for n in names if isinstance(n, str)]
+
+
+def _validate_ranking(raw, candidates):
+    """The model's choice, checked: only candidate ids, each once, at most RANK_LIMIT. A reworded text is
+    kept only when it still names every column the candidate's own text names; otherwise the candidate's
+    text stands. Nothing the model adds on its own survives."""
+    by_id = {c["id"]: c for c in candidates}
+    items = raw.get("suggestions") if isinstance(raw, dict) else None
+    if not isinstance(items, list):
+        raise SpecError("คำตอบของ AI ไม่มีรายการคำแนะนำ")
+    ranked, seen = [], set()
+    for item in items:
+        if not isinstance(item, dict) or item.get("id") not in by_id or item["id"] in seen:
+            continue
+        candidate = by_id[item["id"]]
+        seen.add(candidate["id"])
+        text = item.get("text").strip() if isinstance(item.get("text"), str) else ""
+        anchors = [n for n in _columns_of(candidate["widget"]) if n in candidate["text"]]
+        keeps = 5 <= len(text) <= RANK_TEXT_MAX and all(n in text for n in anchors)
+        ranked.append({"id": candidate["id"], "rule": candidate["rule"], "text": text if keeps else candidate["text"]})
+        if len(ranked) == RANK_LIMIT:
+            break
+    if not ranked:
+        raise SpecError("AI ไม่ได้เลือกคำแนะนำที่ใช้ได้")
+    return ranked
+
+
+def rank_suggestions(table_name, profile, audience, candidates):
+    """The suggestions in the order and wording the model prefers for this reader. Raises LLMUnavailable or SpecError;
+    the caller keeps the rule-made list in that case. The prompt carries the column profile and the candidate texts
+    (which name columns), never a cell value."""
+    key, model = groq_settings()
+    if not key:
+        raise LLMUnavailable("ยังไม่ได้ตั้งค่า Groq API key")
+    user = {"dataset": table_name, "audience": audience, "profile": profile_for_prompt(profile),
+            "candidates": [{"id": c["id"], "rule": c["rule"], "text": c["text"]} for c in candidates]}
+    messages = [{"role": "system", "content": RANK_PROMPT},
+                {"role": "user", "content": json.dumps(user, ensure_ascii=False)}]
+    ranked = _validate_ranking(parse_json_object(call_groq(messages, key, model)), candidates)
+    return {"suggestions": ranked, "engine": "groq", "model": model}
