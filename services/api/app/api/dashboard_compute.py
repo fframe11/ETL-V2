@@ -61,6 +61,8 @@ def _aggregate(frame, metric):
         return len(frame)
     if agg == "count_distinct":
         return int(frame[column].nunique())
+    if agg == "count_missing":
+        return int(frame[column].isna().sum())
     numbers = to_numeric_safe(frame[column])
     return _value(getattr(numbers, _REDUCERS[agg])())
 
@@ -72,6 +74,8 @@ def _grouped(frame, keys, metric):
         return groups.size()
     if agg == "count_distinct":
         return groups[column].nunique()
+    if agg == "count_missing":
+        return frame.assign(_missing=frame[column].isna()).groupby(keys, sort=False)["_missing"].sum()
     return groups[column].agg(_REDUCERS[agg])
 
 

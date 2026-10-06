@@ -64,7 +64,7 @@ Fields by widget type:
 - table: columns, optional order_by, limit (max 200).
 Rules:
 - Use column names exactly as they appear in the profile. Never invent columns.
-- sum, avg, min and max need a numeric column; count takes "column": null.
+- sum, avg, min and max need a numeric column; count takes "column": null; count_distinct and count_missing take any column.
 - The grid has {GRID_COLUMNS} columns. Put 3-4 kpi cards (w 3, h 2) on the first row, charts below (w 4 or 6, h 4) and a table last (w 12, h 5).
 - Use 5-10 widgets and 1-3 filters on the most useful categorical or date columns.
 - audience "management": headline kpis with compare and trends, no wide tables. "analyst": more breakdowns and a detail table. "business": balanced.

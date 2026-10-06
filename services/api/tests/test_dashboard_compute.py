@@ -149,3 +149,15 @@ def test_compute_dashboard_never_mutates_the_input_frame():
     selections = {"region": {"values": ["North", "(ว่าง)"]}, "order_date": {"from": "2025-01-01", "to": "2025-03-31"}}
     compute_dashboard(DF, spec, PROFILE, selections)
     pd.testing.assert_frame_equal(DF, before)
+
+
+def test_count_missing_counts_the_empty_cells_of_a_column():
+    assert one({"type": "kpi", "metric": {"agg": "count_missing", "column": "region"}})["value"] == 1
+    assert one({"type": "kpi", "metric": {"agg": "count_missing", "column": "amount"}})["value"] == 0
+
+
+def test_count_missing_per_group_and_after_a_filter():
+    metric = {"agg": "count_missing", "column": "region"}
+    rows = one({"type": "bar", "x": "segment", "metric": metric, "sort": "x"})["rows"]
+    assert {r["x"]: r["value"] for r in rows} == {"A": 1, "B": 0, "C": 0}
+    assert one({"type": "kpi", "metric": metric}, {"segment": {"values": ["B", "C"]}})["value"] == 0

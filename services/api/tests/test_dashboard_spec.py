@@ -122,6 +122,15 @@ def test_untitled_widgets_get_a_readable_title_and_bad_audience_falls_back():
     assert spec["audience"] == "business" and spec["title"] == "แดชบอร์ด"
 
 
+def test_count_missing_takes_a_column_of_any_kind_and_rejects_an_unknown_one():
+    spec, warnings = check(*({"type": "kpi", "title": c, "metric": {"agg": "count_missing", "column": c}}
+                             for c in ("region", "amount", "customer", "order_date")))
+    assert warnings == [] and [w["metric"]["column"] for w in spec["widgets"]] == ["region", "amount", "customer", "order_date"]
+    _, warnings = check({"type": "kpi", "title": "ok", "metric": SUM},
+                        {"type": "kpi", "title": "x", "metric": {"agg": "count_missing", "column": "nope"}})
+    assert "nope" in " ".join(warnings)
+
+
 def test_a_spec_with_nothing_usable_is_an_error():
     with pytest.raises(SpecError):
         validate_spec([], PROFILE)
