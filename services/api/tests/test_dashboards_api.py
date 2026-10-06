@@ -50,7 +50,7 @@ def test_every_route_needs_a_login():
     assert c.get("/api/v1/dashboards/datasets").status_code == 401
     assert c.get("/api/v1/dashboards/datasets/sales/preview").status_code == 401
     assert c.get("/api/v1/dashboards/datasets/sales/suggestions").status_code == 401
-    for path in ("generate", "refine", "render"):
+    for path in ("generate", "refine", "render", "suggest-changes"):
         assert c.post(f"/api/v1/dashboards/{path}", json={}).status_code == 401
 
 
@@ -157,3 +157,22 @@ def test_suggestions_follow_the_audience_and_reject_an_unknown_one(weekly):
     assert suggestions("business").json()["suggestions"][0]["rule"] == "R2"
     assert suggestions("management").json()["suggestions"][0]["rule"] == "R4"
     assert suggestions("ceo").status_code == 400
+
+
+def suggest_changes(spec, table="weekly"):
+    return client().post("/api/v1/dashboards/suggest-changes", json={"table_name": table, "spec": spec})
+
+
+def test_changes_are_suggested_from_what_the_dashboard_lacks(weekly):
+    spec = {"title": "ยอดขาย", "widgets": [{"id": "k1", "type": "kpi", "title": "ยอดรวม", "metric": {"agg": "sum", "column": "amount"}}]}
+    res = suggest_changes(spec)
+    assert res.status_code == 200
+    assert [(s["rule"], s["text"]) for s in res.json()["suggestions"]] == [
+        ("G3", "เพิ่มแนวโน้ม ผลรวม amount รายสัปดาห์ ตาม order_date"),
+        ("G4", "แสดง ยอดรวม เทียบช่วงก่อนหน้า"),
+        ("G1", "เพิ่มตัวกรอง region")]
+
+
+def test_a_spec_that_cannot_be_drawn_is_rejected_before_any_suggestion(weekly):
+    res = suggest_changes({"title": "ว่าง", "widgets": []})
+    assert res.status_code == 422

@@ -34,6 +34,11 @@ class RefinePayload(BaseModel):
     instruction: str = Field(min_length=2, max_length=1000)
 
 
+class SuggestChangesPayload(BaseModel):
+    table_name: str
+    spec: Dict[str, Any]
+
+
 class RenderPayload(BaseModel):
     table_name: str
     spec: Dict[str, Any]
@@ -88,6 +93,13 @@ def dashboard_suggestions(table_name: str, audience: str = "business"):
     _, profile = dashboard_data.load_active_dataset(table_name)
     found = dashboard_suggest.suggest_from_profile(profile, audience)
     return {"table_name": table_name, "suggestions": [{"id": s["id"], "rule": s["rule"], "text": s["text"]} for s in found]}
+
+
+@router.post("/suggest-changes")
+def suggest_dashboard_changes(payload: SuggestChangesPayload):
+    _, profile = dashboard_data.load_active_dataset(payload.table_name)
+    spec = _checked_spec(payload.spec, profile)
+    return {"suggestions": dashboard_suggest.suggest_refinements(profile, spec)}
 
 
 @router.post("/generate")
