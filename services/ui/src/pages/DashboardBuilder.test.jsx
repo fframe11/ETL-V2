@@ -79,6 +79,11 @@ const PREVIEW = {
 };
 const GENERATED = { engine: "groq", model: "openai/gpt-oss-120b", warnings: [], spec: SPEC, data: DATA };
 const EXAMPLE = "ผลรวม amount ตาม region";
+const CHANGE = "เพิ่มแนวโน้ม ผลรวม amount รายสัปดาห์ ตาม order_date";
+const CHANGES = { suggestions: [
+  { id: "G3:order_date", rule: "G3", text: CHANGE },
+  { id: "G1:region", rule: "G1", text: "เพิ่มตัวกรอง region" }
+] };
 const SUGGESTIONS = { table_name: "sales", suggestions: [
   { id: "R2:region", rule: "R2", text: EXAMPLE },
   { id: "R1:amount:order_date", rule: "R1", text: "แนวโน้ม ผลรวม amount รายสัปดาห์ ตาม order_date" }
@@ -88,6 +93,7 @@ const SUGGESTIONS = { table_name: "sales", suggestions: [
 function builderRoutes(extra = []) {
   return [
     ...extra,
+    ["/dashboards/suggest-changes", { body: CHANGES }],
     ["/dashboards/datasets/sales/suggestions", { body: SUGGESTIONS }],
     ["/dashboards/datasets/sales/preview", { body: PREVIEW }],
     ["/dashboards/datasets", { body: DATASETS }],
@@ -278,7 +284,7 @@ function controlledFetch() {
         return new Promise((resolve) => pending[kind].push((body, status = 200) => resolve(reply(status, body))));
       }
     }
-    const body = u.includes("/suggestions") ? SUGGESTIONS : u.includes("/preview") ? PREVIEW : TWO_DATASETS;
+    const body = u.includes("/suggest-changes") ? CHANGES : u.includes("/suggestions") ? SUGGESTIONS : u.includes("/preview") ? PREVIEW : TWO_DATASETS;
     return Promise.resolve(reply(200, body));
   });
   vi.stubGlobal("fetch", fn);
@@ -397,11 +403,11 @@ const REFINED = { engine: "groq", model: "openai/gpt-oss-120b", warnings: [], sp
 
 it("refines the dashboard with an instruction and lists what changed", async () => {
   await generateDashboard([["/dashboards/refine", { body: REFINED }]]);
-  fireEvent.click(screen.getByRole("button", { name: "เพิ่มกราฟยอดขายรายเดือน" }));
+  fireEvent.click(await screen.findByRole("button", { name: CHANGE }));
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "ปรับแดชบอร์ด" })); });
   await settle();
   const body = JSON.parse(callTo("/dashboards/refine")[1].body);
-  expect(body).toEqual({ table_name: "sales", spec: SPEC, instruction: "เพิ่มกราฟยอดขายรายเดือน" });
+  expect(body).toEqual({ table_name: "sales", spec: SPEC, instruction: CHANGE });
   expect(screen.getByText("เพิ่ม: ยอดขายรายเดือน")).toBeInTheDocument();
   expect(screen.getByText("จัดตำแหน่งใหม่")).toBeInTheDocument();
   expect(screen.getByRole("article", { name: "ยอดขายรายเดือน" })).toBeInTheDocument();
@@ -417,6 +423,34 @@ it("keeps the dashboard and explains when AI refinement is unavailable", async (
   expect(screen.getByRole("alert")).toHaveTextContent("ยังไม่ได้ตั้งค่า Groq API key");
   expect(screen.getByText("ภาพรวมยอดขาย")).toBeInTheDocument();
   expect(screen.getByLabelText("ปรับแดชบอร์ดด้วย AI", { selector: "textarea" })).toHaveValue("เพิ่ม Filter จังหวัด");
+});
+
+const changeCalls = () => fetch.mock.calls.filter(([url]) => String(url).includes("/dashboards/suggest-changes"));
+
+it("suggests changes from what the dashboard lacks instead of fixed examples", async () => {
+  await generateDashboard();
+  expect(screen.queryByRole("button", { name: "เพิ่มกราฟยอดขายรายเดือน" })).toBeNull();
+  expect(screen.getByRole("button", { name: "เพิ่มตัวกรอง region" })).toBeInTheDocument();
+  expect(JSON.parse(changeCalls()[0][1].body)).toEqual({ table_name: "sales", spec: SPEC });
+  fireEvent.click(screen.getByRole("button", { name: "เพิ่มตัวกรอง region" }));
+  expect(refineBox()).toHaveValue("เพิ่มตัวกรอง region");
+});
+
+it("asks again for changes after a refinement, because the spec is no longer the same", async () => {
+  await generateDashboard([["/dashboards/refine", { body: REFINED }]]);
+  const before = changeCalls().length;
+  fireEvent.click(await screen.findByRole("button", { name: CHANGE }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "ปรับแดชบอร์ด" })); });
+  await settle();
+  expect(changeCalls().length).toBe(before + 1);
+  expect(JSON.parse(changeCalls().at(-1)[1].body).spec).toEqual(REFINED_SPEC);
+});
+
+it("says so when no changes can be suggested, and the user can still type", async () => {
+  await generateDashboard([["/dashboards/suggest-changes", { status: 500, body: { detail: "boom" } }]]);
+  expect(screen.getByText("ยังไม่มีคำแนะนำปรับ พิมพ์สิ่งที่อยากปรับได้เลย")).toBeInTheDocument();
+  fireEvent.change(refineBox(), { target: { value: "เน้น KPI" } });
+  expect(screen.getByRole("button", { name: "ปรับแดชบอร์ด" })).toBeEnabled();
 });
 
 // --- refine responses that arrive late ---------------------------------------------------------

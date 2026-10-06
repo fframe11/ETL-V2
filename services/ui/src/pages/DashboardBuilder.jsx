@@ -239,7 +239,7 @@ export default function DashboardBuilder() {
           <div className="dbb-workspace">
             <DashboardCanvas spec={draft.spec} data={draft.data} selections={selections}
               onSelectionsChange={changeSelections} busy={busy === "render"} />
-            <RefinePanel onRefine={refine} busy={busy === "refine"} changes={changes} history={refinements} />
+            <RefinePanel tableName={dataset.name} spec={draft.spec} onRefine={refine} busy={busy === "refine"} changes={changes} history={refinements} />
           </div>
         </section>
       )}

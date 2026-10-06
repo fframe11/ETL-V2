@@ -1,12 +1,5 @@
-import React, { useState } from "react";
-
-export const REFINE_EXAMPLES = [
-  "เพิ่มกราฟยอดขายรายเดือน",
-  "เปลี่ยนกราฟนี้เป็น Bar Chart",
-  "เพิ่ม Filter จังหวัด",
-  "เน้น KPI ที่สำคัญ",
-  "ปรับ Layout ให้เหมาะกับผู้บริหาร"
-];
+import React, { useEffect, useState } from "react";
+import { dashboardsApi } from "../../utils/dashboardsApi";
 
 export function describeChanges(changes) {
   if (!changes) return [];
@@ -20,8 +13,9 @@ export function describeChanges(changes) {
   return lines.length ? lines : ["AI ไม่ได้เปลี่ยนอะไร"];
 }
 
-export default function RefinePanel({ onRefine, busy, changes, history = [] }) {
+export default function RefinePanel({ tableName, spec, onRefine, busy, changes, history = [] }) {
   const [text, setText] = useState("");
+  const [ideas, setIdeas] = useState(null); // null while the first list loads
   const ready = text.trim().length >= 2 && !busy;
   const submit = async (e) => {
     e.preventDefault();
@@ -29,16 +23,29 @@ export default function RefinePanel({ onRefine, busy, changes, history = [] }) {
     if (await onRefine(text.trim())) setText("");
   };
 
+  // What the dashboard still lacks depends on its spec, so a refinement or an undo asks again.
+  // The previous list stays on screen while the new one loads, so the panel does not jump.
+  const specKey = JSON.stringify(spec);
+  useEffect(() => {
+    let alive = true;
+    dashboardsApi.suggestChanges(tableName, spec)
+      .then((res) => { if (alive) setIdeas(res.suggestions || []); })
+      .catch(() => { if (alive) setIdeas([]); });
+    return () => { alive = false; };
+  }, [tableName, specKey]);
+
   return (
     <form className="dbb-refine" onSubmit={submit} aria-label="ปรับด้วย AI">
       <label htmlFor="dbb-refine-input">ปรับแดชบอร์ดด้วย AI</label>
-      <textarea id="dbb-refine-input" rows={3} maxLength={1000} value={text} placeholder={REFINE_EXAMPLES[0]}
-        onChange={(e) => setText(e.target.value)} />
-      <div className="dbb-chips">
-        {REFINE_EXAMPLES.map((example) => (
-          <button type="button" key={example} className="dbb-chip" onClick={() => setText(example)}>{example}</button>
+      <div className="dbb-chips" role="group" aria-label="คำแนะนำปรับแดชบอร์ด" aria-busy={ideas === null}>
+        {ideas === null && <p className="dbb-muted">กำลังอ่านแดชบอร์ดเพื่อแนะนำ…</p>}
+        {ideas?.length === 0 && <p className="dbb-muted">ยังไม่มีคำแนะนำปรับ พิมพ์สิ่งที่อยากปรับได้เลย</p>}
+        {ideas?.map((idea) => (
+          <button type="button" key={idea.id} className="dbb-chip" onClick={() => setText(idea.text)}>{idea.text}</button>
         ))}
       </div>
+      <textarea id="dbb-refine-input" rows={3} maxLength={1000} value={text} placeholder="เลือกคำแนะนำ หรือพิมพ์สิ่งที่อยากปรับ"
+        onChange={(e) => setText(e.target.value)} />
       <button type="submit" className="dbb-btn-primary" disabled={!ready}>{busy ? "AI กำลังปรับ…" : "ปรับแดชบอร์ด"}</button>
       {changes && (
         <ul className="dbb-changes" aria-label="สิ่งที่เปลี่ยน">
