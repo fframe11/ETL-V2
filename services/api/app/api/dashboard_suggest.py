@@ -3,8 +3,9 @@
 suggest_from_profile() reads the profile that dashboard_data.profile_dataframe() builds (names,
 kinds, distinct counts, missing %, numeric and date ranges) and returns what the dataset can
 answer. Every suggestion carries a widget that validate_spec() accepts for that profile, so a
-suggestion never asks for something the builder cannot draw. It is a pure function: no rows, no
-LLM, no I/O."""
+suggestion never asks for something the builder cannot draw. suggest_refinements() does the same
+for a dashboard that already exists: from its spec and the profile it lists what the dashboard
+still lacks, under the same rules. Both are pure functions: no rows, no LLM, no I/O."""
 from datetime import datetime, timedelta
 
 from .dashboard_spec import MAX_FILTERS
