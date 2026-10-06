@@ -1,3 +1,4 @@
+import copy
 import os
 import sys
 
@@ -7,7 +8,8 @@ API_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, API_ROOT)
 
 from app.api.dashboard_spec import validate_spec  # noqa: E402
-from app.api.dashboard_suggest import is_identifier, suggest_from_profile, suggest_refinements  # noqa: E402
+from app.api.dashboard_suggest import (  # noqa: E402
+    emptiest_columns, is_identifier, key_like_columns, suggest_from_profile, suggest_refinements)
 
 
 def col(name, kind, distinct, missing=0.0, low=None, high=None):
@@ -65,6 +67,7 @@ PG_STUDENTS = profile(
 
 def counted(p):
     """The profile with each column's empty-cell count derived from its percentage, as a real profile has both."""
+    p = copy.deepcopy(p)  # the module-level profiles are shared between tests
     for c in p["columns"]:
         c["missing"] = round(c["missing_pct"] / 100 * p["rows"])
     return p
@@ -250,11 +253,46 @@ def test_gap_suggestions_have_unique_ids_and_respect_the_limit():
 def test_a_steward_is_offered_data_health_checks_first():
     assert texts(PG_STUDENTS, "steward") == [
         "ตรวจแถวซ้ำของ dirty_row_id",
-        "ค่าเฉลี่ย score เดือนล่าสุด เทียบช่วงก่อนหน้า",
-        "ค่าเฉลี่ย score ตาม course",
-        "สัดส่วน จำนวนแถว ตาม course",
         "ตรวจแถวซ้ำของ record_id",
-        "ตรวจช่วงค่าต่ำสุดและสูงสุดของ score"]
+        "ตรวจช่วงค่าต่ำสุดและสูงสุดของ score",
+        "ตรวจช่วงค่าต่ำสุดและสูงสุดของ study_hours",
+        "ค่าเฉลี่ย score เดือนล่าสุด เทียบช่วงก่อนหน้า",
+        "ค่าเฉลี่ย score ตาม course"]
+
+
+def test_the_health_checks_lead_for_a_steward_without_pushing_out_the_limit():
+    first = suggest_from_profile(counted(ECOMMERCE), "steward", 6)
+    assert [s["rule"] for s in first[:3]] == ["R8", "R8", "R8"] and len(first) == 6
+    assert first[0]["text"] == "ตรวจแถวซ้ำของ Order_ID"
+    assert len(suggest_from_profile(counted(ECOMMERCE), "steward", 2)) == 2
+    assert all(s["rule"] == "R8" for s in suggest_from_profile(counted(ECOMMERCE), "steward", 2))
+
+
+def test_a_price_or_an_amount_is_not_a_row_key_so_it_never_raises_a_duplicate_check():
+    found = texts(counted(ECOMMERCE), "steward", 50)
+    assert "ตรวจแถวซ้ำของ Unit_Price" not in found and "ตรวจแถวซ้ำของ Total_Sales" not in found
+    assert "ตรวจแถวซ้ำของ Order_ID" in found
+
+
+def names(columns):
+    return [c["name"] for c in columns]
+
+
+def test_key_like_columns_are_whole_number_ids_and_text_but_not_measures_or_dates():
+    p = profile(100, col("price", "numeric", 100, low=1.25, high=99.5), col("order_id", "numeric", 100, low=1.0, high=100.0),
+                col("code", "text", 100), col("day", "date", 100, low="2026-01-01T00:00:00", high="2026-04-10T00:00:00"),
+                col("city", "categorical", 5))
+    assert names(key_like_columns(p)) == ["order_id", "code"]
+    assert names(key_like_columns(p, limit=1)) == ["order_id"]
+    assert key_like_columns(profile(0, col("a", "text", 0))) == []
+
+
+def test_the_emptiest_columns_come_first_and_complete_columns_are_left_out():
+    p = counted(profile(100, col("a", "text", 100), col("b", "text", 90, 5.0), col("c", "text", 80, 40.0),
+                        col("d", "text", 70, 10.0), col("e", "text", 60, 20.0)))
+    assert names(emptiest_columns(p)) == ["c", "e", "d"]
+    assert names(emptiest_columns(p, limit=1)) == ["c"]
+    assert "a" not in names(emptiest_columns(p, limit=10))
 
 
 def test_only_a_steward_is_offered_data_health_checks():

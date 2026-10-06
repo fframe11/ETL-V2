@@ -161,3 +161,23 @@ def test_count_missing_per_group_and_after_a_filter():
     rows = one({"type": "bar", "x": "segment", "metric": metric, "sort": "x"})["rows"]
     assert {r["x"]: r["value"] for r in rows} == {"A": 1, "B": 0, "C": 0}
     assert one({"type": "kpi", "metric": metric}, {"segment": {"values": ["B", "C"]}})["value"] == 0
+
+
+def test_count_missing_by_two_keys_matches_a_hand_count_of_the_raw_rows():
+    metric = {"agg": "count_missing", "column": "region"}
+    data = one({"type": "bar", "x": "segment", "group_by": "region", "metric": metric, "sort": "x"})
+    cells = {r["x"]: {s: r[s] for s in data["series"] if r.get(s) is not None} for r in data["rows"]}
+    # RAW has (segment, region): A with North, South and an empty region; B with North, East; C with South.
+    # Only the last row (segment A) has an empty region, so only that cell counts one.
+    assert cells == {"A": {"North": 0, "South": 0, "(ว่าง)": 1}, "B": {"North": 0, "East": 0}, "C": {"South": 0}}
+
+
+def test_count_missing_compares_the_latest_month_with_the_one_before():
+    metric = {"agg": "count_missing", "column": "region"}
+    data = one({"type": "kpi", "metric": metric, "compare": {"date_column": "order_date", "time_grain": "month"}})
+    assert data["period"] == "2025-03-01" and data["current"] == 1 and data["previous"] == 0
+
+
+def test_count_missing_keeps_the_gap_when_a_filter_keeps_its_row():
+    metric = {"agg": "count_missing", "column": "region"}
+    assert one({"type": "kpi", "metric": metric}, {"segment": {"values": ["A"]}})["value"] == 1

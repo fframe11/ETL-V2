@@ -15,7 +15,7 @@ import requests
 
 from .dashboard_spec import (AGGREGATIONS, AUDIENCES, FORMATS, GRID_COLUMNS, MAX_ROW_SPAN, TIME_GRAINS,
                              WIDGET_TYPES, SpecError, diff_specs, validate_spec)
-from .dashboard_suggest import KEY_LIKE_RATIO, is_identifier
+from .dashboard_suggest import emptiest_columns, is_identifier, key_like_columns
 from .system import get_system_settings
 from .whitebox import _get_groq_api_key
 
@@ -193,16 +193,17 @@ def _health_spec(profile):
     if _QUALITY_RUN_COLUMNS <= {c["name"] for c in columns}:
         return _quality_run_spec(profile)
     widgets = [{"type": "kpi", "title": "จำนวนแถว", "metric": _COUNT}]
-    keys = [c for c in columns if c["kind"] != "date" and rows and c["distinct"] >= KEY_LIKE_RATIO * rows][:2]
+    keys = key_like_columns(profile)
     widgets += [{"type": "kpi", "title": f"ค่าไม่ซ้ำของ {c['name']}", "metric": {"agg": "count_distinct", "column": c["name"]}} for c in keys]
-    gaps = sorted((c for c in columns if c["missing"] > 0), key=lambda c: -c["missing_pct"])[:3]
+    gaps = emptiest_columns(profile)
     widgets += [{"type": "kpi", "title": f"ค่าว่างของ {c['name']}", "metric": {"agg": "count_missing", "column": c["name"]}} for c in gaps]
     for c in [c for c in columns if c["kind"] == "numeric" and not is_identifier(c, rows)][:2]:
         widgets.append({"type": "kpi", "title": f"ต่ำสุด {c['name']}", "metric": {"agg": "min", "column": c["name"]}})
         widgets.append({"type": "kpi", "title": f"สูงสุด {c['name']}", "metric": {"agg": "max", "column": c["name"]}})
     widgets.append({"type": "table", "title": "ตัวอย่างข้อมูล", "columns": [c["name"] for c in columns[:8]]})
     categories = sorted((c for c in columns if c["kind"] == "categorical"), key=lambda c: c["distinct"])
-    return {"widgets": widgets, "filters": [{"column": c["name"]} for c in categories[:2]]}
+    dates = [c["name"] for c in columns if c["kind"] == "date"]
+    return {"widgets": widgets, "filters": [{"column": c["name"]} for c in categories[:2]] + [{"column": d} for d in dates[:1]]}
 
 
 def fallback_spec(profile, context="", audience="business"):
@@ -229,7 +230,7 @@ def fallback_spec(profile, context="", audience="business"):
         if len(categories) > 1 and categories[0]["distinct"] <= 8:
             narrow = categories[0]["name"]
             widgets.append({"type": "donut", "title": f"สัดส่วนตาม {narrow}", "x": narrow, "metric": main})
-    if audience != "management":
+    if audience != "management" or len(widgets) == 1:
         widgets.append({"type": "table", "title": "ตัวอย่างข้อมูล", "columns": [c["name"] for c in columns[:12 if audience == "analyst" else 8]]})
     filters = [{"column": c["name"]} for c in categories[:2]] + [{"column": d} for d in dates[:1]]
     title = "แดชบอร์ดผู้บริหาร" if audience == "management" else "แดชบอร์ดภาพรวม"

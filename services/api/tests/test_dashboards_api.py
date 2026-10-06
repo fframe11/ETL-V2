@@ -180,7 +180,7 @@ def test_a_spec_that_cannot_be_drawn_is_rejected_before_any_suggestion(weekly):
 
 def test_the_steward_audience_is_accepted_and_starts_with_a_data_health_check(weekly):
     first = suggestions("steward").json()["suggestions"][0]
-    assert first["rule"] == "R8" and first["text"] == "ตรวจแถวซ้ำของ amount"
+    assert first["rule"] == "R8" and first["text"] == "ตรวจช่วงค่าต่ำสุดและสูงสุดของ amount"
 
 
 def test_a_steward_dashboard_is_generated_from_the_data_health_rules_without_an_llm(weekly):
@@ -189,6 +189,6 @@ def test_a_steward_dashboard_is_generated_from_the_data_health_rules_without_an_
     body = res.json()
     assert body["engine"] == "rules" and body["spec"]["audience"] == "steward"
     titles = [w["title"] for w in body["spec"]["widgets"]]
-    assert titles[:2] == ["จำนวนแถว", "ค่าไม่ซ้ำของ amount"]
+    assert titles[:2] == ["จำนวนแถว", "ต่ำสุด amount"]
     data = body["data"]["widgets"]
-    assert [data[w["id"]]["value"] for w in body["spec"]["widgets"][:2]] == [12, 12]
+    assert [data[w["id"]]["value"] for w in body["spec"]["widgets"][:2]] == [12, 10.0]

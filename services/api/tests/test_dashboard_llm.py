@@ -117,6 +117,12 @@ def widget_titles(spec):
     return [w["title"] for w in spec["widgets"]]
 
 
+def test_management_on_text_only_data_still_gets_a_table_beside_the_single_count():
+    _, profile = prepare_frame(pd.DataFrame({"note": [f"n{i}" for i in range(60)]}))
+    spec, _ = validate_spec(dashboard_llm.fallback_spec(profile, "", "management"), profile)
+    assert [w["type"] for w in spec["widgets"]] == ["kpi", "table"]
+
+
 def test_management_gets_no_detail_table_and_a_period_comparison():
     spec, _ = validate_spec(dashboard_llm.fallback_spec(PROFILE, "ยอดขาย", "management"), PROFILE)
     assert [w["type"] for w in spec["widgets"]] == ["kpi", "kpi", "line", "bar"]
@@ -145,6 +151,19 @@ def test_a_steward_sees_duplicates_empty_cells_and_value_ranges_of_the_data():
     assert widget_titles(spec) == ["จำนวนแถว", "ค่าไม่ซ้ำของ record_id", "ค่าว่างของ score", "ต่ำสุด score", "สูงสุด score", "ตัวอย่างข้อมูล"]
     values = {w["title"]: compute_dashboard(df, spec, profile)["widgets"][w["id"]].get("value") for w in spec["widgets"] if w["type"] == "kpi"}
     assert values["จำนวนแถว"] == 100 and values["ค่าไม่ซ้ำของ record_id"] == 95 and values["ค่าว่างของ score"] == 3
+
+
+def test_a_steward_can_filter_the_health_view_by_category_and_by_date():
+    df, profile = prepare_frame(RAW.copy())
+    spec, warnings = validate_spec(dashboard_llm.fallback_spec(profile, "", "steward"), profile)
+    assert warnings == [] and [f["column"] for f in spec["filters"]] == ["region", "order_date"]
+
+
+def test_a_steward_does_not_see_a_price_as_a_row_key():
+    prices = pd.DataFrame({"sku": [f"S{i}" for i in range(100)], "price": [round(1.01 + i * 0.37, 2) for i in range(100)]})
+    _, profile = prepare_frame(prices)
+    spec, _ = validate_spec(dashboard_llm.fallback_spec(profile, "", "steward"), profile)
+    assert widget_titles(spec)[:3] == ["จำนวนแถว", "ค่าไม่ซ้ำของ sku", "ต่ำสุด price"]
 
 
 QUALITY_RUNS = pd.DataFrame({

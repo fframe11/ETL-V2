@@ -19,6 +19,7 @@ MAX_MISSING_PCT = 50
 DEFAULT_LIMIT = 6
 KEY_LIKE_RATIO = 0.9  # a column with at least this share of distinct values per row probably identifies a row
 HEALTH_KEYS, HEALTH_GAPS, HEALTH_RANGES = 2, 3, 2  # how many columns each data-health check names
+HEALTH_FIRST = 3  # health cards that lead the list for a steward
 GAP_LIMIT = 5
 MAX_FILTER_DISTINCT = 50  # a select box stays usable up to about this many values
 
@@ -49,7 +50,21 @@ def is_identifier(column, rows):
     if low is None or high is None or float(low) != int(low) or float(high) != int(high):
         return False
     digits = len(str(int(max(abs(low), abs(high)))))
-    return digits >= 9 or bool(rows and column["distinct"] / rows >= 0.9)
+    return digits >= 9 or bool(rows and column["distinct"] / rows >= KEY_LIKE_RATIO)
+
+
+def key_like_columns(profile, limit=HEALTH_KEYS):
+    """Columns that probably identify a row: about one value per row, not a date, and if numeric a
+    whole-number id (a price or an amount is nearly unique too, but a repeat there is not a duplicate row)."""
+    rows = profile["rows"]
+    return [c for c in profile["columns"]
+            if rows and c["kind"] != "date" and c["distinct"] >= KEY_LIKE_RATIO * rows
+            and (c["kind"] != "numeric" or is_identifier(c, rows))][:limit]
+
+
+def emptiest_columns(profile, limit=HEALTH_GAPS):
+    """The columns with the most empty cells, worst first (by percentage)."""
+    return sorted((c for c in profile["columns"] if c["missing"] > 0), key=lambda c: -c["missing_pct"])[:limit]
 
 
 def _hint_rank(name):
@@ -165,7 +180,11 @@ def suggest_from_profile(profile, audience="business", limit=DEFAULT_LIMIT):
             by_rule["R7"].append(_suggestion("R7", c["name"], f"ดู{label}", {"type": "kpi", "metric": metric}))
 
     by_rule["R8"] = _health_checks(profile)
-    return _interleave(by_rule, _RULE_ORDER.get(audience, _RULE_ORDER["business"]), limit)
+    order = _RULE_ORDER.get(audience, _RULE_ORDER["business"])
+    if audience == "steward":  # the health checks lead: that is what this reader opens the page for
+        lead = by_rule["R8"][:min(HEALTH_FIRST, limit)]
+        return lead + _interleave({**by_rule, "R8": by_rule["R8"][len(lead):]}, order, limit - len(lead))
+    return _interleave(by_rule, order, limit)
 
 
 def _health_checks(profile):
@@ -173,14 +192,15 @@ def _health_checks(profile):
     Every column counts here, including the identifiers and sparse columns that the charts leave out."""
     columns, rows = profile["columns"], profile["rows"]
     checks = []
-    keys = [c for c in columns if c["kind"] != "date" and rows and c["distinct"] >= KEY_LIKE_RATIO * rows][:HEALTH_KEYS]
-    for c in keys:
+    for c in key_like_columns(profile):
         checks.append(_suggestion("R8", f"duplicates:{c['name']}", f"ตรวจแถวซ้ำของ {c['name']}",
                                   {"type": "kpi", "metric": {"agg": "count_distinct", "column": c["name"]}}))
-    for c in sorted((c for c in columns if c["missing"] > 0), key=lambda c: -c["missing_pct"])[:HEALTH_GAPS]:
+    for c in emptiest_columns(profile):
         checks.append(_suggestion("R8", f"missing:{c['name']}", f"ตรวจค่าว่างของ {c['name']} ({c['missing_pct']:g}%)",
                                   {"type": "kpi", "metric": {"agg": "count_missing", "column": c["name"]}}))
     for c in [c for c in columns if c["kind"] == "numeric" and not is_identifier(c, rows)][:HEALTH_RANGES]:
+        # the widget is only a validity fragment: /suggestions never returns it and generation reads only the text,
+        # so a single max kpi is enough here
         checks.append(_suggestion("R8", f"range:{c['name']}", f"ตรวจช่วงค่าต่ำสุดและสูงสุดของ {c['name']}",
                                   {"type": "kpi", "metric": {"agg": "max", "column": c["name"]}}))
     return checks
