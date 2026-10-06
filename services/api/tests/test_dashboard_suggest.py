@@ -7,7 +7,7 @@ API_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, API_ROOT)
 
 from app.api.dashboard_spec import validate_spec  # noqa: E402
-from app.api.dashboard_suggest import is_identifier, suggest_from_profile  # noqa: E402
+from app.api.dashboard_suggest import is_identifier, suggest_from_profile, suggest_refinements  # noqa: E402
 
 
 def col(name, kind, distinct, missing=0.0, low=None, high=None):
@@ -146,3 +146,82 @@ def test_identifier_detection_matches_what_the_llm_prompt_hides():
     assert is_identifier(col("account", "numeric", 3, low=100000000.0, high=999999999.0), 1000)  # 9 digits
     assert not is_identifier(col("score", "numeric", 52, low=49.0, high=100.0), 9370)
     assert not is_identifier(col("price", "numeric", 40, low=1.5, high=9.5), 100)  # not whole numbers
+
+
+# --- suggestions for a dashboard that already exists (gaps between its spec and the profile) ----------
+
+SALES = {"agg": "sum", "column": "Total_Sales"}
+ECOMMERCE_CATEGORIES = ["Customer_Segment", "Country", "Region", "Product_Category", "Product_Name", "Payment_Method"]
+
+
+def spec_for(p, widgets, filters=(), audience="business"):
+    spec, warnings = validate_spec({"widgets": widgets, "filters": list(filters), "audience": audience}, p)
+    assert warnings == []
+    return spec
+
+
+def gaps(p, spec, limit=20):
+    return [(s["rule"], s["text"]) for s in suggest_refinements(p, spec, limit)]
+
+
+def test_a_small_dashboard_is_offered_a_trend_a_comparison_a_filter_and_a_kpi_first():
+    spec = spec_for(ECOMMERCE, [{"id": "k1", "type": "kpi", "title": "ยอดขายรวม", "metric": SALES},
+                                {"id": "b1", "type": "bar", "title": "ตามประเทศ", "x": "Country", "metric": SALES}],
+                    [{"column": "Region"}])
+    assert gaps(ECOMMERCE, spec, 5) == [
+        ("G3", "เพิ่มแนวโน้ม ผลรวม Total_Sales รายเดือน ตาม Order_Date"),
+        ("G4", "แสดง ยอดขายรวม เทียบช่วงก่อนหน้า"),
+        ("G1", "เพิ่มตัวกรอง Customer_Segment"),
+        ("G2", "เพิ่ม KPI ผลรวม Profit"),
+        ("G1", "เพิ่มตัวกรอง Product_Category")]
+
+
+def test_nothing_is_suggested_for_what_the_dashboard_already_has():
+    spec = spec_for(ECOMMERCE, [
+        {"id": "k1", "type": "kpi", "title": "ยอดขายรวม", "metric": SALES, "compare": {"date_column": "Order_Date", "time_grain": "year"}},
+        {"id": "l1", "type": "line", "title": "แนวโน้ม", "x": "Order_Date", "time_grain": "month", "metric": SALES}],
+        [{"column": "Region"}])
+    rules = [r for r, _ in gaps(ECOMMERCE, spec)]
+    assert "G3" not in rules and "G4" not in rules
+    assert "เพิ่มตัวกรอง Region" not in [t for _, t in gaps(ECOMMERCE, spec)]
+    assert "เพิ่ม KPI ผลรวม Total_Sales" not in [t for _, t in gaps(ECOMMERCE, spec)]
+
+
+def test_no_filter_is_suggested_once_the_filter_limit_is_reached():
+    spec = spec_for(ECOMMERCE, [{"id": "k1", "type": "kpi", "title": "ยอดขาย", "metric": SALES}],
+                    [{"column": c} for c in ECOMMERCE_CATEGORIES])
+    assert len(spec["filters"]) == 6
+    assert "G1" not in [r for r, _ in gaps(ECOMMERCE, spec)]
+
+
+def test_a_bar_over_a_few_values_may_become_a_share_but_an_average_may_not():
+    totals = spec_for(ECOMMERCE, [{"id": "b2", "type": "bar", "title": "ตามภูมิภาค", "x": "Region", "metric": SALES}])
+    assert ("G5", "เปลี่ยน 'ตามภูมิภาค' เป็นกราฟสัดส่วน") in gaps(ECOMMERCE, totals)
+    average = spec_for(ECOMMERCE, [{"id": "b2", "type": "bar", "title": "ตามภูมิภาค", "x": "Region",
+                                    "metric": {"agg": "avg", "column": "Unit_Price"}}])
+    split = spec_for(ECOMMERCE, [{"id": "b2", "type": "bar", "title": "ตามภูมิภาค", "x": "Region", "group_by": "Payment_Method", "metric": SALES}])
+    many = spec_for(ECOMMERCE, [{"id": "b2", "type": "bar", "title": "ตามประเทศ", "x": "Country", "metric": SALES}])
+    for spec in (average, split, many):
+        assert "G5" not in [r for r, _ in gaps(ECOMMERCE, spec)]
+
+
+def test_a_detail_table_is_questioned_only_on_a_dashboard_for_management():
+    widgets = [{"id": "k1", "type": "kpi", "title": "ยอดขาย", "metric": SALES},
+               {"id": "t1", "type": "table", "title": "ตาราง", "columns": ["Order_ID"]}]
+    assert ("G6", "ลบตารางรายละเอียดให้เหมาะกับผู้บริหาร") in gaps(ECOMMERCE, spec_for(ECOMMERCE, widgets, audience="management"))
+    assert "G6" not in [r for r, _ in gaps(ECOMMERCE, spec_for(ECOMMERCE, widgets, audience="analyst"))]
+
+
+def test_a_dataset_without_dates_gets_no_trend_or_comparison_gap():
+    spec = spec_for(OLIST, [{"id": "t", "type": "table", "title": "ตาราง", "columns": ["product_id"]}])
+    found = gaps(OLIST, spec)
+    assert found and {r for r, _ in found} == {"G2"}
+    assert found[0] == ("G2", "เพิ่ม KPI ค่าเฉลี่ย product_name_lenght")
+
+
+def test_gap_suggestions_have_unique_ids_and_respect_the_limit():
+    spec = spec_for(ECOMMERCE, [{"id": "k1", "type": "kpi", "title": "ยอดขาย", "metric": SALES}])
+    everything = suggest_refinements(ECOMMERCE, spec, 50)
+    assert len({s["id"] for s in everything}) == len(everything)
+    assert set(everything[0]) == {"id", "rule", "text"}
+    assert len(suggest_refinements(ECOMMERCE, spec, 2)) == 2

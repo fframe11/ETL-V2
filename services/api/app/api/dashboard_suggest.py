@@ -7,6 +7,8 @@ suggestion never asks for something the builder cannot draw. It is a pure functi
 LLM, no I/O."""
 from datetime import datetime, timedelta
 
+from .dashboard_spec import MAX_FILTERS
+
 CATEGORY_MIN_DISTINCT = 2
 CATEGORY_MAX_DISTINCT = 200  # a top-10 stays readable far beyond the 50 values a donut or filter can take
 DONUT_MAX_DISTINCT = 8
@@ -14,6 +16,8 @@ SPLIT_MAX_DISTINCT = 20  # most values an x axis can carry before a stacked spli
 TOP_N = 10
 MAX_MISSING_PCT = 50
 DEFAULT_LIMIT = 6
+GAP_LIMIT = 5
+MAX_FILTER_DISTINCT = 50  # a select box stays usable up to about this many values
 
 # Column-name hints, English and Thai, in priority order: the first group names the main measure.
 _MEASURE_HINTS = (("sales", "revenue", "ยอดขาย", "รายได้"), ("total", "amount", "รวม"),
@@ -29,6 +33,9 @@ _LATEST_LABEL = {"year": "ปีล่าสุด", "quarter": "ไตรมา
 _RULE_ORDER = {"business": ("R2", "R1", "R3", "R4", "R5", "R7"),
                "analyst": ("R5", "R2", "R1", "R4", "R3", "R7"),
                "management": ("R4", "R1", "R3", "R2", "R5", "R7")}
+
+# Gaps in a finished dashboard, most visible first: a missing trend and a missing comparison before a missing filter.
+_GAP_ORDER = ("G3", "G4", "G1", "G2", "G5", "G6")
 
 
 def is_identifier(column, rows):
@@ -153,11 +160,63 @@ def suggest_from_profile(profile, audience="business", limit=DEFAULT_LIMIT):
             metric, label = _metric(c["name"])
             by_rule["R7"].append(_suggestion("R7", c["name"], f"ดู{label}", {"type": "kpi", "metric": metric}))
 
-    order = _RULE_ORDER.get(audience, _RULE_ORDER["business"])
+    return _interleave(by_rule, _RULE_ORDER.get(audience, _RULE_ORDER["business"]), limit)
+
+
+def _interleave(by_rule, order, limit):
+    """One pick from every rule first, then second picks, so the list stays varied."""
     picked, depth = [], 0
     while len(picked) < limit and any(len(by_rule[r]) > depth for r in order):
-        for rule in order:  # one from every rule first, then second picks, so the list stays varied
+        for rule in order:
             if len(by_rule[rule]) > depth and len(picked) < limit:
                 picked.append(by_rule[rule][depth])
         depth += 1
     return picked
+
+
+def _change(gap, key, text):
+    return {"id": f"{gap}:{key}", "rule": gap, "text": text}
+
+
+def suggest_refinements(profile, spec, limit=GAP_LIMIT):
+    """What the current dashboard does not use yet, as instructions the refine box understands.
+
+    `spec` is a spec that validate_spec() produced for this profile; the suggestions are the gaps
+    between it and the columns the profile says are worth charting. Same rules as above: profile and
+    spec only, no rows, no LLM."""
+    measures, categories, dates = _usable(profile)
+    widgets, filters = spec["widgets"], spec["filters"]
+    kinds = {c["name"]: c["kind"] for c in profile["columns"]}
+    distinct = {c["name"]: c["distinct"] for c in profile["columns"]}
+    main = _metric(measures[0]["name"]) if measures else ({"agg": "count", "column": None}, "จำนวนแถว")
+    by_gap = {gap: [] for gap in _GAP_ORDER}
+
+    if dates and not any(w["type"] in ("line", "area") for w in widgets):
+        grain = _grain(dates[0], 6, ("month", "week", "day")) if dates[0]["distinct"] >= 3 else None
+        if grain:
+            by_gap["G3"].append(_change("G3", dates[0]["name"], f"เพิ่มแนวโน้ม {main[1]} {_GRAIN_LABEL[grain]} ตาม {dates[0]['name']}"))
+
+    plain_kpi = next((w for w in widgets if w["type"] == "kpi" and not w.get("compare")), None)
+    if dates and plain_kpi and _grain(dates[0], 2, _COMPARE_GRAINS):
+        by_gap["G4"].append(_change("G4", plain_kpi["id"], f"แสดง {plain_kpi['title']} เทียบช่วงก่อนหน้า"))
+
+    if len(filters) < MAX_FILTERS:
+        filtered = {f["column"] for f in filters}
+        open_columns = [c for c in categories if c["distinct"] <= MAX_FILTER_DISTINCT and c["name"] not in filtered]
+        for c in sorted(open_columns, key=lambda c: c["distinct"]):
+            by_gap["G1"].append(_change("G1", c["name"], f"เพิ่มตัวกรอง {c['name']}"))
+
+    in_kpi = {w["metric"]["column"] for w in widgets if w["type"] == "kpi"}
+    for c in measures:
+        if c["name"] not in in_kpi:
+            by_gap["G2"].append(_change("G2", c["name"], f"เพิ่ม KPI {_metric(c['name'])[1]}"))
+
+    for w in widgets:  # a share only reads well over a few values, and only for totals and counts
+        few_values = kinds.get(w.get("x")) == "categorical" and distinct[w["x"]] <= DONUT_MAX_DISTINCT
+        if w["type"] == "bar" and few_values and not w["group_by"] and w["metric"]["agg"] in ("sum", "count"):
+            by_gap["G5"].append(_change("G5", w["id"], f"เปลี่ยน '{w['title']}' เป็นกราฟสัดส่วน"))
+
+    if spec.get("audience") == "management" and any(w["type"] == "table" for w in widgets):
+        by_gap["G6"].append(_change("G6", "table", "ลบตารางรายละเอียดให้เหมาะกับผู้บริหาร"))
+
+    return _interleave(by_gap, _GAP_ORDER, limit)
