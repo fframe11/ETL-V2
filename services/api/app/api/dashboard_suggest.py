@@ -18,6 +18,7 @@ TOP_N = 10
 MAX_MISSING_PCT = 50
 DEFAULT_LIMIT = 6
 KEY_LIKE_RATIO = 0.9  # a column with at least this share of distinct values per row probably identifies a row
+HEALTH_KEYS, HEALTH_GAPS, HEALTH_RANGES = 2, 3, 2  # how many columns each data-health check names
 GAP_LIMIT = 5
 MAX_FILTER_DISTINCT = 50  # a select box stays usable up to about this many values
 
@@ -34,7 +35,8 @@ _LATEST_LABEL = {"year": "ปีล่าสุด", "quarter": "ไตรมา
 # Which rules come first for each kind of reader (the picker's audience values).
 _RULE_ORDER = {"business": ("R2", "R1", "R3", "R4", "R5", "R7"),
                "analyst": ("R5", "R2", "R1", "R4", "R3", "R7"),
-               "management": ("R4", "R1", "R3", "R2", "R5", "R7")}
+               "management": ("R4", "R1", "R3", "R2", "R5", "R7"),
+               "steward": ("R8", "R1", "R4", "R2", "R3", "R5", "R7")}
 
 # Gaps in a finished dashboard, most visible first: a missing trend and a missing comparison before a missing filter.
 _GAP_ORDER = ("G3", "G4", "G1", "G2", "G5", "G6")
@@ -116,7 +118,7 @@ def _suggestion(rule, key, text, widget):
 def suggest_from_profile(profile, audience="business", limit=DEFAULT_LIMIT):
     measures, categories, dates = _usable(profile)
     main = _metric(measures[0]["name"]) if measures else ({"agg": "count", "column": None}, "จำนวนแถว")
-    by_rule = {rule: [] for rule in ("R1", "R2", "R3", "R4", "R5", "R7")}
+    by_rule = {rule: [] for rule in ("R1", "R2", "R3", "R4", "R5", "R7", "R8")}
 
     if dates:
         date = dates[0]["name"]
@@ -162,7 +164,26 @@ def suggest_from_profile(profile, audience="business", limit=DEFAULT_LIMIT):
             metric, label = _metric(c["name"])
             by_rule["R7"].append(_suggestion("R7", c["name"], f"ดู{label}", {"type": "kpi", "metric": metric}))
 
+    by_rule["R8"] = _health_checks(profile)
     return _interleave(by_rule, _RULE_ORDER.get(audience, _RULE_ORDER["business"]), limit)
+
+
+def _health_checks(profile):
+    """What a data steward looks at first: duplicates in key-like columns, empty cells, value ranges.
+    Every column counts here, including the identifiers and sparse columns that the charts leave out."""
+    columns, rows = profile["columns"], profile["rows"]
+    checks = []
+    keys = [c for c in columns if c["kind"] != "date" and rows and c["distinct"] >= KEY_LIKE_RATIO * rows][:HEALTH_KEYS]
+    for c in keys:
+        checks.append(_suggestion("R8", f"duplicates:{c['name']}", f"ตรวจแถวซ้ำของ {c['name']}",
+                                  {"type": "kpi", "metric": {"agg": "count_distinct", "column": c["name"]}}))
+    for c in sorted((c for c in columns if c["missing"] > 0), key=lambda c: -c["missing_pct"])[:HEALTH_GAPS]:
+        checks.append(_suggestion("R8", f"missing:{c['name']}", f"ตรวจค่าว่างของ {c['name']} ({c['missing_pct']:g}%)",
+                                  {"type": "kpi", "metric": {"agg": "count_missing", "column": c["name"]}}))
+    for c in [c for c in columns if c["kind"] == "numeric" and not is_identifier(c, rows)][:HEALTH_RANGES]:
+        checks.append(_suggestion("R8", f"range:{c['name']}", f"ตรวจช่วงค่าต่ำสุดและสูงสุดของ {c['name']}",
+                                  {"type": "kpi", "metric": {"agg": "max", "column": c["name"]}}))
+    return checks
 
 
 def _interleave(by_rule, order, limit):

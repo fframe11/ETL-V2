@@ -53,6 +53,23 @@ GROCERY = profile(
     col("ยอดขายรวม", "numeric", 39, 2.33, 15.0, 240.0), col("row_hash", "text", 557))
 
 
+PG_STUDENTS = profile(
+    9441,
+    col("dirty_row_id", "numeric", 9441, low=1.0, high=10100.0), col("record_id", "numeric", 9349, low=1.0, high=10000.0),
+    col("student_id", "numeric", 9349, low=65001.0, high=75000.0), col("course", "categorical", 5),
+    col("score", "numeric", 52, low=50.0, high=101.0),
+    col("semester", "date", 2, low="2026-01-01T00:00:00", high="2026-02-01T00:00:00"),
+    col("study_hours", "numeric", 9, low=1.0, high=9.0),
+    col("updated_at", "date", 1, low="2026-09-15T10:00:00", high="2026-09-15T10:00:00"))
+
+
+def counted(p):
+    """The profile with each column's empty-cell count derived from its percentage, as a real profile has both."""
+    for c in p["columns"]:
+        c["missing"] = round(c["missing_pct"] / 100 * p["rows"])
+    return p
+
+
 def texts(p, audience="business", limit=6):
     return [s["text"] for s in suggest_from_profile(p, audience, limit)]
 
@@ -225,3 +242,38 @@ def test_gap_suggestions_have_unique_ids_and_respect_the_limit():
     assert len({s["id"] for s in everything}) == len(everything)
     assert set(everything[0]) == {"id", "rule", "text"}
     assert len(suggest_refinements(ECOMMERCE, spec, 2)) == 2
+
+
+# --- data health, for the reader who looks after the data (rule R8) -------------------------------------
+
+
+def test_a_steward_is_offered_data_health_checks_first():
+    assert texts(PG_STUDENTS, "steward") == [
+        "ตรวจแถวซ้ำของ dirty_row_id",
+        "ค่าเฉลี่ย score เดือนล่าสุด เทียบช่วงก่อนหน้า",
+        "ค่าเฉลี่ย score ตาม course",
+        "สัดส่วน จำนวนแถว ตาม course",
+        "ตรวจแถวซ้ำของ record_id",
+        "ตรวจช่วงค่าต่ำสุดและสูงสุดของ score"]
+
+
+def test_only_a_steward_is_offered_data_health_checks():
+    for audience in ("business", "analyst", "management", "unknown"):
+        assert not any(s["rule"] == "R8" for s in suggest_from_profile(counted(PG_STUDENTS), audience, 50))
+
+
+def test_empty_cells_are_checked_worst_first_and_sparse_columns_are_not_left_out():
+    sparse = profile(1000, col("name", "text", 1000), col("phone", "text", 150, 80.0), col("amount", "numeric", 40, 2.5, 1.5, 9.5),
+                     col("city", "categorical", 12, 10.0))
+    found = [s["text"] for s in suggest_from_profile(counted(sparse), "steward", 50) if s["rule"] == "R8"]
+    assert [t for t in found if t.startswith("ตรวจค่าว่าง")] == [
+        "ตรวจค่าว่างของ phone (80%)", "ตรวจค่าว่างของ city (10%)", "ตรวจค่าว่างของ amount (2.5%)"]
+    assert "ตรวจแถวซ้ำของ name" in found  # a text column with one value per row is a key
+
+
+@pytest.mark.parametrize("p", [ECOMMERCE, OLIST, STUDENTS, GROCERY, PG_STUDENTS], ids=["ecommerce", "olist", "students", "grocery", "pg"])
+def test_every_data_health_widget_is_accepted_by_the_spec_validator(p):
+    checks = [s for s in suggest_from_profile(counted(p), "steward", 50) if s["rule"] == "R8"]
+    assert checks
+    spec, warnings = validate_spec({"widgets": [s["widget"] for s in checks]}, p)
+    assert warnings == [] and len(spec["widgets"]) == len(checks)

@@ -176,3 +176,19 @@ def test_changes_are_suggested_from_what_the_dashboard_lacks(weekly):
 def test_a_spec_that_cannot_be_drawn_is_rejected_before_any_suggestion(weekly):
     res = suggest_changes({"title": "ว่าง", "widgets": []})
     assert res.status_code == 422
+
+
+def test_the_steward_audience_is_accepted_and_starts_with_a_data_health_check(weekly):
+    first = suggestions("steward").json()["suggestions"][0]
+    assert first["rule"] == "R8" and first["text"] == "ตรวจแถวซ้ำของ amount"
+
+
+def test_a_steward_dashboard_is_generated_from_the_data_health_rules_without_an_llm(weekly):
+    res = client().post("/api/v1/dashboards/generate", json={"table_name": "weekly", "context": "ตรวจข้อมูล", "audience": "steward"})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["engine"] == "rules" and body["spec"]["audience"] == "steward"
+    titles = [w["title"] for w in body["spec"]["widgets"]]
+    assert titles[:2] == ["จำนวนแถว", "ค่าไม่ซ้ำของ amount"]
+    data = body["data"]["widgets"]
+    assert [data[w["id"]]["value"] for w in body["spec"]["widgets"][:2]] == [12, 12]
