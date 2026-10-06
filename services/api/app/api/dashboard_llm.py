@@ -286,10 +286,11 @@ def _validate_ranking(raw, candidates):
         raise SpecError("คำตอบของ AI ไม่มีรายการคำแนะนำ")
     ranked, seen = [], set()
     for item in items:
-        if not isinstance(item, dict) or item.get("id") not in by_id or item["id"] in seen:
+        cid = item.get("id") if isinstance(item, dict) else None
+        if not isinstance(cid, str) or cid not in by_id or cid in seen:
             continue
-        candidate = by_id[item["id"]]
-        seen.add(candidate["id"])
+        candidate = by_id[cid]
+        seen.add(cid)
         text = item.get("text").strip() if isinstance(item.get("text"), str) else ""
         anchors = [n for n in _columns_of(candidate["widget"]) if n in candidate["text"]]
         keeps = 5 <= len(text) <= RANK_TEXT_MAX and all(n in text for n in anchors)

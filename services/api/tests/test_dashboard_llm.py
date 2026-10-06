@@ -313,6 +313,7 @@ def test_the_answer_is_capped_and_an_unusable_one_is_an_error(groq):
     many = [{"id": c["id"], "text": c["text"]} for c in CANDIDATES]
     groq(ranked_answer(*many), ranked_answer({"id": "R9:invented", "text": "x"}), "not json", json.dumps({"suggestions": "oops"}))
     assert len(dashboard_llm.rank_suggestions("sales", PROFILE, "business", CANDIDATES)["suggestions"]) == min(len(many), dashboard_llm.RANK_LIMIT)
+    # (the cap itself is exercised in test_the_cap_keeps_the_first_choices_in_the_models_order)
     for _ in range(3):
         with pytest.raises(SpecError):
             dashboard_llm.rank_suggestions("sales", PROFILE, "business", CANDIDATES)
@@ -325,3 +326,30 @@ def test_ranking_needs_a_key_and_reports_when_groq_is_down(groq):
     groq(dashboard_llm.LLMUnavailable("Groq ตอบกลับ HTTP 503"))
     with pytest.raises(dashboard_llm.LLMUnavailable):
         dashboard_llm.rank_suggestions("sales", PROFILE, "business", CANDIDATES)
+
+
+def test_an_id_that_is_not_a_string_is_dropped_instead_of_crashing(groq):
+    good = CANDIDATES[0]
+    groq(ranked_answer({"id": ["R2:region"], "text": "x"}, {"id": {}, "text": "x"}, {"id": None, "text": "x"},
+                       {"id": 7, "text": "x"}, "not an item", {"id": good["id"], "text": good["text"]}))
+    result = dashboard_llm.rank_suggestions("sales", PROFILE, "business", CANDIDATES)
+    assert [s["id"] for s in result["suggestions"]] == [good["id"]]
+
+
+def test_the_cap_keeps_the_first_choices_in_the_models_order(groq, monkeypatch):
+    monkeypatch.setattr(dashboard_llm, "RANK_LIMIT", 2)
+    order = [CANDIDATES[2], CANDIDATES[0], CANDIDATES[3], CANDIDATES[1]]
+    groq(ranked_answer(*[{"id": c["id"], "text": c["text"]} for c in order]))
+    result = dashboard_llm.rank_suggestions("sales", PROFILE, "business", CANDIDATES)
+    assert [s["id"] for s in result["suggestions"]] == [order[0]["id"], order[1]["id"]]
+
+
+def test_a_column_the_candidate_text_does_not_name_is_not_demanded_of_the_reworded_text(groq):
+    period = next(c for c in CANDIDATES if c["rule"] == "R4")
+    date_column = period["widget"]["compare"]["date_column"]
+    metric = period["widget"]["metric"]["column"]
+    assert date_column not in period["text"] and metric in period["text"]
+    reworded = f"ช่วงนี้ {metric} ต่างจากช่วงก่อนแค่ไหน"
+    groq(ranked_answer({"id": period["id"], "text": reworded}))
+    result = dashboard_llm.rank_suggestions("sales", PROFILE, "management", CANDIDATES)
+    assert result["suggestions"][0]["text"] == reworded
