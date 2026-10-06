@@ -131,6 +131,11 @@ def test_count_missing_takes_a_column_of_any_kind_and_rejects_an_unknown_one():
     assert "nope" in " ".join(warnings)
 
 
+def test_the_steward_audience_is_kept():
+    spec, _ = check({"type": "kpi", "metric": SUM}, audience="steward")
+    assert spec["audience"] == "steward"
+
+
 def test_a_spec_with_nothing_usable_is_an_error():
     with pytest.raises(SpecError):
         validate_spec([], PROFILE)

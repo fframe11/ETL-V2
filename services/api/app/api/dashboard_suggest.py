@@ -17,6 +17,7 @@ SPLIT_MAX_DISTINCT = 20  # most values an x axis can carry before a stacked spli
 TOP_N = 10
 MAX_MISSING_PCT = 50
 DEFAULT_LIMIT = 6
+KEY_LIKE_RATIO = 0.9  # a column with at least this share of distinct values per row probably identifies a row
 GAP_LIMIT = 5
 MAX_FILTER_DISTINCT = 50  # a select box stays usable up to about this many values
 

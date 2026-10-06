@@ -15,7 +15,7 @@ import requests
 
 from .dashboard_spec import (AGGREGATIONS, AUDIENCES, FORMATS, GRID_COLUMNS, MAX_ROW_SPAN, TIME_GRAINS,
                              WIDGET_TYPES, SpecError, diff_specs, validate_spec)
-from .dashboard_suggest import is_identifier
+from .dashboard_suggest import KEY_LIKE_RATIO, is_identifier
 from .system import get_system_settings
 from .whitebox import _get_groq_api_key
 
@@ -68,6 +68,7 @@ Rules:
 - The grid has {GRID_COLUMNS} columns. Put 3-4 kpi cards (w 3, h 2) on the first row, charts below (w 4 or 6, h 4) and a table last (w 12, h 5).
 - Use 5-10 widgets and 1-3 filters on the most useful categorical or date columns.
 - audience "management": headline kpis with compare and trends, no wide tables. "analyst": more breakdowns and a detail table. "business": balanced.
+- audience "steward" reads data health, not business results: kpis of count, of count_distinct over key-like columns (read against the row count they expose duplicates), of count_missing over columns with missing values, of min and max over numeric columns, and a detail table. For the quality-run history (columns quality_score and quarantined_records) trend the score and rank tables by it.
 - Write the title, description, widget titles and filter labels in the language of the user's request."""
 
 REFINE_RULES = """
@@ -164,8 +165,52 @@ def _ask(messages, profile):
     return spec, warnings, model
 
 
-def fallback_spec(profile, context=""):
-    """A sensible dashboard from the column kinds alone, used when the LLM is unavailable."""
+_QUALITY_RUN_COLUMNS = {"timestamp", "table_name", "quality_score", "quarantined_records"}
+_SCORE = {"agg": "avg", "column": "quality_score"}
+_COUNT = {"agg": "count", "column": None}
+
+
+def _quality_run_spec(profile):
+    """The quality-run history (one row per Quality Gate run): score trend, worst tables, quarantined rows."""
+    names = {c["name"] for c in profile["columns"]}
+    widgets = [
+        {"type": "kpi", "title": "คะแนนคุณภาพเฉลี่ย", "metric": _SCORE, "format": "percent"},
+        {"type": "kpi", "title": "แถวที่ถูกกักกัน", "metric": {"agg": "sum", "column": "quarantined_records"}},
+        {"type": "kpi", "title": "จำนวนรอบที่ตรวจ", "metric": _COUNT},
+        {"type": "line", "title": "แนวโน้มคะแนนคุณภาพ", "x": "timestamp", "time_grain": "day", "metric": _SCORE},
+        {"type": "bar", "title": "ตารางที่คะแนนต่ำสุด", "x": "table_name", "sort": "asc", "limit": 10, "metric": _SCORE}]
+    if "gate_result" in names:
+        widgets.append({"type": "donut", "title": "ผลผ่านเกณฑ์", "x": "gate_result", "metric": _COUNT})
+    shown = [c for c in ("timestamp", "table_name", "total_records", "quarantined_records", "quality_score", "gate_result") if c in names]
+    widgets.append({"type": "table", "title": "รอบที่ตรวจล่าสุด", "columns": shown,
+                    "order_by": {"column": "timestamp", "desc": True}, "limit": 20})
+    return {"widgets": widgets, "filters": [{"column": "table_name"}, {"column": "timestamp"}]}
+
+
+def _health_spec(profile):
+    """Data health from the profile: duplicates in key-like columns, empty cells, value ranges."""
+    columns, rows = profile["columns"], profile["rows"]
+    if _QUALITY_RUN_COLUMNS <= {c["name"] for c in columns}:
+        return _quality_run_spec(profile)
+    widgets = [{"type": "kpi", "title": "จำนวนแถว", "metric": _COUNT}]
+    keys = [c for c in columns if c["kind"] != "date" and rows and c["distinct"] >= KEY_LIKE_RATIO * rows][:2]
+    widgets += [{"type": "kpi", "title": f"ค่าไม่ซ้ำของ {c['name']}", "metric": {"agg": "count_distinct", "column": c["name"]}} for c in keys]
+    gaps = sorted((c for c in columns if c["missing"] > 0), key=lambda c: -c["missing_pct"])[:3]
+    widgets += [{"type": "kpi", "title": f"ค่าว่างของ {c['name']}", "metric": {"agg": "count_missing", "column": c["name"]}} for c in gaps]
+    for c in [c for c in columns if c["kind"] == "numeric" and not is_identifier(c, rows)][:2]:
+        widgets.append({"type": "kpi", "title": f"ต่ำสุด {c['name']}", "metric": {"agg": "min", "column": c["name"]}})
+        widgets.append({"type": "kpi", "title": f"สูงสุด {c['name']}", "metric": {"agg": "max", "column": c["name"]}})
+    widgets.append({"type": "table", "title": "ตัวอย่างข้อมูล", "columns": [c["name"] for c in columns[:8]]})
+    categories = sorted((c for c in columns if c["kind"] == "categorical"), key=lambda c: c["distinct"])
+    return {"widgets": widgets, "filters": [{"column": c["name"]} for c in categories[:2]]}
+
+
+def fallback_spec(profile, context="", audience="business"):
+    """A sensible dashboard from the column kinds alone, used when the LLM is unavailable.
+    The reader type shapes it: management gets no detail table and a period comparison, an analyst a
+    wider table, a data steward a data-health view."""
+    if audience == "steward":
+        return {"title": "แดชบอร์ดสุขภาพข้อมูล", "description": context[:300], **_health_spec(profile)}
     columns = profile["columns"]
     numeric = [c["name"] for c in columns if c["kind"] == "numeric"]
     dates = [c["name"] for c in columns if c["kind"] == "date"]
@@ -173,6 +218,8 @@ def fallback_spec(profile, context=""):
     main = {"agg": "sum", "column": numeric[0]} if numeric else {"agg": "count", "column": None}
     widgets = [{"type": "kpi", "title": "จำนวนแถว", "metric": {"agg": "count", "column": None}}]
     widgets += [{"type": "kpi", "title": f"ผลรวม {n}", "metric": {"agg": "sum", "column": n}} for n in numeric[:3]]
+    if audience == "management" and dates:
+        widgets[0]["compare"] = {"date_column": dates[0], "time_grain": "month"}
     if dates:
         widgets.append({"type": "line", "title": f"แนวโน้มรายเดือนตาม {dates[0]}", "x": dates[0],
                         "time_grain": "month", "metric": main})
@@ -182,9 +229,11 @@ def fallback_spec(profile, context=""):
         if len(categories) > 1 and categories[0]["distinct"] <= 8:
             narrow = categories[0]["name"]
             widgets.append({"type": "donut", "title": f"สัดส่วนตาม {narrow}", "x": narrow, "metric": main})
-    widgets.append({"type": "table", "title": "ตัวอย่างข้อมูล", "columns": [c["name"] for c in columns[:8]]})
+    if audience != "management":
+        widgets.append({"type": "table", "title": "ตัวอย่างข้อมูล", "columns": [c["name"] for c in columns[:12 if audience == "analyst" else 8]]})
     filters = [{"column": c["name"]} for c in categories[:2]] + [{"column": d} for d in dates[:1]]
-    return {"title": "แดชบอร์ดภาพรวม", "description": context[:300], "widgets": widgets, "filters": filters}
+    title = "แดชบอร์ดผู้บริหาร" if audience == "management" else "แดชบอร์ดภาพรวม"
+    return {"title": title, "description": context[:300], "widgets": widgets, "filters": filters}
 
 
 def generate_spec(table_name, profile, context, audience):
@@ -193,7 +242,7 @@ def generate_spec(table_name, profile, context, audience):
         engine = "groq"
     except (LLMUnavailable, SpecError) as exc:
         logger.warning("Dashboard generation fell back to rules: %s", exc)
-        spec, warnings = validate_spec(fallback_spec(profile, context), profile)
+        spec, warnings = validate_spec(fallback_spec(profile, context, audience), profile)
         warnings = [f"ใช้แดชบอร์ดอัตโนมัติแบบกฎแทน AI: {exc}"] + warnings
         engine, model = "rules", None
     spec["audience"] = audience

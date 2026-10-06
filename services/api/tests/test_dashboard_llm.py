@@ -10,6 +10,7 @@ API_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, API_ROOT)
 
 from app.api import dashboard_llm  # noqa: E402
+from app.api.dashboard_compute import compute_dashboard  # noqa: E402
 from app.api.dashboard_data import prepare_frame  # noqa: E402
 from app.api.dashboard_spec import SpecError, validate_spec  # noqa: E402
 
@@ -110,6 +111,75 @@ def test_the_rule_based_spec_works_with_text_only_data():
     _, profile = prepare_frame(pd.DataFrame({"note": [f"n{i}" for i in range(60)]}))
     spec, _ = validate_spec(dashboard_llm.fallback_spec(profile), profile)
     assert [w["type"] for w in spec["widgets"]] == ["kpi", "table"]
+
+
+def widget_titles(spec):
+    return [w["title"] for w in spec["widgets"]]
+
+
+def test_management_gets_no_detail_table_and_a_period_comparison():
+    spec, _ = validate_spec(dashboard_llm.fallback_spec(PROFILE, "ยอดขาย", "management"), PROFILE)
+    assert [w["type"] for w in spec["widgets"]] == ["kpi", "kpi", "line", "bar"]
+    assert spec["widgets"][0]["compare"] == {"date_column": "order_date", "time_grain": "month"}
+    assert spec["title"] == "แดชบอร์ดผู้บริหาร"
+
+
+def test_an_analyst_gets_a_wider_detail_table_than_the_default():
+    wide = pd.DataFrame({f"c{i}": [f"v{n}" for n in range(60)] for i in range(10)})
+    _, profile = prepare_frame(wide)
+    table = lambda audience: next(w for w in validate_spec(dashboard_llm.fallback_spec(profile, "", audience), profile)[0]["widgets"] if w["type"] == "table")
+    assert len(table("business")["columns"]) == 8 and len(table("analyst")["columns"]) == 10
+
+
+STUDENTS = pd.DataFrame({
+    "record_id": list(range(1, 96)) + [1, 2, 3, 4, 5],
+    "course": ["A", "B"] * 50,
+    "score": [50.0 + i % 40 for i in range(97)] + [None] * 3,
+})
+
+
+def test_a_steward_sees_duplicates_empty_cells_and_value_ranges_of_the_data():
+    df, profile = prepare_frame(STUDENTS.copy())
+    spec, warnings = validate_spec(dashboard_llm.fallback_spec(profile, "", "steward"), profile)
+    assert warnings == [] and spec["title"] == "แดชบอร์ดสุขภาพข้อมูล"
+    assert widget_titles(spec) == ["จำนวนแถว", "ค่าไม่ซ้ำของ record_id", "ค่าว่างของ score", "ต่ำสุด score", "สูงสุด score", "ตัวอย่างข้อมูล"]
+    values = {w["title"]: compute_dashboard(df, spec, profile)["widgets"][w["id"]].get("value") for w in spec["widgets"] if w["type"] == "kpi"}
+    assert values["จำนวนแถว"] == 100 and values["ค่าไม่ซ้ำของ record_id"] == 95 and values["ค่าว่างของ score"] == 3
+
+
+QUALITY_RUNS = pd.DataFrame({
+    "timestamp": ["2026-10-01T01:00:00Z", "2026-10-02T01:00:00Z", "2026-10-03T01:00:00Z", "2026-10-03T02:00:00Z"],
+    "table_name": ["sales", "sales", "users", "users"],
+    "total_records": [100, 120, 50, 60],
+    "quarantined_records": [5, 40, 1, 2],
+    "quality_score": [95.0, 66.7, 98.0, 96.7],
+    "gate_result": ["ผ่าน", "ไม่ผ่าน", "ผ่าน", "ผ่าน"],
+})
+
+
+def test_a_steward_gets_a_quality_view_of_the_quality_run_history():
+    df, profile = prepare_frame(QUALITY_RUNS.copy())
+    spec, warnings = validate_spec(dashboard_llm.fallback_spec(profile, "", "steward"), profile)
+    assert warnings == []
+    assert widget_titles(spec) == ["คะแนนคุณภาพเฉลี่ย", "แถวที่ถูกกักกัน", "จำนวนรอบที่ตรวจ", "แนวโน้มคะแนนคุณภาพ",
+                                   "ตารางที่คะแนนต่ำสุด", "ผลผ่านเกณฑ์", "รอบที่ตรวจล่าสุด"]
+    data = compute_dashboard(df, spec, profile)["widgets"]
+    by_title = {w["title"]: data[w["id"]] for w in spec["widgets"]}
+    assert by_title["แถวที่ถูกกักกัน"]["value"] == 48 and by_title["จำนวนรอบที่ตรวจ"]["value"] == 4
+    assert by_title["ตารางที่คะแนนต่ำสุด"]["rows"][0]["x"] == "sales"  # the lowest average score comes first
+    assert by_title["รอบที่ตรวจล่าสุด"]["rows"][0]["timestamp"].startswith("2026-10-03T02")
+
+
+def test_the_rule_fallback_follows_the_audience_the_user_chose(groq):
+    groq(dashboard_llm.LLMUnavailable("Groq ตอบกลับ HTTP 503"))
+    result = dashboard_llm.generate_spec("sales", PROFILE, "ยอดขาย", "management")
+    assert result["engine"] == "rules" and result["spec"]["audience"] == "management"
+    assert "table" not in [w["type"] for w in result["spec"]["widgets"]]
+
+
+def test_the_prompt_tells_the_llm_about_the_steward_and_the_new_aggregation():
+    system = dashboard_llm.build_generate_messages("sales", PROFILE, "ตรวจข้อมูล", "steward")[0]["content"]
+    assert 'audience "steward"' in system and "count_missing" in system and '"steward"' in system
 
 
 def test_refine_sends_the_current_spec_and_reports_changes(groq):

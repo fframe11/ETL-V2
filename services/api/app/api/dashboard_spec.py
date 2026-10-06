@@ -17,7 +17,7 @@ AGGREGATIONS = ("count", "count_distinct", "count_missing", "sum", "avg", "min",
 NUMERIC_AGGREGATIONS = ("sum", "avg", "min", "max")
 TIME_GRAINS = ("day", "week", "month", "quarter", "year")
 FORMATS = ("number", "currency", "percent")
-AUDIENCES = ("business", "analyst", "management")
+AUDIENCES = ("business", "analyst", "management", "steward")
 BAR_SORTS = ("desc", "asc", "x")
 DEFAULT_SIZE = {"kpi": (3, 2), "bar": (6, 4), "line": (6, 4), "area": (6, 4),
                 "pie": (4, 4), "donut": (4, 4), "table": (12, 5)}
