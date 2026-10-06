@@ -576,6 +576,53 @@ it("ignores a filter render that arrives after a newer dashboard was generated",
   expect(screen.getByLabelText("ภูมิภาค")).toHaveValue("");
 });
 
+// --- going back while other calls are in flight ----------------------------------------------------
+// one refinement is committed, then the undo's render call is held until the test answers it.
+async function startUndo() {
+  const pending = await openDashboard();
+  const refines = deferRefine();
+  await startRefine(CHANGE);
+  await answer(refines[0], REFINED);
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "ย้อนกลับ" })); });
+  expect(pending.render).toHaveLength(1);
+  return pending;
+}
+
+it("does not let a refinement start while an undo is running", async () => {
+  const pending = await startUndo();
+  fireEvent.change(refineBox(), { target: { value: "เพิ่มตัวกรอง region" } });
+  expect(screen.getByRole("button", { name: "กำลังย้อนกลับ…" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "ปรับแดชบอร์ด" })).toBeDisabled();
+  await answer(pending.render[0], rendered(6));
+  expect(screen.getByRole("button", { name: "ปรับแดชบอร์ด" })).toBeEnabled();
+});
+
+it("ignores an undo that finishes after a newer dashboard was generated", async () => {
+  const pending = await startUndo();
+  await regenerate();
+  await answer(pending.generate[1], REGENERATED);
+  expect(screen.getByText("ภาพรวมใหม่")).toBeInTheDocument();
+  await answer(pending.render[0], rendered(6));
+  expect(screen.getByText("ภาพรวมใหม่")).toBeInTheDocument();
+  expect(screen.queryByText("ภาพรวมยอดขาย")).toBeNull();
+  expect(screen.queryByText(/คำสั่งที่ใช้แล้ว/)).toBeNull();
+  expect(screen.getByRole("button", { name: "ย้อนกลับ" })).toBeDisabled();
+});
+
+it("keeps the refined dashboard and its history when going back fails", async () => {
+  await generateDashboard([["/dashboards/refine", { body: REFINED }],
+    ["/dashboards/render", { status: 503, body: { detail: "วาดแดชบอร์ดไม่ได้ตอนนี้" } }]]);
+  fireEvent.click(await screen.findByRole("button", { name: CHANGE }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "ปรับแดชบอร์ด" })); });
+  await settle();
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "ย้อนกลับ" })); });
+  await settle();
+  expect(screen.getByRole("alert")).toHaveTextContent("วาดแดชบอร์ดไม่ได้ตอนนี้");
+  expect(screen.getByRole("article", { name: "ยอดขายรายเดือน" })).toBeInTheDocument();
+  expect(screen.getByText("คำสั่งที่ใช้แล้ว 1 ครั้ง")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "ย้อนกลับ" })).toBeEnabled();
+});
+
 // --- save, reopen and delete ------------------------------------------------------------------
 const ID = "a".repeat(32);
 const SAVED_DOC = { id: ID, name: "ยอดขายผู้บริหาร", description: "รายเดือน", table_name: "sales", context: EXAMPLE,

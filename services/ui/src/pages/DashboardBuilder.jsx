@@ -121,6 +121,7 @@ export default function DashboardBuilder() {
     if (!live()) return;
     bump("refine"); // a refine or filter render started for the previous draft must not touch the new one
     bump("render");
+    bump("undo"); // an undo still running belongs to the draft being replaced
     committed.current = {};
     setDraft(result);
     setSelections({});
@@ -179,8 +180,9 @@ export default function DashboardBuilder() {
     bump("generate");
     bump("refine");
     bump("render");
+    bump("undo");
     committed.current = {};
-    setBusy(""); // the calls invalidated above will not clear their own busy flag any more
+    setBusy("");// the calls invalidated above will not clear their own busy flag any more
     setDataset({ name: doc.table_name });
     setRequest({ context: doc.context || "", audience: doc.audience || "business" });
     setRefinements(doc.refinements || []);

@@ -16,7 +16,7 @@ export function describeChanges(changes) {
 export default function RefinePanel({ tableName, spec, onRefine, busy, changes, history = [], canUndo = false, onUndo, undoing = false }) {
   const [text, setText] = useState("");
   const [ideas, setIdeas] = useState(null); // null while the first list loads
-  const ready = text.trim().length >= 2 && !busy;
+  const ready = text.trim().length >= 2 && !busy && !undoing;
   const submit = async (e) => {
     e.preventDefault();
     if (!ready) return;
