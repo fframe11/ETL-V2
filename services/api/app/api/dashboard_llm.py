@@ -15,6 +15,7 @@ import requests
 
 from .dashboard_spec import (AGGREGATIONS, AUDIENCES, FORMATS, GRID_COLUMNS, MAX_ROW_SPAN, TIME_GRAINS,
                              WIDGET_TYPES, SpecError, diff_specs, validate_spec)
+from .dashboard_suggest import is_identifier
 from .system import get_system_settings
 from .whitebox import _get_groq_api_key
 
@@ -107,23 +108,13 @@ def call_groq(messages, api_key, model):
         raise LLMUnavailable("Groq ตอบกลับในรูปแบบที่อ่านไม่ได้") from exc
 
 
-def _looks_like_identifier(column, rows):
-    """A whole-number column that is (nearly) unique or has 9+ digit values: an id, account or
-    phone number, whose min and max are real records."""
-    low, high = column.get("min"), column.get("max")
-    if low is None or high is None or float(low) != int(low) or float(high) != int(high):
-        return False
-    digits = len(str(int(max(abs(low), abs(high)))))
-    return digits >= 9 or bool(rows and column["distinct"] / rows >= 0.9)
-
-
 def profile_for_prompt(profile):
     """The column profile without any cell value except numeric and date ranges (and not
     even the range of a numeric column that looks like an identifier)."""
     columns = []
     for c in profile["columns"]:
         item = {"name": c["name"], "kind": c["kind"], "distinct": c["distinct"], "missing_pct": c["missing_pct"]}
-        identifier = c["kind"] == "numeric" and _looks_like_identifier(c, profile["rows"])
+        identifier = c["kind"] == "numeric" and is_identifier(c, profile["rows"])
         if c["kind"] in ("numeric", "date") and not identifier:
             item["min"], item["max"] = c.get("min"), c.get("max")
         columns.append(item)
