@@ -4,7 +4,8 @@ import { dashboardsApi } from "../../utils/dashboardsApi";
 export const AUDIENCES = [
   { value: "business", label: "Business User" },
   { value: "analyst", label: "Data Analyst" },
-  { value: "management", label: "Management" }
+  { value: "management", label: "Management" },
+  { value: "steward", label: "ดูแลคุณภาพข้อมูล" }
 ];
 
 // Each suggestion is one line of the request: picking it adds the line, picking it again removes it.

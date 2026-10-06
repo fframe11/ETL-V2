@@ -217,6 +217,18 @@ it("keeps the current suggestions on screen while new ones load for another read
   expect(screen.getByRole("button", { name: EXAMPLE })).toBeInTheDocument();
 });
 
+it("offers the data steward as a reader type, asks for its suggestions and sends it with the request", async () => {
+  await openRequestStep();
+  fireEvent.click(screen.getByRole("radio", { name: "ดูแลคุณภาพข้อมูล" }));
+  await settle();
+  const urls = fetch.mock.calls.map(([url]) => String(url)).filter((u) => u.includes("/suggestions"));
+  expect(urls.at(-1)).toContain("audience=steward");
+  fireEvent.click(await screen.findByRole("button", { name: EXAMPLE }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "สร้างแดชบอร์ดด้วย AI" })); });
+  await settle();
+  expect(JSON.parse(callTo("/dashboards/generate")[1].body).audience).toBe("steward");
+});
+
 it("says so when the dataset has no suggestions or they cannot be loaded, and still lets the user type", async () => {
   await openRequestStep([["/dashboards/datasets/sales/suggestions", { status: 500, body: { detail: "boom" } }]]);
   expect(screen.getByText("ยังไม่มีคำแนะนำสำหรับชุดข้อมูลนี้ พิมพ์สิ่งที่อยากเห็นได้เลย")).toBeInTheDocument();
