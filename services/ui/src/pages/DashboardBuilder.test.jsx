@@ -205,6 +205,12 @@ it("asks for new suggestions when the reader type changes", async () => {
   expect(urls.at(-1)).toContain("audience=management");
 });
 
+it("keeps the current suggestions on screen while new ones load for another reader type", async () => {
+  await openRequestStep();
+  fireEvent.click(screen.getByRole("radio", { name: "Management" }));
+  expect(screen.getByRole("button", { name: EXAMPLE })).toBeInTheDocument();
+});
+
 it("says so when the dataset has no suggestions or they cannot be loaded, and still lets the user type", async () => {
   await openRequestStep([["/dashboards/datasets/sales/suggestions", { status: 500, body: { detail: "boom" } }]]);
   expect(screen.getByText("ยังไม่มีคำแนะนำสำหรับชุดข้อมูลนี้ พิมพ์สิ่งที่อยากเห็นได้เลย")).toBeInTheDocument();

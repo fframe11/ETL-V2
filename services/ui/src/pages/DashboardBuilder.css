@@ -72,7 +72,7 @@
 .dbb-context textarea, .dbb-refine textarea, .dbb-modal-card input, .dbb-modal-card textarea {
   padding: 10px 12px; border: 1px solid var(--dbb-border); border-radius: 6px; font: inherit; font-size: 14px; resize: vertical;
 }
-.dbb-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.dbb-chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 28px; }
 .dbb-chip { padding: 4px 12px; border: 1px solid var(--dbb-border); border-radius: 999px; background: #f8fafc; font-size: 12px; cursor: pointer; }
 .dbb-chip.is-active { border-color: var(--dbb-primary); background: var(--dbb-primary-soft); color: var(--dbb-primary); }
 .dbb-audience { display: flex; flex-wrap: wrap; gap: 16px; margin: 0; padding: 0; border: none; font-size: 14px; }

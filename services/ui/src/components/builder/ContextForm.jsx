@@ -21,7 +21,6 @@ export default function ContextForm({ table, tableName, value, onChange, onGener
   // The suggestions depend on the dataset's columns and on who reads the dashboard.
   useEffect(() => {
     let alive = true;
-    setSuggestions(null);
     dashboardsApi.suggestions(tableName, value.audience)
       .then((res) => { if (alive) setSuggestions(res.suggestions || []); })
       .catch(() => { if (alive) setSuggestions([]); });
@@ -36,7 +35,7 @@ export default function ContextForm({ table, tableName, value, onChange, onGener
   return (
     <form className="dbb-context" onSubmit={submit}>
       <label htmlFor="dbb-context-input">อยากวิเคราะห์อะไรจาก {table}</label>
-      <div className="dbb-chips" aria-label="คำแนะนำจากข้อมูล">
+      <div className="dbb-chips" role="group" aria-label="คำแนะนำจากข้อมูล" aria-busy={suggestions === null}>
         {suggestions === null && <p className="dbb-muted">กำลังอ่านข้อมูลเพื่อแนะนำ…</p>}
         {suggestions?.length === 0 && <p className="dbb-muted">ยังไม่มีคำแนะนำสำหรับชุดข้อมูลนี้ พิมพ์สิ่งที่อยากเห็นได้เลย</p>}
         {suggestions?.map((s) => (
