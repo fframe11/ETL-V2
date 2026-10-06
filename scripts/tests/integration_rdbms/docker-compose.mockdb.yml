@@ -1,0 +1,65 @@
+# Mock source PostgreSQL + a second API instance that is allowed to read from it.
+#
+# Why a second API instance: /ingest/rdbms only connects to hosts listed in
+# RDBMS_ALLOWED_HOSTS (ingest_guards.validate_rdbms_host) and the running sdoqap-api is
+# configured with "postgres" only. Instead of editing .env or recreating the live API,
+# sdoqap-api-it runs the SAME image (etl-api) with the SAME .env and the SAME ES / HDFS /
+# Spark trigger daemon; only RDBMS_ALLOWED_HOSTS and the published port differ.
+#
+# Run from this folder:
+#   docker compose -p sdoqap-it --env-file ../../../.env -f docker-compose.mockdb.yml up -d
+name: sdoqap-it
+
+services:
+  mockdb:
+    image: postgres:15-alpine
+    container_name: sdoqap-mockdb
+    environment:
+      POSTGRES_DB: mock_students
+      POSTGRES_USER: mock_user
+      POSTGRES_PASSWORD: mock_pass_123   # test-only value, not used anywhere else
+    ports:
+      - "5433:5432"                      # 5432 belongs to the real sdoqap-postgres
+    volumes:
+      - ./init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mock_user -d mock_students"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks:
+      - sdoqap_network
+
+  api-it:
+    image: etl-api:latest
+    container_name: sdoqap-api-it
+    env_file:
+      - ../../../.env
+    environment:
+      - RDBMS_ALLOWED_HOSTS=sdoqap-mockdb
+      - ELASTICSEARCH_USER=${ELASTICSEARCH_USER:-elastic}
+      - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:?set ELASTICSEARCH_PASSWORD in .env}
+      - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST:-elasticsearch}
+      - ELASTICSEARCH_PORT=${ELASTICSEARCH_PORT:-9200}
+      - HOST=0.0.0.0
+      - ELASTICSEARCH_URL=http://${ELASTICSEARCH_USER:-elastic}:${ELASTICSEARCH_PASSWORD}@${ELASTICSEARCH_HOST:-elasticsearch}:${ELASTICSEARCH_PORT:-9200}
+      - SPARK_MASTER_HOST=${SPARK_MASTER_HOST:-spark-master}
+      - SPARK_MASTER_PORT=${SPARK_MASTER_PORT:-7077}
+    ports:
+      - "8012:8000"
+    depends_on:
+      mockdb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - sdoqap_network
+
+networks:
+  sdoqap_network:
+    external: true
+    name: sdoqap_network

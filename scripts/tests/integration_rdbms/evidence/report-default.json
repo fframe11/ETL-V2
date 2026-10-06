@@ -1,0 +1,308 @@
+{
+  "table": "itest_mockdb_20261006_195210",
+  "summary": "19/20 PASS",
+  "results": [
+    {
+      "tc": "TC1",
+      "name": "Connect to Mock PostgreSQL from backend container",
+      "expected": "psycopg2 connects to sdoqap-mockdb:5432 as mock_user",
+      "actual": "('mock_students', 'mock_user', '172.19.0.18', 'PostgreSQL 15.15 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit')",
+      "result": "PASS",
+      "evidence": "('mock_students', 'mock_user', '172.19.0.18', 'PostgreSQL 15.15 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit')"
+    },
+    {
+      "tc": "TC2",
+      "name": "Query table",
+      "expected": "20 rows; PK row_id; NULL score/name/hours = 1/1/1; duplicate student_id = 1; out-of-range score = 2, study_hours = 1",
+      "actual": "{\"total\": 20, \"columns\": [[\"row_id\", \"integer\"], [\"student_id\", \"character varying\"], [\"name\", \"character varying\"], [\"course\", \"character varying\"], [\"semester\", \"character varying\"], [\"score\", \"numeric\"], [\"study_hours\", \"numeric\"]], \"primary_key\": [\"row_id\"], \"null_score\": \"1\", \"null_name\": \"1\", \"null_hours\": \"1\", \"duplicate_ids\": \"1\", \"bad_score\": \"2\", \"bad_hours\": \"1\"}",
+      "result": "PASS",
+      "evidence": "{\"total\": 20, \"columns\": [[\"row_id\", \"integer\"], [\"student_id\", \"character varying\"], [\"name\", \"character varying\"], [\"course\", \"character varying\"], [\"semester\", \"character varying\"], [\"score\", \"numeric\"], [\"study_hours\", \"numeric\"]], \"primary_key\": [\"row_id\"], \"null_score\": \"1\", \"null_name\": \"1\", \"null_hours\": \"1\", \"duplicate_ids\": \"1\", \"bad_score\": \"2\", \"bad_hours\": \"1\"}"
+    },
+    {
+      "tc": "TC3",
+      "name": "Ingest through API (POST /api/v1/pipeline/ingest/rdbms)",
+      "expected": "HTTP 202, status=queued, ingest_id present, spark_triggered=true",
+      "actual": "HTTP 202 {\"status\": \"queued\", \"ingest_id\": \"20261006T125211-c46f1ae3\", \"run_state\": \"QUEUED\", \"spark_triggered\": true, \"daemon_status\": \"running\", \"message\": \"Data landed in HDFS for 'itest_mockdb_20261006_195210' and queued for the quality check (ingest 20261006T125211-c46f1ae3).\", \"rows_ingested\": 20}",
+      "result": "PASS",
+      "evidence": "{\"status\": \"queued\", \"ingest_id\": \"20261006T125211-c46f1ae3\", \"run_state\": \"QUEUED\", \"spark_triggered\": true, \"daemon_status\": \"running\", \"message\": \"Data landed in HDFS for 'itest_mockdb_20261006_195210' and queued for the quality check (ingest 20261006T125211-c46f1ae3).\", \"rows_ingested\": 20}"
+    },
+    {
+      "tc": "TC4",
+      "name": "Verify row count",
+      "expected": "rows_ingested = SELECT COUNT(*) = rows in landed HDFS CSV = 20",
+      "actual": "rows_ingested=20, source=20, hdfs_csv=20 (/data/raw)",
+      "result": "PASS",
+      "evidence": "{\"hdfs_base\": \"/data/raw\", \"rows\": 20}"
+    },
+    {
+      "tc": "TC5",
+      "name": "Verify schema",
+      "expected": "CSV header = query columns ['student_id', 'name', 'course', 'semester', 'score', 'study_hours']",
+      "actual": "header=['student_id', 'name', 'course', 'semester', 'score', 'study_hours']",
+      "result": "PASS",
+      "evidence": "header=['student_id', 'name', 'course', 'semester', 'score', 'study_hours']"
+    },
+    {
+      "tc": "TC6",
+      "name": "Verify data",
+      "expected": "every landed row equals the source row (incl. NULLs, duplicate, out-of-range)",
+      "actual": "identical, 20/20 rows",
+      "result": "PASS",
+      "evidence": "sample=[['S001', 'Somchai Jaidee', 'Data Structures', '2025-1', '85.5', '12.0'], ['S002', 'Malee Srisuk', 'Databases', '2025-1', '92.0', '15.5'], ['S003', 'Anan Thongdee', 'Algorithms', '2025-1', '78.0', '9.0']] nulls=[['S015', 'Piyapong Intha', 'Databases', '2025-2', '', '9.0'], ['S016', '', 'Algorithms', '2025-2', '74.0', '']] dup=['S003', 'Anan Thongdee', 'Algorithms', '2025-1', '78.0', '9.0'] out_of_range=[['S018', 'Rungrote Saeng', 'Data Structures', '2025-2', '150.0', '12.0'], ['S019', 'Alisa Phongsri', 'Networks', '2025-1', '-5.0', '8.0'], ['S020', 'Chaiwat Noi', 'Databases', '2025-2', '80.0', '999.0']]"
+    },
+    {
+      "tc": "TC7",
+      "name": "Verify pipeline / run status and quality engine",
+      "expected": "run state QUEUED -> SUCCEEDED (source=rdbms, table_name matches) and a sdoqap_quality_runs document exists",
+      "actual": "state=SUCCEEDED source=rdbms size=1021 elapsed=74s quality={\"total_records\": 19, \"clean_records\": 0, \"quarantined_records\": 19, \"quality_score\": 0.0, \"run_id\": \"run_20261006_125224_883212\", \"ingest_id\": \"20261006T125211-c46f1ae3\", \"timestamp\": \"2026-10-06T12:53:03.062367+00:00\"}",
+      "result": "PASS",
+      "evidence": "{\"run\": {\"ingest_id\": \"20261006T125211-c46f1ae3\", \"table_name\": \"itest_mockdb_20261006_195210\", \"checksum\": \"e005c13b1d9d44d4041ba2bec9ee3459775a5117e88fb50dbbe38dd223b6318b\", \"source\": \"rdbms\", \"size_bytes\": 1021, \"raw_path\": \"/data/raw/itest_mockdb_20261006_195210/20261006T125211-c46f1ae3\", \"state\": \"SUCCEEDED\", \"created_at\": \"2026-10-06T12:52:11.627787+00:00\", \"updated_at\": \"2026-10-06T12:53:19.479145+00:00\", \"started_at\": \"2026-10-06T12:52:11.801765+00:00\", \"finished_at\": \"2026-10-06T12:53:19.479088+00:00\", \"exit_code\": 0}, \"quality\": {\"total_records\": 19, \"clean_records\": 0, \"quarantined_records\": 19, \"quality_score\": 0.0, \"run_id\": \"run_20261006_125224_883212\", \"ingest_id\": \"20261006T125211-c46f1ae3\", \"timestamp\": \"2026-10-06T12:53:03.062367+00:00\"}}"
+    },
+    {
+      "tc": "TC7b",
+      "name": "Quality engine accounting",
+      "expected": "total_records = 20 - 1 duplicate = 19, remediation log 'resolved_1_duplicates', clean + quarantined = total_records",
+      "actual": "total=19 clean=0 quarantined=19 score=0.0 remediation=['resolved_1_duplicates', 'ai_advisor_triggered_confidence_0.95']",
+      "result": "PASS",
+      "evidence": "{\"total_records\": 19, \"clean_records\": 0, \"quarantined_records\": 19, \"quality_score\": 0.0, \"run_id\": \"run_20261006_125224_883212\", \"ingest_id\": \"20261006T125211-c46f1ae3\", \"timestamp\": \"2026-10-06T12:53:03.062367+00:00\"}"
+    },
+    {
+      "tc": "TC7c",
+      "name": "Quality engine detects the seeded NULL name",
+      "expected": "quarantine_breakdown contains null_value_in_name = 1",
+      "actual": "quarantine_breakdown={\"null_value_in_name\": 1, \"null_value_in_semester\": 18}",
+      "result": "PASS",
+      "evidence": "{\"null_value_in_name\": 1, \"null_value_in_semester\": 18}"
+    },
+    {
+      "tc": "TC7d",
+      "name": "Quality engine clean rows",
+      "expected": "at least the 14 normal rows are clean (clean_records >= 14)",
+      "actual": "clean_records=0, quarantine_breakdown={\"null_value_in_name\": 1, \"null_value_in_semester\": 18}",
+      "result": "FAIL",
+      "evidence": "{\"null_value_in_name\": 1, \"null_value_in_semester\": 18}"
+    },
+    {
+      "tc": "TC8a",
+      "name": "Error handling: wrong password",
+      "expected": "HTTP 502, message contains 'PostgreSQL fetch failed', no stack trace, no password echoed",
+      "actual": "HTTP 502 PostgreSQL fetch failed: connection to server at \"sdoqap-mockdb\" (172.19.0.18), port 5432 failed: FATAL:  password authentication failed for user \"mock_user\"\n",
+      "result": "PASS",
+      "evidence": "HTTP 502 PostgreSQL fetch failed: connection to server at \"sdoqap-mockdb\" (172.19.0.18), port 5432 failed: FATAL:  password authentication failed for user \"mock_user\"\n"
+    },
+    {
+      "tc": "TC8b",
+      "name": "Error handling: table does not exist",
+      "expected": "HTTP 502, message contains 'does not exist', no stack trace, no password echoed",
+      "actual": "HTTP 502 PostgreSQL fetch failed: relation \"no_such_table\" does not exist\nLINE 1: SELECT * FROM no_such_table\n                      ^\n",
+      "result": "PASS",
+      "evidence": "HTTP 502 PostgreSQL fetch failed: relation \"no_such_table\" does not exist\nLINE 1: SELECT * FROM no_such_table\n                      ^\n"
+    },
+    {
+      "tc": "TC8c",
+      "name": "Error handling: host not in RDBMS_ALLOWED_HOSTS",
+      "expected": "HTTP 400, message contains 'allowlist', no stack trace, no password echoed",
+      "actual": "HTTP 400 Host 'evil.example' is not in the RDBMS_ALLOWED_HOSTS allowlist.",
+      "result": "PASS",
+      "evidence": "HTTP 400 Host 'evil.example' is not in the RDBMS_ALLOWED_HOSTS allowlist."
+    },
+    {
+      "tc": "TC8d",
+      "name": "Error handling: non-SELECT statement",
+      "expected": "HTTP 400, message contains 'Only SELECT', no stack trace, no password echoed",
+      "actual": "HTTP 400 Only SELECT queries are allowed for RDBMS ingestion.",
+      "result": "PASS",
+      "evidence": "HTTP 400 Only SELECT queries are allowed for RDBMS ingestion."
+    },
+    {
+      "tc": "TC8e",
+      "name": "Error handling: unsupported db_type",
+      "expected": "HTTP 400, message contains 'Only 'postgresql'', no stack trace, no password echoed",
+      "actual": "HTTP 400 Unsupported db_type 'mysql'. Only 'postgresql' is currently supported.",
+      "result": "PASS",
+      "evidence": "HTTP 400 Unsupported db_type 'mysql'. Only 'postgresql' is currently supported."
+    },
+    {
+      "tc": "TC8f",
+      "name": "Error handling: query returns no rows",
+      "expected": "HTTP 400, message contains 'no rows', no stack trace, no password echoed",
+      "actual": "HTTP 400 Query executed successfully but returned no rows to ingest.",
+      "result": "PASS",
+      "evidence": "HTTP 400 Query executed successfully but returned no rows to ingest."
+    },
+    {
+      "tc": "TC8g",
+      "name": "Error handling: wrong port (unreachable DB)",
+      "expected": "HTTP 502, message contains 'PostgreSQL fetch failed', no stack trace, no password echoed",
+      "actual": "HTTP 502 PostgreSQL fetch failed: connection to server at \"sdoqap-mockdb\" (172.19.0.18), port 5999 failed: Connection refused\n\tIs the server running on that host and accepting TCP/IP connections?\n",
+      "result": "PASS",
+      "evidence": "HTTP 502 PostgreSQL fetch failed: connection to server at \"sdoqap-mockdb\" (172.19.0.18), port 5999 failed: Connection refused\n\tIs the server running on that host and accepting TCP/IP connections?\n"
+    },
+    {
+      "tc": "TC8h",
+      "name": "Error handling: no credentials for the API",
+      "expected": "HTTP 401",
+      "actual": "HTTP 401",
+      "result": "PASS",
+      "evidence": "HTTP 401 {\"detail\":\"Not authenticated. Provide a session cookie or a valid X-Service-Key header.\"}"
+    },
+    {
+      "tc": "TC8i",
+      "name": "Re-ingesting identical data is detected",
+      "expected": "HTTP 200, status=duplicate, same ingest_id, spark_triggered=false",
+      "actual": "HTTP 200 {\"status\": \"duplicate\", \"ingest_id\": \"20261006T125211-c46f1ae3\", \"run_state\": \"SUCCEEDED\", \"spark_triggered\": false, \"message\": \"This exact file was already ingested for 'itest_mockdb_20261006_195210'",
+      "result": "PASS",
+      "evidence": "{\"status\": \"duplicate\", \"ingest_id\": \"20261006T125211-c46f1ae3\", \"run_state\": \"SUCCEEDED\", \"spark_triggered\": false, \"message\": \"This exact file was already ingested for 'itest_mockdb_20261006_195210' (ingest 20261006T125211-c46f1ae3, SUCCEEDED). POST /api/v1/pipeline/retry/20261006T125211-c46f1ae3 reprocesses it.\", \"rows_ingested\": 20}"
+    },
+    {
+      "tc": "TC8j",
+      "name": "Failed requests leave the pipeline intact",
+      "expected": "no extra run documents, API healthy, original run state unchanged",
+      "actual": "runs before=1 after=1, /healthz=200, run state=SUCCEEDED",
+      "result": "PASS",
+      "evidence": "runs 1->1"
+    }
+  ],
+  "evidence": {
+    "source": {
+      "total": 20,
+      "columns": [
+        [
+          "row_id",
+          "integer"
+        ],
+        [
+          "student_id",
+          "character varying"
+        ],
+        [
+          "name",
+          "character varying"
+        ],
+        [
+          "course",
+          "character varying"
+        ],
+        [
+          "semester",
+          "character varying"
+        ],
+        [
+          "score",
+          "numeric"
+        ],
+        [
+          "study_hours",
+          "numeric"
+        ]
+      ],
+      "primary_key": [
+        "row_id"
+      ],
+      "null_score": "1",
+      "null_name": "1",
+      "null_hours": "1",
+      "duplicate_ids": "1",
+      "bad_score": "2",
+      "bad_hours": "1"
+    },
+    "ingest_response": {
+      "status": "queued",
+      "ingest_id": "20261006T125211-c46f1ae3",
+      "run_state": "QUEUED",
+      "spark_triggered": true,
+      "daemon_status": "running",
+      "message": "Data landed in HDFS for 'itest_mockdb_20261006_195210' and queued for the quality check (ingest 20261006T125211-c46f1ae3).",
+      "rows_ingested": 20
+    },
+    "landed": {
+      "hdfs_base": "/data/raw",
+      "rows": 20
+    },
+    "sample": [
+      [
+        "S001",
+        "Somchai Jaidee",
+        "Data Structures",
+        "2025-1",
+        "85.5",
+        "12.0"
+      ],
+      [
+        "S002",
+        "Malee Srisuk",
+        "Databases",
+        "2025-1",
+        "92.0",
+        "15.5"
+      ],
+      [
+        "S003",
+        "Anan Thongdee",
+        "Algorithms",
+        "2025-1",
+        "78.0",
+        "9.0"
+      ]
+    ],
+    "run": {
+      "ingest_id": "20261006T125211-c46f1ae3",
+      "table_name": "itest_mockdb_20261006_195210",
+      "checksum": "e005c13b1d9d44d4041ba2bec9ee3459775a5117e88fb50dbbe38dd223b6318b",
+      "source": "rdbms",
+      "size_bytes": 1021,
+      "raw_path": "/data/raw/itest_mockdb_20261006_195210/20261006T125211-c46f1ae3",
+      "state": "SUCCEEDED",
+      "created_at": "2026-10-06T12:52:11.627787+00:00",
+      "updated_at": "2026-10-06T12:53:19.479145+00:00",
+      "started_at": "2026-10-06T12:52:11.801765+00:00",
+      "finished_at": "2026-10-06T12:53:19.479088+00:00",
+      "exit_code": 0
+    },
+    "quality": {
+      "total_records": 19,
+      "clean_records": 0,
+      "quarantined_records": 19,
+      "quality_score": 0.0,
+      "run_id": "run_20261006_125224_883212",
+      "ingest_id": "20261006T125211-c46f1ae3",
+      "timestamp": "2026-10-06T12:53:03.062367+00:00"
+    },
+    "quarantine_breakdown": {
+      "null_value_in_name": 1,
+      "null_value_in_semester": 18
+    },
+    "null_profile": {
+      "student_id": {
+        "null_rate": 0.0,
+        "tolerance": 0.05,
+        "is_required": true
+      },
+      "name": {
+        "null_rate": 0.052632,
+        "tolerance": 0.05,
+        "is_required": false
+      },
+      "course": {
+        "null_rate": 0.0,
+        "tolerance": 0.05,
+        "is_required": false
+      },
+      "semester": {
+        "null_rate": 1.0,
+        "tolerance": 0.05,
+        "is_required": false
+      },
+      "score": {
+        "null_rate": 0.052632,
+        "tolerance": 0.05,
+        "is_required": false
+      },
+      "study_hours": {
+        "null_rate": 0.052632,
+        "tolerance": 0.05,
+        "is_required": false
+      }
+    }
+  }
+}
