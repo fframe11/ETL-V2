@@ -137,7 +137,8 @@ export default function DashboardBuilder() {
     if (!live()) return false;
     bump("render"); // a filter render started for the old draft must not overwrite the refined one
     committed.current = {};
-    setUndoStack((stack) => [...stack, { spec: draft.spec, refinements }]);
+    setUndoStack((stack) => [...stack, { spec: draft.spec, refinements,
+      meta: { engine: draft.engine, model: draft.model, warnings: draft.warnings, savedName: draft.savedName } }]);
     setDraft(result);
     setSelections({});
     setChanges(result.changes);
@@ -151,10 +152,18 @@ export default function DashboardBuilder() {
     const previous = undoStack[undoStack.length - 1];
     bump("refine"); // a refine or filter render still in flight belongs to the dashboard being left
     bump("render");
-    const rendered = await dashboardsApi.render(dataset.name, previous.spec, {});
+    let rendered;
+    try {
+      rendered = await dashboardsApi.render(dataset.name, previous.spec, {});
+    } catch (e) {
+      if (live()) setSelections(committed.current); // a filter render dropped above never applied its shown value
+      throw e;
+    }
     if (!live()) return;
+    bump("refine"); // ...and so does one started while this undo was running
+    bump("render");
     committed.current = {};
-    setDraft((d) => d && { ...d, spec: rendered.spec, data: rendered.data });
+    setDraft((d) => d && { ...d, ...previous.meta, spec: rendered.spec, data: rendered.data });
     setSelections({});
     setRefinements(previous.refinements);
     setChanges(null);
@@ -182,7 +191,7 @@ export default function DashboardBuilder() {
     bump("render");
     bump("undo");
     committed.current = {};
-    setBusy("");// the calls invalidated above will not clear their own busy flag any more
+    setBusy(""); // the calls invalidated above will not clear their own busy flag any more
     setDataset({ name: doc.table_name });
     setRequest({ context: doc.context || "", audience: doc.audience || "business" });
     setRefinements(doc.refinements || []);

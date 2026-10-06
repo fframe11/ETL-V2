@@ -243,8 +243,10 @@ it("walks from dataset to an AI-generated dashboard", async () => {
 
 it("recomputes the dashboard when the viewer filters it", async () => {
   await generateDashboard();
+  const changeCallsBefore = changeCalls().length;
   fireEvent.change(screen.getByLabelText("ภูมิภาค"), { target: { value: "North" } });
   await settle();
+  expect(changeCalls().length).toBe(changeCallsBefore); // a filter does not change the spec, so no new suggestions
   const body = JSON.parse(callTo("/dashboards/render")[1].body);
   expect(body.table_name).toBe("sales");
   expect(body.selections).toEqual({ region: { values: ["North"] } });
@@ -621,6 +623,44 @@ it("keeps the refined dashboard and its history when going back fails", async ()
   expect(screen.getByRole("article", { name: "ยอดขายรายเดือน" })).toBeInTheDocument();
   expect(screen.getByText("คำสั่งที่ใช้แล้ว 1 ครั้ง")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "ย้อนกลับ" })).toBeEnabled();
+});
+
+it("lets an undo win over a filter change made while it runs", async () => {
+  const pending = await startUndo();
+  filterRegion("North");
+  expect(pending.render).toHaveLength(2);
+  await answer(pending.render[0], rendered(6));
+  await answer(pending.render[1], { spec: REFINED_SPEC, data: { ...DATA, rows_after_filter: 2 } });
+  expect(screen.queryByRole("article", { name: "ยอดขายรายเดือน" })).toBeNull();
+  expect(screen.queryByText(/คำสั่งที่ใช้แล้ว/)).toBeNull();
+  expect(screen.getByLabelText("ภูมิภาค")).toHaveValue("");
+});
+
+it("shows the committed filter again when an undo that replaced a pending filter render fails", async () => {
+  const pending = await openDashboard();
+  const refines = deferRefine();
+  await startRefine(CHANGE);
+  await answer(refines[0], REFINED);
+  filterRegion("North");
+  expect(pending.render).toHaveLength(1);
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "ย้อนกลับ" })); });
+  expect(pending.render).toHaveLength(2);
+  await answer(pending.render[1], { detail: "วาดแดชบอร์ดไม่ได้ตอนนี้" }, 503);
+  expect(screen.getByRole("alert")).toHaveTextContent("วาดแดชบอร์ดไม่ได้ตอนนี้");
+  expect(screen.getByLabelText("ภูมิภาค")).toHaveValue("");
+  expect(screen.getByRole("article", { name: "ยอดขายรายเดือน" })).toBeInTheDocument();
+});
+
+it("drops the refine call's warnings when going back to the dashboard before it", async () => {
+  const warned = { ...REFINED, warnings: ["ตัดวิดเจ็ต 'x': ไม่มีคอลัมน์ y"] };
+  await generateDashboard([["/dashboards/refine", { body: warned }]]);
+  fireEvent.click(await screen.findByRole("button", { name: CHANGE }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "ปรับแดชบอร์ด" })); });
+  await settle();
+  expect(screen.getByText("หมายเหตุ 1 รายการ")).toBeInTheDocument();
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "ย้อนกลับ" })); });
+  await settle();
+  expect(screen.queryByText(/หมายเหตุ/)).toBeNull();
 });
 
 // --- save, reopen and delete ------------------------------------------------------------------
