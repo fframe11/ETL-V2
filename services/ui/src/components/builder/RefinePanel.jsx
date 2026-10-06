@@ -13,7 +13,7 @@ export function describeChanges(changes) {
   return lines.length ? lines : ["AI ไม่ได้เปลี่ยนอะไร"];
 }
 
-export default function RefinePanel({ tableName, spec, onRefine, busy, changes, history = [] }) {
+export default function RefinePanel({ tableName, spec, onRefine, busy, changes, history = [], canUndo = false, onUndo, undoing = false }) {
   const [text, setText] = useState("");
   const [ideas, setIdeas] = useState(null); // null while the first list loads
   const ready = text.trim().length >= 2 && !busy;
@@ -46,7 +46,10 @@ export default function RefinePanel({ tableName, spec, onRefine, busy, changes, 
       </div>
       <textarea id="dbb-refine-input" rows={3} maxLength={1000} value={text} placeholder="เลือกคำแนะนำ หรือพิมพ์สิ่งที่อยากปรับ"
         onChange={(e) => setText(e.target.value)} />
-      <button type="submit" className="dbb-btn-primary" disabled={!ready}>{busy ? "AI กำลังปรับ…" : "ปรับแดชบอร์ด"}</button>
+      <div className="dbb-actions">
+        <button type="submit" className="dbb-btn-primary" disabled={!ready}>{busy ? "AI กำลังปรับ…" : "ปรับแดชบอร์ด"}</button>
+        <button type="button" onClick={onUndo} disabled={!canUndo || busy || undoing}>{undoing ? "กำลังย้อนกลับ…" : "ย้อนกลับ"}</button>
+      </div>
       {changes && (
         <ul className="dbb-changes" aria-label="สิ่งที่เปลี่ยน">
           {describeChanges(changes).map((line) => <li key={line}>{line}</li>)}

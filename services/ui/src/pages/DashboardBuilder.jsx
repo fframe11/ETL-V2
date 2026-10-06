@@ -61,6 +61,7 @@ export default function DashboardBuilder() {
   const [refinements, setRefinements] = useState([]);
   const [changes, setChanges] = useState(null);
   const [saved, setSaved] = useState(null);
+  const [undoStack, setUndoStack] = useState([]); // the spec and request history before each AI refinement
   const [showSave, setShowSave] = useState(false);
   const [notice, setNotice] = useState("");
   // Guards against late responses: `epoch` changes with the dataset, `seq` counts the calls per kind,
@@ -86,6 +87,7 @@ export default function DashboardBuilder() {
       setSelections({});
       setRefinements([]);
       setChanges(null);
+      setUndoStack([]);
       setSaved(null);
       setError("");
       setBusy("");
@@ -124,6 +126,7 @@ export default function DashboardBuilder() {
     setSelections({});
     setRefinements([]);
     setChanges(null);
+    setUndoStack([]);
     setStep(3);
   });
 
@@ -133,11 +136,28 @@ export default function DashboardBuilder() {
     if (!live()) return false;
     bump("render"); // a filter render started for the old draft must not overwrite the refined one
     committed.current = {};
+    setUndoStack((stack) => [...stack, { spec: draft.spec, refinements }]);
     setDraft(result);
     setSelections({});
     setChanges(result.changes);
     setRefinements((list) => [...list, instruction]);
     return true;
+  });
+
+  // Goes back one refinement. The earlier spec is drawn again from the data, without filters, so what
+  // is on screen always matches the filter bar.
+  const undo = () => run("undo", async (live) => {
+    const previous = undoStack[undoStack.length - 1];
+    bump("refine"); // a refine or filter render still in flight belongs to the dashboard being left
+    bump("render");
+    const rendered = await dashboardsApi.render(dataset.name, previous.spec, {});
+    if (!live()) return;
+    committed.current = {};
+    setDraft((d) => d && { ...d, spec: rendered.spec, data: rendered.data });
+    setSelections({});
+    setRefinements(previous.refinements);
+    setChanges(null);
+    setUndoStack((stack) => stack.slice(0, -1));
   });
 
   const save = ({ name, description }) => run("save", async (live) => {
@@ -165,6 +185,7 @@ export default function DashboardBuilder() {
     setRequest({ context: doc.context || "", audience: doc.audience || "business" });
     setRefinements(doc.refinements || []);
     setChanges(null);
+    setUndoStack([]);
     setSaved({ id: doc.id, name: doc.name, description: doc.description || "" });
     setDraft({ spec: rendered.spec, data: rendered.data, engine: "saved", model: null, warnings: [], savedName: doc.name });
     setSelections({});
@@ -239,7 +260,8 @@ export default function DashboardBuilder() {
           <div className="dbb-workspace">
             <DashboardCanvas spec={draft.spec} data={draft.data} selections={selections}
               onSelectionsChange={changeSelections} busy={busy === "render"} />
-            <RefinePanel tableName={dataset.name} spec={draft.spec} onRefine={refine} busy={busy === "refine"} changes={changes} history={refinements} />
+            <RefinePanel tableName={dataset.name} spec={draft.spec} onRefine={refine} busy={busy === "refine"} changes={changes}
+              history={refinements} canUndo={undoStack.length > 0} onUndo={undo} undoing={busy === "undo"} />
           </div>
         </section>
       )}

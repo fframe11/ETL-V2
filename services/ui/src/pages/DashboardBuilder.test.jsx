@@ -453,6 +453,44 @@ it("says so when no changes can be suggested, and the user can still type", asyn
   expect(screen.getByRole("button", { name: "ปรับแดชบอร์ด" })).toBeEnabled();
 });
 
+it("goes back to the dashboard before the last refinement and forgets that instruction", async () => {
+  await generateDashboard([["/dashboards/refine", { body: REFINED }]]);
+  const undo = screen.getByRole("button", { name: "ย้อนกลับ" });
+  expect(undo).toBeDisabled();
+  fireEvent.click(await screen.findByRole("button", { name: CHANGE }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "ปรับแดชบอร์ด" })); });
+  await settle();
+  expect(screen.getByRole("article", { name: "ยอดขายรายเดือน" })).toBeInTheDocument();
+  expect(undo).toBeEnabled();
+  await act(async () => { fireEvent.click(undo); });
+  await settle();
+  const render = fetch.mock.calls.filter(([url]) => String(url).includes("/dashboards/render")).at(-1);
+  expect(JSON.parse(render[1].body)).toEqual({ table_name: "sales", spec: SPEC, selections: {} });
+  expect(screen.queryByRole("article", { name: "ยอดขายรายเดือน" })).toBeNull();
+  expect(screen.queryByText("คำสั่งที่ใช้แล้ว 1 ครั้ง")).toBeNull();
+  expect(screen.getByRole("button", { name: "ย้อนกลับ" })).toBeDisabled();
+});
+
+it("goes back one refinement at a time", async () => {
+  await generateDashboard([["/dashboards/refine", { body: REFINED }]]);
+  const refineTwice = async () => {
+    fireEvent.click(await screen.findByRole("button", { name: CHANGE }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "ปรับแดชบอร์ด" })); });
+    await settle();
+  };
+  await refineTwice();
+  await refineTwice();
+  expect(screen.getByText("คำสั่งที่ใช้แล้ว 2 ครั้ง")).toBeInTheDocument();
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "ย้อนกลับ" })); });
+  await settle();
+  expect(screen.getByText("คำสั่งที่ใช้แล้ว 1 ครั้ง")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "ย้อนกลับ" })).toBeEnabled();
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "ย้อนกลับ" })); });
+  await settle();
+  expect(screen.queryByText(/คำสั่งที่ใช้แล้ว/)).toBeNull();
+  expect(screen.getByRole("button", { name: "ย้อนกลับ" })).toBeDisabled();
+});
+
 // --- refine responses that arrive late ---------------------------------------------------------
 // the refine call stays pending until the test answers it; every other call goes to controlledFetch.
 function deferRefine() {
