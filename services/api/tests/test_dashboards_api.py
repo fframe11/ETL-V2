@@ -49,6 +49,7 @@ def test_every_route_needs_a_login():
     c = client(logged_in=False)
     assert c.get("/api/v1/dashboards/datasets").status_code == 401
     assert c.get("/api/v1/dashboards/datasets/sales/preview").status_code == 401
+    assert c.get("/api/v1/dashboards/datasets/sales/suggestions").status_code == 401
     for path in ("generate", "refine", "render"):
         assert c.post(f"/api/v1/dashboards/{path}", json={}).status_code == 401
 
@@ -121,3 +122,38 @@ def test_refine_reports_an_unusable_llm_answer(monkeypatch):
     llm_answers(monkeypatch, "{}", "{}")
     res = client().post("/api/v1/dashboards/refine", json={"table_name": "sales", "spec": SPEC, "instruction": "เพิ่มกราฟ"})
     assert res.status_code == 422 and res.json()["detail"].startswith("AI ตอบสเปกที่ใช้ไม่ได้")
+
+
+# whole-number columns that are nearly unique count as identifiers, so this fixture uses decimals
+WEEKLY = pd.DataFrame({
+    "order_date": [d.strftime("%Y-%m-%d") for d in pd.date_range("2025-01-01", periods=12, freq="7D")],
+    "region": ["North", "South", "East"] * 4,
+    "amount": [i * 1.5 + 10 for i in range(12)],
+})
+
+
+@pytest.fixture
+def weekly(monkeypatch):
+    monkeypatch.setattr(dashboard_data, "load_active_dataset", lambda name: dashboard_data.prepare_frame(WEEKLY.copy()))
+
+
+def suggestions(audience=None):
+    query = f"?audience={audience}" if audience else ""
+    return client().get(f"/api/v1/dashboards/datasets/weekly/suggestions{query}")
+
+
+def test_suggestions_come_from_the_dataset_profile_and_leave_out_the_widget(weekly):
+    res = suggestions()
+    assert res.status_code == 200
+    body = res.json()
+    assert body["table_name"] == "weekly"
+    assert [s["text"] for s in body["suggestions"]] == [
+        "ผลรวม amount ตาม region", "แนวโน้ม ผลรวม amount รายสัปดาห์ ตาม order_date",
+        "สัดส่วน ผลรวม amount ตาม region", "ผลรวม amount เดือนล่าสุด เทียบช่วงก่อนหน้า"]
+    assert set(body["suggestions"][0]) == {"id", "rule", "text"}
+
+
+def test_suggestions_follow_the_audience_and_reject_an_unknown_one(weekly):
+    assert suggestions("business").json()["suggestions"][0]["rule"] == "R2"
+    assert suggestions("management").json()["suggestions"][0]["rule"] == "R4"
+    assert suggestions("ceo").status_code == 400

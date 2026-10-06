@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from . import dashboard_data, dashboard_llm
+from . import dashboard_data, dashboard_llm, dashboard_suggest
 from .auth import require_session
 from .config import get_es_client
 from .dashboard_compute import compute_dashboard
@@ -80,6 +80,13 @@ def list_dashboard_datasets():
 @router.get("/datasets/{table_name}/preview")
 def preview_dashboard_dataset(table_name: str):
     return dashboard_data.preview_dataset(table_name)
+
+
+@router.get("/datasets/{table_name}/suggestions")
+def dashboard_suggestions(table_name: str, audience: str = "business"):
+    _, profile = dashboard_data.load_active_dataset(table_name)
+    found = dashboard_suggest.suggest_from_profile(profile, _audience(audience))
+    return {"table_name": table_name, "suggestions": [{"id": s["id"], "rule": s["rule"], "text": s["text"]} for s in found]}
 
 
 @router.post("/generate")
