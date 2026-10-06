@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { dashboardsApi } from "../../utils/dashboardsApi";
 import { friendlyApiError } from "../../utils/apiError";
+import { QualityBadge } from "./QualityNotice";
 
 export const KIND_LABELS = { numeric: "ตัวเลข", categorical: "หมวดหมู่", date: "วันที่", text: "ข้อความ" };
 
@@ -26,13 +27,26 @@ export function formatDate(iso) {
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" });
 }
 
-export default function DatasetPicker({ selected, onSelect }) {
+// Newest update first; a dataset without a usable date goes last.
+export function newestFirst(datasets) {
+  const time = (d) => {
+    const t = new Date(d.last_updated).getTime();
+    return Number.isNaN(t) ? -Infinity : t;
+  };
+  return [...datasets].sort((a, b) => time(b) - time(a));
+}
+
+export default function DatasetPicker({ selected, onSelect, onLoaded }) {
   const [datasets, setDatasets] = useState(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     dashboardsApi.listDatasets()
-      .then((res) => setDatasets(res.datasets || []))
+      .then((res) => {
+        const list = res.datasets || [];
+        setDatasets(list);
+        onLoaded?.(list);
+      })
       .catch((e) => { setError(e.message); setDatasets([]); });
   }, []);
 
@@ -57,11 +71,12 @@ export default function DatasetPicker({ selected, onSelect }) {
             <th>จำนวนแถว</th>
             <th>คอลัมน์</th>
             <th>ชนิดข้อมูล</th>
+            <th>คุณภาพล่าสุด</th>
             <th>อัปเดตล่าสุด</th>
           </tr>
         </thead>
         <tbody>
-          {datasets.map((d) => {
+          {newestFirst(datasets).map((d) => {
             const isSelected = selected?.name === d.name;
             return (
               <tr key={d.name} className={isSelected ? "is-selected" : ""}>
@@ -83,6 +98,7 @@ export default function DatasetPicker({ selected, onSelect }) {
                 <td>{d.records == null ? "—" : d.records.toLocaleString("en-US")}</td>
                 <td>{d.columns ?? "—"}</td>
                 <td>{describeKinds(d.kind_counts)}</td>
+                <td><QualityBadge quality={d.quality} /></td>
                 <td>{formatDate(d.last_updated)}</td>
               </tr>
             );

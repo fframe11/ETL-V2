@@ -8,10 +8,15 @@ import { SPEC, DATA } from "../test/dashboardFixtures";
 
 const DATASETS = { datasets: [
   { name: "sales", source: "File upload", records: 1200, columns: 6,
-    kind_counts: { numeric: 2, categorical: 3, date: 1, text: 0 }, last_updated: "2026-10-01T03:00:00Z", error: null },
-  { name: "broken", source: null, records: null, columns: null, kind_counts: null, last_updated: null,
+    kind_counts: { numeric: 2, categorical: 3, date: 1, text: 0 }, last_updated: "2026-10-01T03:00:00Z", error: null,
+    quality: { score: 97.5, threshold: 90, passed: true, total_records: 1250, clean_records: 1200, quarantined_records: 50, timestamp: "2026-10-01T03:00:00Z" } },
+  { name: "broken", source: null, records: null, columns: null, kind_counts: null, last_updated: null, quality: null,
     error: "Delta log not found at /data/active/broken/_delta_log" }
 ] };
+
+// the table holds exactly the rows that passed in the latest run: 5000 - 1900
+const LOW_QUALITY = { datasets: [{ ...DATASETS.datasets[0], records: 3100,
+  quality: { score: 62, threshold: 90, passed: false, total_records: 5000, clean_records: 3100, quarantined_records: 1900, timestamp: "2026-10-01T03:00:00Z" } }] };
 
 it("lists the datasets that passed the quality gate with their key facts", async () => {
   await renderPage(DashboardBuilder, "/dashboard-builder", [["/dashboards/datasets", { body: DATASETS }]]);
@@ -21,6 +26,25 @@ it("lists the datasets that passed the quality gate with their key facts", async
   expect(screen.getByText("ตัวเลข 2 · หมวดหมู่ 3 · วันที่ 1")).toBeInTheDocument();
   expect(screen.getByText("อ่านชุดข้อมูลนี้ไม่ได้")).toBeInTheDocument();
   expect(screen.queryByText(/\/data\/active/)).toBeNull();
+});
+
+it("shows how the latest quality run of each dataset compares with its threshold", async () => {
+  await renderPage(DashboardBuilder, "/dashboard-builder", [["/dashboards/datasets", { body: DATASETS }]]);
+  expect(screen.getByText("97.50% ผ่านเกณฑ์")).toBeInTheDocument();
+  expect(screen.getByText("ยังไม่มีผลตรวจ")).toBeInTheDocument();
+});
+
+it("lists the most recently updated dataset first and the ones without a date last", async () => {
+  const at = (name, last_updated) => ({ ...DATASETS.datasets[0], name, last_updated });
+  const body = { datasets: [at("older", "2026-09-01T00:00:00Z"), at("undated", null), at("newest", "2026-10-05T00:00:00Z"), at("middle", "2026-09-20T00:00:00Z")] };
+  await renderPage(DashboardBuilder, "/dashboard-builder", [["/dashboards/datasets", { body }]]);
+  const order = screen.getAllByRole("radio").map((r) => r.getAttribute("aria-label"));
+  expect(order).toEqual(["เลือก newest", "เลือก middle", "เลือก older", "เลือก undated"]);
+});
+
+it("marks a dataset whose latest run fell below its threshold", async () => {
+  await renderPage(DashboardBuilder, "/dashboard-builder", [["/dashboards/datasets", { body: LOW_QUALITY }]]);
+  expect(screen.getByText("62.00% ต่ำกว่าเกณฑ์ 90%")).toBeInTheDocument();
 });
 
 it("enables the next step only after a readable dataset is chosen", async () => {
@@ -67,6 +91,9 @@ function builderRoutes(extra = []) {
   ];
 }
 
+// a longer URL must precede "/dashboards/datasets", which also matches the preview URL.
+const lowQualityRoutes = [["/dashboards/datasets/sales/preview", { body: PREVIEW }], ["/dashboards/datasets", { body: LOW_QUALITY }]];
+
 const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 20)); });
 
 const callTo = (part, method) =>
@@ -93,6 +120,41 @@ it("previews the chosen dataset before asking what to analyse", async () => {
   expect(screen.getByText("1 (16.67%)")).toBeInTheDocument();
   expect(screen.getAllByText("null")).toHaveLength(1);
   expect(screen.getByText("ตัวอย่าง 2 แถวแรก")).toBeInTheDocument();
+});
+
+it("warns on the preview when the latest quality run is below its threshold", async () => {
+  await renderPage(DashboardBuilder, "/dashboard-builder", builderRoutes(lowQualityRoutes));
+  fireEvent.click(screen.getByRole("radio", { name: "เลือก sales" }));
+  fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+  await settle();
+  const notice = screen.getByRole("complementary", { name: "คุณภาพข้อมูล" });
+  expect(notice).toHaveTextContent("62.00% ต่ำกว่าเกณฑ์ 90%");
+  expect(notice).toHaveTextContent("นำเข้า 5,000 แถว ผ่าน 3,100 กักกัน 1,900");
+  expect(notice).not.toHaveTextContent("สะสมข้อมูลหลายรอบ");
+});
+
+it("explains why the table holds more rows than the latest run passed", async () => {
+  const accumulated = { datasets: [{ ...LOW_QUALITY.datasets[0], records: 4000 }] };
+  await renderPage(DashboardBuilder, "/dashboard-builder", builderRoutes([
+    ["/dashboards/datasets/sales/preview", { body: PREVIEW }], ["/dashboards/datasets", { body: accumulated }]]));
+  fireEvent.click(screen.getByRole("radio", { name: "เลือก sales" }));
+  fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+  await settle();
+  expect(screen.getByRole("complementary", { name: "คุณภาพข้อมูล" }))
+    .toHaveTextContent("ตารางนี้มี 4,000 แถว เพราะสะสมข้อมูลหลายรอบ");
+});
+
+it("shows no warning for a dataset that met its threshold", async () => {
+  await renderPage(DashboardBuilder, "/dashboard-builder", builderRoutes());
+  fireEvent.click(screen.getByRole("radio", { name: "เลือก sales" }));
+  fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+  await settle();
+  expect(screen.queryByRole("complementary", { name: "คุณภาพข้อมูล" })).toBeNull();
+});
+
+it("keeps the quality warning next to the finished dashboard", async () => {
+  await generateDashboard(lowQualityRoutes);
+  expect(screen.getByRole("complementary", { name: "คุณภาพข้อมูล" })).toHaveTextContent("62.00% ต่ำกว่าเกณฑ์ 90%");
 });
 
 it("walks from dataset to an AI-generated dashboard", async () => {
@@ -434,6 +496,16 @@ it("opens a saved dashboard from the list", async () => {
   expect(screen.getByRole("status")).toHaveTextContent("แดชบอร์ดที่บันทึกไว้: ยอดขายผู้บริหาร");
   expect(screen.getByRole("button", { name: "บันทึกการแก้ไข" })).toBeInTheDocument();
   expect(screen.getByText("คำสั่งที่ใช้แล้ว 1 ครั้ง")).toBeInTheDocument();
+});
+
+it("warns about low quality on a saved dashboard, using the list the picker already loaded", async () => {
+  await renderPage(DashboardBuilder, "/dashboard-builder", [
+    ["/dashboards/datasets", { body: LOW_QUALITY }], ...SAVED_ROUTES.filter(([part]) => part !== "/dashboards/datasets")
+  ]);
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "เปิด ยอดขายผู้บริหาร" })); });
+  await settle();
+  expect(screen.getByRole("complementary", { name: "คุณภาพข้อมูล" })).toHaveTextContent("62.00% ต่ำกว่าเกณฑ์ 90%");
+  expect(fetch.mock.calls.filter(([url]) => String(url).endsWith("/dashboards/datasets"))).toHaveLength(1);
 });
 
 it("asks before deleting a saved dashboard", async () => {

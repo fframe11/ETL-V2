@@ -75,14 +75,42 @@ def test_list_shows_catalog_facts_and_keeps_unreadable_tables_visible(monkeypatc
     es = FakeES()
     es.index("sdoqap_runs", "i1", {"table_name": "sales", "source": "file", "created_at": "2026-10-01T00:00:00Z",
                                    "updated_at": "2026-10-01T00:05:00Z"})
-    es.index("sdoqap_quality_runs", "q1", {"table_name": "sales", "timestamp": "2026-10-01T01:00:00Z", "quality_score": 97.5})
+    es.index("sdoqap_quality_runs", "q1", {"table_name": "sales", "timestamp": "2026-10-01T01:00:00Z", "quality_score": 97.5,
+                                           "effective_quality_threshold": 90.0, "total_records": 200, "clean_records": 195, "quarantined_records": 5})
 
     broken, sales = dashboard_data.list_datasets(es)
     assert sales == {"name": "sales", "source": "File upload", "records": 5, "columns": 5,
                      "kind_counts": {"numeric": 2, "categorical": 2, "date": 1, "text": 0},
-                     "last_updated": "2026-10-01T01:00:00Z", "quality_score": 97.5, "error": None}
+                     "last_updated": "2026-10-01T01:00:00Z", "error": None,
+                     "quality": {"score": 97.5, "threshold": 90.0, "passed": True, "total_records": 200,
+                                 "clean_records": 195, "quarantined_records": 5, "timestamp": "2026-10-01T01:00:00Z"}}
     assert broken["name"] == "broken" and broken["records"] is None
     assert broken["error"] == "Delta log not found"
+    assert broken["quality"] is None
+
+
+def test_quality_below_the_threshold_is_flagged_and_a_missing_threshold_is_not_guessed(monkeypatch):
+    monkeypatch.setattr(dashboard_data, "list_active_tables", lambda: ["low", "old"])
+    monkeypatch.setattr(dashboard_data, "_read_active", lambda name: SALES.copy())
+    es = FakeES()
+    es.index("sdoqap_quality_runs", "q1", {"table_name": "low", "timestamp": "2026-10-01T01:00:00Z", "quality_score": 62.0,
+                                           "effective_quality_threshold": 90.0, "total_records": 5000, "clean_records": 3100, "quarantined_records": 1900})
+    es.index("sdoqap_quality_runs", "q2", {"table_name": "old", "timestamp": "2026-10-01T01:00:00Z", "quality_score": 88.0})
+
+    low, old = dashboard_data.list_datasets(es)
+    assert low["quality"]["passed"] is False and low["quality"]["quarantined_records"] == 1900
+    assert low["quality"]["clean_records"] == 3100
+    assert old["quality"]["score"] == 88.0 and old["quality"]["threshold"] is None and old["quality"]["passed"] is None
+
+
+def test_a_run_without_a_clean_count_derives_it_so_the_three_numbers_always_add_up(monkeypatch):
+    monkeypatch.setattr(dashboard_data, "list_active_tables", lambda: ["sales"])
+    monkeypatch.setattr(dashboard_data, "_read_active", lambda name: SALES.copy())
+    es = FakeES()
+    es.index("sdoqap_quality_runs", "q1", {"table_name": "sales", "timestamp": "2026-10-01T01:00:00Z", "quality_score": 66.0,
+                                           "effective_quality_threshold": 70.0, "total_records": 100, "quarantined_records": 34})
+    (sales,) = dashboard_data.list_datasets(es)
+    assert sales["quality"]["clean_records"] == 66
 
 
 def test_list_works_without_elasticsearch(monkeypatch):
@@ -175,7 +203,7 @@ def test_list_survives_an_elasticsearch_failure_and_logs_it(monkeypatch, caplog)
 
     with caplog.at_level("WARNING", logger=dashboard_data.logger.name):
         (sales,) = dashboard_data.list_datasets(es)
-    assert sales["source"] is None and sales["last_updated"] is None and sales["quality_score"] is None
+    assert sales["source"] is None and sales["last_updated"] is None and sales["quality"] is None
     assert sales["records"] == 5 and sales["error"] is None
     warnings = [r for r in caplog.records if r.levelname == "WARNING"]
     assert warnings and "sdoqap_runs" in warnings[0].getMessage() and "sales" in warnings[0].getMessage()

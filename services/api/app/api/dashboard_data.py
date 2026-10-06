@@ -206,6 +206,22 @@ def _latest(es, index, table_name, sort_field):
         return None
 
 
+def _quality_summary(run):
+    """The latest quality run of a table as the picker shows it, or None before its first run.
+    `passed` stays None when the run did not record its threshold: none is guessed."""
+    if not run:
+        return None
+    score, threshold = _number(run.get("quality_score")), _number(run.get("effective_quality_threshold"))
+    total, quarantined = run.get("total_records"), run.get("quarantined_records")
+    clean = run.get("clean_records")
+    if clean is None and total is not None and quarantined is not None:
+        clean = total - quarantined  # a run always splits its input into clean + quarantined
+    return {"score": score, "threshold": threshold,
+            "passed": None if score is None or threshold is None else score >= threshold,
+            "total_records": total, "clean_records": clean, "quarantined_records": quarantined,
+            "timestamp": run.get("timestamp")}
+
+
 def list_datasets(es):
     """Catalog rows for the dataset picker. A table that cannot be read stays in the list
     with its error, so the user sees why it cannot be chosen."""
@@ -216,7 +232,7 @@ def list_datasets(es):
         entry = {"name": name, "source": SOURCE_LABELS.get(run.get("source"), run.get("source")),
                  "records": None, "columns": None, "kind_counts": None,
                  "last_updated": quality.get("timestamp") or run.get("updated_at"),
-                 "quality_score": quality.get("quality_score"), "error": None}
+                 "quality": _quality_summary(quality), "error": None}
         try:
             profile = dataset_profile(name)
             entry.update(records=profile["rows"], columns=profile["column_count"], kind_counts=profile["kind_counts"])
@@ -243,7 +259,7 @@ def quality_dataset_entry(es):
     except Exception:
         return None
     entry = {"name": QUALITY_DATASET, "source": "Quality Gate (Elasticsearch)", "records": None, "columns": None,
-             "kind_counts": None, "last_updated": None, "quality_score": None, "error": None}
+             "kind_counts": None, "last_updated": None, "quality": None, "error": None}
     try:
         profile = dataset_profile(QUALITY_DATASET)
         newest = next((c.get("max") for c in profile["columns"] if c["name"] == "timestamp"), None)

@@ -2,6 +2,7 @@ import React, { useRef, useState } from "react";
 import { PageHeader } from "../components/ui";
 import DatasetPicker, { datasetLabel } from "../components/builder/DatasetPicker";
 import DataPreview from "../components/builder/DataPreview";
+import { QualityNotice } from "../components/builder/QualityNotice";
 import ContextForm from "../components/builder/ContextForm";
 import DashboardCanvas from "../components/builder/DashboardCanvas";
 import RefinePanel from "../components/builder/RefinePanel";
@@ -51,6 +52,7 @@ function EngineNote({ draft }) {
 export default function DashboardBuilder() {
   const [step, setStepRaw] = useState(0);
   const [dataset, setDataset] = useState(null);
+  const [catalog, setCatalog] = useState([]); // the picker's list; a dashboard opened from the saved list only knows its table name
   const [request, setRequest] = useState({ context: "", audience: "business" });
   const [draft, setDraft] = useState(null);
   const [selections, setSelections] = useState({});
@@ -68,6 +70,8 @@ export default function DashboardBuilder() {
   const committed = useRef({});
 
   const maxStep = draft ? 3 : dataset ? 2 : 0;
+  const catalogEntry = catalog.find((d) => d.name === dataset?.name);
+  const quality = catalogEntry?.quality;
 
   const setStep = (next) => {
     setError("");
@@ -193,7 +197,7 @@ export default function DashboardBuilder() {
 
       {step === 0 && (
         <section className="dbb-panel" aria-label={STEPS[0]}>
-          <DatasetPicker selected={dataset} onSelect={chooseDataset} />
+          <DatasetPicker selected={dataset} onSelect={chooseDataset} onLoaded={setCatalog} />
           <div className="dbb-actions">
             <button type="button" className="dbb-btn-primary" disabled={!dataset} onClick={() => setStep(1)}>ถัดไป</button>
           </div>
@@ -204,6 +208,7 @@ export default function DashboardBuilder() {
 
       {step === 1 && dataset && (
         <section className="dbb-panel" aria-label={STEPS[1]}>
+          <QualityNotice quality={quality} tableRows={catalogEntry?.records} />
           <DataPreview table={dataset.name} />
           <div className="dbb-actions">
             <button type="button" onClick={() => setStep(0)}>ย้อนกลับ</button>
@@ -229,6 +234,7 @@ export default function DashboardBuilder() {
               </button>
             </div>
           </div>
+          <QualityNotice quality={quality} tableRows={catalogEntry?.records} />
           <div className="dbb-workspace">
             <DashboardCanvas spec={draft.spec} data={draft.data} selections={selections}
               onSelectionsChange={changeSelections} busy={busy === "render"} />
