@@ -90,6 +90,26 @@ def test_the_period_follows_the_length_of_the_data():
     assert not any("row_hash" in t for t in result)
 
 
+def test_a_range_inside_one_week_compares_days_not_weeks():
+    short = profile(40, col("day", "date", 3, low="2026-10-05T00:00:00", high="2026-10-07T00:00:00"),
+                    col("amount", "numeric", 30, low=1.5, high=9.5))
+    result = texts(short, limit=20)
+    assert any("วันล่าสุด" in t for t in result)
+    assert not any("สัปดาห์ล่าสุด" in t for t in result)  # one Monday to Sunday week has nothing to compare with
+
+
+def test_a_dataset_without_a_measure_does_not_repeat_the_row_count_ranking():
+    only_categories = profile(500, col("product", "categorical", 40), col("color", "categorical", 5))
+    keys = [(s["widget"]["x"], s["widget"]["metric"]["agg"]) for s in suggest_from_profile(only_categories, limit=50)
+            if s["rule"] == "R2"]  # the share donut (R3) may reuse a bar's axis: it is a different chart
+    assert keys and len(keys) == len(set(keys))
+
+
+def test_the_share_donut_may_show_every_category_it_was_offered_for():
+    donuts = [s for s in suggest_from_profile(ECOMMERCE, limit=50) if s["rule"] == "R3"]
+    assert donuts and all(s["widget"]["limit"] == 8 for s in donuts)
+
+
 def test_the_audience_decides_what_comes_first():
     assert texts(ECOMMERCE, "management", 1) == ["ผลรวม Total_Sales ปีล่าสุด เทียบช่วงก่อนหน้า"]
     assert texts(ECOMMERCE, "analyst", 1) == ["ผลรวม Total_Sales ตาม Country แยกตาม Customer_Segment"]

@@ -5,11 +5,12 @@ kinds, distinct counts, missing %, numeric and date ranges) and returns what the
 answer. Every suggestion carries a widget that validate_spec() accepts for that profile, so a
 suggestion never asks for something the builder cannot draw. It is a pure function: no rows, no
 LLM, no I/O."""
-from datetime import datetime
+from datetime import datetime, timedelta
 
 CATEGORY_MIN_DISTINCT = 2
 CATEGORY_MAX_DISTINCT = 200  # a top-10 stays readable far beyond the 50 values a donut or filter can take
 DONUT_MAX_DISTINCT = 8
+SPLIT_MAX_DISTINCT = 20  # most values an x axis can carry before a stacked split becomes unreadable
 TOP_N = 10
 MAX_MISSING_PCT = 50
 DEFAULT_LIMIT = 6
@@ -68,8 +69,9 @@ def _periods(low, high, grain):
         return (high.year * 4 + (high.month - 1) // 3) - (low.year * 4 + (low.month - 1) // 3) + 1
     if grain == "month":
         return (high.year * 12 + high.month) - (low.year * 12 + low.month) + 1
-    days = (high.date() - low.date()).days
-    return days // 7 + 2 if grain == "week" else days + 1
+    if grain == "week":  # pandas "W" periods run Monday to Sunday
+        return (high.date() - (low.date() - timedelta(days=low.weekday()))).days // 7 + 1
+    return (high.date() - low.date()).days + 1
 
 
 def _grain(column, wanted, order):
@@ -127,7 +129,7 @@ def suggest_from_profile(profile, audience="business", limit=DEFAULT_LIMIT):
         text = f"{TOP_N} {name} ที่ {main[1]} สูงสุด" if many else f"{main[1]} ตาม {name}"
         by_rule["R2"].append(_suggestion("R2", name, text, {"type": "bar", "x": name, "metric": main[0], "sort": "desc", "limit": TOP_N}))
     long_lists = [c["name"] for c in ranked if c["distinct"] > TOP_N]
-    if main[0]["agg"] != "sum" and long_lists:  # an average ranks differently from how common each value is
+    if main[0]["agg"] == "avg" and long_lists:  # an average ranks differently from how common each value is
         name = long_lists[0]
         by_rule["R2"].append(_suggestion("R2", f"{name}:count", f"{TOP_N} {name} ที่มีจำนวนแถวมากที่สุด",
                                          {"type": "bar", "x": name, "metric": {"agg": "count", "column": None}, "sort": "desc", "limit": TOP_N}))
@@ -136,10 +138,10 @@ def suggest_from_profile(profile, audience="business", limit=DEFAULT_LIMIT):
     for c in ranked:
         if c["distinct"] <= DONUT_MAX_DISTINCT:
             by_rule["R3"].append(_suggestion("R3", c["name"], f"สัดส่วน {share[1]} ตาม {c['name']}",
-                                             {"type": "donut", "x": c["name"], "metric": share[0]}))
+                                             {"type": "donut", "x": c["name"], "metric": share[0], "limit": DONUT_MAX_DISTINCT}))
 
     small = sorted((c for c in categories if c["distinct"] <= DONUT_MAX_DISTINCT), key=lambda c: c["distinct"])
-    wide = sorted((c for c in categories if c["distinct"] <= 20), key=lambda c: -c["distinct"])
+    wide = sorted((c for c in categories if c["distinct"] <= SPLIT_MAX_DISTINCT), key=lambda c: -c["distinct"])
     pair = next(((x, g) for x in wide for g in small if g["name"] != x["name"]), None)
     if pair:
         x, group = pair[0]["name"], pair[1]["name"]

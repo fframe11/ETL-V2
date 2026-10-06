@@ -84,8 +84,9 @@ def preview_dashboard_dataset(table_name: str):
 
 @router.get("/datasets/{table_name}/suggestions")
 def dashboard_suggestions(table_name: str, audience: str = "business"):
+    audience = _audience(audience)
     _, profile = dashboard_data.load_active_dataset(table_name)
-    found = dashboard_suggest.suggest_from_profile(profile, _audience(audience))
+    found = dashboard_suggest.suggest_from_profile(profile, audience)
     return {"table_name": table_name, "suggestions": [{"id": s["id"], "rule": s["rule"], "text": s["text"]} for s in found]}
 
 
