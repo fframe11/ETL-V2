@@ -157,6 +157,16 @@ it("keeps the quality warning next to the finished dashboard", async () => {
   expect(screen.getByRole("complementary", { name: "คุณภาพข้อมูล" })).toHaveTextContent("62.00% ต่ำกว่าเกณฑ์ 90%");
 });
 
+it("labels the dashboard as a draft computed from the real data", async () => {
+  await generateDashboard();
+  expect(screen.getByText("ฉบับร่าง ตรวจก่อนใช้งาน ตัวเลขทุกตัวคำนวณจากข้อมูลจริง ไม่ใช่ AI")).toBeInTheDocument();
+});
+
+it("describes the page as a draft builder for data that passed the quality check", async () => {
+  await renderPage(DashboardBuilder, "/dashboard-builder", builderRoutes());
+  expect(screen.getByText("สร้างแดชบอร์ดฉบับร่างจากข้อมูลที่ผ่านการตรวจคุณภาพ")).toBeInTheDocument();
+});
+
 it("walks from dataset to an AI-generated dashboard", async () => {
   await renderPage(DashboardBuilder, "/dashboard-builder", builderRoutes());
   fireEvent.click(screen.getByRole("radio", { name: "เลือก sales" }));

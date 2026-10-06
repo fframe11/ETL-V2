@@ -234,6 +234,7 @@ export default function DashboardBuilder() {
               </button>
             </div>
           </div>
+          <p className="dbb-draft-note">ฉบับร่าง ตรวจก่อนใช้งาน ตัวเลขทุกตัวคำนวณจากข้อมูลจริง ไม่ใช่ AI</p>
           <QualityNotice quality={quality} tableRows={catalogEntry?.records} />
           <div className="dbb-workspace">
             <DashboardCanvas spec={draft.spec} data={draft.data} selections={selections}

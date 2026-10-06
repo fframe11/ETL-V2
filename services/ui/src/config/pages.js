@@ -12,7 +12,7 @@ export const PAGES = [
   { key: "pipeline", path: "/pipeline", label: "Jobs & Pipelines", subtitle: "คัดแยกข้อมูลเป็น Clean, Review และ Quarantine", group: "workflow", step: 3 },
   { key: "export", path: "/export", label: "Workspace Exports", subtitle: "ดาวน์โหลดข้อมูลที่ผ่านการคัดกรองแล้ว", group: "workflow", step: 4 },
   { key: "dashboard", path: "/dashboard", label: "Dashboards", subtitle: "ภาพรวมคุณภาพข้อมูลและผลกระทบทางธุรกิจ", group: "monitor" },
-  { key: "builder", path: "/dashboard-builder", label: "Create Dashboard", subtitle: "สร้างแดชบอร์ดจากชุดข้อมูลด้วย AI", group: "monitor" },
+  { key: "builder", path: "/dashboard-builder", label: "Create Dashboard", subtitle: "สร้างแดชบอร์ดฉบับร่างจากข้อมูลที่ผ่านการตรวจคุณภาพ", group: "monitor" },
   { key: "analytics", path: "/analytics", label: "Query & Metrics", subtitle: "แนวโน้มคุณภาพข้อมูลและคำแนะนำ", group: "monitor" },
   { key: "schema", path: "/schema", label: "Catalog", subtitle: "ตารางที่ลงทะเบียน โครงสร้างข้อมูล และการอนุมัติการเปลี่ยน Schema", group: "monitor" },
   { key: "whitebox", path: "/whitebox", label: "Audit Trail", subtitle: "ดูเหตุผลของระบบทีละขั้น ตั้งแต่สำรวจข้อมูลถึงผลลัพธ์", group: "monitor" }
