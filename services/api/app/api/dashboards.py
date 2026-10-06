@@ -39,6 +39,11 @@ class SuggestChangesPayload(BaseModel):
     spec: Dict[str, Any]
 
 
+class RankPayload(BaseModel):
+    table_name: str
+    audience: str = "business"
+
+
 class RenderPayload(BaseModel):
     table_name: str
     spec: Dict[str, Any]
@@ -100,6 +105,21 @@ def suggest_dashboard_changes(payload: SuggestChangesPayload):
     _, profile = dashboard_data.load_active_dataset(payload.table_name)
     spec = _checked_spec(payload.spec, profile)
     return {"suggestions": dashboard_suggest.suggest_refinements(profile, spec)}
+
+
+@router.post("/rank-suggestions")
+def rank_dashboard_suggestions(payload: RankPayload):
+    audience = _audience(payload.audience)
+    _, profile = dashboard_data.load_active_dataset(payload.table_name)
+    candidates = dashboard_suggest.suggest_from_profile(profile, audience, dashboard_llm.RANK_CANDIDATES)
+    if not candidates:
+        return {"suggestions": [], "engine": "rules", "model": None}
+    try:
+        return dashboard_llm.rank_suggestions(payload.table_name, profile, audience, candidates)
+    except dashboard_llm.LLMUnavailable as exc:
+        raise HTTPException(status_code=503, detail=f"เรียบเรียงด้วย AI ไม่ได้ตอนนี้: {exc}")
+    except SpecError as exc:
+        raise HTTPException(status_code=422, detail=f"AI ตอบคำแนะนำที่ใช้ไม่ได้: {exc}")
 
 
 @router.post("/generate")

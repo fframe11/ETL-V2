@@ -50,7 +50,7 @@ def test_every_route_needs_a_login():
     assert c.get("/api/v1/dashboards/datasets").status_code == 401
     assert c.get("/api/v1/dashboards/datasets/sales/preview").status_code == 401
     assert c.get("/api/v1/dashboards/datasets/sales/suggestions").status_code == 401
-    for path in ("generate", "refine", "render", "suggest-changes"):
+    for path in ("generate", "refine", "render", "suggest-changes", "rank-suggestions"):
         assert c.post(f"/api/v1/dashboards/{path}", json={}).status_code == 401
 
 
@@ -192,3 +192,46 @@ def test_a_steward_dashboard_is_generated_from_the_data_health_rules_without_an_
     assert titles[:2] == ["จำนวนแถว", "ต่ำสุด amount"]
     data = body["data"]["widgets"]
     assert [data[w["id"]]["value"] for w in body["spec"]["widgets"][:2]] == [12, 10.0]
+
+
+def rank(audience="business", table="weekly"):
+    return client().post("/api/v1/dashboards/rank-suggestions", json={"table_name": table, "audience": audience})
+
+
+def test_the_ai_reorders_and_rewords_the_rule_made_suggestions(weekly, monkeypatch):
+    rule_made = suggestions().json()["suggestions"]
+    first, last = rule_made[0], rule_made[-1]
+    llm_answers(monkeypatch, json.dumps({"suggestions": [
+        {"id": last["id"], "text": last["text"]}, {"id": first["id"], "text": f"ช่วยทำ {first['text']}"}]}, ensure_ascii=False))
+    res = rank()
+    assert res.status_code == 200
+    body = res.json()
+    assert body["engine"] == "groq" and body["model"] == "openai/gpt-oss-120b"
+    assert [(s["id"], s["rule"]) for s in body["suggestions"]] == [(last["id"], last["rule"]), (first["id"], first["rule"])]
+    assert body["suggestions"][1]["text"] == f"ช่วยทำ {first['text']}"
+    assert all(set(s) == {"id", "rule", "text"} for s in body["suggestions"])
+
+
+def test_ranking_without_a_groq_key_is_a_clear_503_and_the_rule_list_is_untouched(weekly):
+    res = rank()
+    assert res.status_code == 503 and "ยังไม่ได้ตั้งค่า Groq API key" in res.json()["detail"]
+    assert suggestions().status_code == 200
+
+
+def test_an_unusable_ai_answer_is_a_422(weekly, monkeypatch):
+    llm_answers(monkeypatch, json.dumps({"suggestions": [{"id": "R9:invented", "text": "x"}]}))
+    res = rank()
+    assert res.status_code == 422 and "AI ตอบคำแนะนำที่ใช้ไม่ได้" in res.json()["detail"]
+
+
+def test_ranking_follows_the_audience_and_rejects_an_unknown_one(weekly, monkeypatch):
+    seen = []
+    monkeypatch.setattr(dashboard_llm, "groq_settings", lambda: ("gsk_test", "openai/gpt-oss-120b"))
+
+    def answer(messages, key, model):
+        payload = json.loads(messages[1]["content"])
+        seen.append(payload["audience"])
+        return json.dumps({"suggestions": [{"id": payload["candidates"][0]["id"], "text": payload["candidates"][0]["text"]}]})
+    monkeypatch.setattr(dashboard_llm, "call_groq", answer)
+    assert rank("steward").status_code == 200 and seen == ["steward"]
+    assert rank("ceo").status_code == 400
