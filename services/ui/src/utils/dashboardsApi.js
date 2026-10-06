@@ -33,6 +33,8 @@ async function request(path, { method = "GET", body } = {}) {
 export const dashboardsApi = {
   listDatasets: () => request("/datasets"),
   previewDataset: (table) => request(`/datasets/${encodeURIComponent(table)}/preview`),
+  suggestions: (table, audience) =>
+    request(`/datasets/${encodeURIComponent(table)}/suggestions?audience=${encodeURIComponent(audience)}`),
   generate: (table_name, context, audience) => request("/generate", { method: "POST", body: { table_name, context, audience } }),
   refine: (table_name, spec, instruction) => request("/refine", { method: "POST", body: { table_name, spec, instruction } }),
   render: (table_name, spec, selections) => request("/render", { method: "POST", body: { table_name, spec, selections } }),

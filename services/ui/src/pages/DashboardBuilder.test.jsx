@@ -78,12 +78,17 @@ const PREVIEW = {
   ]
 };
 const GENERATED = { engine: "groq", model: "openai/gpt-oss-120b", warnings: [], spec: SPEC, data: DATA };
-const EXAMPLE = "สร้าง Dashboard สำหรับวิเคราะห์ยอดขายรายเดือน";
+const EXAMPLE = "ผลรวม amount ตาม region";
+const SUGGESTIONS = { table_name: "sales", suggestions: [
+  { id: "R2:region", rule: "R2", text: EXAMPLE },
+  { id: "R1:amount:order_date", rule: "R1", text: "แนวโน้ม ผลรวม amount รายสัปดาห์ ตาม order_date" }
+] };
 
 // extra routes go first so they override the defaults (mockFetchByUrl: first match wins).
 function builderRoutes(extra = []) {
   return [
     ...extra,
+    ["/dashboards/datasets/sales/suggestions", { body: SUGGESTIONS }],
     ["/dashboards/datasets/sales/preview", { body: PREVIEW }],
     ["/dashboards/datasets", { body: DATASETS }],
     ["/dashboards/generate", { body: GENERATED }],
@@ -92,7 +97,7 @@ function builderRoutes(extra = []) {
 }
 
 // a longer URL must precede "/dashboards/datasets", which also matches the preview URL.
-const lowQualityRoutes = [["/dashboards/datasets/sales/preview", { body: PREVIEW }], ["/dashboards/datasets", { body: LOW_QUALITY }]];
+const lowQualityRoutes = [["/dashboards/datasets/sales/suggestions", { body: SUGGESTIONS }], ["/dashboards/datasets/sales/preview", { body: PREVIEW }], ["/dashboards/datasets", { body: LOW_QUALITY }]];
 
 const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 20)); });
 
@@ -105,7 +110,7 @@ async function generateDashboard(extra = []) {
   fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
   await settle();
   fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
-  fireEvent.click(screen.getByRole("button", { name: EXAMPLE }));
+  fireEvent.click(await screen.findByRole("button", { name: EXAMPLE })); // the suggestions load after the step opens
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "สร้างแดชบอร์ดด้วย AI" })); });
   await settle();
 }
@@ -167,6 +172,46 @@ it("describes the page as a draft builder for data that passed the quality check
   expect(screen.getByText("สร้างแดชบอร์ดฉบับร่างจากข้อมูลที่ผ่านการตรวจคุณภาพ")).toBeInTheDocument();
 });
 
+async function openRequestStep(extra = []) {
+  await renderPage(DashboardBuilder, "/dashboard-builder", builderRoutes(extra));
+  fireEvent.click(screen.getByRole("radio", { name: "เลือก sales" }));
+  fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+  await settle();
+  fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+  await settle();
+}
+
+const requestBox = () => screen.getByLabelText("อยากวิเคราะห์อะไรจาก sales");
+
+it("suggests requests built from the dataset instead of fixed examples", async () => {
+  await openRequestStep();
+  const trend = screen.getByRole("button", { name: "แนวโน้ม ผลรวม amount รายสัปดาห์ ตาม order_date" });
+  expect(screen.queryByRole("button", { name: /ยอดขายรายเดือน/ })).toBeNull();
+  expect(callTo("/dashboards/datasets/sales/suggestions")[0]).toContain("/dashboards/datasets/sales/suggestions?audience=business");
+  fireEvent.click(screen.getByRole("button", { name: EXAMPLE }));
+  fireEvent.click(trend);
+  expect(requestBox().value).toBe(`${EXAMPLE}\nแนวโน้ม ผลรวม amount รายสัปดาห์ ตาม order_date`);
+  expect(trend).toHaveAttribute("aria-pressed", "true");
+  fireEvent.click(trend);
+  expect(requestBox().value).toBe(EXAMPLE);
+  expect(trend).toHaveAttribute("aria-pressed", "false");
+});
+
+it("asks for new suggestions when the reader type changes", async () => {
+  await openRequestStep();
+  fireEvent.click(screen.getByRole("radio", { name: "Management" }));
+  await settle();
+  const urls = fetch.mock.calls.map(([url]) => String(url)).filter((u) => u.includes("/suggestions"));
+  expect(urls.at(-1)).toContain("audience=management");
+});
+
+it("says so when the dataset has no suggestions or they cannot be loaded, and still lets the user type", async () => {
+  await openRequestStep([["/dashboards/datasets/sales/suggestions", { status: 500, body: { detail: "boom" } }]]);
+  expect(screen.getByText("ยังไม่มีคำแนะนำสำหรับชุดข้อมูลนี้ พิมพ์สิ่งที่อยากเห็นได้เลย")).toBeInTheDocument();
+  fireEvent.change(requestBox(), { target: { value: "ดูยอดขายตามภูมิภาค" } });
+  expect(screen.getByRole("button", { name: "สร้างแดชบอร์ดด้วย AI" })).toBeEnabled();
+});
+
 it("walks from dataset to an AI-generated dashboard", async () => {
   await renderPage(DashboardBuilder, "/dashboard-builder", builderRoutes());
   fireEvent.click(screen.getByRole("radio", { name: "เลือก sales" }));
@@ -175,7 +220,7 @@ it("walks from dataset to an AI-generated dashboard", async () => {
   fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
   const generate = screen.getByRole("button", { name: "สร้างแดชบอร์ดด้วย AI" });
   expect(generate).toBeDisabled();
-  fireEvent.click(screen.getByRole("button", { name: EXAMPLE }));
+  fireEvent.click(await screen.findByRole("button", { name: EXAMPLE })); // the suggestions load after the step opens
   fireEvent.click(screen.getByRole("radio", { name: "Management" }));
   await act(async () => { fireEvent.click(generate); });
   await settle();
@@ -227,7 +272,8 @@ function controlledFetch() {
         return new Promise((resolve) => pending[kind].push((body, status = 200) => resolve(reply(status, body))));
       }
     }
-    return Promise.resolve(reply(200, u.includes("/preview") ? PREVIEW : TWO_DATASETS));
+    const body = u.includes("/suggestions") ? SUGGESTIONS : u.includes("/preview") ? PREVIEW : TWO_DATASETS;
+    return Promise.resolve(reply(200, body));
   });
   vi.stubGlobal("fetch", fn);
   return pending;
@@ -249,7 +295,7 @@ async function startGenerate() {
   fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
   await settle();
   fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
-  fireEvent.click(screen.getByRole("button", { name: EXAMPLE }));
+  fireEvent.click(await screen.findByRole("button", { name: EXAMPLE })); // the suggestions load after the step opens
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "สร้างแดชบอร์ดด้วย AI" })); });
 }
 

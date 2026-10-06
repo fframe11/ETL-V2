@@ -219,7 +219,7 @@ export default function DashboardBuilder() {
 
       {step === 2 && dataset && (
         <section className="dbb-panel" aria-label={STEPS[2]}>
-          <ContextForm table={datasetLabel(dataset.name)} value={request} onChange={setRequest} onGenerate={generate} busy={busy === "generate"} />
+          <ContextForm table={datasetLabel(dataset.name)} tableName={dataset.name} value={request} onChange={setRequest} onGenerate={generate} busy={busy === "generate"} />
         </section>
       )}
 
