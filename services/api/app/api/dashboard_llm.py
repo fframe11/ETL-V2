@@ -9,6 +9,7 @@ is unavailable."""
 import json
 import logging
 import os
+import re
 import time
 
 import requests
@@ -261,13 +262,15 @@ def refine_spec(table_name, profile, spec, instruction):
 RANK_CANDIDATES = 12  # how many rule-made suggestions the model may choose from
 RANK_LIMIT = 6        # how many it may return
 RANK_TEXT_MAX = 200
+_NUMBER = re.compile(r"\d+(?:\.\d+)?")
 
+# Built once at import from RANK_LIMIT (the braces of the JSON example stay literal, so substitute, not format).
 RANK_PROMPT = """You choose and reword requests for a dashboard builder.
 Reply with ONE JSON object and nothing else: {"suggestions": [{"id": string, "text": string}]}
-- "candidates" are requests the builder can already fulfil. Choose at most 6 of them, by "id", and put the most useful first for the reader named in "audience".
+- "candidates" are requests the builder can already fulfil. Choose at most {limit} of them, by "id", and put the most useful first for the reader named in "audience".
 - Reword each "text" as one short, plain sentence in the language of the candidate text, the way that reader would ask for it. Keep every column name exactly as it is written in the candidate text.
 - Never add a request that is not a candidate. Never invent columns or numbers.
-- audience "business": what sells or what is largest. "analyst": breakdowns and comparisons. "management": headline numbers, trends and period comparisons. "steward": data health, duplicates, empty cells and value ranges."""
+- audience "business": what sells or what is largest. "analyst": breakdowns and comparisons. "management": headline numbers, trends and period comparisons. "steward": data health, duplicates, empty cells and value ranges.""".replace("{limit}", str(RANK_LIMIT))
 
 
 def _columns_of(widget):
@@ -292,9 +295,10 @@ def _validate_ranking(raw, candidates):
             continue
         candidate = by_id[cid]
         seen.add(cid)
-        text = item.get("text").strip() if isinstance(item.get("text"), str) else ""
+        text = " ".join(item["text"].split()) if isinstance(item.get("text"), str) else ""
         anchors = [n for n in _columns_of(candidate["widget"]) if n in candidate["text"]]
-        keeps = 5 <= len(text) <= RANK_TEXT_MAX and all(n in text for n in anchors)
+        keeps = (5 <= len(text) <= RANK_TEXT_MAX and all(n in text for n in anchors)
+                 and sorted(_NUMBER.findall(text)) == sorted(_NUMBER.findall(candidate["text"])))
         ranked.append({"id": candidate["id"], "rule": candidate["rule"], "text": text if keeps else candidate["text"]})
         if len(ranked) == RANK_LIMIT:
             break
@@ -310,7 +314,9 @@ def rank_suggestions(table_name, profile, audience, candidates):
     key, model = groq_settings()
     if not key:
         raise LLMUnavailable("ยังไม่ได้ตั้งค่า Groq API key")
-    user = {"dataset": table_name, "audience": audience, "profile": profile_for_prompt(profile),
+    # Ranking does not need a range (a maximum salary or a date of birth is a real record value), so none is sent.
+    columns = [{k: c[k] for k in ("name", "kind", "distinct", "missing_pct")} for c in profile_for_prompt(profile)["columns"]]
+    user = {"dataset": table_name, "audience": audience, "profile": {"rows": profile["rows"], "columns": columns},
             "candidates": [{"id": c["id"], "rule": c["rule"], "text": c["text"]} for c in candidates]}
     messages = [{"role": "system", "content": RANK_PROMPT},
                 {"role": "user", "content": json.dumps(user, ensure_ascii=False)}]

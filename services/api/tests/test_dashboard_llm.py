@@ -355,6 +355,65 @@ def test_a_column_the_candidate_text_does_not_name_is_not_demanded_of_the_reword
     assert result["suggestions"][0]["text"] == reworded
 
 
+GAPPY = pd.DataFrame({"amount": [None if i % 8 == 0 else float(i) for i in range(20)], "region": ["a", "b"] * 10})
+_, GAPPY_PROFILE = prepare_frame(GAPPY.copy())
+GAPPY_CANDIDATES = suggest_from_profile(GAPPY_PROFILE, "steward", 20)
+
+
+def missing_cells_candidate():
+    found = next(c for c in GAPPY_CANDIDATES if c["text"].startswith("ตรวจค่าว่างของ"))
+    assert "%" in found["text"]  # the rule text carries a measured fact
+    return found
+
+
+def test_a_reworded_text_with_another_number_falls_back_to_the_rule_text(groq):
+    card = missing_cells_candidate()
+    changed = card["text"].replace("15%", "50%")
+    assert changed != card["text"]
+    groq(ranked_answer({"id": card["id"], "text": changed}))
+    result = dashboard_llm.rank_suggestions("gappy", GAPPY_PROFILE, "steward", GAPPY_CANDIDATES)
+    assert result["suggestions"][0]["text"] == card["text"]  # a made-up percentage never reaches the user
+
+
+def test_a_reworded_text_that_drops_its_number_falls_back_to_the_rule_text(groq):
+    card = missing_cells_candidate()
+    groq(ranked_answer({"id": card["id"], "text": "ดูว่าช่องไหนของ amount ยังว่างอยู่"}))
+    result = dashboard_llm.rank_suggestions("gappy", GAPPY_PROFILE, "steward", GAPPY_CANDIDATES)
+    assert result["suggestions"][0]["text"] == card["text"]
+
+
+def test_a_reworded_text_that_keeps_the_same_number_is_kept(groq):
+    card = missing_cells_candidate()
+    reworded = f"ช่วยดูหน่อย {card['text']} เพราะอยากรู้"
+    groq(ranked_answer({"id": card["id"], "text": reworded}))
+    result = dashboard_llm.rank_suggestions("gappy", GAPPY_PROFILE, "steward", GAPPY_CANDIDATES)
+    assert result["suggestions"][0]["text"] == reworded
+
+
+def test_whitespace_inside_a_reworded_text_collapses_to_single_spaces(groq):
+    first = CANDIDATES[0]
+    reworded = f"อยากเห็น\n{first['text']}\t\tครับ  "
+    groq(ranked_answer({"id": first["id"], "text": reworded}))
+    text = dashboard_llm.rank_suggestions("sales", PROFILE, "business", CANDIDATES)["suggestions"][0]["text"]
+    assert text == f"อยากเห็น {first['text']} ครับ"  # kept, on one line, so the chip toggle can match it
+    assert "\n" not in text and "\t" not in text and "  " not in text
+
+
+def test_the_ranking_prompt_carries_no_min_or_max(groq):
+    fake = groq(ranked_answer({"id": CANDIDATES[0]["id"], "text": CANDIDATES[0]["text"]}))
+    assert any("min" in c for c in dashboard_llm.profile_for_prompt(PROFILE)["columns"])  # the ranges do exist
+    dashboard_llm.rank_suggestions("sales", PROFILE, "business", CANDIDATES)
+    payload = json.loads(fake.calls[0][1]["content"])
+    assert payload["profile"]["rows"] == PROFILE["rows"]
+    for column in payload["profile"]["columns"]:
+        assert set(column) == {"name", "kind", "distinct", "missing_pct"}
+
+
+def test_the_ranking_prompt_states_the_current_cap(groq):
+    assert f"at most {dashboard_llm.RANK_LIMIT}" in dashboard_llm.RANK_PROMPT
+    assert "{limit}" not in dashboard_llm.RANK_PROMPT
+
+
 def test_the_refine_prompt_lists_what_the_dashboard_still_lacks(groq):
     current, _ = validate_spec(LLM_SPEC, PROFILE)
     fake = groq(json.dumps(LLM_SPEC, ensure_ascii=False))

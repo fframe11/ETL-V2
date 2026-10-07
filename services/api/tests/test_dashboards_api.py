@@ -11,7 +11,7 @@ API_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, API_ROOT)
 os.environ.setdefault("SESSION_SECRET_KEY", "test-session-secret")
 
-from app.api import dashboard_data, dashboard_llm, dashboards  # noqa: E402
+from app.api import dashboard_data, dashboard_llm, dashboard_suggest, dashboards  # noqa: E402
 from app.api.auth import SESSION_COOKIE_NAME, create_session_token  # noqa: E402
 
 RAW = pd.DataFrame({
@@ -222,6 +222,17 @@ def test_an_unusable_ai_answer_is_a_422(weekly, monkeypatch):
     llm_answers(monkeypatch, json.dumps({"suggestions": [{"id": "R9:invented", "text": "x"}]}))
     res = rank()
     assert res.status_code == 422 and "AI ตอบคำแนะนำที่ใช้ไม่ได้" in res.json()["detail"]
+
+
+def test_ranking_nothing_answers_an_empty_rule_list_without_calling_the_model(weekly, monkeypatch):
+    def never(*a, **k):
+        raise AssertionError("the model must not be called when there is nothing to rank")
+    monkeypatch.setattr(dashboard_suggest, "suggest_from_profile", lambda *a, **k: [])
+    monkeypatch.setattr(dashboard_llm, "groq_settings", lambda: ("gsk_test", "openai/gpt-oss-120b"))
+    monkeypatch.setattr(dashboard_llm, "call_groq", never)
+    res = rank()
+    assert res.status_code == 200
+    assert res.json() == {"suggestions": [], "engine": "rules", "model": None}
 
 
 def test_ranking_follows_the_audience_and_rejects_an_unknown_one(weekly, monkeypatch):
