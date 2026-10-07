@@ -27,3 +27,38 @@ export const DATA = {
     w3: { columns: ["region", "amount"], rows: [{ region: "South", amount: 200 }, { region: "North", amount: 100 }, { region: "East", amount: 80 }], total_rows: 6 }
   }
 };
+
+// The profile of the "sales" preview used by the builder tests.
+export const PROFILE = {
+  rows: 6, column_count: 3, missing_cells: 1, kind_counts: { numeric: 1, categorical: 1, date: 1, text: 0 },
+  columns: [
+    { name: "order_date", kind: "date", dtype: "datetime64[ns]", missing: 0, missing_pct: 0, distinct: 6 },
+    { name: "region", kind: "categorical", dtype: "string", missing: 1, missing_pct: 16.67, distinct: 3 },
+    { name: "amount", kind: "numeric", dtype: "Float64", missing: 0, missing_pct: 0, distinct: 6 }
+  ]
+};
+
+const meta = (role, extra = {}) => ({ role, label: "", description: "", unit: null, currency: null,
+  duration_unit: null, default_agg: null, pii: false, ...extra });
+
+// GET /api/v1/semantic/sales for PROFILE: a draft waiting for approval.
+export const SEMANTIC_VIEW = {
+  table_name: "sales", status: "draft", pending_draft: false, version: 0,
+  effective: {
+    columns: {
+      order_date: meta("time"),
+      region: meta("dimension", { label: "ภูมิภาค" }),
+      amount: meta("measure", { label: "ยอดขาย", unit: "currency", default_agg: "sum" })
+    },
+    metrics: [
+      // Labelled "จำนวนรายการ", not "จำนวนแถว", so it never collides with the preview's row-count tile.
+      { id: "row_count", label: "จำนวนรายการ", description: "", type: "simple",
+        measure: { agg: "count", column: null, where: null }, format: "number", currency: null, higher_is_better: true },
+      { id: "avg_amount", label: "ยอดขายเฉลี่ย", description: "", type: "simple",
+        measure: { agg: "avg", column: "amount", where: null }, format: "number", currency: null, higher_is_better: true }
+    ]
+  },
+  draft: null, approved: null, drift: { new_columns: [], missing_columns: [] },
+  invalid_metrics: [{ id: "aov", label: "Average Order Value", reason: "ไม่มีคอลัมน์ Order_ID" }],
+  hidden_columns: [], history: [], warnings: [], metric_values: { row_count: 6, avg_amount: 83.3333 }
+};

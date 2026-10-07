@@ -1,34 +1,8 @@
-import { friendlyApiError } from "./apiError";
+import { requestJson } from "./requestJson";
 
 const BASE = "/api/v1/dashboards";
 
-async function request(path, { method = "GET", body } = {}) {
-  const options = { method, credentials: "same-origin" };
-  if (body !== undefined) {
-    options.headers = { "Content-Type": "application/json" };
-    options.body = JSON.stringify(body);
-  }
-  let res;
-  try {
-    res = await fetch(`${BASE}${path}`, options);
-  } catch {
-    throw new Error("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่");
-  }
-  if (res.status === 401 && window.location.pathname !== "/login") {
-    window.location.href = "/login";
-  }
-  let data = {};
-  try {
-    data = await res.json();
-  } catch {
-    data = {};
-  }
-  if (!res.ok) {
-    const detail = typeof data.detail === "string" ? data.detail : "";
-    throw new Error(friendlyApiError(detail, `คำขอล้มเหลว (HTTP ${res.status})`));
-  }
-  return data;
-}
+const request = (path, options) => requestJson(`${BASE}${path}`, options);
 
 export const dashboardsApi = {
   listDatasets: () => request("/datasets"),

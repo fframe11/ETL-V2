@@ -129,3 +129,13 @@
   .dbb-page { padding: 16px; }
   .dbb-cell { grid-column: 1 / -1; grid-row: auto / span var(--h); }
 }
+
+/* Semantic layer editor in the "ดูข้อมูล" step */
+.dbb-semantic { display: flex; flex-direction: column; gap: 10px; }
+.dbb-semantic h3 { margin: 4px 0 0; font-size: 14px; }
+.dbb-semantic-status { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--dbb-border); border-radius: 6px; background: #f8fafc; }
+.dbb-semantic-status.is-approved { border-color: #abefc6; background: #ecfdf3; }
+.dbb-semantic-status.is-approved_outdated, .dbb-semantic-status.is-unavailable { border-color: #fedf89; background: #fffaeb; }
+.dbb-badge { margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: var(--dbb-primary-soft); color: var(--dbb-primary); font-size: 11px; font-weight: 600; }
+.dbb-meta-table select, .dbb-meta-table input:not([type="checkbox"]) { max-width: 150px; padding: 4px 6px; border: 1px solid var(--dbb-border); border-radius: 4px; font: inherit; font-size: 12px; }
+.dbb-meta-table tr.is-changed { background: #fffaeb; }
