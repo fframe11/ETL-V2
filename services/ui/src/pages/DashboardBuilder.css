@@ -140,3 +140,12 @@
 .dbb-meta-table select, .dbb-meta-table input:not([type="checkbox"]) { max-width: 150px; padding: 4px 6px; border: 1px solid var(--dbb-border); border-radius: 4px; font: inherit; font-size: 12px; }
 .dbb-meta-table tr.is-changed { background: #fffaeb; }
 .dbb-fieldset-plain { border: 0; margin: 0; padding: 0; min-width: 0; }
+.dbb-metrics ul { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.dbb-metrics li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--dbb-border); border-radius: 6px; font-size: 13px; }
+.dbb-metrics li.is-invalid { border-color: #fecdca; background: #fef3f2; color: var(--dbb-down); }
+.dbb-metric-value { font-variant-numeric: tabular-nums; font-weight: 600; }
+.dbb-metric-form { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 8px 12px; padding: 12px; border: 1px solid var(--dbb-border); border-radius: 6px; font-size: 13px; }
+.dbb-metric-form .dbb-metric-part, .dbb-metric-form .dbb-actions, .dbb-metric-form > .dbb-check { grid-column: 1 / -1; }
+.dbb-metric-part { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; padding: 8px; border: 1px dashed var(--dbb-border); border-radius: 6px; }
+.dbb-metric-form input, .dbb-metric-form select, .dbb-metric-part select, .dbb-metric-part input { padding: 4px 6px; border: 1px solid var(--dbb-border); border-radius: 4px; font: inherit; font-size: 13px; }
+.dbb-check { display: inline-flex; align-items: center; gap: 6px; }

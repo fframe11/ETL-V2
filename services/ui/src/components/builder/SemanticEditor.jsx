@@ -3,6 +3,7 @@ import { semanticApi } from "../../utils/semanticApi";
 import { fromView } from "./semanticModel";
 import SemanticStatus from "./SemanticStatus";
 import ColumnMetaTable from "./ColumnMetaTable";
+import MetricPanel from "./MetricPanel";
 
 // The column meaning (and metrics) of one dataset. `value` lives in DashboardBuilder so unsaved
 // edits survive a step change: {table, view, columns, metrics, dirty, conflict, warnings} or null.
@@ -88,6 +89,8 @@ export default function SemanticEditor({ table, profile, value, onChange }) {
       <h3>ความหมายคอลัมน์</h3>
       <fieldset className="dbb-fieldset-plain" disabled={Boolean(busy)}>
         <ColumnMetaTable profile={profile} view={value.view} columns={value.columns} onChange={setColumn} />
+        <MetricPanel profile={profile} columns={value.columns} metrics={value.metrics} view={value.view}
+          onChange={(metrics) => onChange({ ...value, metrics, dirty: true })} />
       </fieldset>
     </div>
   );

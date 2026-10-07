@@ -184,3 +184,25 @@ it("locks the column table while a request is in flight", async () => {
   await settle();
   expect(screen.getByLabelText("ชื่อที่แสดง region")).toBeEnabled();
 });
+
+it("saves the metric list from the panel with the draft", async () => {
+  await show([["/semantic/sales/draft", { body: SEMANTIC_VIEW }]]);
+  fireEvent.click(screen.getByRole("button", { name: "ลบ จำนวนรายการ" }));
+  expect(screen.getByText("มีการแก้ไขที่ยังไม่บันทึก")).toBeInTheDocument();
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "บันทึกร่าง" })); });
+  await settle();
+  expect(JSON.parse(callTo("/semantic/sales/draft", "PUT")[1].body).metrics.map((m) => m.id)).toEqual(["avg_amount"]);
+});
+
+it("locks the metric panel while a request is in flight", async () => {
+  const release = gatedApprove();
+  render(<Harness />);
+  await settle();
+  expect(screen.getByRole("button", { name: "เพิ่ม metric" })).toBeEnabled();
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "อนุมัติ" })); });
+  expect(screen.getByRole("button", { name: "เพิ่ม metric" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "ลบ จำนวนรายการ" })).toBeDisabled();
+  await act(async () => { release(); });
+  await settle();
+  expect(screen.getByRole("button", { name: "เพิ่ม metric" })).toBeEnabled();
+});
