@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import { dashboardsApi } from "../../utils/dashboardsApi";
 import { semanticApi } from "../../utils/semanticApi";
 
@@ -10,6 +10,7 @@ export default function ExportCsv({ table, selections, disabled = false }) {
   const [includePersonal, setIncludePersonal] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const warnId = useId();
   const running = useRef(false); // a second click before React has disabled the button
   const generation = useRef(0); // changes with the dataset and on unmount: an older download is dropped
 
@@ -64,12 +65,13 @@ export default function ExportCsv({ table, selections, disabled = false }) {
       {hidden.length > 0 && (
         <label className="dbb-check">
           <input type="checkbox" checked={includePersonal} disabled={busy}
+            aria-describedby={personal ? warnId : undefined}
             onChange={(e) => setIncludePersonal(e.target.checked)} />
           รวมข้อมูลส่วนบุคคล
         </label>
       )}
       {personal && (
-        <p className="dbb-export-warning">
+        <p id={warnId} role="note" className="dbb-export-warning">
           ไฟล์จะมีข้อมูลส่วนบุคคลจากคอลัมน์ {hidden.join(", ")} เก็บไฟล์ให้ปลอดภัยและอย่าส่งต่อเกินจำเป็น ระบบบันทึกชื่อผู้ส่งออกไว้
         </p>
       )}

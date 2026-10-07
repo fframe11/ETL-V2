@@ -100,3 +100,13 @@ it("explains a network failure of a download in Thai with status 0", async () =>
   expect(error.message).toBe("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่");
   expect(error.status).toBe(0);
 });
+
+it("explains in Thai a download whose body fails to arrive, with status 0", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => ({
+    ok: true, status: 200, headers: new Headers({ "Content-Disposition": 'attachment; filename="a.csv"' }),
+    blob: async () => { throw new TypeError("network error"); }
+  })));
+  const error = await requestFile("/api/v1/x").catch((e) => e);
+  expect(error.message).toBe("ดาวน์โหลดไฟล์ไม่ครบ กรุณาลองใหม่");
+  expect(error.status).toBe(0);
+});

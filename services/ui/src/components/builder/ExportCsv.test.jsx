@@ -54,6 +54,19 @@ it("offers personal columns only when the saved meaning hides some, unticked and
   expect(screen.getByLabelText("รวมข้อมูลส่วนบุคคล")).not.toBeChecked();
 });
 
+it("announces the personal-data warning with the box: it is the box's description and a note", async () => {
+  await mount([["/dashboards/export", FILE], ["/semantic/sales", { body: PERSONAL }]]);
+  const box = screen.getByLabelText("รวมข้อมูลส่วนบุคคล");
+  expect(box).not.toHaveAttribute("aria-describedby");
+  expect(box).toHaveAccessibleDescription("");
+  fireEvent.click(box);
+  expect(box).toHaveAccessibleDescription(WARNING);
+  expect(screen.getByRole("note")).toHaveTextContent(WARNING);
+  fireEvent.click(box);
+  expect(box).not.toHaveAttribute("aria-describedby");
+  expect(screen.queryByRole("note")).toBeNull();
+});
+
 it("keeps the box away when the column meaning cannot be read", async () => {
   const fetchMock = await mount([["/dashboards/export", FILE], ["/semantic/sales", { status: 503, body: { detail: "Elasticsearch service is offline" } }]]);
   expect(screen.queryByLabelText("รวมข้อมูลส่วนบุคคล")).toBeNull();

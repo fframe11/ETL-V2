@@ -66,5 +66,13 @@ export async function requestFile(url, options, fallbackName = "download") {
   if (!res.ok) throw failure(res, await readJson(res));
   const disposition = res.headers?.get?.("Content-Disposition") || "";
   const filename = filenameFrom(disposition).replace(/[\\/]/g, "_") || fallbackName;
-  return { blob: await res.blob(), filename };
+  let blob;
+  try {
+    blob = await res.blob();
+  } catch { // the connection broke while the file was arriving: the browser's own text is English
+    const e = new Error("ดาวน์โหลดไฟล์ไม่ครบ กรุณาลองใหม่");
+    e.status = 0;
+    throw e;
+  }
+  return { blob, filename };
 }
