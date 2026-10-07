@@ -36,6 +36,7 @@ export const dashboardsApi = {
   suggestions: (table, audience) =>
     request(`/datasets/${encodeURIComponent(table)}/suggestions?audience=${encodeURIComponent(audience)}`),
   generate: (table_name, context, audience) => request("/generate", { method: "POST", body: { table_name, context, audience } }),
+  rankSuggestions: (table_name, audience) => request("/rank-suggestions", { method: "POST", body: { table_name, audience } }),
   suggestChanges: (table_name, spec) => request("/suggest-changes", { method: "POST", body: { table_name, spec } }),
   refine: (table_name, spec, instruction) => request("/refine", { method: "POST", body: { table_name, spec, instruction } }),
   render: (table_name, spec, selections) => request("/render", { method: "POST", body: { table_name, spec, selections } }),

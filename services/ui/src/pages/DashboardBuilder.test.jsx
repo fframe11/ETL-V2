@@ -229,6 +229,63 @@ it("offers the data steward as a reader type, asks for its suggestions and sends
   expect(JSON.parse(callTo("/dashboards/generate")[1].body).audience).toBe("steward");
 });
 
+const RANKED_TEXT = "ดูแนวโน้มยอดขายรายสัปดาห์ ตาม order_date";
+const RANKED = { engine: "groq", model: "openai/gpt-oss-120b", suggestions: [{ id: "R1:amount:order_date", rule: "R1", text: RANKED_TEXT }] };
+const rankButton = () => screen.getByRole("button", { name: "เรียบเรียงด้วย AI" });
+const rankCalls = () => fetch.mock.calls.filter(([url]) => String(url).includes("/dashboards/rank-suggestions"));
+
+it("lets the user ask the AI to reorder and reword the suggestions", async () => {
+  await openRequestStep([["/dashboards/rank-suggestions", { body: RANKED }]]);
+  fireEvent.click(rankButton());
+  await settle();
+  expect(JSON.parse(rankCalls()[0][1].body)).toEqual({ table_name: "sales", audience: "business" });
+  expect(screen.getByRole("button", { name: RANKED_TEXT })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: EXAMPLE })).toBeNull();
+  expect(screen.getByText("จัดลำดับและเรียบเรียงโดย AI (openai/gpt-oss-120b)")).toBeInTheDocument();
+});
+
+it("keeps the rule-made suggestions and says why when the AI cannot help", async () => {
+  await openRequestStep([["/dashboards/rank-suggestions", { status: 503, body: { detail: "เรียบเรียงด้วย AI ไม่ได้ตอนนี้: ยังไม่ได้ตั้งค่า Groq API key" } }]]);
+  fireEvent.click(rankButton());
+  await settle();
+  expect(screen.getByText(/ยังไม่ได้ตั้งค่า Groq API key/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: EXAMPLE })).toBeInTheDocument();
+  expect(rankButton()).toBeEnabled();
+});
+
+it("goes back to the rule-made list when the reader type changes", async () => {
+  await openRequestStep([["/dashboards/rank-suggestions", { body: RANKED }]]);
+  fireEvent.click(rankButton());
+  await settle();
+  expect(screen.queryByRole("button", { name: EXAMPLE })).toBeNull();
+  fireEvent.click(screen.getByRole("radio", { name: "Management" }));
+  await settle();
+  expect(screen.queryByText(/จัดลำดับและเรียบเรียงโดย AI/)).toBeNull();
+  expect(screen.getByRole("button", { name: EXAMPLE })).toBeInTheDocument();
+});
+
+it("drops an AI answer that arrives after the reader type was changed", async () => {
+  await openRequestStep([["/dashboards/rank-suggestions", { body: RANKED }]]);
+  const inner = fetch;
+  const held = [];
+  vi.stubGlobal("fetch", vi.fn((url, options) => {
+    if (!String(url).includes("/dashboards/rank-suggestions")) return inner(url, options);
+    return new Promise((resolve) => held.push(() => resolve({
+      ok: true, status: 200, json: async () => RANKED, text: async () => JSON.stringify(RANKED), blob: async () => new Blob()
+    })));
+  }));
+  fireEvent.click(rankButton());
+  expect(screen.getByRole("button", { name: "AI กำลังเรียบเรียง…" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("radio", { name: "Management" }));
+  await settle();
+  await act(async () => { held[0](); });
+  await settle();
+  expect(screen.queryByText(/จัดลำดับและเรียบเรียงโดย AI/)).toBeNull();
+  expect(screen.queryByRole("button", { name: RANKED_TEXT })).toBeNull();
+  expect(screen.getByRole("button", { name: EXAMPLE })).toBeInTheDocument();
+  expect(rankButton()).toBeEnabled();
+});
+
 it("says so when the dataset has no suggestions or they cannot be loaded, and still lets the user type", async () => {
   await openRequestStep([["/dashboards/datasets/sales/suggestions", { status: 500, body: { detail: "boom" } }]]);
   expect(screen.getByText("ยังไม่มีคำแนะนำสำหรับชุดข้อมูลนี้ พิมพ์สิ่งที่อยากเห็นได้เลย")).toBeInTheDocument();

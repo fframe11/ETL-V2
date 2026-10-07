@@ -60,6 +60,9 @@
 .dbb-quality-low { background: #fef3f2; color: var(--dbb-down); }
 .dbb-quality-unknown, .dbb-quality-none { background: #f1f5f9; color: var(--dbb-muted); }
 .dbb-quality-notice { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border: 1px solid #fedf89; border-radius: 6px; background: #fffaeb; color: #8a5a00; font-size: 13px; }
+.dbb-ai-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 32px; }
+.dbb-ai-row button { padding: 5px 12px; border: 1px solid var(--dbb-border); border-radius: 6px; background: var(--dbb-surface); color: var(--dbb-ink); font-size: 13px; cursor: pointer; }
+.dbb-ai-row button:disabled { opacity: 0.5; cursor: default; }
 .dbb-draft-note { margin: 0; color: var(--dbb-muted); font-size: 12px; }
 .dbb-kind { padding: 2px 8px; border-radius: 999px; background: #f1f5f9; font-size: 11px; font-weight: 600; }
 .dbb-kind-numeric { background: #e8f1fa; color: #1d5f96; }

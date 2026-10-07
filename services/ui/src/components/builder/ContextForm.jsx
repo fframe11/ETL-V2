@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { dashboardsApi } from "../../utils/dashboardsApi";
 
 export const AUDIENCES = [
@@ -16,17 +16,42 @@ export function toggleLine(context, line) {
 
 export default function ContextForm({ table, tableName, value, onChange, onGenerate, busy }) {
   const [suggestions, setSuggestions] = useState(null); // null while loading
+  const [ai, setAi] = useState({ status: "idle" }); // idle | loading | done | error: the optional AI layer over the list
+  const aiRun = useRef(0); // each AI request gets a number; an answer for an earlier list or reader type is dropped
   const ready = value.context.trim().length >= 3 && !busy;
   const lines = value.context.split("\n");
 
   // The suggestions depend on the dataset's columns and on who reads the dashboard.
   useEffect(() => {
     let alive = true;
+    aiRun.current += 1; // a new list starts from the rules again
+    setAi({ status: "idle" });
     dashboardsApi.suggestions(tableName, value.audience)
       .then((res) => { if (alive) setSuggestions(res.suggestions || []); })
       .catch(() => { if (alive) setSuggestions([]); });
     return () => { alive = false; };
   }, [tableName, value.audience]);
+
+  useEffect(() => () => { aiRun.current += 1; }, []);
+
+  // The AI only reorders and rewords what the rules already offer; if it cannot, the list stays as it is.
+  const rank = async () => {
+    const mine = aiRun.current + 1;
+    aiRun.current = mine;
+    setAi({ status: "loading" });
+    try {
+      const res = await dashboardsApi.rankSuggestions(tableName, value.audience);
+      if (mine !== aiRun.current) return;
+      if (!res.suggestions?.length) {
+        setAi({ status: "error", message: "AI ไม่ได้เลือกคำแนะนำ ใช้คำแนะนำจากกฎต่อไป" });
+        return;
+      }
+      setSuggestions(res.suggestions);
+      setAi({ status: "done", model: res.model });
+    } catch (e) {
+      if (mine === aiRun.current) setAi({ status: "error", message: e.message });
+    }
+  };
 
   const submit = (e) => {
     e.preventDefault();
@@ -45,6 +70,13 @@ export default function ContextForm({ table, tableName, value, onChange, onGener
             {s.text}
           </button>
         ))}
+      </div>
+      <div className="dbb-ai-row" aria-live="polite">
+        <button type="button" onClick={rank} disabled={!suggestions?.length || ai.status === "loading"}>
+          {ai.status === "loading" ? "AI กำลังเรียบเรียง…" : "เรียบเรียงด้วย AI"}
+        </button>
+        {ai.status === "done" && <span className="dbb-muted">จัดลำดับและเรียบเรียงโดย AI ({ai.model})</span>}
+        {ai.status === "error" && <span className="dbb-error-inline">{ai.message}</span>}
       </div>
       <textarea id="dbb-context-input" rows={4} maxLength={2000} value={value.context}
         placeholder="เลือกคำแนะนำด้านบน หรือพิมพ์สิ่งที่อยากเห็น"
