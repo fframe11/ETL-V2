@@ -176,7 +176,13 @@ def clean_column(item, col, warnings):
         role = base["role"]
     meta = {"role": role, "label": _text(item.get("label"), 60), "description": _text(item.get("description"), 300),
             "unit": None, "currency": None, "duration_unit": None, "default_agg": None,
-            "pii": bool(item.get("pii", base["pii"]))}
+            "pii": None}
+    raw_pii = item.get("pii", base["pii"])
+    if isinstance(raw_pii, bool):
+        meta["pii"] = raw_pii
+    else:
+        meta["pii"] = base["pii"]
+        warnings.append(f"{name}: pii ต้องเป็น true หรือ false ใช้ {base['pii']} แทน")
     if role != "measure":
         return meta
     fallback = base if base["role"] == "measure" else {"unit": "number", "default_agg": "sum", "duration_unit": None}
@@ -220,7 +226,7 @@ def _clean_where(raw, by_name):
     if not isinstance(raw, dict):
         return None, "เงื่อนไขไม่ถูกต้อง"
     column, op, value = raw.get("column"), raw.get("op"), raw.get("value")
-    if column not in by_name:
+    if not isinstance(column, str) or column not in by_name:
         return None, f"เงื่อนไขอ้างคอลัมน์ {column} ที่ไม่มี"
     if op not in WHERE_OPS:
         return None, f"ไม่รองรับเงื่อนไข {op}"
@@ -250,7 +256,7 @@ def _clean_part(raw, by_name):
         return None, f"ไม่รองรับการคำนวณ {agg}"
     if agg == "count":
         column = None
-    elif column not in by_name:
+    elif not isinstance(column, str) or column not in by_name:
         return None, f"ไม่มีคอลัมน์ {column}"
     elif agg in NUMERIC_AGGS and by_name[column]["kind"] != "numeric":
         return None, f"{agg} ใช้ได้กับคอลัมน์ตัวเลขเท่านั้น ({column})"
@@ -260,8 +266,10 @@ def _clean_part(raw, by_name):
     return {"agg": agg, "column": column, "where": where}, None
 
 
-def clean_metric(item, by_name, used):
+def clean_metric(item, by_name, used, warnings=None):
     """(metric, None) or (None, reason). used holds ids already taken in this dataset."""
+    if warnings is None:
+        warnings = []
     if not isinstance(item, dict):
         return None, "ไม่ใช่ object"
     label = _text(item.get("label"), 60)
@@ -282,9 +290,20 @@ def clean_metric(item, by_name, used):
             if problem:
                 return None, f"{title}: {problem}"
             metric[key] = part
-    metric["format"] = item.get("format") if item.get("format") in METRIC_FORMATS else "number"
-    metric["currency"] = _currency(item.get("currency"), label, []) if metric["format"] == "currency" else None
-    metric["higher_is_better"] = bool(item.get("higher_is_better", True))
+    format_val = item.get("format")
+    if format_val not in METRIC_FORMATS:
+        if format_val is not None:
+            warnings.append(f"metric '{label}': รูปแบบ {format_val} ไม่รู้จัก ใช้ number แทน")
+        metric["format"] = "number"
+    else:
+        metric["format"] = format_val
+    metric["currency"] = _currency(item.get("currency"), label, warnings) if metric["format"] == "currency" else None
+    higher_val = item.get("higher_is_better", True)
+    if isinstance(higher_val, bool):
+        metric["higher_is_better"] = higher_val
+    else:
+        warnings.append(f"metric '{label}': higher_is_better ต้องเป็น true หรือ false ใช้ true แทน")
+        metric["higher_is_better"] = True
     given = item.get("id")
     ok = isinstance(given, str) and _METRIC_ID_RE.match(given) and given not in used
     metric["id"] = given if ok else unique_id(label, used)
@@ -308,7 +327,7 @@ def validate_semantic(raw, profile):
     metrics, used = [], set()
     for item in raw.get("metrics") if isinstance(raw.get("metrics"), list) else []:
         label = item.get("label") if isinstance(item, dict) else None
-        metric, problem = clean_metric(item, by_name, used)
+        metric, problem = clean_metric(item, by_name, used, warnings)
         if problem:
             warnings.append(f"ตัด metric '{label or '?'}': {problem}")
             continue

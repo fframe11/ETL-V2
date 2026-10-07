@@ -160,3 +160,82 @@ def test_metric_columns_lists_every_referenced_column():
 def test_non_objects_are_rejected():
     with pytest.raises(sl.SemanticError):
         sl.validate_semantic([], PROFILE)
+
+
+def test_metric_with_list_column_is_dropped_with_reason():
+    raw = {"columns": {}, "metrics": [
+        {"label": "test", "type": "simple", "measure": {"agg": "sum", "column": ["Profit"]}}
+    ]}
+    semantic, warnings = sl.validate_semantic(raw, PROFILE)
+    assert len(semantic["metrics"]) == 0
+    assert any("test" in w and "ไม่มีคอลัมน์" in w for w in warnings)
+
+
+def test_metric_with_dict_where_column_is_dropped_with_reason():
+    raw = {"columns": {}, "metrics": [
+        {"label": "bad_where", "type": "simple",
+         "measure": {"agg": "sum", "column": "Profit", "where": {"column": {"nested": "value"}, "op": "eq", "value": "test"}}}
+    ]}
+    semantic, warnings = sl.validate_semantic(raw, PROFILE)
+    assert len(semantic["metrics"]) == 0
+    assert any("bad_where" in w and "เงื่อนไข" in w for w in warnings)
+
+
+def test_pii_none_uses_rule_and_warns():
+    raw = {"columns": {
+        "Customer_Name": {"role": "text", "pii": None}
+    }, "metrics": []}
+    semantic, warnings = sl.validate_semantic(raw, PROFILE)
+    assert semantic["columns"]["Customer_Name"]["pii"] is True
+    assert any("Customer_Name" in w and "pii ต้องเป็น" in w for w in warnings)
+
+
+def test_pii_zero_uses_rule_and_warns():
+    raw = {"columns": {
+        "Customer_Name": {"role": "text", "pii": 0}
+    }, "metrics": []}
+    semantic, warnings = sl.validate_semantic(raw, PROFILE)
+    assert semantic["columns"]["Customer_Name"]["pii"] is True
+    assert any("Customer_Name" in w and "pii ต้องเป็น" in w for w in warnings)
+
+
+def test_pii_empty_string_uses_rule_and_warns():
+    raw = {"columns": {
+        "Customer_Name": {"role": "text", "pii": ""}
+    }, "metrics": []}
+    semantic, warnings = sl.validate_semantic(raw, PROFILE)
+    assert semantic["columns"]["Customer_Name"]["pii"] is True
+    assert any("Customer_Name" in w and "pii ต้องเป็น" in w for w in warnings)
+
+
+def test_metric_with_invalid_currency_warns_and_drops_currency():
+    raw = {"columns": {}, "metrics": [
+        {"id": "bad_curr", "label": "has dollar", "type": "simple", "measure": {"agg": "sum", "column": "Total_Sales"},
+         "format": "currency", "currency": "dollar"}
+    ]}
+    semantic, warnings = sl.validate_semantic(raw, PROFILE)
+    metric = semantic["metrics"][0]
+    assert metric["currency"] is None
+    assert any("dollar" in w and "has dollar" in w for w in warnings)
+
+
+def test_metric_with_unknown_format_warns_and_uses_number():
+    raw = {"columns": {}, "metrics": [
+        {"id": "bad_fmt", "label": "unknown fmt", "type": "simple", "measure": {"agg": "sum", "column": "Total_Sales"},
+         "format": "bitcoin"}
+    ]}
+    semantic, warnings = sl.validate_semantic(raw, PROFILE)
+    metric = semantic["metrics"][0]
+    assert metric["format"] == "number"
+    assert any("unknown fmt" in w and "รูปแบบ" in w and "bitcoin" in w for w in warnings)
+
+
+def test_metric_with_non_bool_higher_is_better_warns_and_uses_true():
+    raw = {"columns": {}, "metrics": [
+        {"id": "bad_hib", "label": "yes string", "type": "simple", "measure": {"agg": "sum", "column": "Total_Sales"},
+         "higher_is_better": "yes"}
+    ]}
+    semantic, warnings = sl.validate_semantic(raw, PROFILE)
+    metric = semantic["metrics"][0]
+    assert metric["higher_is_better"] is True
+    assert any("yes string" in w and "higher_is_better" in w for w in warnings)
