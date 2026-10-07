@@ -44,8 +44,11 @@ _GAP_ORDER = ("G3", "G4", "G1", "G2", "G5", "G6")
 
 
 def is_identifier(column, rows):
-    """A whole-number column that is (nearly) unique or has 9+ digit values: an id, account or
-    phone number, whose min and max are real records."""
+    """A column the semantic layer marks as an identifier, or a whole-number column that is
+    (nearly) unique or has 9+ digit values: an id, account or phone number, whose min and max
+    are real records."""
+    if column.get("role") == "identifier":
+        return True
     low, high = column.get("min"), column.get("max")
     if low is None or high is None or float(low) != int(low) or float(high) != int(high):
         return False
@@ -80,11 +83,16 @@ def _is_additive(name):
     return any(w in lowered for w in _ADDITIVE_HINTS)
 
 
-def _metric(name):
-    """(metric, label): a total for quantities that add up, an average for the rest."""
-    if _is_additive(name):
-        return {"agg": "sum", "column": name}, f"ผลรวม {name}"
-    return {"agg": "avg", "column": name}, f"ค่าเฉลี่ย {name}"
+_AGG_LABEL = {"sum": "ผลรวม", "avg": "ค่าเฉลี่ย", "min": "ต่ำสุด", "max": "สูงสุด", "count_distinct": "จำนวนค่าไม่ซ้ำ"}
+
+
+def _metric(column):
+    """(metric, label): the aggregation the semantic layer gives the column (default_agg); without
+    one, a total for quantities that add up and an average for the rest, guessed from the name.
+    The label keeps the column name: the AI ranking checks reworded texts against it."""
+    name = column["name"]
+    agg = column.get("default_agg") if column.get("default_agg") in _AGG_LABEL else ("sum" if _is_additive(name) else "avg")
+    return {"agg": agg, "column": name}, f"{_AGG_LABEL[agg]} {name}"
 
 
 def _periods(low, high, grain):
@@ -114,9 +122,11 @@ def _usable(profile):
     rows = profile["rows"]
     measures, categories, dates = [], [], []
     for c in profile["columns"]:
-        if c["missing_pct"] > MAX_MISSING_PCT:
+        # role is present only when the profile went through semantic_layer.apply_to_profile
+        role = c.get("role")
+        if c["missing_pct"] > MAX_MISSING_PCT or role == "identifier":
             continue
-        if c["kind"] == "numeric" and not is_identifier(c, rows):
+        if c["kind"] == "numeric" and role in (None, "measure") and not is_identifier(c, rows):
             measures.append(c)
         elif c["kind"] == "categorical" and CATEGORY_MIN_DISTINCT <= c["distinct"] <= CATEGORY_MAX_DISTINCT:
             categories.append(c)
@@ -132,8 +142,8 @@ def _suggestion(rule, key, text, widget):
 
 def suggest_from_profile(profile, audience="business", limit=DEFAULT_LIMIT):
     measures, categories, dates = _usable(profile)
-    main = _metric(measures[0]["name"]) if measures else ({"agg": "count", "column": None}, "จำนวนแถว")
-    by_rule = {rule: [] for rule in ("R1", "R2", "R3", "R4", "R5", "R7", "R8")}
+    main = _metric(measures[0]) if measures else ({"agg": "count", "column": None}, "จำนวนแถว")
+    by_rule ={rule: [] for rule in ("R1", "R2", "R3", "R4", "R5", "R7", "R8")}
 
     if dates:
         date = dates[0]["name"]
@@ -176,7 +186,7 @@ def suggest_from_profile(profile, audience="business", limit=DEFAULT_LIMIT):
 
     if measures and not dates and not categories:
         for c in measures[:3]:
-            metric, label = _metric(c["name"])
+            metric, label = _metric(c)
             by_rule["R7"].append(_suggestion("R7", c["name"], f"ดู{label}", {"type": "kpi", "metric": metric}))
 
     by_rule["R8"] = _health_checks(profile)
@@ -221,17 +231,33 @@ def _change(gap, key, text):
     return {"id": f"{gap}:{key}", "rule": gap, "text": text}
 
 
-def suggest_refinements(profile, spec, limit=GAP_LIMIT):
+def _kpi_columns(widgets, metrics):
+    """The columns the kpi cards already show, directly or through a simple semantic-layer metric."""
+    by_id = {m["id"]: m for m in metrics or []}
+    columns = set()
+    for w in widgets:
+        if w["type"] != "kpi":
+            continue
+        definition = by_id.get(w["metric"].get("metric_id"))
+        if definition is None:
+            columns.add(w["metric"].get("column"))
+        elif definition["type"] == "simple":
+            columns.add(definition["measure"]["column"])
+    return columns
+
+
+def suggest_refinements(profile, spec, limit=GAP_LIMIT, metrics=None):
     """What the current dashboard does not use yet, as instructions the refine box understands.
 
     `spec` is a spec that validate_spec() produced for this profile; the suggestions are the gaps
     between it and the columns the profile says are worth charting. Same rules as above: profile and
-    spec only, no rows, no LLM."""
+    spec only, no rows, no LLM. `metrics` are the semantic-layer definitions that {"metric_id"}
+    widgets name."""
     measures, categories, dates = _usable(profile)
     widgets, filters = spec["widgets"], spec["filters"]
     kinds = {c["name"]: c["kind"] for c in profile["columns"]}
     distinct = {c["name"]: c["distinct"] for c in profile["columns"]}
-    main = _metric(measures[0]["name"]) if measures else ({"agg": "count", "column": None}, "จำนวนแถว")
+    main = _metric(measures[0]) if measures else ({"agg": "count", "column": None}, "จำนวนแถว")
     by_gap = {gap: [] for gap in _GAP_ORDER}
 
     if dates and not any(w["type"] in ("line", "area") for w in widgets):
@@ -249,14 +275,14 @@ def suggest_refinements(profile, spec, limit=GAP_LIMIT):
         for c in sorted(open_columns, key=lambda c: c["distinct"]):
             by_gap["G1"].append(_change("G1", c["name"], f"เพิ่มตัวกรอง {c['name']}"))
 
-    in_kpi = {w["metric"]["column"] for w in widgets if w["type"] == "kpi"}
+    in_kpi = _kpi_columns(widgets, metrics)
     for c in measures:
         if c["name"] not in in_kpi:
-            by_gap["G2"].append(_change("G2", c["name"], f"เพิ่ม KPI {_metric(c['name'])[1]}"))
+            by_gap["G2"].append(_change("G2", c["name"], f"เพิ่ม KPI {_metric(c)[1]}"))
 
     for w in widgets:  # a share only reads well over a few values, and only for totals and counts
         few_values = kinds.get(w.get("x")) == "categorical" and distinct[w["x"]] <= DONUT_MAX_DISTINCT
-        if w["type"] == "bar" and few_values and not w["group_by"] and w["metric"]["agg"] in ("sum", "count"):
+        if w["type"] == "bar" and few_values and not w["group_by"] and w["metric"].get("agg") in ("sum", "count"):
             by_gap["G5"].append(_change("G5", w["id"], f"เปลี่ยน '{w['title']}' เป็นกราฟสัดส่วน"))
 
     if spec.get("audience") == "management" and any(w["type"] == "table" for w in widgets):

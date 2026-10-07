@@ -43,7 +43,7 @@ Reply with ONE JSON object and nothing else, following this schema:
     "id": string,
     "type": one of {json.dumps(list(WIDGET_TYPES))},
     "title": string,
-    "metric": {{"agg": one of {json.dumps(list(AGGREGATIONS))}, "column": string or null}},
+    "metric": {{"agg": one of {json.dumps(list(AGGREGATIONS))}, "column": string or null}} or {{"metric_id": string}},
     "format": one of {json.dumps(list(FORMATS))},
     "x": string,
     "group_by": string or null,
@@ -66,6 +66,9 @@ Fields by widget type:
 Rules:
 - Use column names exactly as they appear in the profile. Never invent columns.
 - sum, avg, min and max need a numeric column; count takes "column": null; count_distinct and count_missing take any column.
+- When the user message lists "metrics", they are the dataset's approved definitions: use {{"metric_id": "<id>"}} for kpi cards and charts of that measure instead of rebuilding the formula.
+- Columns with role "identifier" are codes: never sum, average, min or max them and never put them on a chart axis or group_by; count_distinct them instead.
+- When a column has a "label", use it in widget titles and filter labels.
 - The grid has {GRID_COLUMNS} columns. Put 3-4 kpi cards (w 3, h 2) on the first row, charts below (w 4 or 6, h 4) and a table last (w 12, h 5).
 - Use 5-10 widgets and 1-3 filters on the most useful categorical or date columns.
 - audience "management": headline kpis with compare and trends, no wide tables. "analyst": more breakdowns and a detail table. "business": balanced.
@@ -113,26 +116,41 @@ def call_groq(messages, api_key, model):
 
 def profile_for_prompt(profile):
     """The column profile without any cell value except numeric and date ranges (and not
-    even the range of a numeric column that looks like an identifier)."""
+    even the range of a numeric column that looks like an identifier), plus the column's
+    meaning when the profile carries it (semantic_layer.apply_to_profile). Hidden personal
+    columns never reach this function: apply_to_profile has already removed them."""
     columns = []
     for c in profile["columns"]:
         item = {"name": c["name"], "kind": c["kind"], "distinct": c["distinct"], "missing_pct": c["missing_pct"]}
         identifier = c["kind"] == "numeric" and is_identifier(c, profile["rows"])
         if c["kind"] in ("numeric", "date") and not identifier:
             item["min"], item["max"] = c.get("min"), c.get("max")
+        for key in ("role", "label", "unit", "currency"):
+            if c.get(key):
+                item[key] = c[key]
         columns.append(item)
     return {"rows": profile["rows"], "columns": columns}
 
 
-def build_generate_messages(table_name, profile, context, audience):
+def _metrics_for_prompt(metrics):
+    """The approved metric definitions the LLM may name by id (no formula, no value)."""
+    return [{k: m.get(k) for k in ("id", "label", "description", "format")} for m in metrics]
+
+
+def build_generate_messages(table_name, profile, context, audience, metrics=None):
     user = {"dataset": table_name, "audience": audience, "request": context, "profile": profile_for_prompt(profile)}
+    if metrics:
+        user["metrics"] = _metrics_for_prompt(metrics)
     return [{"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": json.dumps(user, ensure_ascii=False)}]
 
 
-def build_refine_messages(table_name, profile, spec, instruction):
+def build_refine_messages(table_name, profile, spec, instruction, metrics=None):
     user = {"dataset": table_name, "profile": profile_for_prompt(profile), "current_spec": spec,
-            "suggested_changes": [s["text"] for s in suggest_refinements(profile, spec)], "instruction": instruction}
+            "suggested_changes": [s["text"] for s in suggest_refinements(profile, spec, metrics=metrics)],
+            "instruction": instruction}
+    if metrics:
+        user["metrics"] = _metrics_for_prompt(metrics)
     return [{"role": "system", "content": SYSTEM_PROMPT + REFINE_RULES},
             {"role": "user", "content": json.dumps(user, ensure_ascii=False)}]
 
@@ -147,7 +165,7 @@ def parse_json_object(text):
         raise SpecError(f"JSON จาก AI อ่านไม่ได้: {exc}") from exc
 
 
-def _ask(messages, profile):
+def _ask(messages, profile, metrics=None):
     """(spec, warnings, model). One retry that tells the LLM why its answer was rejected."""
     started = time.monotonic()
     key, model = groq_settings()
@@ -155,7 +173,7 @@ def _ask(messages, profile):
         raise LLMUnavailable("ยังไม่ได้ตั้งค่า Groq API key")
     content = call_groq(messages, key, model)
     try:
-        spec, warnings = validate_spec(parse_json_object(content), profile)
+        spec, warnings = validate_spec(parse_json_object(content), profile, metrics)
     except SpecError as exc:
         if time.monotonic() - started > RETRY_BUDGET_S:
             raise  # no time left for a second call before the proxy gives up on the request
@@ -163,7 +181,7 @@ def _ask(messages, profile):
             {"role": "assistant", "content": content},
             {"role": "user", "content": f"That answer was rejected: {exc}. Reply again with the corrected JSON object only."},
         ]
-        spec, warnings = validate_spec(parse_json_object(call_groq(retry, key, model)), profile)
+        spec, warnings = validate_spec(parse_json_object(call_groq(retry, key, model)), profile, metrics)
     return spec, warnings, model
 
 
@@ -208,53 +226,81 @@ def _health_spec(profile):
     return {"widgets": widgets, "filters": [{"column": c["name"]} for c in categories[:2]] + [{"column": d} for d in dates[:1]]}
 
 
-def fallback_spec(profile, context="", audience="business"):
+AGG_WORDS = {"sum": "ผลรวม", "avg": "ค่าเฉลี่ย", "min": "ต่ำสุด", "max": "สูงสุด", "count_distinct": "จำนวนค่าไม่ซ้ำ"}
+MAX_FALLBACK_KPIS = 4
+
+
+def _label(column):
+    return column.get("label") or column["name"]
+
+
+def fallback_spec(profile, context="", audience="business", metrics=None):
     """A sensible dashboard from the column kinds alone, used when the LLM is unavailable.
     The reader type shapes it: management gets no detail table and a period comparison, an analyst a
-    wider table, a data steward a data-health view."""
+    wider table, a data steward a data-health view. With a semantic layer, the approved metrics lead
+    the kpi cards (at most 4), measures use their default aggregation and identifiers are never
+    summed or charted."""
     if audience == "steward":
         return {"title": "แดชบอร์ดสุขภาพข้อมูล", "description": context[:300], **_health_spec(profile)}
     columns = profile["columns"]
-    numeric = [c["name"] for c in columns if c["kind"] == "numeric"]
-    dates = [c["name"] for c in columns if c["kind"] == "date"]
-    categories = sorted((c for c in columns if c["kind"] == "categorical"), key=lambda c: c["distinct"])
-    main = {"agg": "sum", "column": numeric[0]} if numeric else {"agg": "count", "column": None}
-    widgets = [{"type": "kpi", "title": "จำนวนแถว", "metric": {"agg": "count", "column": None}}]
-    widgets += [{"type": "kpi", "title": f"ผลรวม {n}", "metric": {"agg": "sum", "column": n}} for n in numeric[:3]]
+    usable = [c for c in columns if c.get("role") != "identifier"]
+    numeric = [c for c in usable if c["kind"] == "numeric" and c.get("role") in (None, "measure")]
+    dates = [c for c in usable if c["kind"] == "date"]
+    categories = sorted((c for c in usable if c["kind"] == "categorical"), key=lambda c: c["distinct"])
+
+    def measure_metric(c):
+        agg = c.get("default_agg") if c.get("default_agg") in AGG_WORDS else "sum"
+        return {"agg": agg, "column": c["name"]}
+
+    main = measure_metric(numeric[0]) if numeric else {"agg": "count", "column": None}
+    metrics = metrics or []
+    covered = {(m["measure"]["agg"], m["measure"]["column"]) for m in metrics
+               if m["type"] == "simple" and not m["measure"].get("where")}
+    widgets = [{"type": "kpi", "title": m["label"], "metric": {"metric_id": m["id"]}} for m in metrics[:MAX_FALLBACK_KPIS]]
+    if not widgets:
+        widgets.append({"type": "kpi", "title": "จำนวนแถว", "metric": {"agg": "count", "column": None}})
+    for c in numeric:
+        metric = measure_metric(c)
+        if len(widgets) >= MAX_FALLBACK_KPIS:
+            break
+        if (metric["agg"], metric["column"]) not in covered:
+            widgets.append({"type": "kpi", "title": f"{AGG_WORDS[metric['agg']]} {_label(c)}", "metric": metric})
     if audience == "management" and dates:
-        widgets[0]["compare"] = {"date_column": dates[0], "time_grain": "month"}
+        widgets[0]["compare"] = {"date_column": dates[0]["name"], "time_grain": "month"}
     if dates:
-        widgets.append({"type": "line", "title": f"แนวโน้มรายเดือนตาม {dates[0]}", "x": dates[0],
+        widgets.append({"type": "line", "title": f"แนวโน้มรายเดือนตาม {_label(dates[0])}", "x": dates[0]["name"],
                         "time_grain": "month", "metric": main})
     if categories:
-        widest = categories[-1]["name"]
-        widgets.append({"type": "bar", "title": f"แยกตาม {widest}", "x": widest, "metric": main})
+        widest = categories[-1]
+        widgets.append({"type": "bar", "title": f"แยกตาม {_label(widest)}", "x": widest["name"], "metric": main})
         if len(categories) > 1 and categories[0]["distinct"] <= 8:
-            narrow = categories[0]["name"]
-            widgets.append({"type": "donut", "title": f"สัดส่วนตาม {narrow}", "x": narrow, "metric": main})
+            narrow = categories[0]
+            widgets.append({"type": "donut", "title": f"สัดส่วนตาม {_label(narrow)}", "x": narrow["name"], "metric": main})
     if audience != "management" or len(widgets) == 1:
         widgets.append({"type": "table", "title": "ตัวอย่างข้อมูล", "columns": [c["name"] for c in columns[:12 if audience == "analyst" else 8]]})
-    filters = [{"column": c["name"]} for c in categories[:2]] + [{"column": d} for d in dates[:1]]
-    title = "แดชบอร์ดผู้บริหาร" if audience == "management" else "แดชบอร์ดภาพรวม"
+    filters = [{"column": c["name"]} for c in categories[:2]] + [{"column": d["name"]} for d in dates[:1]]
+    title ="แดชบอร์ดผู้บริหาร" if audience == "management" else "แดชบอร์ดภาพรวม"
     return {"title": title, "description": context[:300], "widgets": widgets, "filters": filters}
 
 
-def generate_spec(table_name, profile, context, audience):
+def generate_spec(table_name, profile, context, audience, metrics=None):
     try:
-        spec, warnings, model = _ask(build_generate_messages(table_name, profile, context, audience), profile)
+        messages = build_generate_messages(table_name, profile, context, audience, metrics)
+        spec, warnings, model = _ask(messages, profile, metrics)
         engine = "groq"
     except (LLMUnavailable, SpecError) as exc:
         logger.warning("Dashboard generation fell back to rules: %s", exc)
-        spec, warnings = validate_spec(fallback_spec(profile, context, audience), profile)
+        spec, warnings = validate_spec(fallback_spec(profile, context, audience, metrics), profile, metrics)
         warnings = [f"ใช้แดชบอร์ดอัตโนมัติแบบกฎแทน AI: {exc}"] + warnings
         engine, model = "rules", None
     spec["audience"] = audience
     return {"spec": spec, "warnings": warnings, "engine": engine, "model": model}
 
 
-def refine_spec(table_name, profile, spec, instruction):
+def refine_spec(table_name, profile, spec, instruction, metrics=None):
     """Raises LLMUnavailable or SpecError; there is no rule-based refinement."""
-    new_spec, warnings, model = _ask(build_refine_messages(table_name, profile, spec, instruction), profile)
+    messages = build_refine_messages(table_name, profile, spec, instruction, metrics)
+    new_spec, warnings, model = _ask(messages, profile, metrics)
     return {"spec": new_spec, "warnings": warnings, "engine": "groq", "model": model,
             "changes": diff_specs(spec, new_spec)}
 
