@@ -1,6 +1,7 @@
 """Create Dashboard tab: list the Quality-Gate-passed datasets, preview one, let the LLM
-draft a dashboard spec from the user's request, recompute it for the viewer's filters
-and refine it with follow-up instructions and save it (ES index sdoqap_dashboards)."""
+draft a dashboard spec from the user's request, recompute it for the viewer's filters,
+export the filtered rows as CSV for the BI team, refine it with follow-up instructions
+and save it (ES index sdoqap_dashboards)."""
 import json
 import logging
 import re
@@ -9,12 +10,13 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field, StrictBool
 
-from . import dashboard_data, dashboard_llm, dashboard_suggest, semantic, semantic_layer
+from . import dashboard_data, dashboard_export, dashboard_llm, dashboard_suggest, semantic, semantic_layer
 from .auth import require_session
 from .config import get_es_client
-from .dashboard_compute import compute_dashboard
+from .dashboard_compute import apply_filters, compute_dashboard
 from .dashboard_spec import AUDIENCES, SpecError, validate_spec
 
 logger = logging.getLogger(__name__)
@@ -52,6 +54,12 @@ class RenderPayload(BaseModel):
     selections: Dict[str, Any] = Field(default_factory=dict)
 
 
+class ExportPayload(BaseModel):
+    table_name: str
+    selections: Dict[str, Any] = Field(default_factory=dict)
+    include_personal: StrictBool = False  # only a JSON true lets personal columns out
+
+
 class SavePayload(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=500)
@@ -69,12 +77,17 @@ def _es_or_none():
         return None
 
 
-def _dataset(table_name):
-    """(DataFrame, profile without the hidden personal columns and with each column's meaning,
-    usable metric definitions). The semantic view is read once per request; without
+def _dataset_with_view(table_name):
+    """(DataFrame, full profile, semantic view). The view is read once per request; without
     Elasticsearch it is the rule guess, which still hides columns whose names look personal."""
     df, profile = dashboard_data.load_active_dataset(table_name)
-    view = semantic.load_view(table_name, profile, _es_or_none())
+    return df, profile, semantic.load_view(table_name, profile, _es_or_none())
+
+
+def _dataset(table_name):
+    """(DataFrame, profile without the hidden personal columns and with each column's meaning,
+    usable metric definitions)."""
+    df, profile, view = _dataset_with_view(table_name)
     return df, semantic_layer.apply_to_profile(profile, view), view["effective"]["metrics"]
 
 
@@ -163,6 +176,36 @@ def render_dashboard(payload: RenderPayload):
     spec, warnings = _checked_spec(payload.spec, profile, metrics)
     return {"spec": spec, "warnings": warnings,
             "data": compute_dashboard(df, spec, profile, payload.selections, metrics)}
+
+
+@router.post("/export")
+def export_dashboard_rows(payload: ExportPayload, user: str = Depends(require_session)):
+    """The rows the dashboard is computed from (the same selections as /render) as a CSV file
+    for Excel or Power BI. Columns the semantic view hides as personal stay out unless
+    include_personal is true, and a selection on a hidden column is ignored as /render ignores it."""
+    df, profile, view = _dataset_with_view(payload.table_name)
+    visible = semantic_layer.apply_to_profile(profile, view)
+    rows = apply_filters(df, payload.selections, {c["name"]: c["kind"] for c in visible["columns"]})
+    hidden = set(view["hidden_columns"])
+    columns = [c["name"] for c in profile["columns"] if payload.include_personal or c["name"] not in hidden]
+    if not columns:
+        raise HTTPException(status_code=422, detail="ไม่มีคอลัมน์ที่ส่งออกได้ ทุกคอลัมน์เป็นข้อมูลส่วนบุคคล")
+    cap = dashboard_export.MAX_EXPORT_ROWS
+    if len(rows) > cap:
+        raise HTTPException(status_code=413, detail=(
+            f"ข้อมูลหลังกรองมี {len(rows):,} แถว เกินที่ส่งออกได้ {cap:,} แถว กรุณาเพิ่มตัวกรองแล้วลองใหม่"))
+    meaning = view["effective"]["columns"]
+    headers = dashboard_export.header_labels(columns, {n: (meaning.get(n) or {}).get("label") for n in columns})
+    personal = [c for c in columns if c in hidden]
+    if personal:  # who took personal data out, from which table and how many rows; never the values
+        logger.warning("Dashboard CSV export with personal columns: user=%s table=%s rows=%d columns=%s",
+                       user, payload.table_name, len(rows), ",".join(personal))
+    else:
+        logger.info("Dashboard CSV export: user=%s table=%s rows=%d include_personal=%s",
+                    user, payload.table_name, len(rows), payload.include_personal)
+    filename = dashboard_export.export_filename(payload.table_name, datetime.now(dashboard_export.BANGKOK).date())
+    return StreamingResponse(dashboard_export.csv_chunks(rows, columns, headers), media_type="text/csv; charset=utf-8",
+                             headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
 def _summary(doc):

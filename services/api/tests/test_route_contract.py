@@ -125,6 +125,7 @@ CALLS = [
     same("POST", "/api/v1/dashboards/generate"),
     same("POST", "/api/v1/dashboards/refine"),
     same("POST", "/api/v1/dashboards/render"),
+    same("POST", "/api/v1/dashboards/export"),
     same("GET", "/api/v1/dashboards/saved"),
     same("POST", "/api/v1/dashboards/saved"),
     ("GET", "/api/v1/dashboards/saved/D1", "/api/v1/dashboards/saved/{dashboard_id}"),
