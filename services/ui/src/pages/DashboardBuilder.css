@@ -149,3 +149,4 @@
 .dbb-metric-part { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; padding: 8px; border: 1px dashed var(--dbb-border); border-radius: 6px; }
 .dbb-metric-form input, .dbb-metric-form select, .dbb-metric-part select, .dbb-metric-part input { padding: 4px 6px; border: 1px solid var(--dbb-border); border-radius: 4px; font: inherit; font-size: 13px; }
 .dbb-check { display: inline-flex; align-items: center; gap: 6px; }
+.dbb-metric-form > .dbb-error-inline { grid-column: 1 / -1; margin: 0; }

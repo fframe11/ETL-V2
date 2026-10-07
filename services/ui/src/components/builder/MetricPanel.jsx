@@ -1,21 +1,39 @@
 import React, { useState } from "react";
 import {
-  AGG_LABELS, FORMAT_LABELS, METRIC_AGGS, WHERE_OPS,
-  columnsFor, describeMetric, emptyMetric, metricValueText, toMetricBody
+  AGG_LABELS, FORMAT_LABELS, MAX_METRICS, METRIC_AGGS, WHERE_OPS,
+  columnsFor, describeMetric, emptyMetric, idProblem, metricValueText, opsForKind, toMetricBody, whereProblem
 } from "./semanticModel";
 
-const partReady = (part) => part.agg === "count" || Boolean(part.column);
+// The first reason a metric part cannot be used: a column that is not offered (a stale pick after the
+// calculation changed, or a hidden column) or a condition the server would reject.
+function partProblem(title, part, { profile, columns, hidden }, simple) {
+  if (part.agg !== "count" && !columnsFor(part.agg, profile, columns, hidden).includes(part.column)) return `${title}: เลือกคอลัมน์`;
+  if (!part.where) return "";
+  const offered = columnsFor("count", profile, columns, hidden).includes(part.where.column);
+  const kind = offered ? profile.columns.find((c) => c.name === part.where.column)?.kind : undefined;
+  const problem = whereProblem(part.where, kind);
+  return problem && !simple ? `${title}: ${problem}` : problem;
+}
 
 function PartFields({ title, part, onChange, profile, columns, hidden }) {
   const options = columnsFor(part.agg, profile, columns, hidden);
   const whereColumns = columnsFor("count", profile, columns, hidden);
   const labelOf = (name) => columns[name]?.label || name;
+  const kindOf = (name) => profile.columns.find((c) => c.name === name)?.kind;
   const where = part.where;
+  const ops = where ? opsForKind(kindOf(where.column)) : [];
+  const changeAgg = (agg) => {
+    const keep = agg !== "count" && columnsFor(agg, profile, columns, hidden).includes(part.column);
+    onChange({ ...part, agg, column: keep ? part.column : agg === "count" ? null : "" });
+  };
+  const changeWhereColumn = (column) => {
+    const op = opsForKind(kindOf(column)).includes(where.op) ? where.op : "eq";
+    onChange({ ...part, where: { ...where, column, op } });
+  };
   return (
     <fieldset className="dbb-metric-part">
       <legend>{title}</legend>
-      <select aria-label={`${title}: การคำนวณ`} value={part.agg}
-        onChange={(e) => onChange({ ...part, agg: e.target.value, column: e.target.value === "count" ? null : part.column })}>
+      <select aria-label={`${title}: การคำนวณ`} value={part.agg} onChange={(e) => changeAgg(e.target.value)}>
         {METRIC_AGGS.map((agg) => <option key={agg} value={agg}>{AGG_LABELS[agg]}</option>)}
       </select>
       {part.agg !== "count" && (
@@ -26,16 +44,19 @@ function PartFields({ title, part, onChange, profile, columns, hidden }) {
       )}
       <label className="dbb-check">
         <input type="checkbox" aria-label={`${title}: มีเงื่อนไข`} checked={Boolean(where)}
+          disabled={!where && whereColumns.length === 0}
           onChange={(e) => onChange({ ...part, where: e.target.checked ? { column: whereColumns[0] || "", op: "eq", value: "" } : null })} />
         มีเงื่อนไข
       </label>
       {where && (
         <>
-          <select aria-label={`${title}: คอลัมน์เงื่อนไข`} value={where.column} onChange={(e) => onChange({ ...part, where: { ...where, column: e.target.value } })}>
+          <select aria-label={`${title}: คอลัมน์เงื่อนไข`} value={whereColumns.includes(where.column) ? where.column : ""}
+            onChange={(e) => changeWhereColumn(e.target.value)}>
+            <option value="">เลือกคอลัมน์</option>
             {whereColumns.map((name) => <option key={name} value={name}>{labelOf(name)}</option>)}
           </select>
           <select aria-label={`${title}: ตัวเทียบ`} value={where.op} onChange={(e) => onChange({ ...part, where: { ...where, op: e.target.value } })}>
-            {Object.entries(WHERE_OPS).map(([op, text]) => <option key={op} value={op}>{text}</option>)}
+            {ops.map((op) => <option key={op} value={op}>{WHERE_OPS[op]}</option>)}
           </select>
           <input aria-label={`${title}: ค่า`} value={Array.isArray(where.value) ? where.value.join(", ") : String(where.value ?? "")}
             onChange={(e) => onChange({ ...part, where: { ...where, value: e.target.value } })} />
@@ -45,12 +66,20 @@ function PartFields({ title, part, onChange, profile, columns, hidden }) {
   );
 }
 
-export function MetricForm({ initial, profile, columns, hidden, onSave, onCancel }) {
+// `metrics` and `index` (null for a new metric) let the form check the id against the other metrics.
+export function MetricForm({ initial, profile, columns, hidden, metrics = [], index = null, onSave, onCancel }) {
   const [form, setForm] = useState(() => ({ ...emptyMetric(), ...initial }));
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
   const parts = { profile, columns, hidden };
-  const ready = form.label.trim().length > 0 &&
-    (form.type === "simple" ? partReady(form.measure) : partReady(form.numerator) && partReady(form.denominator));
+  const simple = form.type === "simple";
+  const problem =
+    (form.label.trim() ? "" : "ใส่ชื่อ metric") ||
+    (simple
+      ? partProblem("ค่า", form.measure, parts, true)
+      : partProblem("ตัวตั้ง", form.numerator, parts, false) || partProblem("ตัวหาร", form.denominator, parts, false)) ||
+    idProblem(form.id, metrics, index) ||
+    (index === null && metrics.length >= MAX_METRICS ? `มีได้สูงสุด ${MAX_METRICS} metric` : "");
+  const ready = problem === "";
   const submit = (e) => {
     e.preventDefault();
     if (ready) onSave(toMetricBody(form, profile));
@@ -93,6 +122,7 @@ export function MetricForm({ initial, profile, columns, hidden, onSave, onCancel
         <input type="checkbox" checked={form.higher_is_better} onChange={(e) => set({ higher_is_better: e.target.checked })} />
         ยิ่งสูงยิ่งดี
       </label>
+      {problem && <p className="dbb-error-inline">{problem}</p>}
       <div className="dbb-actions">
         <button type="button" onClick={onCancel}>ยกเลิก</button>
         <button type="submit" className="dbb-btn-primary" disabled={!ready}>ใช้ metric นี้</button>
@@ -116,7 +146,8 @@ export default function MetricPanel({ profile, columns, metrics, view, onChange 
     <section className="dbb-metrics" aria-label="Metric">
       <div className="dbb-toolbar">
         <h3>Metric</h3>
-        <button type="button" onClick={() => setEditing("new")} disabled={active !== null}>เพิ่ม metric</button>
+        {metrics.length >= MAX_METRICS && <span className="dbb-muted">มีได้สูงสุด {MAX_METRICS} metric</span>}
+        <button type="button" onClick={() => setEditing("new")} disabled={active !== null || metrics.length >= MAX_METRICS}>เพิ่ม metric</button>
       </div>
       <ul>
         {metrics.map((m, i) => (
@@ -139,7 +170,7 @@ export default function MetricPanel({ profile, columns, metrics, view, onChange 
       </ul>
       {active !== null && (
         <MetricForm initial={active === "new" ? {} : metrics[active]} profile={profile} columns={columns} hidden={hidden}
-          onSave={save} onCancel={() => setEditing(null)} />
+          metrics={metrics} index={active === "new" ? null : active} onSave={save} onCancel={() => setEditing(null)} />
       )}
     </section>
   );

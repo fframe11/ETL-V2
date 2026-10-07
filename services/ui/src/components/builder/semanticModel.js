@@ -77,9 +77,54 @@ export function emptyMetric() {
     format: "number", currency: null, higher_is_better: true };
 }
 
+export const MAX_METRICS = 20;
+const MAX_IN_VALUES = 50;
+const PLAIN_NUMBER = /^-?\d+(\.\d+)?$/;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?)?$/;
+const COMPARISONS = ["gt", "gte", "lt", "lte"];
+const METRIC_ID = /^[a-z0-9_]{1,40}$/;
+
+// The values a where condition holds, as trimmed strings (an "in" list is split on commas).
+function whereValues(where) {
+  if (where.op === "in") {
+    const raw = Array.isArray(where.value) ? where.value : String(where.value ?? "").split(",");
+    return raw.map((v) => String(v).trim()).filter(Boolean);
+  }
+  return [String(where.value ?? "").trim()].filter(Boolean);
+}
+
+// Which comparison operators a column kind may use: text only has equality and "in".
+export function opsForKind(kind) {
+  return Object.keys(WHERE_OPS).filter((op) => !COMPARISONS.includes(op) || kind === "numeric" || kind === "date");
+}
+
+// A Thai message for a where condition the server would reject or change, or "" when it is fine.
+// `kind` is the where column's kind, or undefined when the column is missing or not offered (hidden).
+export function whereProblem(where, kind) {
+  if (!where.column || !kind) return "เลือกคอลัมน์เงื่อนไข";
+  if (!opsForKind(kind).includes(where.op)) return "ตัวเทียบนี้ใช้กับคอลัมน์ข้อความไม่ได้";
+  const values = whereValues(where);
+  if (values.length === 0) return "ใส่ค่าเงื่อนไข";
+  if (values.length > MAX_IN_VALUES) return `ใส่ค่าได้ 1 ถึง ${MAX_IN_VALUES} ค่า`;
+  if (kind === "numeric" && !values.every((v) => PLAIN_NUMBER.test(v))) return "ค่าเงื่อนไขต้องเป็นตัวเลข";
+  if (kind === "date" && !values.every((v) => ISO_DATE.test(v) && !Number.isNaN(Date.parse(v.replace(" ", "T"))))) {
+    return "ค่าเงื่อนไขต้องเป็นวันที่แบบ ปปปป-ดด-วว";
+  }
+  return "";
+}
+
+// An id typed by hand must be what the server would keep: its own pattern, and not another metric's id.
+export function idProblem(id, metrics, editingIndex) {
+  const value = (id || "").trim();
+  if (!value) return "";
+  if (!METRIC_ID.test(value)) return "รหัสใช้ได้เฉพาะ a ถึง z ตัวเล็ก ตัวเลข และ _ ไม่เกิน 40 ตัว";
+  if (metrics.some((m, i) => i !== editingIndex && m.id === value)) return "รหัสนี้ซ้ำกับ metric อื่น";
+  return "";
+}
+
 function parseValue(where, kind) {
-  const number = (v) => (kind === "numeric" && v !== "" && !Number.isNaN(Number(v)) ? Number(v) : v);
-  if (where.op === "in") return String(where.value).split(",").map((v) => v.trim()).filter(Boolean).map(number);
+  const number = (v) => (kind === "numeric" && PLAIN_NUMBER.test(v) ? Number(v) : v);
+  if (where.op === "in") return whereValues(where).map(number);
   return typeof where.value === "string" ? number(where.value.trim()) : where.value;
 }
 

@@ -1,7 +1,7 @@
 import { it, expect } from "vitest";
 import {
   roleOptions, updateColumn, differsFromApproved, statusText,
-  describeMetric, toMetricBody, columnsFor, metricValueText, emptyMetric
+  describeMetric, toMetricBody, columnsFor, metricValueText, emptyMetric, whereProblem, idProblem, MAX_METRICS
 } from "./semanticModel";
 import { PROFILE, SEMANTIC_VIEW } from "../../test/dashboardFixtures";
 
@@ -64,4 +64,38 @@ it("shows a current value only for metrics unchanged since the server computed t
   expect(metricValueText(avg, SEMANTIC_VIEW)).toBe("ค่าปัจจุบัน 83.33");
   expect(metricValueText({ ...avg, label: "ใหม่" }, SEMANTIC_VIEW)).toBe("บันทึกร่างเพื่อดูค่า");
   expect(metricValueText(avg, { ...SEMANTIC_VIEW, metric_values: { avg_amount: null } })).toBe("ยังไม่มีค่า");
+});
+
+it("explains why a where condition cannot be used", () => {
+  expect(whereProblem({ column: "", op: "eq", value: "x" }, undefined)).toBe("เลือกคอลัมน์เงื่อนไข");
+  expect(whereProblem({ column: "region", op: "eq", value: "North" }, "categorical")).toBe("");
+  expect(whereProblem({ column: "region", op: "gt", value: "N" }, "categorical")).toBe("ตัวเทียบนี้ใช้กับคอลัมน์ข้อความไม่ได้");
+  expect(whereProblem({ column: "region", op: "eq", value: "  " }, "categorical")).toBe("ใส่ค่าเงื่อนไข");
+  expect(whereProblem({ column: "amount", op: "gt", value: "50" }, "numeric")).toBe("");
+  expect(whereProblem({ column: "amount", op: "lte", value: "-1.5" }, "numeric")).toBe("");
+  for (const bad of ["abc", "0x10", "1e3", "Infinity", "1.", ".5"]) {
+    expect(whereProblem({ column: "amount", op: "gt", value: bad }, "numeric")).toBe("ค่าเงื่อนไขต้องเป็นตัวเลข");
+  }
+  expect(whereProblem({ column: "order_date", op: "gte", value: "2025-01-31" }, "date")).toBe("");
+  expect(whereProblem({ column: "order_date", op: "gte", value: "2025-01-31 10:30:00" }, "date")).toBe("");
+  expect(whereProblem({ column: "order_date", op: "gte", value: "31/01/2025" }, "date")).toBe("ค่าเงื่อนไขต้องเป็นวันที่แบบ ปปปป-ดด-วว");
+  expect(whereProblem({ column: "region", op: "in", value: "N, S" }, "categorical")).toBe("");
+  expect(whereProblem({ column: "region", op: "in", value: " , " }, "categorical")).toBe("ใส่ค่าเงื่อนไข");
+  const many = Array.from({ length: 51 }, (_, i) => `v${i}`).join(",");
+  expect(whereProblem({ column: "region", op: "in", value: many }, "categorical")).toBe("ใส่ค่าได้ 1 ถึง 50 ค่า");
+  expect(whereProblem({ column: "amount", op: "in", value: [1, 2] }, "numeric")).toBe("");
+});
+
+it("checks an id against the server rule and the other metrics", () => {
+  const metrics = SEMANTIC_VIEW.effective.metrics;
+  expect(idProblem("", metrics, null)).toBe("");
+  expect(idProblem("north_sales", metrics, null)).toBe("");
+  expect(idProblem(" north_sales ", metrics, null)).toBe("");
+  expect(idProblem("North", metrics, null)).toBe("รหัสใช้ได้เฉพาะ a ถึง z ตัวเล็ก ตัวเลข และ _ ไม่เกิน 40 ตัว");
+  expect(idProblem("a b", metrics, null)).not.toBe("");
+  expect(idProblem("a".repeat(41), metrics, null)).not.toBe("");
+  expect(idProblem("avg_amount", metrics, null)).toBe("รหัสนี้ซ้ำกับ metric อื่น");
+  expect(idProblem("avg_amount", metrics, 1)).toBe("");
+  expect(idProblem("avg_amount", metrics, 0)).toBe("รหัสนี้ซ้ำกับ metric อื่น");
+  expect(MAX_METRICS).toBe(20);
 });
