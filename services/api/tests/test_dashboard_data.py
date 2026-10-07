@@ -138,6 +138,22 @@ def test_a_table_is_read_once_per_cache_period(monkeypatch):
     assert calls == ["sales"]
 
 
+def test_the_stored_and_the_prepared_frame_have_the_same_rows_and_only_the_stored_one_keeps_every_value(monkeypatch):
+    frame = pd.DataFrame({"run_id": ["r"] * 20, "n": ["10"] * 18 + ["N/A", "12A"], "region": ["a", "b"] * 10})
+    monkeypatch.setattr(dashboard_data, "_read_active", lambda name: frame.copy())
+    stored, prepared, profile = dashboard_data.load_active_pair("sales")
+    assert list(stored.columns) == list(prepared.columns) == ["n", "region"] and len(stored) == len(prepared) == 20
+    assert list(stored.index) == list(prepared.index) == list(range(20))
+    assert stored["n"].tolist()[-2:] == ["N/A", "12A"] and prepared["n"].isna().sum() == 2
+    assert profile["rows"] == 20 and not dashboard_data._FRAME_CACHE  # a fresh read, not the cache
+
+
+def test_the_pair_rejects_an_unsafe_table_name():
+    with pytest.raises(HTTPException) as exc:
+        dashboard_data.load_active_pair("../etc")
+    assert exc.value.status_code == 400
+
+
 def test_unsafe_table_names_are_rejected():
     with pytest.raises(HTTPException) as exc:
         dashboard_data.load_active_dataset("../etc")

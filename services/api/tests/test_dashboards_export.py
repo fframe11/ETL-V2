@@ -21,10 +21,10 @@ from app.api import dashboard_data, dashboard_export, dashboard_llm, dashboards,
 from app.api.auth import SESSION_COOKIE_NAME, create_session_token  # noqa: E402
 from fakes import FakeES  # noqa: E402
 
-DF, PROFILE = dashboard_data.prepare_frame(pd.DataFrame({
+RAW = pd.DataFrame({
     "Order_ID": ["o1", "o2", "o3", "o4"], "Region": ["N", "S", "N", "E"],
     "Total_Sales": [100.0, 200.5, -49.5, 150.0], "Profit": [10.0, 50.5, -4.5, 45.0],
-    "Customer_Name": ["Ann", "Bob", "Cid", "Dee"]}))
+    "Customer_Name": ["Ann", "Bob", "Cid", "Dee"]})
 USD = {"role": "measure", "label": "ยอดขาย", "unit": "currency", "currency": "USD", "default_agg": "sum", "pii": False}
 SPEC = {"filters": [{"column": "Region"}], "widgets": [{"id": "c", "type": "kpi", "metric": {"agg": "count", "column": None}}]}
 NORTH = {"Region": {"values": ["N"]}}
@@ -41,9 +41,11 @@ def es(monkeypatch):
     fake = FakeES()
     store(fake, {"Total_Sales": USD})
     monkeypatch.setattr(dashboards, "_es_or_none", lambda: fake)
-    monkeypatch.setattr(dashboard_data, "load_active_dataset", lambda name: (DF, PROFILE))
+    monkeypatch.setattr(dashboard_data, "_read_active", lambda name: RAW.copy())
     monkeypatch.setattr(dashboard_llm, "groq_settings", lambda: ("", "openai/gpt-oss-120b"))
-    return fake
+    dashboard_data._FRAME_CACHE.clear()
+    yield fake
+    dashboard_data._FRAME_CACHE.clear()
 
 
 def client(logged_in=True):
@@ -147,11 +149,15 @@ def test_an_unreadable_semantic_document_also_refuses_a_default_export(es, monke
     assert res.status_code == 503 and res.json()["detail"] == UNREADABLE
 
 
-def test_without_elasticsearch_an_export_that_asks_for_personal_columns_still_works(es, monkeypatch):
+def test_without_elasticsearch_an_export_that_asks_for_personal_columns_is_refused_too(es, monkeypatch):
     monkeypatch.setattr(dashboards, "_es_or_none", lambda: None)
+
+    def never(*args, **kwargs):
+        raise AssertionError("no CSV may be written when the meaning of the columns is unknown")
+    monkeypatch.setattr(dashboard_export, "csv_chunks", never)
     res = export(include_personal=True)
-    assert res.status_code == 200
-    assert rows_of(res)[0] == ["Order_ID", "Region", "Total_Sales", "Profit", "Customer_Name"]
+    assert res.status_code == 503 and res.json()["detail"] == UNREADABLE
+    assert "Customer_Name" not in res.text and "Ann" not in res.text
 
 
 def test_a_filtered_result_above_the_cap_is_refused_with_a_thai_message(es, monkeypatch):
@@ -165,14 +171,13 @@ def test_a_filtered_result_above_the_cap_is_refused_with_a_thai_message(es, monk
 def test_an_unknown_dataset_is_a_404(es, monkeypatch):
     def missing(name):
         raise HTTPException(status_code=404, detail=f"ไม่พบชุดข้อมูล {name}")
-    monkeypatch.setattr(dashboard_data, "load_active_dataset", missing)
+    monkeypatch.setattr(dashboard_data, "_read_active", missing)
     res = export()
     assert res.status_code == 404 and res.json()["detail"] == "ไม่พบชุดข้อมูล sales"
 
 
 def test_a_dataset_with_only_personal_columns_has_nothing_to_export(es, monkeypatch):
-    only = dashboard_data.prepare_frame(pd.DataFrame({"Customer_Name": ["Ann", "Bob"]}))
-    monkeypatch.setattr(dashboard_data, "load_active_dataset", lambda name: only)
+    monkeypatch.setattr(dashboard_data, "_read_active", lambda name: pd.DataFrame({"Customer_Name": ["Ann", "Bob"]}))
     res = export()
     assert res.status_code == 422 and res.json()["detail"] == "ไม่มีคอลัมน์ที่ส่งออกได้ ทุกคอลัมน์เป็นข้อมูลส่วนบุคคล"
     assert rows_of(export(include_personal=True)) == [["Customer_Name"], ["Ann"], ["Bob"]]
@@ -192,3 +197,55 @@ def test_one_export_reads_the_semantic_view_once_and_never_calls_the_ai(es, monk
     monkeypatch.setattr(dashboard_llm, "call_groq", never)
     assert export(selections=NORTH, include_personal=True).status_code == 200
     assert calls == ["sales"]
+
+
+def messy(monkeypatch):
+    """A table whose text columns hold what the dashboard cannot read as numbers or dates: the
+    dashboard blanks those cells in its prepared copy, the file must carry them as stored."""
+    frame = pd.DataFrame({
+        "Region": ["N" if i % 3 == 0 else "S" for i in range(20)],
+        "Qty": ["10"] * 18 + ["N/A", "12A"],
+        "Seen": ["2025-01-05 10:00:00+07:00"] * 18 + ["unknown", "2025-01-06 00:00:00+07:00"],
+        "Note": ["=1+1", "-49.5"] * 10})
+    monkeypatch.setattr(dashboard_data, "_read_active", lambda name: frame.copy())
+    return frame
+
+
+def test_the_file_carries_the_stored_values_not_the_ones_the_dashboard_could_read(es, monkeypatch):
+    prepared, _ = dashboard_data.prepare_frame(messy(monkeypatch))
+    assert prepared["Qty"].isna().sum() == 2 and prepared["Seen"].isna().sum() == 1  # what the dashboard blanks
+    rows = rows_of(export())
+    assert len(rows) == 21
+    assert rows[1] == ["N", "10", "2025-01-05 10:00:00+07:00", "'=1+1"]
+    assert rows[19] == ["N", "N/A", "unknown", "'=1+1"]
+    assert rows[20] == ["S", "12A", "2025-01-06 00:00:00+07:00", "-49.5"]
+
+
+def test_filtered_rows_are_taken_from_the_stored_values_by_position(es, monkeypatch):
+    messy(monkeypatch)
+    spec = {"filters": [{"column": "Region"}], "widgets": [{"id": "c", "type": "kpi", "metric": {"agg": "count", "column": None}}]}
+    for region, last in (("N", ["N", "N/A", "unknown"]), ("S", ["S", "12A", "2025-01-06 00:00:00+07:00"])):
+        picked = {"Region": {"values": [region]}}
+        rendered = client().post("/api/v1/dashboards/render",
+                                 json={"table_name": "sales", "spec": spec, "selections": picked}).json()
+        rows = rows_of(export(selections=picked))[1:]
+        assert len(rows) == rendered["data"]["rows_after_filter"]
+        assert [r[0] for r in rows] == [region] * len(rows)
+        assert [rows[-1][0], rows[-1][1], rows[-1][2]] == last
+    assert len(rows_of(export(selections={"Region": {"values": ["N"]}}))) - 1 == 7
+
+
+def test_the_stored_values_are_still_without_personal_columns_and_ignore_hidden_selections(es, monkeypatch):
+    raw = messy(monkeypatch).assign(Customer_Name=[f"person{i}" for i in range(20)])
+    monkeypatch.setattr(dashboard_data, "_read_active", lambda name: raw.copy())
+    assert rows_of(export())[0] == ["Region", "Qty", "Seen", "Note"]
+    assert "person3" not in export().text
+    ignored = {"Customer_Name": {"values": ["person3"]}}
+    assert len(rows_of(export(selections=ignored))) - 1 == 20
+    assert rows_of(export(include_personal=True))[0][-1] == "Customer_Name"
+
+
+def test_a_stored_text_number_stays_a_number_and_a_stored_formula_is_neutralised(es, monkeypatch):
+    messy(monkeypatch)
+    notes = [r[3] for r in rows_of(export())[1:]]
+    assert notes[:2] == ["'=1+1", "-49.5"]

@@ -171,6 +171,20 @@ def load_active_dataset(table_name: str):
     return df, profile
 
 
+def load_active_pair(table_name: str):
+    """(stored frame, prepared frame, profile) from one fresh read, for the CSV export. The
+    stored frame has the same rows in the same order as the prepared one (technical columns
+    dropped, index reset) but keeps every value as read: prepare_frame blanks the cells of a
+    mostly numeric or date column that it cannot parse, and a file for a BI tool must not.
+    Not cached, so the two frames always come from the same read."""
+    validate_table_name(table_name)
+    stored = _read_active(table_name)
+    stored = stored.drop(columns=[c for c in stored.columns if c in TECHNICAL_COLUMNS]).reset_index(drop=True)
+    stored.columns = [str(c) for c in stored.columns]
+    prepared, profile = prepare_frame(stored)
+    return stored, prepared, profile
+
+
 def dataset_profile(table_name: str) -> dict:
     """Profile only. A miss fills _PROFILE_CACHE and never _FRAME_CACHE, so listing many
     tables cannot evict the frame of the dataset being worked on."""

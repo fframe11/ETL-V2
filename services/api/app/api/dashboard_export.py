@@ -19,7 +19,8 @@ MAX_EXPORT_ROWS = 1_000_000
 CHUNK_ROWS = 10_000  # rows written per piece of the streamed response
 BANGKOK = timezone(timedelta(hours=7))  # the day in the file name; Thailand has no daylight saving time
 _FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
-_PLAIN_NUMBER = re.compile(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?")
+# ASCII digits only: a spreadsheet does not read Arabic-Indic or full-width digits as a number
+_PLAIN_NUMBER = re.compile(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?", re.ASCII)
 _UNSAFE_NAME = re.compile(r"[^A-Za-z0-9_-]+")
 _NESTED = (list, tuple, dict, set, np.ndarray)
 
@@ -88,12 +89,14 @@ def column_formatter(series: pd.Series):
 def header_labels(names, labels) -> list:
     """The header row: each column's display label, else its name. Columns that share a label
     are told apart by their name in brackets ("ยอดขาย [Net_Sales]"), except a column whose
-    label is its own name; a clash that is still left gets " (2)", " (3)", ..."""
-    first = [labels.get(name) or name for name in names]
+    label is its own name; a clash that is still left gets " (2)", " (3)", ... Labels are made
+    safe for a spreadsheet first, so two labels that differ only by the apostrophe stay apart."""
+    given = [labels.get(name) or name for name in names]
+    first = [safe_text(str(label)) for label in given]
     counts = Counter(first)
     out, used = [], set()
-    for name, label in zip(names, first):
-        text = f"{label} [{name}]" if counts[label] > 1 and label != name else label
+    for name, label, own in zip(names, first, given):
+        text = f"{label} [{name}]" if counts[label] > 1 and own != name else label
         candidate, n = text, 2
         while candidate in used:
             candidate, n = f"{text} ({n})", n + 1
@@ -118,15 +121,22 @@ def _drain(buffer: io.StringIO) -> bytes:
 def csv_chunks(df: pd.DataFrame, columns, headers, chunk_rows: int = CHUNK_ROWS):
     """The CSV file as pieces of bytes: the BOM and the header row, then chunk_rows rows at a
     time, so a long export never holds the whole file in memory. Only `columns` are written,
-    in that order, under `headers`."""
+    in that order, under `headers`. Everything that can fail on the arguments fails here, when
+    this is called, and not on the first piece (the response has started by then)."""
+    if len(columns) != len(headers):
+        raise ValueError(f"{len(columns)} columns but {len(headers)} headers")
     formatters = [column_formatter(df[c]) for c in columns]
-    buffer = io.StringIO()
-    buffer.write(BOM)
-    writer = csv.writer(buffer, lineterminator="\r\n")
-    writer.writerow([safe_text(str(h)) for h in headers])
-    yield _drain(buffer)
-    for start in range(0, len(df), chunk_rows):
-        part = df.iloc[start:start + chunk_rows]
-        cells = [[fmt(v) for v in part[c]] for c, fmt in zip(columns, formatters)]
-        writer.writerows(zip(*cells))
+
+    def pieces():
+        buffer = io.StringIO()
+        buffer.write(BOM)
+        writer = csv.writer(buffer, lineterminator="\r\n")
+        writer.writerow([safe_text(str(h)) for h in headers])
         yield _drain(buffer)
+        for start in range(0, len(df), chunk_rows):
+            part = df.iloc[start:start + chunk_rows]
+            cells = [[fmt(v) for v in part[c]] for c, fmt in zip(columns, formatters)]
+            writer.writerows(zip(*cells))
+            yield _drain(buffer)
+
+    return pieces()

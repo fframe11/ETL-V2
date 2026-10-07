@@ -181,11 +181,14 @@ def render_dashboard(payload: RenderPayload):
 @router.post("/export")
 def export_dashboard_rows(payload: ExportPayload, user: str = Depends(require_session)):
     """The rows the dashboard is computed from (the same selections as /render) as a CSV file
-    for Excel or Power BI. Columns the semantic view hides as personal stay out unless
-    include_personal is true, and a selection on a hidden column is ignored as /render ignores it."""
-    df, profile, view = _dataset_with_view(payload.table_name)
-    if not payload.include_personal and view["status"] == "unavailable":
-        # the stored meaning could not be read, so a column a person flagged personal may not be hidden: fail closed
+    for Excel or Power BI, with the values as stored. The rows are picked on the prepared frame,
+    so the count is the dashboard's rows_after_filter, and then taken from the stored frame by
+    position. Columns the semantic view hides as personal stay out unless include_personal is
+    true, and a selection on a hidden column is ignored as /render ignores it."""
+    stored, df, profile = dashboard_data.load_active_pair(payload.table_name)
+    view = semantic.load_view(payload.table_name, profile, _es_or_none())
+    if view["status"] == "unavailable":
+        # the stored meaning could not be read: a personal column may go unnamed in the consent text and the log
         raise HTTPException(status_code=503, detail="ยังอ่านความหมายคอลัมน์ไม่ได้ จึงส่งออกไม่ได้ในตอนนี้ กรุณาลองใหม่")
     visible = semantic_layer.apply_to_profile(profile, view)
     rows = apply_filters(df, payload.selections, {c["name"]: c["kind"] for c in visible["columns"]})
@@ -208,7 +211,8 @@ def export_dashboard_rows(payload: ExportPayload, user: str = Depends(require_se
                     user, payload.table_name, len(rows), payload.include_personal)
     filename = dashboard_export.export_filename(payload.table_name, datetime.now(dashboard_export.BANGKOK).date())
     # an exception after the headers are sent truncates the download, so every check above must come first
-    return StreamingResponse(dashboard_export.csv_chunks(rows, columns, headers), media_type="text/csv",
+    out = stored if len(rows) == len(stored) else stored.iloc[rows.index]  # the index of df is its row position
+    return StreamingResponse(dashboard_export.csv_chunks(out, columns, headers), media_type="text/csv",
                              headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 

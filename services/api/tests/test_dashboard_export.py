@@ -8,6 +8,7 @@ from datetime import date
 
 import numpy as np
 import pandas as pd
+import pytest
 
 API_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, API_ROOT)
@@ -130,3 +131,20 @@ def test_the_file_name_is_the_table_and_the_day():
 
 def test_the_row_cap_stays_below_what_excel_can_open():
     assert MAX_EXPORT_ROWS < 1_048_576
+
+
+def test_unicode_digits_are_not_plain_numbers():
+    assert column(["-١٢", "-１２", "+１", "-12"]) == ["'-١٢", "'-１２", "'+１", "-12"]
+
+
+def test_a_label_is_neutralised_before_labels_are_told_apart():
+    assert header_labels(["a", "b"], {"a": "=x", "b": "'=x"}) == ["'=x [a]", "'=x [b]"]
+    assert header_labels(["=x", "b"], {"=x": None, "b": "'=x"}) == ["'=x", "'=x [b]"]
+
+
+def test_a_writer_that_cannot_be_built_fails_when_it_is_created_not_after_the_response_started():
+    df = pd.DataFrame({"a": [1.5], "b": ["x"]})
+    with pytest.raises(ValueError):
+        csv_chunks(df, ["a", "b"], ["A"])  # two columns, one header: nothing is iterated
+    with pytest.raises(KeyError):
+        csv_chunks(df, ["a", "nope"], ["A", "N"])
