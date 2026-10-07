@@ -71,7 +71,7 @@ def test_the_export_needs_a_login(es):
 def test_the_filtered_rows_are_a_csv_file_without_personal_columns(es):
     res = export(selections=NORTH)
     assert res.status_code == 200
-    assert res.headers["content-type"].startswith("text/csv")
+    assert res.headers["content-type"] == "text/csv; charset=utf-8"
     assert re.fullmatch(r'attachment; filename="sales_\d{8}\.csv"', res.headers["content-disposition"])
     assert rows_of(res) == [["Order_ID", "Region", "ยอดขาย", "Profit"],
                             ["o1", "N", "100", "10"], ["o3", "N", "-49.5", "-4.5"]]
@@ -125,9 +125,33 @@ def test_a_column_the_approved_meaning_marks_personal_stays_out(es):
     assert rows_of(export())[0] == ["Order_ID", "ยอดขาย", "Profit"]
 
 
-def test_without_elasticsearch_the_name_rules_still_hide_personal_columns(es, monkeypatch):
+UNREADABLE = "ยังอ่านความหมายคอลัมน์ไม่ได้ จึงส่งออกไม่ได้ในตอนนี้ กรุณาลองใหม่"
+
+
+def test_without_elasticsearch_a_default_export_is_refused_and_writes_nothing(es, monkeypatch):
     monkeypatch.setattr(dashboards, "_es_or_none", lambda: None)
-    assert rows_of(export())[0] == ["Order_ID", "Region", "Total_Sales", "Profit"]
+
+    def never(*args, **kwargs):
+        raise AssertionError("no CSV may be written when the meaning of the columns is unknown")
+    monkeypatch.setattr(dashboard_export, "csv_chunks", never)
+    res = export()
+    assert res.status_code == 503 and res.json()["detail"] == UNREADABLE
+    assert "Order_ID" not in res.text
+
+
+def test_an_unreadable_semantic_document_also_refuses_a_default_export(es, monkeypatch):
+    def broken(*args):
+        raise RuntimeError("stored document cannot be read")
+    monkeypatch.setattr(semantic, "_read_source", broken)
+    res = export()
+    assert res.status_code == 503 and res.json()["detail"] == UNREADABLE
+
+
+def test_without_elasticsearch_an_export_that_asks_for_personal_columns_still_works(es, monkeypatch):
+    monkeypatch.setattr(dashboards, "_es_or_none", lambda: None)
+    res = export(include_personal=True)
+    assert res.status_code == 200
+    assert rows_of(res)[0] == ["Order_ID", "Region", "Total_Sales", "Profit", "Customer_Name"]
 
 
 def test_a_filtered_result_above_the_cap_is_refused_with_a_thai_message(es, monkeypatch):

@@ -184,6 +184,9 @@ def export_dashboard_rows(payload: ExportPayload, user: str = Depends(require_se
     for Excel or Power BI. Columns the semantic view hides as personal stay out unless
     include_personal is true, and a selection on a hidden column is ignored as /render ignores it."""
     df, profile, view = _dataset_with_view(payload.table_name)
+    if not payload.include_personal and view["status"] == "unavailable":
+        # the stored meaning could not be read, so a column a person flagged personal may not be hidden: fail closed
+        raise HTTPException(status_code=503, detail="ยังอ่านความหมายคอลัมน์ไม่ได้ จึงส่งออกไม่ได้ในตอนนี้ กรุณาลองใหม่")
     visible = semantic_layer.apply_to_profile(profile, view)
     rows = apply_filters(df, payload.selections, {c["name"]: c["kind"] for c in visible["columns"]})
     hidden = set(view["hidden_columns"])
@@ -204,7 +207,8 @@ def export_dashboard_rows(payload: ExportPayload, user: str = Depends(require_se
         logger.info("Dashboard CSV export: user=%s table=%s rows=%d include_personal=%s",
                     user, payload.table_name, len(rows), payload.include_personal)
     filename = dashboard_export.export_filename(payload.table_name, datetime.now(dashboard_export.BANGKOK).date())
-    return StreamingResponse(dashboard_export.csv_chunks(rows, columns, headers), media_type="text/csv; charset=utf-8",
+    # an exception after the headers are sent truncates the download, so every check above must come first
+    return StreamingResponse(dashboard_export.csv_chunks(rows, columns, headers), media_type="text/csv",
                              headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
