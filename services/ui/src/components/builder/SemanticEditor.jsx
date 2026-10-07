@@ -11,7 +11,8 @@ export default function SemanticEditor({ table, profile, value, onChange }) {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const ready = value?.table === table;
-  // Replies that arrive after the editor left (or moved to another table) must not touch state.
+  // A reply for another table is dropped. The parent's state outlives this editor, so a reply for the
+  // same table still reaches onChange after unmount; only this editor's own state needs it mounted.
   const current = useRef({ alive: true, table });
   current.current.table = table;
   useEffect(() => {
@@ -19,15 +20,22 @@ export default function SemanticEditor({ table, profile, value, onChange }) {
     state.alive = true;
     return () => { state.alive = false; };
   }, []);
-  const stale = (forTable) => !current.current.alive || current.current.table !== forTable;
+  const sameTable = (forTable) => current.current.table === forTable;
+  const showHere = (forTable) => current.current.alive && sameTable(forTable);
+
+  // A request of the previous table must not leave its busy label or error on the next one.
+  useEffect(() => {
+    setBusy("");
+    setError("");
+  }, [table]);
 
   const load = useCallback(async () => {
     setError("");
     try {
       const next = fromView(table, await semanticApi.get(table));
-      if (!stale(table)) onChange(next);
+      if (sameTable(table)) onChange(next);
     } catch (e) {
-      if (!stale(table)) setError(e.message);
+      if (showHere(table)) setError(e.message);
     }
   }, [table, onChange]);
 
@@ -44,14 +52,12 @@ export default function SemanticEditor({ table, profile, value, onChange }) {
     setError("");
     try {
       const next = fromView(table, await call());
-      if (!stale(table)) onChange(next);
+      if (sameTable(table)) onChange(next);
     } catch (e) {
-      if (!stale(table)) {
-        if (e.status === 409) onChange({ ...value, conflict: true });
-        setError(e.message);
-      }
+      if (e.status === 409 && sameTable(table)) onChange({ ...value, conflict: true });
+      if (showHere(table)) setError(e.message);
     } finally {
-      if (!stale(table)) setBusy("");
+      if (showHere(table)) setBusy("");
     }
   };
   const body = { columns: value.columns, metrics: value.metrics };
@@ -80,7 +86,9 @@ export default function SemanticEditor({ table, profile, value, onChange }) {
         </details>
       )}
       <h3>ความหมายคอลัมน์</h3>
-      <ColumnMetaTable profile={profile} view={value.view} columns={value.columns} onChange={setColumn} />
+      <fieldset className="dbb-fieldset-plain" disabled={Boolean(busy)}>
+        <ColumnMetaTable profile={profile} view={value.view} columns={value.columns} onChange={setColumn} />
+      </fieldset>
     </div>
   );
 }
