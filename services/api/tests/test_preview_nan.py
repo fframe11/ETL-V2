@@ -11,8 +11,10 @@ from fastapi.testclient import TestClient
 API_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, API_ROOT)
 os.environ.setdefault("ELASTICSEARCH_URL", "http://elastic:test@localhost:9200")
+os.environ.setdefault("SESSION_SECRET_KEY", "test-session-secret")
 
 from app.api import data_export  # noqa: E402
+from app.api.auth import SESSION_COOKIE_NAME, create_session_token  # noqa: E402
 
 
 @pytest.fixture
@@ -24,7 +26,7 @@ def client(monkeypatch):
     monkeypatch.setattr(data_export, "read_parquet_folder_to_df", lambda folder: frame)
     app = FastAPI()
     app.include_router(data_export.router)
-    return TestClient(app)
+    return TestClient(app, cookies={SESSION_COOKIE_NAME: create_session_token("tester")})
 
 
 @pytest.mark.parametrize("layer", ["active", "quarantine"])

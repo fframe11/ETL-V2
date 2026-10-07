@@ -456,7 +456,10 @@ def _records_json_safe(df: pd.DataFrame) -> list:
     return json.loads(df.to_json(orient="records", date_format="iso"))
 
 
-@router.get("/preview/{layer}/{table_name}")
+# Row-level routes (preview, records, raw, active, quarantine, reddit) need a login and return every
+# column unmasked: they are the pipeline layers themselves and the app has no role system.
+# /tables (names only) and /gold/{metric} (aggregates) stay open: the ops quality scripts call /tables with no cookie.
+@router.get("/preview/{layer}/{table_name}", dependencies=[Depends(require_session)])
 def get_dataset_preview(layer: str, table_name: str):
     """Get a 10-row JSON preview of the dataset from HDFS raw, active, or quarantine layers."""
     validate_table_name(table_name)
@@ -555,7 +558,7 @@ def search_dataset_records(layer: str, table_name: str, search: str = "", run_id
     }
 
 
-@router.get("/raw/{table_name}")
+@router.get("/raw/{table_name}", dependencies=[Depends(require_session)])
 def export_raw_data(table_name: str):
     """Download the newest raw CSV landing of a table from HDFS raw storage."""
     validate_table_name(table_name)
@@ -567,7 +570,7 @@ def export_raw_data(table_name: str):
     )
 
 
-@router.get("/active/{table_name}")
+@router.get("/active/{table_name}", dependencies=[Depends(require_session)])
 def export_active_data(table_name: str, limit: int = None):
     """Download clean Silver active dataset as CSV."""
     validate_table_name(table_name)
@@ -594,7 +597,7 @@ def export_active_data(table_name: str, limit: int = None):
         raise he
 
 
-@router.get("/quarantine/{table_name}")
+@router.get("/quarantine/{table_name}", dependencies=[Depends(require_session)])
 def export_quarantine_data(table_name: str, limit: int = None):
     """Download quarantined records dataset as CSV."""
     validate_table_name(table_name)
@@ -623,7 +626,7 @@ def export_quarantine_data(table_name: str, limit: int = None):
         raise he
 
 
-@router.get("/reddit")
+@router.get("/reddit", dependencies=[Depends(require_session)])
 def export_reddit_data(subreddit: str = "python", limit: int = None):
     """Download parsed Reddit streaming data from HDFS parquet files as CSV."""
     validate_table_name(subreddit, field_name="subreddit")
