@@ -268,6 +268,36 @@ def test_call_groq_errors_do_not_leak_the_response_body(monkeypatch):
         dashboard_llm.call_groq([], "gsk_test", "m")
 
 
+def test_a_used_up_daily_quota_is_said_in_plain_thai(monkeypatch):
+    daily = {"error": {"message": "Rate limit reached for model `openai/gpt-oss-120b` in organization `org_x` "
+                                  "service tier `on_demand` on tokens per day (TPD): Limit 200000, Used 199390, "
+                                  "Requested 3057. Please try again in 17m37s."}}
+    monkeypatch.setattr(dashboard_llm.requests, "post", lambda *a, **k: FakeResponse(429, daily))
+    with pytest.raises(dashboard_llm.LLMUnavailable) as exc:
+        dashboard_llm.call_groq([], "gsk_test", "m")
+    assert str(exc.value) == "โควตา AI วันนี้หมด ลองใหม่ภายหลัง"
+    assert "org_x" not in str(exc.value) and "429" not in str(exc.value)
+
+
+def test_a_per_minute_rate_limit_does_not_claim_the_day_is_over(monkeypatch):
+    per_minute = {"error": {"message": "Rate limit reached for model `m` on tokens per minute (TPM): Limit 8000, "
+                                       "Used 7900, Requested 500. Please try again in 6s."}}
+    monkeypatch.setattr(dashboard_llm.requests, "post", lambda *a, **k: FakeResponse(429, per_minute))
+    with pytest.raises(dashboard_llm.LLMUnavailable) as exc:
+        dashboard_llm.call_groq([], "gsk_test", "m")
+    assert str(exc.value) == "AI ถูกใช้ถี่เกินไป ลองใหม่ในอีกสักครู่"
+
+
+def test_a_429_without_a_readable_body_is_the_generic_busy_message(monkeypatch):
+    class Unreadable(FakeResponse):
+        text = "<html>busy</html>"
+
+    monkeypatch.setattr(dashboard_llm.requests, "post", lambda *a, **k: Unreadable(429, {}))
+    with pytest.raises(dashboard_llm.LLMUnavailable) as exc:
+        dashboard_llm.call_groq([], "gsk_test", "m")
+    assert str(exc.value) == "AI ถูกใช้ถี่เกินไป ลองใหม่ในอีกสักครู่"
+
+
 # --- the AI layer over the rule-made suggestions ---------------------------------------------------------
 
 CANDIDATES = suggest_from_profile(PROFILE, "business", dashboard_llm.RANK_CANDIDATES)

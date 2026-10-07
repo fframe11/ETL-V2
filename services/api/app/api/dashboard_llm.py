@@ -93,6 +93,16 @@ def groq_settings():
     return key, model
 
 
+def _rate_limit_message(body_text):
+    """A 429 from Groq is a quota, not a fault. The daily token limit says so in its text ("tokens per day",
+    "(TPD)"): that one will not clear in a minute, so say the day's quota is used up. Any other 429 (per
+    minute, or a body we cannot read) clears soon. The raw text is only logged, never shown."""
+    lowered = (body_text or "").lower()
+    if "per day" in lowered or "(tpd)" in lowered:
+        return "โควตา AI วันนี้หมด ลองใหม่ภายหลัง"
+    return "AI ถูกใช้ถี่เกินไป ลองใหม่ในอีกสักครู่"
+
+
 def call_groq(messages, api_key, model):
     try:
         res = requests.post(
@@ -107,6 +117,8 @@ def call_groq(messages, api_key, model):
         raise LLMUnavailable(f"เชื่อมต่อ Groq ไม่ได้ ({exc.__class__.__name__})") from exc
     if res.status_code != 200:
         logger.warning("Groq returned HTTP %s: %s", res.status_code, res.text[:300])
+        if res.status_code == 429:
+            raise LLMUnavailable(_rate_limit_message(res.text))
         raise LLMUnavailable(f"Groq ตอบกลับ HTTP {res.status_code}")
     try:
         return res.json()["choices"][0]["message"]["content"] or ""
