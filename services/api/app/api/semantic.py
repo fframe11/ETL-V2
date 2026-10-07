@@ -3,9 +3,11 @@
 sdoqap_semantic_layer, one document per dataset (id = dataset name)."""
 import json
 import logging
+from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any
 
+from elasticsearch import ApiError, ConflictError, NotFoundError, TransportError
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
@@ -23,9 +25,19 @@ SEMANTIC_INDEX = "sdoqap_semantic_layer"
 MAX_HISTORY = 10
 
 
+STALE_APPROVAL = "มีคนอนุมัติเวอร์ชันใหม่กว่าแล้ว กรุณาโหลดใหม่"
+STALE_DRAFT = "มีคนแก้ไขพร้อมกัน กรุณาลองใหม่"
+ES_OFFLINE = "Elasticsearch service is offline"
+# A request to ES that failed on the wire, timed out or was refused. Conflicts (409) are
+# handled by the callers, and json decode errors are not ES errors, so neither is caught here.
+ES_ERRORS = (ApiError, TransportError, OSError)
+
+
 class SemanticPayload(BaseModel):
-    columns: Dict[str, Any] = Field(default_factory=dict)
-    metrics: List[Any] = Field(default_factory=list)
+    # Any, not Dict/List: a wrong-typed part is repaired by validate_semantic (spec 13),
+    # only a body that is not a JSON object is a 422.
+    columns: Any = None
+    metrics: Any = None
 
 
 class ApprovePayload(SemanticPayload):
@@ -69,8 +81,51 @@ def read_doc(es, table_name):
     return decode_doc(hits[0]["_source"]) if hits else None
 
 
+@contextmanager
+def _es_guard(action):
+    """The cached ES client is not pinged per call, so ES can fail after get_es_client
+    succeeded. Any such failure is the spec's 503, never a 500."""
+    try:
+        yield
+    except ConflictError:
+        raise
+    except ES_ERRORS as exc:
+        logger.warning("Elasticsearch failed while %s the semantic layer", action, exc_info=True)
+        raise HTTPException(status_code=503, detail=ES_OFFLINE) from exc
+
+
+def _read_for_update(es, table_name):
+    """The stored document plus its _seq_no/_primary_term in doc["_cas"] (None when the
+    document does not exist yet). encode_doc never stores _cas."""
+    try:
+        res = es.get(index=SEMANTIC_INDEX, id=table_name)
+    except NotFoundError:
+        return {**_empty(table_name), "_cas": None}
+    return {**decode_doc(res["_source"]), "_cas": (res["_seq_no"], res["_primary_term"])}
+
+
 def _write(es, doc):
-    es.index(index=SEMANTIC_INDEX, id=doc["table_name"], document=encode_doc(doc), refresh="wait_for")
+    """Optimistic concurrency: only replaces the version that was read (ConflictError
+    otherwise); the first write only creates."""
+    cas = doc.get("_cas")
+    guard = {"op_type": "create"} if cas is None else {"if_seq_no": cas[0], "if_primary_term": cas[1]}
+    es.index(index=SEMANTIC_INDEX, id=doc["table_name"], document=encode_doc(doc), refresh="wait_for", **guard)
+
+
+def _update(es, table_name, mutate, conflict_detail):
+    """Read, mutate(doc), write. Another writer in between is a ConflictError: read again
+    and redo the change once, then give up with 409 so nothing newer is overwritten."""
+    for _ in range(2):
+        with _es_guard("reading"):
+            doc = _read_for_update(es, table_name)
+        mutate(doc)
+        try:
+            with _es_guard("writing"):
+                _write(es, doc)
+        except ConflictError:
+            continue
+        return doc
+    raise HTTPException(status_code=409, detail=conflict_detail)
 
 
 def _es_or_none():
@@ -124,12 +179,17 @@ def get_semantic(table_name: str):
 def draft_semantic_with_ai(table_name: str, user: str = Depends(require_session)):
     es = get_es_client()
     df, profile = dashboard_data.load_active_dataset(table_name)
-    doc = read_doc(es, table_name) or _empty(table_name)
+    with _es_guard("reading"):
+        doc = read_doc(es, table_name) or _empty(table_name)
     current = resolve(table_name, doc, profile)
+    # The AI is asked once; a retry after a write conflict reuses its answer.
     result = semantic_llm.draft_semantic(table_name, profile, current["hidden_columns"])
-    doc["draft"] = {**result["semantic"], "generated_by": result["engine"], "model": result["model"],
-                    "updated_by": user, "updated_at": _now()}
-    _write(es, doc)
+
+    def mutate(fresh):
+        fresh["draft"] = {**result["semantic"], "generated_by": result["engine"], "model": result["model"],
+                          "updated_by": user, "updated_at": _now()}
+
+    doc = _update(es, table_name, mutate, STALE_DRAFT)
     view = _answer(table_name, doc, profile, df, result["warnings"])
     view.update(engine=result["engine"], model=result["model"])
     return view
@@ -139,12 +199,14 @@ def draft_semantic_with_ai(table_name: str, user: str = Depends(require_session)
 def save_semantic_draft(table_name: str, payload: SemanticPayload, user: str = Depends(require_session)):
     es = get_es_client()
     df, profile = dashboard_data.load_active_dataset(table_name)
-    doc = read_doc(es, table_name) or _empty(table_name)
     semantic_doc, warnings = validate_semantic(payload.model_dump(), profile)
-    current = resolve(table_name, doc, profile)
-    doc["draft"] = {**_complete(semantic_doc, current, profile), "generated_by": "user", "model": None,
-                    "updated_by": user, "updated_at": _now()}
-    _write(es, doc)
+
+    def mutate(fresh):
+        current = resolve(table_name, fresh, profile)
+        fresh["draft"] = {**_complete(semantic_doc, current, profile), "generated_by": "user", "model": None,
+                          "updated_by": user, "updated_at": _now()}
+
+    doc = _update(es, table_name, mutate, STALE_DRAFT)
     return _answer(table_name, doc, profile, df, warnings)
 
 
@@ -152,16 +214,18 @@ def save_semantic_draft(table_name: str, payload: SemanticPayload, user: str = D
 def approve_semantic(table_name: str, payload: ApprovePayload, user: str = Depends(require_session)):
     es = get_es_client()
     df, profile = dashboard_data.load_active_dataset(table_name)
-    doc = read_doc(es, table_name) or _empty(table_name)
-    version = (doc.get("approved") or {}).get("version", 0)
-    if payload.base_version != version:
-        raise HTTPException(status_code=409, detail="มีคนอนุมัติเวอร์ชันใหม่กว่าแล้ว กรุณาโหลดใหม่")
     semantic_doc, warnings = validate_semantic(payload.model_dump(exclude={"base_version"}), profile)
-    current = resolve(table_name, doc, profile)
-    now = _now()
-    doc["approved"] = {**_complete(semantic_doc, current, profile), "version": version + 1,
-                       "approved_by": user, "approved_at": now}
-    doc["draft"] = None
-    doc["history"] = ([{"version": version + 1, "approved_by": user, "approved_at": now}] + doc["history"])[:MAX_HISTORY]
-    _write(es, doc)
+
+    def mutate(fresh):
+        version = (fresh.get("approved") or {}).get("version", 0)
+        if payload.base_version != version:
+            raise HTTPException(status_code=409, detail=STALE_APPROVAL)
+        current = resolve(table_name, fresh, profile)
+        now = _now()
+        fresh["approved"] = {**_complete(semantic_doc, current, profile), "version": version + 1,
+                             "approved_by": user, "approved_at": now}
+        fresh["draft"] = None
+        fresh["history"] = ([{"version": version + 1, "approved_by": user, "approved_at": now}] + fresh["history"])[:MAX_HISTORY]
+
+    doc = _update(es, table_name, mutate, STALE_APPROVAL)
     return _answer(table_name, doc, profile, df, warnings)

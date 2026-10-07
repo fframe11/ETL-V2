@@ -4,6 +4,8 @@ import sys
 
 import pandas as pd
 import pytest
+from elastic_transport import ConnectionError as TransportConnectionError
+from elasticsearch import ApiError, ConflictError
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
@@ -14,7 +16,7 @@ os.environ.setdefault("SESSION_SECRET_KEY", "test-session-secret")
 
 from app.api import dashboard_data, dashboard_llm, semantic  # noqa: E402
 from app.api.auth import SESSION_COOKIE_NAME, create_session_token  # noqa: E402
-from fakes import FakeES  # noqa: E402
+from fakes import FakeES, _api_error  # noqa: E402
 
 RAW = pd.DataFrame({"Order_ID": ["A", "B", "C"], "Customer_Name": ["x", "y", "z"], "Region": ["N", "S", "N"],
                     "Total_Sales": [10.0, 20.0, 30.0], "Profit": [1.0, 2.0, 3.0]})
@@ -134,3 +136,105 @@ def test_a_failing_read_counts_as_unavailable_and_still_hides():
     broken.index(semantic.SEMANTIC_INDEX, "sales", {"table_name": "sales"})
     view = semantic.load_view("sales", PROFILE, broken)
     assert view["status"] == "unavailable" and view["hidden_columns"] == ["Customer_Name"]
+
+
+WRITES = [("post", "/draft", None), ("put", "/draft", BODY), ("post", "/approve", {**BODY, "base_version": 0})]
+
+
+def send(c, verb, suffix, body):
+    return getattr(c, verb)(BASE + suffix, **({"json": body} if body is not None else {}))
+
+
+@pytest.mark.parametrize("error", [ConnectionError("es down"), TransportConnectionError("es down"), TimeoutError("slow")])
+@pytest.mark.parametrize("failing,verb,suffix,body", [
+    ("search", *WRITES[0]),  # only the AI draft reads with a search (read_doc)
+    *[(failing, *write) for failing in ("get", "index") for write in WRITES],
+])
+def test_an_es_failure_after_the_client_is_warm_is_a_503(es, monkeypatch, failing, error, verb, suffix, body):
+    def boom(*args, **kwargs):
+        raise error
+
+    es.index(semantic.SEMANTIC_INDEX, "sales", {"table_name": "sales"})  # the index exists, so read_doc searches
+    monkeypatch.setattr(es, failing, boom)
+    r = send(client(), verb, suffix, body)
+    assert r.status_code == 503 and r.json()["detail"] == "Elasticsearch service is offline"
+
+
+def test_an_es_api_error_is_a_503_too(es, monkeypatch):
+    def boom(*args, **kwargs):
+        raise _api_error(ApiError, 500, "boom")
+
+    monkeypatch.setattr(es, "index", boom)
+    assert client().put(f"{BASE}/draft", json=BODY).status_code == 503
+
+
+def test_a_corrupt_stored_document_is_not_reported_as_elasticsearch_being_down(es):
+    es.index(semantic.SEMANTIC_INDEX, "sales", {"table_name": "sales", "draft": {"content_json": "{not json"}})
+    with pytest.raises(ValueError):
+        client().put(f"{BASE}/draft", json=BODY)
+
+
+def race_once(es, monkeypatch, other_writer):
+    """The first read of the next request sees the document as it was, then another
+    writer changes it before the request writes (the lost-update window)."""
+    real_get = es.get
+    state = {"armed": True}
+
+    def get(index, id):
+        try:
+            return real_get(index=index, id=id)
+        finally:
+            if state["armed"]:
+                state["armed"] = False
+                other_writer()
+
+    monkeypatch.setattr(es, "get", get)
+
+
+def test_a_stale_draft_save_does_not_revert_an_approval(es, monkeypatch):
+    c = client()
+    c.put(f"{BASE}/draft", json=BODY)
+    race_once(es, monkeypatch, lambda: c.post(f"{BASE}/approve", json={**BODY, "base_version": 0}))
+    view = c.put(f"{BASE}/draft", json={"columns": {"Profit": {"role": "measure", "unit": "dollars"}}, "metrics": []}).json()
+    assert view["version"] == 1 and view["approved"]["approved_by"] == "tester"
+    stored = semantic.decode_doc(es.docs[semantic.SEMANTIC_INDEX]["sales"])
+    assert stored["approved"]["version"] == 1 and stored["draft"]["generated_by"] == "user"
+    assert "_cas" not in es.docs[semantic.SEMANTIC_INDEX]["sales"]
+
+
+def test_two_approvals_from_the_same_base_give_one_winner(es, monkeypatch):
+    c = client()
+    c.put(f"{BASE}/draft", json=BODY)
+    race_once(es, monkeypatch, lambda: c.post(f"{BASE}/approve", json={**BODY, "base_version": 0}))
+    loser = c.post(f"{BASE}/approve", json={**BODY, "base_version": 0})
+    assert loser.status_code == 409 and loser.json()["detail"] == "มีคนอนุมัติเวอร์ชันใหม่กว่าแล้ว กรุณาโหลดใหม่"
+    assert semantic.decode_doc(es.docs[semantic.SEMANTIC_INDEX]["sales"])["approved"]["version"] == 1
+
+
+def test_a_second_conflict_gives_up_with_409(es, monkeypatch):
+    def conflict(*args, **kwargs):
+        raise _api_error(ConflictError, 409, "version_conflict_engine_exception")
+
+    monkeypatch.setattr(es, "index", conflict)
+    assert client().put(f"{BASE}/draft", json=BODY).status_code == 409
+    assert client().post(f"{BASE}/approve", json={**BODY, "base_version": 0}).status_code == 409
+
+
+def test_the_first_write_only_creates(es, monkeypatch):
+    c = client()
+    race_once(es, monkeypatch, lambda: es.index(semantic.SEMANTIC_INDEX, "sales", {"table_name": "sales", "history": []}))
+    assert c.put(f"{BASE}/draft", json=BODY).status_code == 200
+    assert semantic.decode_doc(es.docs[semantic.SEMANTIC_INDEX]["sales"])["draft"]["updated_by"] == "tester"
+
+
+def test_a_body_that_is_an_object_with_wrong_typed_parts_is_repaired(es):
+    r = client().post(f"{BASE}/approve", json={"columns": [], "metrics": "x", "base_version": 0})
+    assert r.status_code == 200
+    view = r.json()
+    assert view["version"] == 1 and set(view["approved"]["columns"]) == {c["name"] for c in PROFILE["columns"]}
+    assert client().put(f"{BASE}/draft", json={"columns": "x"}).status_code == 200
+
+
+def test_a_body_that_is_not_an_object_is_422(es):
+    assert client().put(f"{BASE}/draft", json=[]).status_code == 422
+    assert client().post(f"{BASE}/approve", json=[1]).status_code == 422
