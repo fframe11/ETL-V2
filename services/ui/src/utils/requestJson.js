@@ -46,12 +46,25 @@ export async function requestJson(url, options) {
   return data;
 }
 
+// The file name in a Content-Disposition header: RFC 6266 filename* (UTF-8, percent-encoded) first,
+// then a quoted filename (which may hold ";"), then a bare one. "" when there is none.
+function filenameFrom(disposition) {
+  const star = /filename\*\s*=\s*(?:UTF-8|utf-8)''([^;]+)/i.exec(disposition);
+  if (star) {
+    try { return decodeURIComponent(star[1].trim()); } catch { /* malformed escape: fall through */ }
+  }
+  const quoted = /filename\s*=\s*"((?:[^"\\]|\\.)*)"/i.exec(disposition);
+  if (quoted) return quoted[1].replace(/\\(.)/g, "$1");
+  const bare = /filename\s*=\s*([^;]+)/i.exec(disposition);
+  return bare ? bare[1].trim() : "";
+}
+
 // A file to download, such as a CSV: the same cookie, 401 and error handling as requestJson, but it
 // resolves to { blob, filename }. The name comes from the server's Content-Disposition, else fallbackName.
 export async function requestFile(url, options, fallbackName = "download") {
   const res = await send(url, options);
   if (!res.ok) throw failure(res, await readJson(res));
   const disposition = res.headers?.get?.("Content-Disposition") || "";
-  const match = /filename="?([^";]+)"?/i.exec(disposition);
-  return { blob: await res.blob(), filename: match ? match[1] : fallbackName };
+  const filename = filenameFrom(disposition).replace(/[\\/]/g, "_") || fallbackName;
+  return { blob: await res.blob(), filename };
 }

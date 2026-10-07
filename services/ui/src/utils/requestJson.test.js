@@ -49,3 +49,54 @@ it("turns a failed download into the server's message", async () => {
   expect(error.status).toBe(413);
   expect(error.message).toBe(detail);
 });
+
+const nameOf = async (disposition, fallback = "fallback.csv") => {
+  mockFetchByUrl([["/x", { headers: { "Content-Disposition": disposition } }]]);
+  return (await requestFile("/api/v1/x", {}, fallback)).filename;
+};
+
+it("reads an encoded filename* as the Thai name", async () => {
+  expect(await nameOf("attachment; filename*=UTF-8''%E0%B8%82.csv")).toBe("ข.csv");
+});
+
+it("prefers filename* when both forms are present", async () => {
+  expect(await nameOf("attachment; filename=\"plain.csv\"; filename*=UTF-8''%E0%B8%82.csv")).toBe("ข.csv");
+});
+
+it("does not throw on a malformed filename* and uses the plain name or the fallback", async () => {
+  expect(await nameOf("attachment; filename*=UTF-8''%E0%B8%; filename=\"plain.csv\"")).toBe("plain.csv");
+  expect(await nameOf("attachment; filename*=UTF-8''%E0%B8%")).toBe("fallback.csv");
+});
+
+it("keeps a quoted filename that contains a semicolon", async () => {
+  expect(await nameOf('attachment; filename="a;b.csv"')).toBe("a;b.csv");
+});
+
+it("trims whitespace around an unquoted filename", async () => {
+  expect(await nameOf("attachment; filename=plain.csv  ")).toBe("plain.csv");
+});
+
+it("replaces path separators in a filename", async () => {
+  expect(await nameOf("attachment; filename=..\\..\\x.csv")).toBe(".._.._x.csv");
+  expect(await nameOf('attachment; filename="..\\\\..\\\\x.csv"')).toBe(".._.._x.csv");
+  expect(await nameOf('attachment; filename="a/b.csv"')).toBe("a_b.csv");
+});
+
+it("gives a readable message with the status when the error body is not JSON", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => ({
+    ok: false,
+    status: 502,
+    headers: new Headers(),
+    json: async () => { throw new SyntaxError("Unexpected token <"); }
+  })));
+  const error = await requestFile("/api/v1/x").catch((e) => e);
+  expect(error.message).toBe("คำขอล้มเหลว (HTTP 502)");
+  expect(error.status).toBe(502);
+});
+
+it("explains a network failure of a download in Thai with status 0", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("Failed to fetch"); }));
+  const error = await requestFile("/api/v1/x").catch((e) => e);
+  expect(error.message).toBe("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่");
+  expect(error.status).toBe(0);
+});
