@@ -319,7 +319,7 @@
 - nginx ตั้ง `proxy_read_timeout 30s` (`nginx.conf:20`) การสร้างไฟล์ที่ใช้เวลานานกว่า 30 วินาทีอาจถูกตัดการเชื่อมต่อ (อนุมานจากค่าตั้ง)
 - ตัวอย่าง: โซน ≤ 500 แถว (`whitebox.py:1520`), ตารางตัวอย่างล่าง 10 แถว, แผง RunRecords ≤ 500 แถวต่อหน้า (ใช้ 50) (`data_export.py:538`), Gold CSV ≤ 10,000 เอกสาร (`:662`)
 - การอ่าน Delta ของ API อ่านเฉพาะไฟล์ `.json` ใน `_delta_log` (`data_export.py:177-199`) — ตรวจไม่พบการอ่านไฟล์ checkpoint
-- Endpoint ดาวน์โหลด/ตัวอย่าง (`/export/raw|active|quarantine|reddit|gold|tables|preview`, `/whitebox/export-csv`) ตรวจไม่พบการบังคับล็อกอิน (ไม่มี `Depends(require_session)`; มีเฉพาะ `DELETE /export/tables` และ `/export/records`) — ป้องกันที่ฝั่ง React เท่านั้น
+- Endpoint ดาวน์โหลด/ตัวอย่างระดับแถว (`/export/raw|active|quarantine|reddit|preview`) บังคับล็อกอินแล้ว (`dependencies=[Depends(require_session)]` เหมือน `/export/records` และ `DELETE /export/tables` ไม่มี cookie ได้ 401 ตรวจจากโค้ด ณ 2026-10-08) แต่ส่งทุกคอลัมน์ไม่ปิดบังตามที่ตั้งใจ เพราะเป็นชั้นของ pipeline เองและยังไม่มีระบบ role ส่วน `/export/tables` (ชื่อตารางอย่างเดียว สคริปต์ ops เรียกโดยไม่มี cookie) และ `/export/gold/{metric}` (ตัวชี้วัดรวม) ยังเปิดโดยตั้งใจ และ `/whitebox/export-csv` ตรวจไม่พบการบังคับล็อกอิน
 
 ## 2.7 รายการที่เป็น Mock / Static / ยังไม่เชื่อมจริง ในหน้านี้ (สรุปตรง ๆ)
 

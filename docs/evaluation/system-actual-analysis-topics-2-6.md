@@ -585,8 +585,8 @@ trust-check API · ดาวน์โหลด CSV (clean/quarantine/gold) · �
 | backend ของ HALT_INGEST/NOTIFY_DEV/RESTORE_BACKUP | — | NOT FOUND |
 | `seed_es.py` ข้อมูลสังเคราะห์ | `services/api/seed_es.py` | MOCK (รันมือเท่านั้น) |
 
-**ข้อสังเกตด้านการเข้าถึงข้อมูล:** route `/export/active|quarantine|raw/{table}`, `/export/gold/*`, `/quality`, `/analytics/*`, `/gold/*` ไม่พบ dependency `require_session`
-(เฉพาะ `/dashboards/*`, `/export/records`, และ endpoint ที่เขียนเท่านั้นที่ต้องล็อกอิน) — ควรรู้ไว้เผื่ออาจารย์ถามเรื่องความปลอดภัย
+**ข้อสังเกตด้านการเข้าถึงข้อมูล:** route `/export/gold/*`, `/export/tables`, `/quality`, `/analytics/*`, `/gold/*` ไม่พบ dependency `require_session`
+(ต้องล็อกอิน: `/dashboards/*`, `/export/records`, `/export/preview|raw|active|quarantine|reddit` ซึ่งเพิ่มการบังคับ login เมื่อ 2026-10-08 โดยยังส่งทุกคอลัมน์ไม่ปิดบังตามที่ตั้งใจ และ endpoint ที่เขียน) ควรรู้ไว้เผื่ออาจารย์ถามเรื่องความปลอดภัย
 
 ---
 

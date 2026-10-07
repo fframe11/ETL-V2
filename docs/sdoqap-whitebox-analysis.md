@@ -412,7 +412,7 @@ flowchart TB
 
 ### ประเด็นเพิ่มที่กระทบความน่าเชื่อถือ (ผลการตรวจ)
 
-- `GET /export/raw|active|quarantine|preview` และ GET ส่วนใหญ่ของ quality/lineage/whitebox ไม่ต้อง login ทั้งที่ UI ให้ความรู้สึกว่าต้อง login
+- GET ส่วนใหญ่ของ quality/lineage/whitebox ไม่ต้อง login ทั้งที่ UI ให้ความรู้สึกว่าต้อง login (`GET /export/raw|active|quarantine|reddit|preview` เคยเปิดเช่นกัน แต่บังคับ login แล้วเมื่อ 2026-10-08 โดยยังส่งทุกคอลัมน์ไม่ปิดบังตามที่ตั้งใจ ส่วน `/export/tables` และ `/export/gold/{metric}` ยังเปิด)
 - `POST /gold/rebuild` ของ Spark trigger daemon ไม่มีการตรวจสิทธิ์
 - `ELASTICSEARCH_URL` น่าจะไม่ถูกตั้งใน container `spark-master` หลายโมดูลอ่านตัวแปรนี้โดยตรง (adaptive threshold, profile store, AI advisor, remediation) ถ้าไม่ได้ตั้ง ส่วนเหล่านั้นจะข้ามหรือถอยกลับเป็นค่าเริ่มต้น ต้องตรวจในสภาพแวดล้อมจริง
 
