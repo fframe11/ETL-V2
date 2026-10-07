@@ -31,3 +31,14 @@ it("keeps the HTTP error message when the server did answer", async () => {
   mockFetchByUrl([["/dashboards/saved", { status: 503, body: { detail: "บันทึกไม่ได้ในตอนนี้" } }]]);
   await expect(dashboardsApi.createSaved({})).rejects.toThrow("บันทึกไม่ได้ในตอนนี้");
 });
+
+it("asks for the CSV of the rows the filters select", async () => {
+  const fetchMock = mockFetchByUrl([["/dashboards/export",
+    { headers: { "Content-Disposition": 'attachment; filename="sales_20261008.csv"' } }]]);
+  const file = await dashboardsApi.exportCsv("sales", { region: { values: ["North"] } }, false);
+  expect(file.filename).toBe("sales_20261008.csv");
+  const [url, options] = fetchMock.mock.calls[0];
+  expect(url).toBe("/api/v1/dashboards/export");
+  expect(options.method).toBe("POST");
+  expect(JSON.parse(options.body)).toEqual({ table_name: "sales", selections: { region: { values: ["North"] } }, include_personal: false });
+});

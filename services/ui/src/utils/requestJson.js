@@ -1,8 +1,9 @@
 import { friendlyApiError } from "./apiError";
 
-// fetch + JSON for this app's API: sends the session cookie, goes to /login on 401 and throws an
-// Error a user can read. The HTTP status stays on error.status (0 when the server was not reached).
-export async function requestJson(url, { method = "GET", body } = {}) {
+// fetch for this app's API: sends the session cookie, goes to /login on 401 and throws an Error a
+// user can read when the call fails. The HTTP status stays on error.status (0 when the server was
+// not reached).
+async function send(url, { method = "GET", body } = {}) {
   const options = { method, credentials: "same-origin" };
   if (body !== undefined) {
     options.headers = { "Content-Type": "application/json" };
@@ -19,17 +20,38 @@ export async function requestJson(url, { method = "GET", body } = {}) {
   if (res.status === 401 && window.location.pathname !== "/login") {
     window.location.href = "/login";
   }
-  let data = {};
+  return res;
+}
+
+async function readJson(res) {
   try {
-    data = await res.json();
+    return await res.json();
   } catch {
-    data = {};
+    return {};
   }
-  if (!res.ok) {
-    const detail = typeof data.detail === "string" ? data.detail : "";
-    const error = new Error(friendlyApiError(detail, `คำขอล้มเหลว (HTTP ${res.status})`));
-    error.status = res.status;
-    throw error;
-  }
+}
+
+function failure(res, data) {
+  const detail = typeof data.detail === "string" ? data.detail : "";
+  const error = new Error(friendlyApiError(detail, `คำขอล้มเหลว (HTTP ${res.status})`));
+  error.status = res.status;
+  return error;
+}
+
+// fetch + JSON.
+export async function requestJson(url, options) {
+  const res = await send(url, options);
+  const data = await readJson(res);
+  if (!res.ok) throw failure(res, data);
   return data;
+}
+
+// A file to download, such as a CSV: the same cookie, 401 and error handling as requestJson, but it
+// resolves to { blob, filename }. The name comes from the server's Content-Disposition, else fallbackName.
+export async function requestFile(url, options, fallbackName = "download") {
+  const res = await send(url, options);
+  if (!res.ok) throw failure(res, await readJson(res));
+  const disposition = res.headers?.get?.("Content-Disposition") || "";
+  const match = /filename="?([^";]+)"?/i.exec(disposition);
+  return { blob: await res.blob(), filename: match ? match[1] : fallbackName };
 }

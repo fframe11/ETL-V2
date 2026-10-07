@@ -1,4 +1,4 @@
-import { requestJson } from "./requestJson";
+import { requestFile, requestJson } from "./requestJson";
 
 const BASE = "/api/v1/dashboards";
 
@@ -14,6 +14,9 @@ export const dashboardsApi = {
   suggestChanges: (table_name, spec) => request("/suggest-changes", { method: "POST", body: { table_name, spec } }),
   refine: (table_name, spec, instruction) => request("/refine", { method: "POST", body: { table_name, spec, instruction } }),
   render: (table_name, spec, selections) => request("/render", { method: "POST", body: { table_name, spec, selections } }),
+  // The rows the dashboard is computed from, as a CSV file: resolves to { blob, filename }.
+  exportCsv: (table_name, selections, include_personal) =>
+    requestFile(`${BASE}/export`, { method: "POST", body: { table_name, selections, include_personal } }, `${table_name}.csv`),
   listSaved: () => request("/saved"),
   getSaved: (id) => request(`/saved/${encodeURIComponent(id)}`),
   createSaved: (doc) => request("/saved", { method: "POST", body: doc }),

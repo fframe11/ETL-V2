@@ -1,5 +1,5 @@
 import { it, expect, vi } from "vitest";
-import { requestJson } from "./requestJson";
+import { requestFile, requestJson } from "./requestJson";
 import { mockFetchByUrl } from "../test/renderPage";
 
 it("keeps the HTTP status on the error", async () => {
@@ -23,4 +23,29 @@ it("explains a network failure in Thai", async () => {
   const error = await requestJson("/api/v1/x").catch((e) => e);
   expect(error.message).toBe("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่");
   expect(error.status).toBe(0);
+});
+
+const CSV_FILE = { headers: { "Content-Disposition": 'attachment; filename="sales_20261008.csv"' } };
+
+it("downloads a file under the name the server gives", async () => {
+  const blob = new Blob(["﻿region\r\nNorth\r\n"], { type: "text/csv" });
+  const fetchMock = mockFetchByUrl([["/x", { ...CSV_FILE, blob }]]);
+  const file = await requestFile("/api/v1/x", { method: "POST", body: { a: 1 } }, "sales.csv");
+  expect(file).toEqual({ blob, filename: "sales_20261008.csv" });
+  const [, options] = fetchMock.mock.calls[0];
+  expect(options.credentials).toBe("same-origin");
+  expect(JSON.parse(options.body)).toEqual({ a: 1 });
+});
+
+it("names a downloaded file itself when the server does not", async () => {
+  mockFetchByUrl([["/x", {}]]);
+  expect((await requestFile("/api/v1/x", {}, "sales.csv")).filename).toBe("sales.csv");
+});
+
+it("turns a failed download into the server's message", async () => {
+  const detail = "ข้อมูลหลังกรองมี 4 แถว เกินที่ส่งออกได้ 3 แถว กรุณาเพิ่มตัวกรองแล้วลองใหม่";
+  mockFetchByUrl([["/x", { status: 413, body: { detail } }]]);
+  const error = await requestFile("/api/v1/x").catch((e) => e);
+  expect(error.status).toBe(413);
+  expect(error.message).toBe(detail);
 });

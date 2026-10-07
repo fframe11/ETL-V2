@@ -16,7 +16,7 @@ export function mockFetchEmpty() {
 }
 
 // Like mockFetchEmpty, but lets a test answer specific endpoints.
-// routes: [[urlSubstring, { status, body }], ...]; first match wins.
+// routes: [[urlSubstring, { status, body, headers, blob }], ...]; first match wins.
 export function mockFetchByUrl(routes) {
   const fn = vi.fn(async (url) => {
     const hit = routes.find(([part]) => String(url).includes(part));
@@ -25,9 +25,10 @@ export function mockFetchByUrl(routes) {
     return {
       ok: status >= 200 && status < 300,
       status,
+      headers: new Headers(hit?.[1]?.headers ?? {}),
       json: async () => body,
       text: async () => JSON.stringify(body),
-      blob: async () => new Blob()
+      blob: async () => hit?.[1]?.blob ?? new Blob()
     };
   });
   vi.stubGlobal("fetch", fn);
