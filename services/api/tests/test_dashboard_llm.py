@@ -353,3 +353,16 @@ def test_a_column_the_candidate_text_does_not_name_is_not_demanded_of_the_reword
     groq(ranked_answer({"id": period["id"], "text": reworded}))
     result = dashboard_llm.rank_suggestions("sales", PROFILE, "management", CANDIDATES)
     assert result["suggestions"][0]["text"] == reworded
+
+
+def test_the_refine_prompt_lists_what_the_dashboard_still_lacks(groq):
+    current, _ = validate_spec(LLM_SPEC, PROFILE)
+    fake = groq(json.dumps(LLM_SPEC, ensure_ascii=False))
+    dashboard_llm.refine_spec("sales", PROFILE, current, "ทำให้ดูง่ายขึ้น")
+    system, user = fake.calls[0]
+    sent = json.loads(user["content"])
+    assert sent["suggested_changes"] and any("แนวโน้ม" in t for t in sent["suggested_changes"])
+    assert all(isinstance(t, str) for t in sent["suggested_changes"])
+    assert "never apply a suggested change the instruction did not ask for" in system["content"]
+    for value in ("SECRET-CUSTOMER", "North", "South", "East"):
+        assert value not in json.dumps([system, user], ensure_ascii=False)

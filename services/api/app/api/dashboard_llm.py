@@ -15,7 +15,7 @@ import requests
 
 from .dashboard_spec import (AGGREGATIONS, AUDIENCES, FORMATS, GRID_COLUMNS, MAX_ROW_SPAN, TIME_GRAINS,
                              WIDGET_TYPES, SpecError, diff_specs, validate_spec)
-from .dashboard_suggest import emptiest_columns, is_identifier, key_like_columns
+from .dashboard_suggest import emptiest_columns, is_identifier, key_like_columns, suggest_refinements
 from .system import get_system_settings
 from .whitebox import _get_groq_api_key
 
@@ -74,7 +74,8 @@ Rules:
 REFINE_RULES = """
 You are EDITING the dashboard in "current_spec". Change only what "instruction" asks for.
 Keep every other widget and filter exactly as it is, with the same id. Give new widgets new ids.
-Return the complete updated spec."""
+Return the complete updated spec.
+"suggested_changes" lists what this dashboard still lacks. Use it only to read a vague instruction against what the data supports; never apply a suggested change the instruction did not ask for."""
 
 
 def groq_settings():
@@ -130,7 +131,7 @@ def build_generate_messages(table_name, profile, context, audience):
 
 def build_refine_messages(table_name, profile, spec, instruction):
     user = {"dataset": table_name, "profile": profile_for_prompt(profile), "current_spec": spec,
-            "instruction": instruction}
+            "suggested_changes": [s["text"] for s in suggest_refinements(profile, spec)], "instruction": instruction}
     return [{"role": "system", "content": SYSTEM_PROMPT + REFINE_RULES},
             {"role": "user", "content": json.dumps(user, ensure_ascii=False)}]
 
