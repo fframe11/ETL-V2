@@ -4,6 +4,7 @@ Every column and aggregation reaching this module was accepted by validate_spec(
 the work here is plain group-by arithmetic over the active-layer DataFrame."""
 import logging
 import math
+import operator
 
 import pandas as pd
 
@@ -77,6 +78,80 @@ def _grouped(frame, keys, metric):
     if agg == "count_missing":
         return frame.assign(_missing=frame[column].isna()).groupby(keys, sort=False)["_missing"].sum()
     return groups[column].agg(_REDUCERS[agg])
+
+
+_COMPARE = {"gt": operator.gt, "gte": operator.ge, "lt": operator.lt, "lte": operator.le}
+
+
+def _matches(series, values):
+    if pd.api.types.is_numeric_dtype(series) and not pd.api.types.is_bool_dtype(series):
+        numbers = pd.to_numeric(pd.Series(list(values), dtype="object"), errors="coerce").dropna().tolist()
+        return series.isin(numbers).fillna(False).astype(bool)
+    return _labels(series).isin([str(v) for v in values]).astype(bool)
+
+
+def where_mask(frame, where):
+    """Rows matching one metric condition (semantic_layer.WHERE_OPS). Text comparisons use
+    the labels the charts show, so "(ว่าง)" matches empty values."""
+    series, op, value = frame[where["column"]], where["op"], where["value"]
+    if op in ("eq", "ne", "in"):
+        mask = _matches(series, value if op == "in" else [value])
+        return ~mask if op == "ne" else mask
+    if pd.api.types.is_datetime64_any_dtype(series):
+        bound = pd.Timestamp(value)
+        bound = bound.tz_convert(None) if bound.tzinfo else bound
+    else:
+        series, bound = pd.to_numeric(series, errors="coerce"), value
+    return _COMPARE[op](series, bound).fillna(False).astype(bool)
+
+
+def _part_value(frame, part):
+    if part.get("where"):
+        frame = frame[where_mask(frame, part["where"])]
+    return _aggregate(frame, part)
+
+
+def evaluate_metric(frame, metric):
+    """One number for a semantic-layer metric over frame; ratios in percent are x100 and a
+    zero or empty denominator gives None."""
+    if metric["type"] == "simple":
+        value = _part_value(frame, metric["measure"])
+    else:
+        numerator = _part_value(frame, metric["numerator"])
+        denominator = _part_value(frame, metric["denominator"])
+        value = None if numerator is None or not denominator else numerator / denominator
+        if value is not None and metric.get("format") == "percent":
+            value *= 100
+    return _value(value)
+
+
+def _grouped_part(frame, keys, part, index):
+    subset = frame[where_mask(frame, part["where"])] if part.get("where") else frame
+    values = _grouped(subset, keys, part).reindex(index)
+    return values.fillna(0) if part["agg"] in ("count", "count_distinct", "count_missing", "sum") else values
+
+
+def grouped_metric(frame, keys, metric):
+    """A metric per group of keys; every group present in frame gets a value (or NaN)."""
+    index = frame.groupby(keys, sort=False).size().index
+    if metric["type"] == "simple":
+        return _grouped_part(frame, keys, metric["measure"], index)
+    numerator = _grouped_part(frame, keys, metric["numerator"], index)
+    denominator = _grouped_part(frame, keys, metric["denominator"], index)
+    values = numerator / denominator.where(denominator != 0)
+    return values * 100 if metric.get("format") == "percent" else values
+
+
+def metric_values(df, metrics):
+    """{id: value} for the semantic-layer panel; a metric that cannot be computed gives None."""
+    values = {}
+    for metric in metrics:
+        try:
+            values[metric["id"]] = evaluate_metric(df, metric)
+        except Exception:  # one broken definition must not hide the others
+            logger.warning("Metric %s could not be computed", metric.get("id"), exc_info=True)
+            values[metric["id"]] = None
+    return values
 
 
 def _top(totals, limit, ascending=False):
