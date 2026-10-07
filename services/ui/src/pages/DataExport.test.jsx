@@ -72,3 +72,26 @@ it("shows no dataset heading when nothing is loaded", async () => {
   await renderPage(DataExport, "/export");
   expect(screen.queryByTestId("export-dataset")).toBeNull();
 });
+
+const NOT_LOGGED_IN = { status: 401, body: { detail: "Not authenticated. Please log in." } };
+
+it("tells the user in Thai that the session ended when the preview answers 401", async () => {
+  await renderPage(DataExport, "/export", [
+    ["/export/preview/", NOT_LOGGED_IN],
+    TABLES
+  ]);
+  expect(await screen.findByText("เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่")).toBeTruthy();
+  expect(screen.queryByText(/Not authenticated/)).toBeNull(); // the raw English detail is not shown
+});
+
+it("tells the user in Thai that the session ended when the download answers 401", async () => {
+  await renderPage(DataExport, "/export", [
+    ["/export/active/", NOT_LOGGED_IN],
+    ["/export/preview/", { body: { columns: ["a"], rows: [{ a: 1 }] } }],
+    TABLES
+  ]);
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Export CSV File" })); });
+  await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+  expect(screen.getByText("เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่")).toBeTruthy();
+  expect(screen.queryByText(/Not authenticated/)).toBeNull();
+});

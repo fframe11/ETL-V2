@@ -5,6 +5,9 @@ import { useApi } from "../hooks/useApi";
 import { PageHeader, InfoHint } from "../components/ui";
 import "./DataExport.css";
 
+// The row-level export routes need a login: a 401 means the session ran out while the page stayed open.
+const SESSION_EXPIRED = "เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่";
+
 export default function DataExport() {
   const [activeTab, setActiveTab] = useState("datasets"); // "datasets" or "gold"
   const [selectedExportZone, setSelectedExportZone] = useState("CLEAN"); // "CLEAN" | "REVIEW" | "QUARANTINE"
@@ -221,6 +224,8 @@ export default function DataExport() {
           } else {
             setPreviewData(data);
           }
+        } else if (res.status === 401) {
+          setPreviewError(SESSION_EXPIRED);
         } else {
           const errData = await res.json();
           setPreviewError(errData.detail || "No data available in this layer.");
@@ -257,6 +262,7 @@ export default function DataExport() {
     setExportStatus({ loading: true, message: "Generating CSV export from HDFS raw storage..." });
     try {
       const response = await fetch(downloadUrl);
+      if (response.status === 401) throw new Error(SESSION_EXPIRED);
       if (!response.ok) {
         const err = await response.json();
         throw new Error(err.detail || "Export failed.");
