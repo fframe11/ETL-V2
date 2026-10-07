@@ -337,3 +337,83 @@ def validate_semantic(raw, profile):
         metrics.append(metric)
         used.add(metric["id"])
     return {"columns": columns, "metrics": metrics}, warnings
+
+
+def _stored_columns(part, by_name, warnings):
+    """A stored draft/approved column map re-checked against the current profile."""
+    stored = (part or {}).get("columns") or {}
+    return {name: clean_column(meta, by_name[name], warnings) for name, meta in stored.items() if name in by_name}
+
+
+def resolve(table_name, doc, profile, available=True):
+    """The semantic view Create Dashboard uses (spec section 8)."""
+    doc = doc or {}
+    by_name = {c["name"]: c for c in profile["columns"]}
+    rules = rule_draft(profile)
+    draft, approved = doc.get("draft"), doc.get("approved")
+    base = approved or draft
+    warnings = []
+    approved_columns = _stored_columns(approved, by_name, warnings if approved else [])
+    draft_columns = _stored_columns(draft, by_name, [] if approved else warnings)
+    base_columns = approved_columns if approved else draft_columns
+    stored_names = (base or {}).get("columns") or {}
+    new_columns = [n for n in by_name if base and n not in stored_names]
+    missing_columns = sorted(n for n in stored_names if n not in by_name)
+
+    columns, hidden = {}, []
+    for name in by_name:
+        meta = base_columns.get(name) or draft_columns.get(name) or rules["columns"][name]
+        if approved and name in approved_columns:
+            pii = approved_columns[name]["pii"]
+        else:
+            pii = draft_columns.get(name, {}).get("pii", False) or rules["columns"][name]["pii"]
+        columns[name] = {**meta, "pii": bool(pii)}
+        if pii:
+            hidden.append(name)
+
+    metrics, invalid, used = [], [], set()
+    for item in (base or rules).get("metrics") or []:
+        metric, problem = clean_metric(item, by_name, used)
+        if not problem:
+            private = [c for c in metric_columns(metric) if c in hidden]
+            if private:
+                problem = f"อ้างคอลัมน์ข้อมูลส่วนบุคคล {', '.join(private)}"
+        if problem:
+            invalid.append({"id": item.get("id") if isinstance(item, dict) else None,
+                            "label": item.get("label") if isinstance(item, dict) else None, "reason": problem})
+            continue
+        metrics.append(metric)
+        used.add(metric["id"])
+
+    if not available:
+        status = "unavailable"
+    elif approved:
+        status = "approved_outdated" if new_columns or missing_columns else "approved"
+    elif draft:
+        status = "draft"
+    else:
+        status = "none"
+    return {"table_name": table_name, "status": status, "pending_draft": bool(approved and draft),
+            "version": approved["version"] if approved else 0,
+            "effective": {"columns": columns, "metrics": metrics},
+            "draft": draft, "approved": approved,
+            "drift": {"new_columns": new_columns, "missing_columns": missing_columns},
+            "invalid_metrics": invalid, "hidden_columns": hidden,
+            "history": doc.get("history") or [], "warnings": warnings}
+
+
+def apply_to_profile(profile, view):
+    """The profile Create Dashboard may use: hidden (personal) columns removed, each
+    remaining column carrying its role, label, unit, currency and default aggregation."""
+    hidden = set(view["hidden_columns"])
+    meaning = view["effective"]["columns"]
+    columns = []
+    for c in profile["columns"]:
+        if c["name"] in hidden:
+            continue
+        meta = meaning.get(c["name"], {})
+        columns.append({**c, "role": meta.get("role"), "label": meta.get("label") or c["name"],
+                        "unit": meta.get("unit"), "currency": meta.get("currency"),
+                        "default_agg": meta.get("default_agg")})
+    kind_counts = {k: sum(col["kind"] == k for col in columns) for k in profile["kind_counts"]}
+    return {**profile, "columns": columns, "column_count": len(columns), "kind_counts": kind_counts}
