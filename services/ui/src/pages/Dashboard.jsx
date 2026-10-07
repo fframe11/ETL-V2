@@ -19,6 +19,7 @@ import {
 } from 'recharts';
 import { Link, useNavigate } from 'react-router-dom';
 import EchartsDataLineage from '../components/EchartsDataLineage';
+import DataFlowStreamChart from '../components/DataFlowStreamChart';
 import { useDashboardStore } from '../store/useDashboardStore';
 import { getPage } from '../config/pages';
 import { formatUsd, formatThbApprox, formatUsdWithThb } from '../utils/currency';
@@ -31,6 +32,14 @@ const getQualityGrade = (score) => {
   if (score >= 90) return { grade: "B+ Warning", color: "var(--accent-yellow, #F59E0B)" };
   if (score >= 85) return { grade: "B Caution", color: "var(--accent-yellow, #F59E0B)" };
   return { grade: "F Critical Anomaly", color: "var(--accent-red, #EF4444)" };
+};
+
+const AREA_DATASET_MAP = {
+  sales: ['products', 'orders', 'transactions', 'pos', 'grocery'],
+  customer: ['users', 'customers', 'mbti', 'student', 'student_course_scores'],
+  operations: ['products', 'dirty_dataset', 'inventory', 'fulfillment', 'stock'],
+  reporting: ['users', 'products', 'mbti', 'dirty_dataset', 'pipeline'],
+  finance: ['products', 'orders', 'transactions', 'sales', 'finance']
 };
 
 export default function Dashboard() {
@@ -50,8 +59,8 @@ export default function Dashboard() {
     setSelectedSourceFilter
   } = useDashboardStore();
 
-  const [selectedBusinessArea, setSelectedBusinessArea] = useState(null);
-  const [lineageVisualMode, setLineageVisualMode] = useState('echarts'); // 'echarts' | 'linear'
+  const [ticketFilterTab, setTicketFilterTab] = useState('OPEN'); // 'OPEN' | 'ALL'
+  const [lineageVisualMode, setLineageVisualMode] = useState('stream'); // 'stream' | 'echarts' | 'linear'
   const [qualityChartType, setQualityChartType] = useState('bars'); // 'bars' | 'area'
 
   // Technical Cockpit States (Preserved)
@@ -64,38 +73,43 @@ export default function Dashboard() {
   const historyPageSize = 5;
 
   // 2. Data Fetching
-  const exec = useApi('/executive/overview', { refreshInterval: 15000 });
+  const areaQueryParam = selectedAreaFilter !== 'All' ? `&business_area=${selectedAreaFilter}` : '';
+  const exec = useApi(`/executive/overview?time_range=${timeRange}${areaQueryParam}`, { refreshInterval: 15000 });
   const kpi = useApi('/kpi/stats', { refreshInterval: 15000 });
-  const anomaly = useApi('/anomaly/sources', { refreshInterval: 15000 });
+  const anomaly = useApi(`/anomaly/sources?time_range=${timeRange}${areaQueryParam}`, { refreshInterval: 15000 });
   const services = useApi('/services/status', { refreshInterval: 10000 });
   const isHealthy = services.data && !services.error;
   const activity = useApi('/system/activity?limit=15', { refreshInterval: 15000 });
   const qualityHistory = useApi('/quality?limit=50', { refreshInterval: 15000 });
-  const impact = useApi('/analytics/impact', { refreshInterval: 30000 });
+  const impact = useApi(`/analytics/impact?time_range=${timeRange}${areaQueryParam}`, { refreshInterval: 30000 });
   const remediations = useApi('/system/remediations', { refreshInterval: 20000 });
   const clustering = useApi('/analytics/clustering', { refreshInterval: 30000 });
   const projection = useApi('/analytics/projection', { refreshInterval: 30000 });
-  const sellInOutApi = useApi('/analytics/sell-in-out', { refreshInterval: 30000 });
+  const sellInOutApi = useApi(`/analytics/sell-in-out?time_range=${timeRange}${areaQueryParam}`, { refreshInterval: 30000 });
   const sellInOut = sellInOutApi.data || {
     summary: {
-      total_sell_in_volume: 117500,
-      total_sell_out_volume: 105150,
-      reconciliation_gap_volume: 12350,
-      quarantined_data_gap_volume: 8330,
-      sales_accuracy_pct: 89.5,
-      copdq_sales_loss_usd: 18544,
-      quarantined_records_count: 1952
+      total_inbound_volume: 0,
+      total_delivered_volume: 0,
+      total_sell_in_volume: 0,
+      total_sell_out_volume: 0,
+      reconciliation_gap_volume: 0,
+      quarantined_data_gap_volume: 0,
+      sales_accuracy_pct: 100.0,
+      data_integrity_pct: 100.0,
+      copdq_sales_loss_usd: 0,
+      copdq_type: 'operational_waste',
+      quarantined_records_count: 0
     },
-    timeline: [
-      { period: "18 Sep", sell_in: 14200, sell_out: 13900, quarantined_gap: 150, quality_score: 98.9, status: "Healthy", incident: "Data contract verified" },
-      { period: "19 Sep", sell_in: 15400, sell_out: 14950, quarantined_gap: 220, quality_score: 98.4, status: "Healthy", incident: "Within normal variance" },
-      { period: "20 Sep", sell_in: 16800, sell_out: 15600, quarantined_gap: 680, quality_score: 95.8, status: "Normal", incident: "Minor POS lag" },
-      { period: "21 Sep", sell_in: 18200, sell_out: 13800, quarantined_gap: 2850, quality_score: 83.4, status: "Critical", incident: "Schema drift & Missing POS values" },
-      { period: "22 Sep", sell_in: 17500, sell_out: 13200, quarantined_gap: 3100, quality_score: 81.8, status: "Critical", incident: "Quarantine threshold exceeded" },
-      { period: "23 Sep", sell_in: 16900, sell_out: 15800, quarantined_gap: 950, quality_score: 94.2, status: "Recovering", incident: "Remediation ticket in progress" },
-      { period: "24 Sep", sell_in: 18500, sell_out: 17900, quarantined_gap: 380, quality_score: 97.9, status: "Healthy", incident: "Pipeline normalized" }
-    ],
-    business_impact_narrative: "การเปรียบเทียบ Sell-In (117,500 ชิ้น) กับ Sell-Out (105,150 ชิ้น) เผยให้เห็นช่องว่าง (Discrepancy Gap) 12,350 ชิ้น โดยมีข้อมูลตกค้างใน Quarantine ถึง 8,330 ชิ้น ในช่วงที่ Data Quality ตกต่ำกว่า SLA 95% ส่งผลให้ระบบรายงานคาดการณ์สต็อกคลาดเคลื่อน และสร้างความเสี่ยงต่อยอดขายประเมินตาม Gartner COPDQ อยู่ที่ $18,544 USD"
+    timeline: [],
+    business_impact_narrative: "กำลังโหลดข้อมูลการกระทบยอดปริมาณข้อมูลในท่อส่ง..."
+  };
+
+  const handleInvestigateTable = (datasetOrIssue) => {
+    if (!datasetOrIssue) return;
+    const clean = datasetOrIssue.split(' ')[0].replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
+    setSelectedSourceFilter(clean || 'All');
+    setSearchTerm(clean || '');
+    setViewMode('technical');
   };
   const wbStateApi = useApi('/whitebox/state', { refreshInterval: 10000 });
   const aiContextApi = useApi('/whitebox/ai-context-explanations', { refreshInterval: 30000 });
@@ -122,6 +136,33 @@ export default function Dashboard() {
       // ignore
     } finally {
       setAiRefreshing(false);
+    }
+  };
+
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState(null);
+
+  const handleManualRefresh = async () => {
+    if (isManualRefreshing) return;
+    setIsManualRefreshing(true);
+    try {
+      await Promise.all([
+        exec.refetch(),
+        kpi.refetch(),
+        anomaly.refetch(),
+        sellInOutApi.refetch(),
+        impact.refetch(),
+        qualityHistory.refetch(),
+        wbStateApi.refetch(),
+        activity.refetch(),
+        remediations.refetch()
+      ]);
+      const now = new Date();
+      setLastRefreshedAt(now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    } catch (err) {
+      console.error("Refresh failed:", err);
+    } finally {
+      setTimeout(() => setIsManualRefreshing(false), 650);
     }
   };
 
@@ -157,10 +198,24 @@ export default function Dashboard() {
 
   const bizAreas = execData.business_areas || [];
   const bizKpiImpactList = execData.business_kpi_impact || [];
-  const sortedBizKpiImpactList = useMemo(() => {
+  const filteredBizKpiImpactList = useMemo(() => {
     const sevOrder = { Critical: 0, Warning: 1, Normal: 2 };
-    return [...bizKpiImpactList].sort((a, b) => (sevOrder[a.severity] ?? 9) - (sevOrder[b.severity] ?? 9));
-  }, [bizKpiImpactList]);
+    let list = [...bizKpiImpactList];
+    if (selectedSeverityFilter !== 'All') {
+      list = list.filter(item => item.severity && item.severity.toLowerCase() === selectedSeverityFilter.toLowerCase());
+    }
+    if (selectedAreaFilter !== 'All') {
+      const targetDatasets = AREA_DATASET_MAP[selectedAreaFilter.toLowerCase()] || [];
+      list = list.filter(item => {
+        if (item.business_area && item.business_area.toLowerCase() === selectedAreaFilter.toLowerCase()) return true;
+        const sourceStr = (item.affected_source || '').toLowerCase();
+        if (targetDatasets.some(d => sourceStr.includes(d))) return true;
+        const areaStr = `${item.impacted_kpi || ''} ${item.business_impact || ''} ${item.technical_issue || ''}`.toLowerCase();
+        return areaStr.includes(selectedAreaFilter.toLowerCase());
+      });
+    }
+    return list.sort((a, b) => (sevOrder[a.severity] ?? 9) - (sevOrder[b.severity] ?? 9));
+  }, [bizKpiImpactList, selectedSeverityFilter, selectedAreaFilter]);
   const criticalIssuesList = execData.critical_business_issues || [];
   const qualityBreakdown = execData.data_quality_breakdown || {
     missing_values_pct: 0,
@@ -182,10 +237,86 @@ export default function Dashboard() {
   const filteredCriticalIssues = useMemo(() => {
     return criticalIssuesList.filter(item => {
       const matchSev = selectedSeverityFilter === 'All' || (item.severity && item.severity.toLowerCase() === selectedSeverityFilter.toLowerCase());
-      const matchArea = selectedAreaFilter === 'All' || (item.dataset && item.dataset.toLowerCase().includes(selectedAreaFilter.toLowerCase()));
-      return matchSev && matchArea;
+      if (!matchSev) return false;
+      if (selectedAreaFilter === 'All') return true;
+      if (item.business_area && item.business_area.toLowerCase() === selectedAreaFilter.toLowerCase()) return true;
+      const targetDatasets = AREA_DATASET_MAP[selectedAreaFilter.toLowerCase()] || [];
+      const itemDataset = (item.dataset || '').toLowerCase();
+      return targetDatasets.some(d => itemDataset.includes(d)) || itemDataset.includes(selectedAreaFilter.toLowerCase());
     });
   }, [criticalIssuesList, selectedSeverityFilter, selectedAreaFilter]);
+
+  // Dynamic Cascade for Business Impact Mapping Flow (Section 10)
+  const activeImpactFlow = useMemo(() => {
+    const allTickets = remediations.data?.tickets || [];
+    if (selectedAreaFilter !== 'All') {
+      const targetDatasets = AREA_DATASET_MAP[selectedAreaFilter.toLowerCase()] || [];
+      const matchingIssues = criticalIssuesList.filter(ci =>
+        targetDatasets.some(d => (ci.dataset || '').toLowerCase().includes(d)) ||
+        (ci.business_area && ci.business_area.toLowerCase() === selectedAreaFilter.toLowerCase())
+      );
+      const matchingKpis = bizKpiImpactList.filter(bk =>
+        (bk.business_area && bk.business_area.toLowerCase() === selectedAreaFilter.toLowerCase()) ||
+        targetDatasets.some(d => (bk.affected_source || '').toLowerCase().includes(d))
+      );
+      const matchingTickets = allTickets.filter(t =>
+        targetDatasets.includes((t.table_name || '').toLowerCase())
+      );
+
+      const topIssue = matchingIssues[0];
+      const topKpi = matchingKpis[0];
+      const topTicket = matchingTickets[0];
+
+      return {
+        scopeLabel: `${selectedAreaFilter.toUpperCase()} Domain (${targetDatasets.slice(0, 3).join(', ')})`,
+        step1: {
+          title: "1. Technical Issue",
+          sub: topIssue ? topIssue.issue : `Data Quality Validation in ${selectedAreaFilter}`,
+          color: "red"
+        },
+        step2: {
+          title: "2. Technical Impact",
+          sub: topIssue ? topIssue.business_impact : `${sellInOut.summary?.quarantined_data_gap_volume?.toLocaleString()} records quarantined`,
+          color: "amber"
+        },
+        step3: {
+          title: "3. KPI Impact",
+          sub: topKpi ? `${topKpi.impacted_kpi}` : "Operational SLA & Reporting",
+          color: "purple"
+        },
+        step4: {
+          title: "4. Business Action",
+          sub: topTicket ? `Ticket: ${topTicket.target_system} (${topTicket.status})` : (topKpi ? topKpi.status : "Remediation Ticket Assigned"),
+          color: "green"
+        }
+      };
+    }
+
+    const openCount = allTickets.filter(t => t.status !== 'RESOLVED').length;
+    return {
+      scopeLabel: "Enterprise-wide (All Data Pipelines)",
+      step1: {
+        title: "1. Technical Issue",
+        sub: criticalIssuesList[0] ? criticalIssuesList[0].issue : "Pipeline Ingestion Failure & Schema Drift",
+        color: "red"
+      },
+      step2: {
+        title: "2. Technical Impact",
+        sub: `${sellInOut.summary?.quarantined_data_gap_volume?.toLocaleString()} Records Quarantined`,
+        color: "amber"
+      },
+      step3: {
+        title: "3. KPI Impact",
+        sub: `COPDQ Risk ${formatUsd(bizImpact.monetary_loss_usd)} (${bizImpact.areas_affected_count} Areas Impacted)`,
+        color: "purple"
+      },
+      step4: {
+        title: "4. Business Action",
+        sub: `${openCount} Upstream Remediation Tickets Active`,
+        color: "green"
+      }
+    };
+  }, [selectedAreaFilter, criticalIssuesList, bizKpiImpactList, sellInOut.summary, remediations.data, bizImpact]);
 
   // Data Quality Trend Chart
   const qualityTrendData = useMemo(() => {
@@ -274,23 +405,29 @@ export default function Dashboard() {
     }
   };
 
-  // CSV Export for Executive Summary
+  // CSV Export for Executive Summary (Synchronized with 4 Hero KPI Cards & Active Filters)
   const handleExportExecutiveCSV = () => {
     const csvRows = [
       ["SDOQAP Executive Overview Report"],
       ["Generated At", new Date().toISOString()],
+      ["Time Filter", timeRange],
+      ["Business Area Filter", selectedAreaFilter],
+      ["Severity Filter", selectedSeverityFilter],
       [],
-      ["1. EXECUTIVE KPIS"],
+      ["1. EXECUTIVE HERO KPIS"],
       ["Metric", "Value", "Status", "Details"],
-      ["Data Health Score", `${dataHealth.score}%`, dataHealth.status, `${dataHealth.clean_records} Clean / ${dataHealth.quarantined_records} Quarantined`],
-      ["Data Availability", `${dataAvailability.score}%`, dataAvailability.status, `${dataAvailability.total_pipelines - dataAvailability.failed_pipelines}/${dataAvailability.total_pipelines} Active Pipelines`],
-      ["Data Freshness", `${dataFreshness.score}%`, dataFreshness.status, `Avg Lag: ${dataFreshness.avg_lag_hours} hrs`],
-      ["Business Impact", `${bizImpact.areas_affected_count} Areas`, "Warning", `Est. COPDQ Loss: ${formatUsdWithThb(bizImpact.monetary_loss_usd)}`],
-      ["Report Availability", `${reportAvail.score}%`, "Normal", `${reportAvail.available_reports} Available / ${reportAvail.delayed_reports} Delayed`],
+      ["Data Health Score", `${dataHealth.score}%`, dataHealth.status, `${dataHealth.clean_records?.toLocaleString()} Clean / ${dataHealth.quarantined_records?.toLocaleString()} Quarantined`],
+      ["Pipeline SLA Availability", `${dataAvailability.score}%`, dataAvailability.score >= 95 ? 'HEALTHY' : 'DEGRADED', `${dataAvailability.total_pipelines - dataAvailability.failed_pipelines}/${dataAvailability.total_pipelines} Active Pipelines (Avg Lag: ${dataFreshness.avg_lag_hours} hrs)`],
+      ["Sell-In / Out Volume Gap (Demo)", `${sellInOut.summary?.reconciliation_gap_volume?.toLocaleString()} Units`, "Demo Scenario", `${sellInOut.summary?.quarantined_data_gap_volume?.toLocaleString()} Quarantined Gap (${sellInOut.summary?.sales_accuracy_pct}% Accuracy)`],
+      ["Financial COPDQ Risk", formatUsd(bizImpact.monetary_loss_usd), bizImpact.monetary_loss_usd > 0 ? "ACTION" : "CLEAR", `Est. Revenue Exposure (${formatThbApprox(bizImpact.monetary_loss_usd)})`],
       [],
       ["2. CRITICAL BUSINESS ISSUES"],
       ["Issue ID", "Issue Name", "Business Impact", "KPI Affected", "Severity", "Duration", "Status"],
-      ...criticalIssuesList.map(ci => [ci.id, `"${ci.issue}"`, `"${ci.business_impact}"`, `"${ci.kpi_affected}"`, ci.severity, ci.duration, ci.status])
+      ...filteredCriticalIssues.map(ci => [ci.id, `"${ci.issue}"`, `"${ci.business_impact}"`, `"${ci.kpi_affected}"`, ci.severity, ci.duration, ci.status]),
+      [],
+      ["3. STRATEGIC BUSINESS KPI IMPACT MATRIX"],
+      ["Technical Issue", "Impacted Business KPI", "Executive Impact", "Severity", "Status"],
+      ...filteredBizKpiImpactList.map(b => [`"${b.technical_issue}"`, `"${b.impacted_kpi}"`, `"${b.business_impact}"`, b.severity, b.status])
     ];
     const csvContent = "\uFEFF" + csvRows.map(row => row.join(",")).join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -369,6 +506,7 @@ export default function Dashboard() {
             value={timeRange}
             onChange={(e) => setTimeRange(e.target.value)}
           >
+            <option value="all">Time: All Time (Historical)</option>
             <option value="24h">Time: Last 24 Hours</option>
             <option value="7d">Time: Last 7 Days</option>
             <option value="30d">Time: Last 30 Days</option>
@@ -400,12 +538,18 @@ export default function Dashboard() {
         </div>
 
         <div className="exec-actions-right">
+          {lastRefreshedAt && (
+            <span className="exec-refresh-time" title="เวลาที่อัปเดตข้อมูลล่าสุด">
+              อัปเดตเมื่อ: {lastRefreshedAt}
+            </span>
+          )}
           <button
-            className="exec-btn"
-            onClick={() => { exec.refetch(); kpi.refetch(); anomaly.refetch(); wbStateApi.refetch(); }}
+            className={`exec-btn ${isManualRefreshing ? 'exec-btn-refreshing' : ''}`}
+            onClick={handleManualRefresh}
+            disabled={isManualRefreshing}
             title="Refresh All Real-time Metrics"
           >
-            <Icon name="refresh" /> Refresh
+            <Icon name="refresh" /> {isManualRefreshing ? 'กำลังรีเฟรช...' : 'Refresh'}
           </button>
           <button
             className="exec-btn exec-btn-primary"
@@ -421,21 +565,43 @@ export default function Dashboard() {
           ═══════════════════════════════════════════════════════════ */}
       {viewMode === 'executive' && (
         <>
+          {/* Active Scope Banner when filtered */}
+          {selectedAreaFilter !== 'All' && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: '8px', marginBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
+                <span style={{ fontWeight: 700, color: 'var(--accent-blue, #3B82F6)' }}>Scope Filter Active:</span>
+                <span className="exec-chip exec-chip-warn" style={{ fontSize: '11px', textTransform: 'capitalize' }}>
+                  {selectedAreaFilter} Area
+                </span>
+                <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
+                  (Target Datasets: {AREA_DATASET_MAP[selectedAreaFilter.toLowerCase()]?.slice(0, 4).join(', ')})
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedAreaFilter('All')}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '11px', textDecoration: 'underline' }}
+              >
+                Reset to All Areas
+              </button>
+            </div>
+          )}
+
           {/* ═══════════════════════════════════════════════════════════
               ZONE 1: THE CORE 4 EXECUTIVE HERO KPI CARDS (BA Standard)
               ═══════════════════════════════════════════════════════════ */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', marginBottom: '16px' }}>
             {/* Card 1: Data Health Score */}
-            <div className={`exec-kpi-card ${dataHealth.status === 'Good' ? 'kpi-good' : dataHealth.status === 'Warning' ? 'kpi-warn' : 'kpi-crit'}`}>
+            <div className={`exec-kpi-card ${dataHealth.status === 'Good' ? 'kpi-good' : dataHealth.status === 'Warning' ? 'kpi-warn' : dataHealth.status === 'No Data' ? 'kpi-blue' : 'kpi-crit'}`}>
               <div className="exec-kpi-top">
                 <span className="exec-kpi-title">Data Health Score</span>
-                <span className={`exec-chip ${dataHealth.status === 'Good' ? 'exec-chip-good' : dataHealth.status === 'Warning' ? 'exec-chip-warn' : 'exec-chip-crit'}`} style={{ fontSize: '11px' }}>
-                  {dataHealth.status}
+                <span className={`exec-chip ${dataHealth.status === 'Good' ? 'exec-chip-good' : dataHealth.status === 'Warning' ? 'exec-chip-warn' : dataHealth.status === 'No Data' ? 'exec-chip-neutral' : 'exec-chip-crit'}`} style={{ fontSize: '11px' }}>
+                  {dataHealth.status || 'No Data'}
                 </span>
               </div>
               <div className="exec-kpi-val">{dataHealth.score != null ? `${dataHealth.score}%` : '---'}</div>
               <div className="exec-kpi-sub" style={{ fontSize: '11px' }}>
-                {dataHealth.clean_records?.toLocaleString()} clean · {dataHealth.quarantined_records?.toLocaleString()} quarantined
+                {dataHealth.total_records ? `${dataHealth.clean_records?.toLocaleString()} clean · ${dataHealth.quarantined_records?.toLocaleString()} quarantined` : 'No run records in selected period'}
               </div>
             </div>
 
@@ -456,41 +622,41 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Card 3: Commercial Sell-In/Out Discrepancy Gap
-                (replaces the old separate Data Freshness + Business Impact cards per
-                mari's 4-zone redesign; the Data Freshness null-safety fix is re-applied
-                to its remaining occurrence in the Technical Cockpit tab below instead) */}
+            {/* Card 3: Data Pipeline Flow Reconciliation Gap */}
             <div className="exec-kpi-card kpi-purple">
               <div className="exec-kpi-top">
-                <span className="exec-kpi-title">Sell-In / Out Volume Gap</span>
+                <span className="exec-kpi-title">
+                  Pipeline Flow Delivery Gap
+                  <span style={{ marginLeft: '6px', fontSize: '9px', padding: '1px 5px', borderRadius: '4px', background: 'rgba(139, 92, 246, 0.15)', color: 'var(--accent-purple)', border: '1px solid rgba(139, 92, 246, 0.3)', fontWeight: 700 }}>RECONCILIATION</span>
+                </span>
                 <span className="exec-chip exec-chip-warn" style={{ fontSize: '11px' }}>
-                  {sellInOut.summary?.reconciliation_gap_volume?.toLocaleString()} UNITS
+                  {sellInOut.summary?.reconciliation_gap_volume?.toLocaleString()} ROWS
                 </span>
               </div>
               <div className="exec-kpi-val" style={{ color: 'var(--accent-purple)' }}>
-                {sellInOut.summary?.reconciliation_gap_volume?.toLocaleString()} <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>units</span>
+                {sellInOut.summary?.reconciliation_gap_volume?.toLocaleString()} <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>rows</span>
               </div>
               <div className="exec-kpi-sub" style={{ fontSize: '11px' }}>
-                {sellInOut.summary?.quarantined_data_gap_volume?.toLocaleString()} quarantined · {sellInOut.summary?.sales_accuracy_pct}% accuracy
+                {sellInOut.summary?.quarantined_data_gap_volume?.toLocaleString()} quarantined · {sellInOut.summary?.data_integrity_pct ?? sellInOut.summary?.sales_accuracy_pct}% delivery integrity
               </div>
             </div>
 
-            {/* Card 4: Financial COPDQ Risk */}
-            <div className={`exec-kpi-card ${bizImpact.monetary_loss_usd > 0 ? 'kpi-crit' : 'kpi-good'}`}>
+            {/* Card 4: Financial COPDQ Risk / Operational Remediation Waste */}
+            <div className={`exec-kpi-card ${(bizImpact.monetary_loss_usd > 0 || (sellInOut.summary?.copdq_sales_loss_usd > 0)) ? 'kpi-crit' : 'kpi-good'}`}>
               <div className="exec-kpi-top">
                 <span className="exec-kpi-title">
-                  Financial COPDQ Risk
-                  <InfoHint text="คำนวณจากค่าคงที่สมมติ (เช่น ค่าแก้ไข 2 ดอลลาร์/แถวที่ถูกกักกัน) ไม่ใช่ข้อมูลต้นทุนทางการเงินจริงของธุรกิจ" />
+                  {sellInOut.summary?.copdq_type === 'operational_waste' ? 'COPDQ Remediation Waste' : 'Financial COPDQ Risk'}
+                  <InfoHint text={sellInOut.summary?.copdq_type === 'operational_waste' ? "คำนวณจากต้นทุนวิศวกรรมและการประมวลผลในการจัดการข้อมูลติดกักกัน ($2.50 ต่อแถว) ตามหลัก Gartner TCO" : "คำนวณจากมูลค่าความเสี่ยงทางการเงินจริงของแถวข้อมูลที่ติดกักกัน"} />
                 </span>
-                <span className={`exec-chip ${bizImpact.monetary_loss_usd > 0 ? 'exec-chip-crit' : 'exec-chip-good'}`} style={{ fontSize: '11px' }}>
-                  {bizImpact.monetary_loss_usd > 0 ? 'ACTION' : 'CLEAR'}
+                <span className={`exec-chip ${(bizImpact.monetary_loss_usd > 0 || (sellInOut.summary?.copdq_sales_loss_usd > 0)) ? 'exec-chip-crit' : 'exec-chip-good'}`} style={{ fontSize: '11px' }}>
+                  {(bizImpact.monetary_loss_usd > 0 || (sellInOut.summary?.copdq_sales_loss_usd > 0)) ? 'ACTION' : 'CLEAR'}
                 </span>
               </div>
-              <div className="exec-kpi-val" style={{ color: bizImpact.monetary_loss_usd > 0 ? 'var(--accent-red)' : 'var(--accent-green)' }}>
-                {formatUsd(bizImpact.monetary_loss_usd)}
+              <div className="exec-kpi-val" style={{ color: (bizImpact.monetary_loss_usd > 0 || (sellInOut.summary?.copdq_sales_loss_usd > 0)) ? 'var(--accent-red)' : 'var(--accent-green)' }}>
+                {formatUsd(bizImpact.monetary_loss_usd || sellInOut.summary?.copdq_sales_loss_usd)}
               </div>
               <div className="exec-kpi-sub" style={{ fontSize: '11px' }}>
-                Estimated revenue exposure from bad data · {formatThbApprox(bizImpact.monetary_loss_usd)}
+                {sellInOut.summary?.copdq_type === 'operational_waste' ? 'Engineering & compute remediation TCO' : 'Estimated revenue exposure from bad data'} · {formatThbApprox(bizImpact.monetary_loss_usd || sellInOut.summary?.copdq_sales_loss_usd)}
               </div>
             </div>
           </div>
@@ -558,7 +724,7 @@ export default function Dashboard() {
                     <BarChart data={qualityTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
                       <XAxis dataKey="time" stroke="var(--text-muted)" fontSize={11} tickLine={false} />
-                      <YAxis domain={[70, 100]} stroke="var(--text-muted)" fontSize={11} tickLine={false} tickFormatter={(v) => `${v}%`} />
+                      <YAxis domain={[(dataMin) => Math.max(0, Math.floor((dataMin - 5) / 10) * 10), 100]} stroke="var(--text-muted)" fontSize={11} tickLine={false} tickFormatter={(v) => `${v}%`} />
                       <Tooltip
                         content={({ active, payload, label }) => {
                           if (active && payload && payload.length) {
@@ -600,7 +766,7 @@ export default function Dashboard() {
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
                       <XAxis dataKey="time" stroke="var(--text-muted)" fontSize={11} tickLine={false} />
-                      <YAxis domain={[75, 100]} stroke="var(--text-muted)" fontSize={11} tickLine={false} tickFormatter={(v) => `${v}%`} />
+                      <YAxis domain={[(dataMin) => Math.max(0, Math.floor((dataMin - 5) / 10) * 10), 100]} stroke="var(--text-muted)" fontSize={11} tickLine={false} tickFormatter={(v) => `${v}%`} />
                       <Tooltip contentStyle={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)', borderRadius: '8px', fontSize: '11px' }} />
                       <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '4px' }} />
                       <ReferenceLine y={95} stroke="var(--accent-green)" strokeDasharray="4 4" label={{ value: 'Target 95%', fill: 'var(--accent-green)', fontSize: 11 }} />
@@ -676,8 +842,13 @@ export default function Dashboard() {
             {/* Left: Business KPI Impact Matrix (Sorted by Severity) */}
             <div className="exec-table-card" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
               <div className="gs-card-head" style={{ marginBottom: '8px' }}>
-                <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <h3 style={{ margin: 0, fontSize: '13px' }}>Business KPI Impact Matrix</h3>
+                  {(selectedAreaFilter !== 'All' || selectedSeverityFilter !== 'All') && (
+                    <span className="exec-chip exec-chip-warn" style={{ fontSize: '10px' }}>
+                      Filtered: {selectedAreaFilter !== 'All' ? selectedAreaFilter : ''} {selectedSeverityFilter !== 'All' ? `(${selectedSeverityFilter})` : ''}
+                    </span>
+                  )}
                 </div>
                 <button
                   className="exec-btn"
@@ -696,10 +867,11 @@ export default function Dashboard() {
                       <th style={{ fontSize: '11px' }}>Executive Business Impact</th>
                       <th style={{ fontSize: '11px' }}>Severity</th>
                       <th style={{ fontSize: '11px' }}>Status</th>
+                      <th style={{ fontSize: '11px' }}>Action</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedBizKpiImpactList.map((item, idx) => (
+                    {filteredBizKpiImpactList.map((item, idx) => (
                       <tr key={idx}>
                         <td style={{ fontWeight: 700, color: 'var(--accent-purple)', fontSize: '11px' }}>{item.technical_issue}</td>
                         <td style={{ fontWeight: 600, fontSize: '11px' }}>{item.impacted_kpi}</td>
@@ -713,6 +885,16 @@ export default function Dashboard() {
                           <span style={{ fontSize: '11px', color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>
                             {item.status}
                           </span>
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="exec-btn"
+                            style={{ padding: '2px 8px', fontSize: '10px', whiteSpace: 'nowrap' }}
+                            onClick={() => handleInvestigateTable(item.technical_issue || item.impacted_kpi)}
+                          >
+                            Cockpit <Icon name="settings" />
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -737,7 +919,7 @@ export default function Dashboard() {
                     <span className="exec-dim-score" style={{ fontSize: '11px' }}>{qualityBreakdown.missing_values_pct}%</span>
                   </div>
                   <div className="exec-dim-bar">
-                    <div className="exec-dim-fill" style={{ width: `${Math.min(qualityBreakdown.missing_values_pct * 15, 100)}%`, background: 'var(--accent-yellow)' }} />
+                    <div className="exec-dim-fill" style={{ width: `${Math.min(Math.max(qualityBreakdown.missing_values_pct, 0), 100)}%`, minWidth: qualityBreakdown.missing_values_pct > 0 ? '6px' : '0', background: 'var(--accent-yellow)' }} />
                   </div>
                 </div>
 
@@ -747,7 +929,7 @@ export default function Dashboard() {
                     <span className="exec-dim-score" style={{ fontSize: '11px' }}>{qualityBreakdown.duplicate_records_pct}%</span>
                   </div>
                   <div className="exec-dim-bar">
-                    <div className="exec-dim-fill" style={{ width: `${Math.min(qualityBreakdown.duplicate_records_pct * 30, 100)}%`, background: '#3B82F6' }} />
+                    <div className="exec-dim-fill" style={{ width: `${Math.min(Math.max(qualityBreakdown.duplicate_records_pct, 0), 100)}%`, minWidth: qualityBreakdown.duplicate_records_pct > 0 ? '6px' : '0', background: '#3B82F6' }} />
                   </div>
                 </div>
 
@@ -757,7 +939,7 @@ export default function Dashboard() {
                     <span className="exec-dim-score" style={{ fontSize: '11px' }}>{qualityBreakdown.invalid_type_pct}%</span>
                   </div>
                   <div className="exec-dim-bar">
-                    <div className="exec-dim-fill" style={{ width: `${Math.min(qualityBreakdown.invalid_type_pct * 40, 100)}%`, background: 'var(--accent-red)' }} />
+                    <div className="exec-dim-fill" style={{ width: `${Math.min(Math.max(qualityBreakdown.invalid_type_pct, 0), 100)}%`, minWidth: qualityBreakdown.invalid_type_pct > 0 ? '6px' : '0', background: 'var(--accent-red)' }} />
                   </div>
                 </div>
 
@@ -767,7 +949,7 @@ export default function Dashboard() {
                     <span className="exec-dim-score" style={{ fontSize: '11px' }}>{qualityBreakdown.schema_drift_count} Active</span>
                   </div>
                   <div className="exec-dim-bar">
-                    <div className="exec-dim-fill" style={{ width: `${qualityBreakdown.schema_drift_count > 0 ? 80 : 0}%`, background: 'var(--accent-purple)' }} />
+                    <div className="exec-dim-fill" style={{ width: `${Math.min(qualityBreakdown.schema_drift_count * 20, 100)}%`, minWidth: qualityBreakdown.schema_drift_count > 0 ? '6px' : '0', background: 'var(--accent-purple)' }} />
                   </div>
                 </div>
 
@@ -777,7 +959,7 @@ export default function Dashboard() {
                     <span className="exec-dim-score" style={{ color: 'var(--accent-green)', fontSize: '11px' }}>{dataHealth.score}%</span>
                   </div>
                   <div className="exec-dim-bar">
-                    <div className="exec-dim-fill" style={{ width: `${dataHealth.score}%`, background: 'var(--accent-green)' }} />
+                    <div className="exec-dim-fill" style={{ width: `${Math.min(Math.max(dataHealth.score || 0, 0), 100)}%`, background: 'var(--accent-green)' }} />
                   </div>
                 </div>
               </div>
@@ -830,10 +1012,7 @@ export default function Dashboard() {
                           <button
                             className="exec-btn"
                             style={{ padding: '3px 8px', fontSize: '10px' }}
-                            onClick={() => {
-                              setSelectedSourceFilter(issue.dataset?.split(' ')[0] || 'All');
-                              setViewMode('technical');
-                            }}
+                            onClick={() => handleInvestigateTable(issue.dataset)}
                           >
                             Drill-down <Icon name="settings" />
                           </button>
@@ -864,39 +1043,59 @@ export default function Dashboard() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {/* Business Areas Cards (Section 11) */}
           <div>
-            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase' }}>
-              Business Areas Health &amp; Impact
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                Business Areas Health &amp; Impact
+              </div>
+              {selectedAreaFilter !== 'All' && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedAreaFilter('All')}
+                  style={{ background: 'transparent', border: 'none', color: 'var(--accent-purple)', cursor: 'pointer', fontSize: '11px', fontWeight: 700 }}
+                >
+                  Reset Filter (Viewing All Areas)
+                </button>
+              )}
             </div>
             <div className="biz-area-grid">
-              {bizAreas.map((area) => (
-                <div
-                  key={area.id}
-                  className={`biz-area-card ${selectedBusinessArea === area.id ? 'selected' : ''}`}
-                  onClick={() => setSelectedBusinessArea(selectedBusinessArea === area.id ? null : area.id)}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                    <span className="biz-area-name">{area.name}</span>
-                    <span className={`exec-chip ${area.status === 'Normal' ? 'exec-chip-good' : area.status === 'Warning' ? 'exec-chip-warn' : 'exec-chip-crit'}`}>
-                      {area.status}
-                    </span>
-                  </div>
-                  <div className="biz-area-score" style={{ color: area.status === 'Normal' ? 'var(--accent-green)' : 'var(--accent-yellow)' }}>
-                    {area.health_pct}%
-                  </div>
-                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', lineHeight: '1.4' }}>
-                    {area.impact_summary}{thbFootnote(area.impact_summary)}
-                  </div>
-                  {area.affected_datasets && area.affected_datasets.length > 0 && (
-                    <div style={{ marginTop: '8px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                      {area.affected_datasets.map((ds, i) => (
-                        <span key={i} style={{ background: 'var(--bg-primary)', padding: '2px 5px', borderRadius: '4px', fontSize: '8.5px', fontFamily: 'var(--font-mono)' }}>
-                          {ds}
-                        </span>
-                      ))}
+              {bizAreas.map((area) => {
+                const isSelected = selectedAreaFilter.toLowerCase() === area.id.toLowerCase();
+                return (
+                  <div
+                    key={area.id}
+                    className={`biz-area-card ${isSelected ? 'selected' : ''}`}
+                    onClick={() => setSelectedAreaFilter(isSelected ? 'All' : area.id)}
+                    title={`Click to filter entire dashboard by ${area.name}`}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <span className="biz-area-name">{area.name}</span>
+                      <span className={`exec-chip ${area.status === 'Normal' ? 'exec-chip-good' : area.status === 'Warning' ? 'exec-chip-warn' : 'exec-chip-crit'}`}>
+                        {area.status}
+                      </span>
                     </div>
-                  )}
-                </div>
-              ))}
+                    <div className="biz-area-score" style={{ color: area.status === 'Normal' ? 'var(--accent-green)' : 'var(--accent-yellow)' }}>
+                      {area.health_pct}%
+                    </div>
+                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+                      {area.impact_summary}{thbFootnote(area.impact_summary)}
+                    </div>
+                    {area.affected_datasets && area.affected_datasets.length > 0 && (
+                      <div style={{ marginTop: '8px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                        {area.affected_datasets.map((ds, i) => (
+                          <span key={i} style={{ background: 'var(--bg-primary)', padding: '2px 5px', borderRadius: '4px', fontSize: '8.5px', fontFamily: 'var(--font-mono)' }}>
+                            {ds}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {isSelected && (
+                      <div style={{ marginTop: '8px', fontSize: '10px', fontWeight: 700, color: 'var(--accent-purple)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        ● Active Filter Scope
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -904,61 +1103,58 @@ export default function Dashboard() {
           <div className="gs-card">
             <div className="gs-card-head">
               <div>
-                <h3>Business Impact Mapping Flow</h3>
-                <p>How technical pipeline events cascade into business KPI decisions</p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h3 style={{ margin: 0 }}>Business Impact Mapping Flow</h3>
+                  <span className="exec-chip exec-chip-warn" style={{ fontSize: '10px' }}>
+                    {activeImpactFlow.scopeLabel}
+                  </span>
+                </div>
+                <p style={{ marginTop: '2px' }}>How technical pipeline events cascade into business KPI decisions</p>
               </div>
             </div>
             <div className="biz-flow-diagram">
-              <div className="biz-flow-box red">
-                <div className="biz-flow-title">1. Technical Issue</div>
-                <div className="biz-flow-sub">Pipeline Failure / Drift</div>
+              <div className={`biz-flow-box ${activeImpactFlow.step1.color}`}>
+                <div className="biz-flow-title">{activeImpactFlow.step1.title}</div>
+                <div className="biz-flow-sub">{activeImpactFlow.step1.sub}</div>
               </div>
               <div className="biz-flow-arrow">→</div>
-              <div className="biz-flow-box amber">
-                <div className="biz-flow-title">2. Technical Impact</div>
-                <div className="biz-flow-sub">Data Delay &amp; Quarantine</div>
+              <div className={`biz-flow-box ${activeImpactFlow.step2.color}`}>
+                <div className="biz-flow-title">{activeImpactFlow.step2.title}</div>
+                <div className="biz-flow-sub">{activeImpactFlow.step2.sub}</div>
               </div>
               <div className="biz-flow-arrow">→</div>
-              <div className="biz-flow-box purple">
-                <div className="biz-flow-title">3. KPI Impact</div>
-                <div className="biz-flow-sub">Sales &amp; Forecast Reliability</div>
+              <div className={`biz-flow-box ${activeImpactFlow.step3.color}`}>
+                <div className="biz-flow-title">{activeImpactFlow.step3.title}</div>
+                <div className="biz-flow-sub">{activeImpactFlow.step3.sub}</div>
               </div>
               <div className="biz-flow-arrow">→</div>
-              <div className="biz-flow-box green">
-                <div className="biz-flow-title">4. Business Action</div>
-                <div className="biz-flow-sub">Remediation Ticket &amp; Decision</div>
+              <div className={`biz-flow-box ${activeImpactFlow.step4.color}`}>
+                <div className="biz-flow-title">{activeImpactFlow.step4.title}</div>
+                <div className="biz-flow-sub">{activeImpactFlow.step4.sub}</div>
               </div>
             </div>
           </div>
 
-          {/* Concrete Business Evidence: Sell-In vs. Sell-Out Volume Reconciliation Chart */}
+          {/* Concrete Business Evidence: Data Pipeline Flow Reconciliation Chart */}
           <div className="gs-card" style={{ padding: '20px' }}>
             <div className="gs-card-head" style={{ marginBottom: '14px', alignItems: 'flex-start' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span style={{ background: 'var(--accent-purple)', color: '#fff', fontSize: '10px', fontWeight: 800, padding: '2px 8px', borderRadius: '4px' }}>
-                    CONCRETE BUSINESS EVIDENCE
+                    DATA PIPELINE RECONCILIATION
                   </span>
-                  <h3 style={{ margin: 0, fontSize: '15px' }}>Sell-In vs. Sell-Out Volume Reconciliation &amp; Data Quality Discrepancy</h3>
-                  {(sellInOutApi.data?.is_example ?? true) && (
-                    <InfoHint text="ยังไม่มีการเชื่อมข้อมูลยอดขายจริงสำหรับการ์ดนี้ ตัวเลขและกราฟทั้งหมดด้านล่างเป็นชุดตัวอย่างคงที่ที่เซิร์ฟเวอร์ส่งมาเสมอ ไม่ใช่ข้อมูลจากรอบตรวจคุณภาพจริง" />
-                  )}
+                  <h3 style={{ margin: 0, fontSize: '15px' }}>Data Ingestion vs. Delivery Volume Flow Reconciliation</h3>
                 </div>
                 <p style={{ marginTop: '4px', fontSize: '11px', color: 'var(--text-muted)' }}>
-                  เปรียบเทียบยอดกระจายสินค้าเข้าสู่ช่องทางจัดจำหน่าย (Sell-In) กับยอดขายจริงหน้าร้าน POS (Sell-Out) เพื่อระบุสต็อกลวง (Phantom Inventory) และความเสียหายจากข้อมูลตกหล่น
+                  เปรียบเทียบปริมาณข้อมูลที่ไหลเข้าจาก Raw Ingestion กับข้อมูลที่ผ่านการตรวจสอบคุณภาพและส่งมอบสำเร็จ (Delivered Active) เพื่อตรวจหาข้อมูลสูญหายและอัตราการกักกัน
                 </p>
-                {(sellInOutApi.data?.is_example ?? true) && (
-                  <div style={{ marginTop: '6px', display: 'inline-block', fontSize: '10.5px', fontWeight: 700, color: '#B45309', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '6px', padding: '4px 10px' }}>
-                    แสดงข้อมูลตัวอย่าง — ยังไม่ใช่ข้อมูลจริงจากระบบ
-                  </div>
-                )}
               </div>
               <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                 <span className="exec-chip exec-chip-warn" style={{ fontSize: '10.5px' }}>
-                  Reconciliation Gap: {sellInOut.summary?.reconciliation_gap_volume?.toLocaleString()} Units
+                  Reconciliation Gap: {sellInOut.summary?.reconciliation_gap_volume?.toLocaleString()} Records
                 </span>
                 <span className="exec-chip exec-chip-crit" style={{ fontSize: '10.5px' }}>
-                  COPDQ Sales Risk: {formatUsd(sellInOut.summary?.copdq_sales_loss_usd)} ({formatThbApprox(sellInOut.summary?.copdq_sales_loss_usd)})
+                  COPDQ: {formatUsd(sellInOut.summary?.copdq_sales_loss_usd)} ({formatThbApprox(sellInOut.summary?.copdq_sales_loss_usd)})
                 </span>
               </div>
             </div>
@@ -966,35 +1162,35 @@ export default function Dashboard() {
             {/* Metric Summary Cards Row */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '16px' }}>
               <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderLeft: '4px solid #1E3A8A', borderRadius: '8px', padding: '10px 14px' }}>
-                <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Sell-In Volume (ERP / DC)</div>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Inbound Raw Volume (HDFS Raw)</div>
                 <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-main)', marginTop: '2px' }}>
-                  {sellInOut.summary?.total_sell_in_volume?.toLocaleString()} <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>units</span>
+                  {(sellInOut.summary?.total_inbound_volume ?? sellInOut.summary?.total_sell_in_volume)?.toLocaleString()} <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>records</span>
                 </div>
-                <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', marginTop: '2px' }}>ยอดส่งสินค้าเข้าช่องทางจำหน่าย</div>
+                <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', marginTop: '2px' }}>ปริมาณข้อมูลไหลเข้าระบบต้นทาง</div>
               </div>
 
               <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderLeft: '4px solid #10B981', borderRadius: '8px', padding: '10px 14px' }}>
-                <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Sell-Out Volume (Retail POS)</div>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Delivered Active Volume (Gold)</div>
                 <div style={{ fontSize: '18px', fontWeight: 800, color: '#10B981', marginTop: '2px' }}>
-                  {sellInOut.summary?.total_sell_out_volume?.toLocaleString()} <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>units</span>
+                  {(sellInOut.summary?.total_delivered_volume ?? sellInOut.summary?.total_sell_out_volume)?.toLocaleString()} <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>records</span>
                 </div>
-                <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', marginTop: '2px' }}>ยอดขายออกสู่ผู้บริโภคจริง (POS)</div>
+                <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', marginTop: '2px' }}>ข้อมูลสะอาดส่งมอบเข้าปลายทาง</div>
               </div>
 
               <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderLeft: '4px solid #EF4444', borderRadius: '8px', padding: '10px 14px' }}>
                 <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Quarantined Data Gap</div>
                 <div style={{ fontSize: '18px', fontWeight: 800, color: '#EF4444', marginTop: '2px' }}>
-                  {sellInOut.summary?.quarantined_data_gap_volume?.toLocaleString()} <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>units</span>
+                  {sellInOut.summary?.quarantined_data_gap_volume?.toLocaleString()} <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>records</span>
                 </div>
-                <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', marginTop: '2px' }}>ยอดที่บันทึกไม่สำเร็จ/ติดกักกัน</div>
+                <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', marginTop: '2px' }}>ข้อมูลติดข้อผิดพลาด/กักกัน</div>
               </div>
 
               <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderLeft: '4px solid #8B5CF6', borderRadius: '8px', padding: '10px 14px' }}>
-                <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Sales Reconciliation Rate</div>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Pipeline Delivery Integrity</div>
                 <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--accent-purple)', marginTop: '2px' }}>
-                  {sellInOut.summary?.sales_accuracy_pct}%
+                  {sellInOut.summary?.data_integrity_pct ?? sellInOut.summary?.sales_accuracy_pct}%
                 </div>
-                <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', marginTop: '2px' }}>ความสมบูรณ์ของท่อส่งยอดขาย</div>
+                <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', marginTop: '2px' }}>อัตราความสมบูรณ์ของการส่งมอบ</div>
               </div>
             </div>
 
@@ -1013,11 +1209,11 @@ export default function Dashboard() {
                         return (
                           <div style={{ background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '8px', padding: '10px 14px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '11px' }}>
                             <strong style={{ color: '#0F172A', display: 'block', marginBottom: '4px' }}>{label} ({data.status})</strong>
-                            <div style={{ color: '#1E3A8A' }}>● Sell-In Volume: <strong>{data.sell_in?.toLocaleString()}</strong> units</div>
-                            <div style={{ color: '#10B981' }}>● Sell-Out Volume: <strong>{data.sell_out?.toLocaleString()}</strong> units</div>
-                            <div style={{ color: '#EF4444' }}>● Quarantined Gap: <strong>{data.quarantined_gap?.toLocaleString()}</strong> units</div>
+                            <div style={{ color: '#1E3A8A' }}>● Inbound Raw Volume: <strong>{(data.inbound ?? data.sell_in)?.toLocaleString()}</strong> rows</div>
+                            <div style={{ color: '#10B981' }}>● Delivered Active Volume: <strong>{(data.delivered ?? data.sell_out)?.toLocaleString()}</strong> rows</div>
+                            <div style={{ color: '#EF4444' }}>● Quarantined Gap: <strong>{data.quarantined_gap?.toLocaleString()}</strong> rows</div>
                             <div style={{ color: '#8B5CF6', marginTop: '4px' }}>★ Data Quality Score: <strong>{data.quality_score}%</strong></div>
-                            <div style={{ color: '#64748B', fontSize: '10px', marginTop: '4px', fontStyle: 'italic' }}>Note: {data.incident}</div>
+                            <div style={{ color: '#64748B', fontSize: '10px', marginTop: '4px', fontStyle: 'italic' }}>Dataset: {data.dataset || 'N/A'} — {data.incident}</div>
                           </div>
                         );
                       }
@@ -1026,9 +1222,9 @@ export default function Dashboard() {
                   />
                   <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '6px' }} />
                   <ReferenceLine yAxisId="right" y={95} stroke="#10B981" strokeDasharray="3 3" label={{ value: 'SLA Target 95%', fill: '#10B981', fontSize: 10, position: 'right' }} />
-                  <Bar yAxisId="left" dataKey="sell_in" name="Sell-In Volume (ERP/Inflow)" fill="#1E3A8A" radius={[4, 4, 0, 0]} />
-                  <Bar yAxisId="left" dataKey="sell_out" name="Sell-Out Volume (POS/Outflow)" fill="#10B981" radius={[4, 4, 0, 0]} />
-                  <Bar yAxisId="left" dataKey="quarantined_gap" name="Quarantined / Missing Gap" fill="#EF4444" radius={[4, 4, 0, 0]} />
+                  <Bar yAxisId="left" dataKey="sell_in" name="Inbound Raw Volume" fill="#1E3A8A" radius={[4, 4, 0, 0]} />
+                  <Bar yAxisId="left" dataKey="sell_out" name="Delivered Active Volume" fill="#10B981" radius={[4, 4, 0, 0]} />
+                  <Bar yAxisId="left" dataKey="quarantined_gap" name="Quarantined Records Gap" fill="#EF4444" radius={[4, 4, 0, 0]} />
                   <Line yAxisId="right" type="monotone" dataKey="quality_score" name="Pipeline Quality Score (%)" stroke="#8B5CF6" strokeWidth={3} dot={{ r: 4 }} />
                 </ComposedChart>
               </ResponsiveContainer>
@@ -1037,7 +1233,7 @@ export default function Dashboard() {
             {/* Concrete Narrative Insight Callout */}
             <div style={{ marginTop: '14px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderLeft: '3px solid var(--accent-purple)', borderRadius: '6px', padding: '10px 14px', fontSize: '11px', color: 'var(--text-main)', lineHeight: '1.6' }}>
               <div style={{ fontWeight: 700, color: 'var(--accent-purple)', marginBottom: '4px' }}>
-                บทวิเคราะห์ผลกระทบรูปธรรมต่อห่วงโซ่อุปทานและการขาย (Supply Chain &amp; Revenue Reality)
+                บทวิเคราะห์ผลกระทบเชิงรูปธรรมของท่อส่งข้อมูล (Data Pipeline Integrity &amp; Operational Reality)
               </div>
               <div>{sellInOut.business_impact_narrative}</div>
               {sellInOut.summary?.copdq_sales_loss_usd != null && (
@@ -1098,52 +1294,138 @@ export default function Dashboard() {
             </div>
 
             {/* Active Remediation Tickets (Section 21) */}
-            <div className="gs-card">
-              <div className="gs-card-head">
-                <div>
-                  <h3>Upstream Governance Tickets</h3>
-                  <p>Remediation tickets assigned to upstream data engineers</p>
-                </div>
-                <span className="exec-chip exec-chip-warn">
-                  {remediations.data?.tickets?.length || 0} Open Tickets
-                </span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
-                {!remediations.data?.tickets || remediations.data.tickets.length === 0 ? (
-                  <div className="gs-empty">No pending remediation tickets</div>
-                ) : (
-                  remediations.data.tickets.map((tkt) => (
-                    <div
-                      key={tkt.ticket_id}
-                      style={{
-                        background: 'var(--bg-primary)',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '8px',
-                        padding: '8px 12px',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontSize: '11px', fontWeight: 700 }}>{tkt.table_name} - Run #{tkt.run_id}</div>
-                        <div style={{ fontSize: '9.5px', color: 'var(--text-muted)' }}>
-                          Assigned to: {tkt.target_owner || 'Data Engineer Team'}
-                        </div>
+            {(() => {
+              const allTickets = remediations.data?.tickets || [];
+              const targetDatasets = selectedAreaFilter !== 'All' ? (AREA_DATASET_MAP[selectedAreaFilter.toLowerCase()] || []) : null;
+              
+              let filteredTickets = allTickets;
+              if (targetDatasets && targetDatasets.length > 0) {
+                filteredTickets = filteredTickets.filter(t => targetDatasets.includes((t.table_name || '').toLowerCase()));
+              }
+              const openCount = filteredTickets.filter(t => t.status !== 'RESOLVED').length;
+              const displayTickets = ticketFilterTab === 'OPEN' 
+                ? filteredTickets.filter(t => t.status !== 'RESOLVED')
+                : filteredTickets;
+
+              return (
+                <div className="gs-card">
+                  <div className="gs-card-head" style={{ alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <h3 style={{ margin: 0 }}>Upstream Governance Tickets</h3>
+                        {selectedAreaFilter !== 'All' && (
+                          <span className="exec-chip exec-chip-warn" style={{ fontSize: '10px' }}>
+                            {selectedAreaFilter.toUpperCase()} Scope
+                          </span>
+                        )}
                       </div>
-                      <button
-                        className="exec-btn"
-                        style={{ fontSize: '10px', padding: '3px 8px' }}
-                        disabled={resolvingTicketId === tkt.ticket_id}
-                        onClick={() => handleResolveTicket(tkt.ticket_id)}
-                      >
-                        {resolvingTicketId === tkt.ticket_id ? 'Resolving...' : 'Resolve '}
-                      </button>
+                      <p style={{ marginTop: '2px' }}>Remediation tickets assigned to upstream data engineers</p>
                     </div>
-                  ))
-                )}
-              </div>
-            </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ display: 'flex', background: 'var(--bg-secondary)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                        <button
+                          type="button"
+                          onClick={() => setTicketFilterTab('OPEN')}
+                          style={{
+                            background: ticketFilterTab === 'OPEN' ? 'var(--accent-purple)' : 'transparent',
+                            color: ticketFilterTab === 'OPEN' ? '#fff' : 'var(--text-muted)',
+                            border: 'none',
+                            borderRadius: '4px',
+                            padding: '3px 8px',
+                            fontSize: '10px',
+                            fontWeight: 700,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Open ({openCount})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTicketFilterTab('ALL')}
+                          style={{
+                            background: ticketFilterTab === 'ALL' ? 'var(--accent-purple)' : 'transparent',
+                            color: ticketFilterTab === 'ALL' ? '#fff' : 'var(--text-muted)',
+                            border: 'none',
+                            borderRadius: '4px',
+                            padding: '3px 8px',
+                            fontSize: '10px',
+                            fontWeight: 700,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          All ({filteredTickets.length})
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '280px', overflowY: 'auto' }}>
+                    {displayTickets.length === 0 ? (
+                      <div className="gs-empty" style={{ padding: '24px 0' }}>
+                        {selectedAreaFilter !== 'All' 
+                          ? `No tickets for ${selectedAreaFilter} domain (All in good standing)` 
+                          : "No pending remediation tickets (All resolved)"}
+                      </div>
+                    ) : (
+                      displayTickets.map((tkt) => (
+                        <div
+                          key={tkt.ticket_id}
+                          style={{
+                            background: 'var(--bg-primary)',
+                            border: '1px solid var(--border-color)',
+                            borderLeft: `3px solid ${tkt.status === 'RESOLVED' ? 'var(--accent-green)' : (tkt.severity === 'critical' ? 'var(--accent-red)' : 'var(--accent-yellow)')}`,
+                            borderRadius: '8px',
+                            padding: '10px 14px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '6px'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-main)' }}>
+                                {tkt.table_name}
+                              </span>
+                              <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+                                Run #{tkt.run_id}
+                              </span>
+                              <span className={`exec-chip ${tkt.severity === 'critical' ? 'exec-chip-crit' : 'exec-chip-warn'}`} style={{ fontSize: '9px', padding: '1px 5px' }}>
+                                {(tkt.severity || 'warning').toUpperCase()}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              {tkt.status === 'RESOLVED' ? (
+                                <span className="exec-chip exec-chip-good" style={{ fontSize: '10px' }}>RESOLVED</span>
+                              ) : (
+                                <button
+                                  className="exec-btn"
+                                  style={{ fontSize: '10px', padding: '3px 10px', background: 'var(--bg-secondary)' }}
+                                  disabled={resolvingTicketId === tkt.ticket_id}
+                                  onClick={() => handleResolveTicket(tkt.ticket_id)}
+                                >
+                                  {resolvingTicketId === tkt.ticket_id ? 'Resolving...' : 'Resolve'}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          
+                          {/* Remediation Action description */}
+                          {tkt.remediation_action && (
+                            <div style={{ fontSize: '11px', color: 'var(--text-main)', lineHeight: '1.45' }}>
+                              {tkt.remediation_action}
+                            </div>
+                          )}
+
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '9.5px', color: 'var(--text-muted)', borderTop: '1px dashed var(--border-color)', paddingTop: '4px', marginTop: '2px' }}>
+                            <span>Target: <strong style={{ color: 'var(--text-main)' }}>{tkt.target_system || tkt.target_owner || 'Data Engineer'}</strong></span>
+                            <span>{tkt.timestamp ? new Date(tkt.timestamp).toLocaleString('th-TH') : ''}</span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -1178,7 +1460,7 @@ export default function Dashboard() {
             <div className="exec-kpi-card kpi-purple">
               <span className="exec-kpi-title">Consistency</span>
               <div className="exec-kpi-val">{dataHealth.score != null ? `${dataHealth.score}%` : '---'}</div>
-              <div className="exec-kpi-sub">Cross-table checks OK</div>
+              <div className="exec-kpi-sub">Cross-batch Trend Stability</div>
             </div>
             <div className={`exec-kpi-card ${qualityBreakdown.schema_drift_count > 0 ? 'kpi-warn' : 'kpi-blue'}`}>
               <span className="exec-kpi-title">Drift Integrity</span>
@@ -1386,12 +1668,28 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Data Lineage & Network Graph: Apache ECharts vs Classic Linear */}
+          {/* Data Flow & Medallion Architecture Visualizer */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '-8px' }}>
             <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Medallion Data Lineage Visualizer
+              Data Quality Telemetry &amp; Medallion Architecture
             </div>
             <div style={{ display: 'inline-flex', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '2px' }}>
+              <button
+                type="button"
+                onClick={() => setLineageVisualMode('stream')}
+                style={{
+                  background: lineageVisualMode === 'stream' ? 'var(--accent-purple)' : 'transparent',
+                  color: lineageVisualMode === 'stream' ? '#fff' : 'var(--text-muted)',
+                  border: 'none',
+                  borderRadius: '4px',
+                  padding: '4px 12px',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                <Icon name="chart" /> Data Flow Telemetry (Real-Time Flow)
+              </button>
               <button
                 type="button"
                 onClick={() => setLineageVisualMode('echarts')}
@@ -1400,34 +1698,29 @@ export default function Dashboard() {
                   color: lineageVisualMode === 'echarts' ? '#fff' : 'var(--text-muted)',
                   border: 'none',
                   borderRadius: '4px',
-                  padding: '3px 10px',
-                  fontSize: '10.5px',
+                  padding: '4px 12px',
+                  fontSize: '11px',
                   fontWeight: 700,
                   cursor: 'pointer'
                 }}
               >
-                Apache ECharts (Heavy Data Canvas)
-              </button>
-              <button
-                type="button"
-                onClick={() => setLineageVisualMode('linear')}
-                style={{
-                  background: lineageVisualMode === 'linear' ? 'var(--accent-purple)' : 'transparent',
-                  color: lineageVisualMode === 'linear' ? '#fff' : 'var(--text-muted)',
-                  border: 'none',
-                  borderRadius: '4px',
-                  padding: '3px 10px',
-                  fontSize: '10.5px',
-                  fontWeight: 700,
-                  cursor: 'pointer'
-                }}
-              >
-                Linear Track
+                <Icon name="grid" /> Medallion Architecture (DAG Network)
               </button>
             </div>
           </div>
 
-          {lineageVisualMode === 'echarts' ? (
+          {lineageVisualMode === 'stream' ? (
+            <DataFlowStreamChart
+              runs={qualityHistory.data || []}
+              selectedTableName={selectedSourceFilter !== 'All' ? selectedSourceFilter : 'All Tables'}
+              onSelectRun={(run) => {
+                setSelectedRun(run);
+                setUserSelectedRunId(run.run_id);
+              }}
+              activeRunId={activeRun?.run_id}
+              onRefreshRuns={() => qualityHistory.refetch()}
+            />
+          ) : (
             <EchartsDataLineage
               // Root Cause Fix: wbTotal/wbQuarantine/wbScorePct can now be null (see the
               // fmtOrDash fix above) instead of a fake fallback number. `|| null` would
@@ -1435,74 +1728,11 @@ export default function Dashboard() {
               // parameters (JS defaults only trigger on undefined, not null), crashing
               // on .toLocaleString(). Falling through to undefined here restores the
               // component's own placeholder-while-loading behavior instead of crashing.
-              totalRecords={activeRun?.total_records || wbTotal || undefined}
-              quarantinedRecords={activeRun?.quarantined_records || wbQuarantine || undefined}
+              totalRecords={activeRun?.total_records ?? wbTotal ?? 0}
+              quarantinedRecords={activeRun?.quarantined_records ?? wbQuarantine ?? 0}
               tableName={activeRun?.table_name || wbDatasetName}
-              qualityScore={activeRun?.quality_score || wbScorePct || undefined}
+              qualityScore={activeRun?.quality_score ?? wbScorePct ?? 100}
             />
-          ) : (
-            <div className="gs-lineage-hero">
-              <div className="gs-lineage-header">
-                <h2>Medallion Flow Data Lineage Track</h2>
-                <span className="gs-lineage-route">Route: Bronze (HDFS) → Silver (Spark Engine) → Gold (Active/Quarantine)</span>
-              </div>
-              {(() => {
-                const totalRecs = activeRun?.total_records || 0;
-                const quarRecs = activeRun?.quarantined_records || 0;
-                const hasError = activeRun && quarRecs > 0;
-                const hasClean = activeRun && (totalRecs - quarRecs > 0);
-                return (
-                  <div className="gs-lineage-track" style={{ display: 'flex', alignItems: 'center', width: '100%', justifyContent: 'space-between' }}>
-                    <div className="gs-node active">
-                      <span className="gs-node-icon"><Icon name="download" /></span>
-                      <div className="gs-node-text">
-                        <strong>{activeRun ? activeRun.data_source || activeRun.table_name : 'Ingest Source'}</strong>
-                        <small>Bronze Layer</small>
-                        <span className="gs-node-stat">{totalRecs.toLocaleString()} rows</span>
-                      </div>
-                    </div>
-                    <div className="gs-connector active"><div className="gs-connector-line"></div><div className="gs-connector-arrow">→</div></div>
-
-                    <div className="gs-node active">
-                      <span className="gs-node-icon"><Icon name="settings" /></span>
-                      <div className="gs-node-text">
-                        <strong>Spark QA Engine</strong>
-                        <small>Quality Rules Audit</small>
-                      </div>
-                    </div>
-                    <div className="gs-connector active"><div className="gs-connector-line"></div><div className="gs-connector-arrow">→</div></div>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      <div className={`gs-node ${hasClean ? 'active' : ''}`}>
-                        <span className="gs-node-icon"><Icon name="check" /></span>
-                        <div className="gs-node-text">
-                          <strong>Active Store</strong>
-                          <small>Clean Delta Lake</small>
-                          <span className="gs-node-stat">{(totalRecs - quarRecs).toLocaleString()} rows</span>
-                        </div>
-                      </div>
-                      <div className={`gs-node ${hasError ? 'danger' : ''}`}>
-                        <span className="gs-node-icon"><Icon name="alert" /></span>
-                        <div className="gs-node-text">
-                          <strong>Quarantine Store</strong>
-                          <small>Bad Data Isolation</small>
-                          <span className="gs-node-stat">{quarRecs.toLocaleString()} rows</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="gs-connector active"><div className="gs-connector-line"></div><div className="gs-connector-arrow">→</div></div>
-                    <div className="gs-node active">
-                      <span className="gs-node-icon"><Icon name="chart" /></span>
-                      <div className="gs-node-text">
-                        <strong>Serving API</strong>
-                        <small>BI &amp; BI Cockpit</small>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
           )}
 
           {/* Technical Cockpit Scorecard History & Actions */}

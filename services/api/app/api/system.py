@@ -461,7 +461,12 @@ def get_upstream_remediations():
             }
         )
         hits = res.get("hits", {}).get("hits", [])
-        tickets = [hit.get("_source") for hit in hits]
+        tickets = []
+        for hit in hits:
+            src = hit.get("_source", {})
+            if "ticket_id" not in src:
+                src["ticket_id"] = hit.get("_id")
+            tickets.append(src)
         return {"tickets": tickets}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch remediations: {str(e)}")

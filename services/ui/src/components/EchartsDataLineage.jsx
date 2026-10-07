@@ -6,10 +6,10 @@ import ReactECharts from 'echarts-for-react';
  * Rendered using HTML5 Canvas engine for zero-lag performance with large datasets.
  */
 export default function EchartsDataLineage({
-  totalRecords = 10100,
-  quarantinedRecords = 600,
-  tableName = "student_course_scores",
-  qualityScore = 93.1
+  totalRecords = 0,
+  quarantinedRecords = 0,
+  tableName = "active_dataset",
+  qualityScore = 100.0
 }) {
   const cleanRecords = Math.max(0, totalRecords - quarantinedRecords);
 

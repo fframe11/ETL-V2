@@ -2,6 +2,7 @@ import os
 import math
 import socket
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 from fastapi import APIRouter, HTTPException
 
 from .config import get_es_client
@@ -88,8 +89,16 @@ def get_kpi_stats():
             detail=f"Failed to query KPI statistics from Elasticsearch: {str(e)}"
         )
 
+AREA_TABLE_MAPPING = {
+    "sales": ["products", "orders", "transactions", "pos", "grocery"],
+    "customer": ["users", "customers", "mbti", "student", "student_course_scores"],
+    "operations": ["products", "dirty_dataset", "inventory", "fulfillment", "stock"],
+    "reporting": ["users", "products", "mbti", "dirty_dataset", "pipeline"],
+    "finance": ["products", "orders", "transactions", "sales", "finance"]
+}
+
 @router.get("/api/v1/executive/overview")
-def get_executive_overview():
+def get_executive_overview(time_range: Optional[str] = None, business_area: Optional[str] = None):
     es = get_es_client()
     try:
         total_records = 0
@@ -100,39 +109,79 @@ def get_executive_overview():
         drift_count = 0
         invalid_type_count = 0
         recent_runs = []
+        has_runs = False
 
         if es.indices.exists(index="sdoqap_quality_runs"):
+            search_body = {
+                "size": 50,
+                "sort": [{"timestamp": {"order": "desc"}}],
+                "aggs": {
+                    "total_ingested": {"sum": {"field": "total_records"}},
+                    "total_quarantined": {"sum": {"field": "quarantined_records"}},
+                    "avg_score": {"avg": {"field": "quality_score"}}
+                }
+            }
+            query_must = []
+            if time_range in ("24h", "7d", "30d"):
+                query_must.append({"range": {"timestamp": {"gte": f"now-{time_range}"}}})
+            if business_area and business_area.lower() != "all":
+                target_tables = AREA_TABLE_MAPPING.get(business_area.lower(), [business_area.lower()])
+                query_must.append({"terms": {"table_name.keyword": target_tables}})
+            
+            if query_must:
+                search_body["query"] = {"bool": {"must": query_must}}
             res = es.search(
                 index="sdoqap_quality_runs",
-                body={
-                    "size": 50,
-                    "sort": [{"timestamp": {"order": "desc"}}],
-                    "aggs": {
-                        "total_ingested": {"sum": {"field": "total_records"}},
-                        "total_quarantined": {"sum": {"field": "quarantined_records"}},
-                        "avg_score": {"avg": {"field": "quality_score"}}
-                    }
-                }
+                body=search_body
             )
             aggs = res.get("aggregations", {})
             total_records = int(aggs.get("total_ingested", {}).get("value") or 0)
             total_quarantined = int(aggs.get("total_quarantined", {}).get("value") or 0)
-            avg_quality_score = round(aggs.get("avg_score", {}).get("value") or 100.0, 2)
+            avg_score_val = aggs.get("avg_score", {}).get("value")
 
-            for hit in res.get("hits", {}).get("hits", []):
+            raw_hits = res.get("hits", {}).get("hits", [])
+            has_runs = (res.get("hits", {}).get("total", {}).get("value", 0) > 0) or (len(raw_hits) > 0)
+            if has_runs and avg_score_val is not None:
+                avg_quality_score = round(avg_score_val, 2)
+            else:
+                avg_quality_score = None
+
+            for hit in raw_hits:
                 src = hit.get("_source", {})
                 recent_runs.append(src)
                 qb = src.get("quarantine_breakdown", {})
                 if isinstance(qb, dict):
-                    missing_count += qb.get("null_primary_key", 0) + qb.get("missing_values", 0)
-                    duplicate_count += qb.get("duplicate_records", 0) + qb.get("duplicates", 0)
-                    drift_count += qb.get("schema_drift", 0)
-                    invalid_type_count += qb.get("invalid_type", 0) + qb.get("type_mismatch", 0)
+                    for k, v in qb.items():
+                        count = v if isinstance(v, (int, float)) else 0
+                        k_str = str(k).lower()
+                        if (
+                            "null" in k_str
+                            or "missing" in k_str
+                            or k_str in ("null_primary_key", "missing_values", "missing_primary_key")
+                        ):
+                            missing_count += count
+                        elif "duplicate" in k_str or k_str in ("duplicate_records", "duplicates"):
+                            duplicate_count += count
+                        elif "drift" in k_str or k_str == "schema_drift":
+                            drift_count += count
+                        elif (
+                            "invalid" in k_str
+                            or "type_mismatch" in k_str
+                            or "expected" in k_str
+                            or "outlier" in k_str
+                            or "bound" in k_str
+                        ):
+                            invalid_type_count += count
+                        else:
+                            invalid_type_count += count
 
         schema_drifts_active = 0
         drift_details_list = []
         if es.indices.exists(index="sdoqap_schema_drifts"):
-            d_res = es.search(index="sdoqap_schema_drifts", body={"size": 10, "sort": [{"timestamp": {"order": "desc"}}]})
+            d_search_body = {"size": 10, "sort": [{"timestamp": {"order": "desc"}}]}
+            if time_range in ("24h", "7d", "30d"):
+                d_search_body["query"] = {"range": {"timestamp": {"gte": f"now-{time_range}"}}}
+            d_res = es.search(index="sdoqap_schema_drifts", body=d_search_body)
             d_hits = d_res.get("hits", {}).get("hits", [])
             schema_drifts_active = len(d_hits)
             for dh in d_hits:
@@ -142,7 +191,10 @@ def get_executive_overview():
         failed_pipelines = 0
         pipeline_runs_data = []
         if es.indices.exists(index="sdoqap_pipeline_runs"):
-            p_res = es.search(index="sdoqap_pipeline_runs", body={"size": 50, "sort": [{"timestamp": {"order": "desc"}}]})
+            p_search_body = {"size": 50, "sort": [{"timestamp": {"order": "desc"}}]}
+            if time_range in ("24h", "7d", "30d"):
+                p_search_body["query"] = {"range": {"timestamp": {"gte": f"now-{time_range}"}}}
+            p_res = es.search(index="sdoqap_pipeline_runs", body=p_search_body)
             p_hits = p_res.get("hits", {}).get("hits", [])
             total_pipelines = len(p_hits)
             for ph in p_hits:
@@ -157,20 +209,39 @@ def get_executive_overview():
         freshness_score = round((len(fresh_runs) / len(recent_runs) * 100) if recent_runs else 0.0, 1)
         avg_freshness_lag = round(sum(r.get("freshness_lag_hours", 0) for r in recent_runs) / len(recent_runs), 2) if recent_runs else 0.0
 
-        if avg_quality_score >= 95.0:
+        if not has_runs or avg_quality_score is None:
+            health_status = "No Data"
+        elif avg_quality_score >= 95.0:
             health_status = "Good"
         elif avg_quality_score >= 88.0:
             health_status = "Warning"
         else:
             health_status = "Critical"
 
-        impact_data = get_business_impact()
+        impact_data = get_business_impact(time_range=time_range, business_area=business_area)
         total_monetary_loss = impact_data.get("total_financial_impact_usd", 0)
 
-        has_users_issues = any(r.get("table_name") == "users" and r.get("quarantined_records", 0) > 0 for r in recent_runs[:5])
-        has_prod_issues = any(r.get("table_name") == "products" and r.get("quarantined_records", 0) > 0 for r in recent_runs[:5])
+        # Dynamic mapping of quarantined tables
+        quarantined_tables = list({
+            r.get("table_name") for r in recent_runs
+            if r.get("quarantined_records", 0) > 0 and r.get("table_name")
+        })
 
-        # Root Cause Fix: Compute business area health from actual quarantine rate
+        has_sales_issues = any(
+            any(w in (t or "").lower() for w in ("sale", "order", "trans", "grocery", "bill", "invoice"))
+            for t in quarantined_tables
+        )
+        has_customer_issues = any(
+            any(w in (t or "").lower() for w in ("user", "cust", "student", "mbti", "member", "client"))
+            for t in quarantined_tables
+        )
+        has_ops_issues = any(
+            any(w in (t or "").lower() for w in ("prod", "item", "inventory", "stock", "supply", "course", "dirty"))
+            for t in quarantined_tables
+        )
+        if quarantined_tables and not (has_sales_issues or has_customer_issues or has_ops_issues):
+            has_ops_issues = True
+
         quarantine_rate_pct = round((total_quarantined / total_records * 100), 2) if total_records > 0 else 0.0
         base_health = round(100.0 - quarantine_rate_pct, 1) if total_records > 0 else 0.0
 
@@ -178,18 +249,18 @@ def get_executive_overview():
             {
                 "id": "sales",
                 "name": "Sales & Revenue",
-                "status": "Warning" if (has_users_issues or total_monetary_loss > 1000) else "Normal",
-                "health_pct": round(base_health - 2.0, 1) if has_users_issues else base_health,
+                "status": "Warning" if (has_sales_issues or total_monetary_loss > 1000) else "Normal",
+                "health_pct": round(base_health - 2.0, 1) if has_sales_issues else base_health,
                 "impact_summary": f"Estimated COPDQ impact ${total_monetary_loss:,.0f} USD" if total_monetary_loss > 0 else "Operating within SLA",
-                "affected_datasets": ["users", "grocery_sales"] if has_users_issues else []
+                "affected_datasets": [t for t in quarantined_tables if any(w in t.lower() for w in ("sale", "order", "grocery"))] or (quarantined_tables[:2] if has_sales_issues else [])
             },
             {
                 "id": "customer",
                 "name": "Customer Insights",
-                "status": "Warning" if has_users_issues else "Normal",
-                "health_pct": round(base_health - 5.0, 1) if has_users_issues else base_health,
-                "impact_summary": "Quarantined demographic records pending resolution" if has_users_issues else "Normal data ingestion",
-                "affected_datasets": ["users"] if has_users_issues else []
+                "status": "Warning" if has_customer_issues else "Normal",
+                "health_pct": round(base_health - 5.0, 1) if has_customer_issues else base_health,
+                "impact_summary": "Quarantined demographic records pending resolution" if has_customer_issues else "Normal data ingestion",
+                "affected_datasets": [t for t in quarantined_tables if any(w in t.lower() for w in ("user", "cust", "student", "mbti"))] or (quarantined_tables[:2] if has_customer_issues else [])
             },
             {
                 "id": "reporting",
@@ -197,15 +268,15 @@ def get_executive_overview():
                 "status": "Warning" if (failed_pipelines > 0 or schema_drifts_active > 0) else "Normal",
                 "health_pct": round(availability_score - 3.0, 1) if failed_pipelines > 0 else availability_score,
                 "impact_summary": "Reports delayed due to schema evolution" if schema_drifts_active > 0 else "All executive BI feeds on-time",
-                "affected_datasets": ["sdoqap_quality_runs"]
+                "affected_datasets": [d.get("table_name") for d in drift_details_list if d.get("table_name")] or ["sdoqap_quality_runs"]
             },
             {
                 "id": "operations",
                 "name": "Supply Chain & Ops",
-                "status": "Warning" if has_prod_issues else "Normal",
-                "health_pct": round(base_health - 1.5, 1) if has_prod_issues else base_health,
-                "impact_summary": "Inventory synchronization running smooth",
-                "affected_datasets": ["products"] if has_prod_issues else []
+                "status": "Warning" if has_ops_issues else "Normal",
+                "health_pct": round(base_health - 1.5, 1) if has_ops_issues else base_health,
+                "impact_summary": "Quarantined operational/catalog records pending resolution" if has_ops_issues else "Inventory synchronization running smooth",
+                "affected_datasets": [t for t in quarantined_tables if any(w in t.lower() for w in ("prod", "course", "dirty", "stock"))] or (quarantined_tables[:2] if has_ops_issues else [])
             },
             {
                 "id": "finance",
@@ -226,6 +297,7 @@ def get_executive_overview():
                 "business_impact": "ข้อมูลคำสั่งซื้อใหม่ไม่เข้าสู่ระบบ ทำให้รายงานผู้บริหารรอบเช้าล่าช้า 25 นาที",
                 "severity": "Critical" if failed_pipelines > 0 else "Normal",
                 "affected_source": "API Ingestor",
+                "business_area": "reporting",
                 "status": "Investigating" if failed_pipelines > 0 else "Normal"
             },
             {
@@ -234,6 +306,7 @@ def get_executive_overview():
                 "business_impact": "ข้อมูลคอลัมน์ใหม่ยังไม่ผ่านการอนุมัติ ระบบกักกันไว้เพื่อป้องกันกราฟสมาชิกเพี้ยน",
                 "severity": "Critical" if schema_drifts_active > 1 else "Warning",
                 "affected_source": drift_details_list[0].get("table_name", "users") if drift_details_list else "users",
+                "business_area": "customer",
                 "status": "Resolving" if schema_drifts_active > 0 else "Normal"
             },
             {
@@ -241,7 +314,8 @@ def get_executive_overview():
                 "impacted_kpi": "ยอดขายจริง vs สต็อก (Sell-In vs Sell-Out Gap)",
                 "business_impact": f"ข้อมูลยอดขายมีค่าผิดปกติ เสี่ยงต้นทุนข้อมูลคลาดเคลื่อน (COPDQ) ${total_monetary_loss:,.0f} USD",
                 "severity": "Warning" if total_quarantined > 0 else "Normal",
-                "affected_source": "grocery_sales / orders",
+                "affected_source": ", ".join(quarantined_tables[:2]) if quarantined_tables else "active_pipeline",
+                "business_area": "sales",
                 "status": "Monitoring" if total_quarantined > 0 else "Normal"
             },
             {
@@ -250,6 +324,7 @@ def get_executive_overview():
                 "business_impact": "ข้อมูลออเดอร์หน้าร้านเข้าช้า ทำให้คลังสินค้าวางแผนจัดของขึ้นรถรอบบ่ายล่าช้า",
                 "severity": "Warning" if avg_freshness_lag > 0.5 else "Normal",
                 "affected_source": "Stream Pipeline",
+                "business_area": "operations",
                 "status": "Monitoring"
             },
             {
@@ -257,7 +332,8 @@ def get_executive_overview():
                 "impacted_kpi": "ยอดนับคำสั่งซื้อสุทธิ (Net Order Transactions)",
                 "business_impact": "ระบบตัดยอดซ้ำออกอัตโนมัติแล้ว 100% ตัวเลขบิลและยอดขายถูกต้อง ไม่มีความเสี่ยง",
                 "severity": "Normal",
-                "affected_source": "grocery_sales",
+                "affected_source": "active_store",
+                "business_area": "finance",
                 "status": "Resolved"
             }
         ]
@@ -276,20 +352,24 @@ def get_executive_overview():
                 "severity": "Critical",
                 "duration": "24 mins",
                 "status": "Investigating",
-                "dataset": "users"
+                "dataset": pipeline_runs_data[0].get("table_name", "pipeline") if pipeline_runs_data else "active_pipeline",
+                "business_area": "reporting"
             })
         if schema_drifts_active > 0:
+            drift_table = drift_details_list[0].get('table_name', 'users') if drift_details_list else "unknown"
             critical_issues.append({
                 "id": "ISS-DRIFT-02",
-                "issue": f"Schema Drift on '{drift_details_list[0].get('table_name', 'users')}'",
+                "issue": f"Schema Drift on '{drift_table}'",
                 "business_impact": "New unexpected columns quarantined; BI dashboard pending schema approval",
                 "kpi_affected": "Report Accuracy",
                 "severity": "Warning",
                 "duration": "45 mins",
                 "status": "Resolving",
-                "dataset": drift_details_list[0].get("table_name", "users")
+                "dataset": drift_table,
+                "business_area": "customer"
             })
         if total_quarantined > 0:
+            quar_names = ", ".join(quarantined_tables[:2]) if quarantined_tables else "active_pipeline"
             critical_issues.append({
                 "id": "ISS-DATA-03",
                 "issue": f"Data Quarantine Threshold Exceeded ({total_quarantined:,} records)",
@@ -298,14 +378,28 @@ def get_executive_overview():
                 "severity": "Warning",
                 "duration": "1 hr 12 mins",
                 "status": "Monitoring",
-                "dataset": "users / grocery_sales"
+                "dataset": quar_names,
+                "business_area": "sales" if any(w in quar_names.lower() for w in ("sale", "order", "prod", "grocery")) else "operations"
             })
 
-        what_text = f"คุณภาพข้อมูลภาพรวมอยู่ที่ {avg_quality_score}% โดยพบ {total_quarantined:,} แถวที่ติด Quarantine และมี Schema Drift {schema_drifts_active} รายการ" if (total_quarantined > 0 or schema_drifts_active > 0) else "ระบบและข้อมูลทุก Data Pipeline ทำงานอยู่ในสถานะสมบูรณ์ 100%"
-        why_text = "เกิดจากข้อมูลนำเข้ามี Missing Values และ Schema โครงสร้างตารางต้นทางเปลี่ยนแปลงโดยไม่มีการแจ้งล่วงหน้า" if schema_drifts_active > 0 else "ทุกแหล่งข้อมูลส่งข้อมูลถูกต้องตาม Data Contract"
-        impact_text = f"กระทบ {affected_areas_count} ส่วนงานธุรกิจ (Sales, Reporting) ทำให้รายงานบางส่วนต้องรอการยืนยัน" if affected_areas_count > 0 else "ไม่พบผลกระทบต่อ KPI หรือการดำเนินงานของธุรกิจ"
-        how_much_text = f"ความเสียหายประเมินตาม Gartner COPDQ อยู่ที่ ${total_monetary_loss:,.0f} USD (กระทบ {len(critical_issues)} ปัญหาสำคัญ)" if total_monetary_loss > 0 else "0 USD (No Financial Risk)"
-        action_text = "ทีม Data Governance เปิด Remediation Ticket และระบบกักกันข้อมูลไว้ใน Quarantine Store เรียบร้อยแล้ว กำลังรอการตรวจสอบ" if critical_issues else "ระบบ Monitor ทำงานต่อเนื่องตามรอบปกติ"
+        if not has_runs:
+            what_text = "ยังไม่มีประวัติการรันประมวลผลในระบบ (No Runs Recorded)"
+            why_text = "รอการ Ingestion ข้อมูลเข้าสู่ Data Pipeline"
+            impact_text = "ไม่มีผลกระทบต่อระบบ ข้อมูลพร้อมรองรับการรันรอบใหม่"
+            how_much_text = "0 USD (No Risk)"
+            action_text = "สามารถเริ่มต้นรัน Data Pipeline ได้ที่หน้า Ingestion หรือ Jobs"
+        elif total_quarantined > 0 or schema_drifts_active > 0:
+            what_text = f"คุณภาพข้อมูลภาพรวมอยู่ที่ {avg_quality_score}% โดยพบ {total_quarantined:,} แถวที่ติด Quarantine และมี Schema Drift {schema_drifts_active} รายการ"
+            why_text = "เกิดจากข้อมูลนำเข้ามี Missing Values, รูปแบบข้อมูลไม่ถูกต้อง หรือโครงสร้างตารางต้นทางเปลี่ยนแปลง"
+            impact_text = f"กระทบ {affected_areas_count} ส่วนงานธุรกิจ ทำให้ข้อมูลบางส่วนถูกแยกกักกันก่อนนำไปใช้" if affected_areas_count > 0 else "ไม่พบผลกระทบต่อ KPI หรือการดำเนินงานของธุรกิจ"
+            how_much_text = f"ความเสียหายประเมินตาม Gartner COPDQ อยู่ที่ ${total_monetary_loss:,.0f} USD (กระทบ {len(critical_issues)} ปัญหาสำคัญ)" if total_monetary_loss > 0 else "0 USD (No Financial Risk)"
+            action_text = "ทีม Data Governance เปิด Remediation Ticket และระบบกักกันข้อมูลไว้ใน Quarantine Store เรียบร้อยแล้ว กำลังรอการตรวจสอบ" if critical_issues else "ระบบ Monitor ทำงานต่อเนื่องตามรอบปกติ"
+        else:
+            what_text = f"คุณภาพข้อมูลภาพรวมอยู่ที่ {avg_quality_score}% ระบบและข้อมูลทุก Data Pipeline ทำงานอยู่ในเกณฑ์สมบูรณ์ 100%"
+            why_text = "ทุกแหล่งข้อมูลส่งข้อมูลถูกต้องตาม Data Contract"
+            impact_text = "ไม่พบผลกระทบต่อ KPI หรือการดำเนินงานของธุรกิจ"
+            how_much_text = "0 USD (No Financial Risk)"
+            action_text = "ระบบ Monitor ทำงานต่อเนื่องตามรอบปกติ"
 
         # Root Cause Fix: Compute trend from 2 most recent quality runs
         trend_label = "N/A"
@@ -379,34 +473,91 @@ def get_executive_overview():
 
 
 @router.get("/api/v1/anomaly/sources")
-def get_anomaly_sources():
+def get_anomaly_sources(time_range: Optional[str] = None, business_area: Optional[str] = None):
     es = get_es_client()
-    timestamps = []
-    now = datetime.now(timezone.utc)
-    for i in range(12):
-        ts = now - timedelta(minutes=(11 - i) * 10)
-        timestamps.append(ts.strftime("%H:%M"))
-
-    def get_scores_for_table(table_name):
-        if not es.indices.exists(index="sdoqap_quality_runs"):
-            return [None] * 12
+    
+    # Query real quality runs
+    hits = []
+    if es.indices.exists(index="sdoqap_quality_runs"):
         try:
+            must_clauses = []
+            if time_range and time_range != "all":
+                must_clauses.append({"range": {"timestamp": {"gte": f"now-{time_range}"}}})
+            if business_area and business_area.lower() != "all":
+                target_tables = AREA_TABLE_MAPPING.get(business_area.lower(), [business_area.lower()])
+                must_clauses.append({"terms": {"table_name.keyword": target_tables}})
+            query = {"bool": {"must": must_clauses}} if must_clauses else {"match_all": {}}
             res = es.search(
                 index="sdoqap_quality_runs",
                 body={
-                    "query": {"match": {"table_name": table_name}},
-                    "sort": [{"timestamp": "desc"}],
-                    "size": 12
+                    "query": query,
+                    "sort": [{"timestamp": {"order": "asc"}}],
+                    "size": 24
                 }
             )
             hits = res.get("hits", {}).get("hits", [])
-            scores = [hit["_source"].get("quality_score") for hit in hits]
-            scores.reverse()
-            if len(scores) < 12:
-                scores = [None] * (12 - len(scores)) + scores
-            return scores
-        except Exception:
-            return [None] * 12
+            # Fall back to latest available runs if filtered window yields no runs (e.g. historical seed data)
+            if not hits and time_range and time_range != "all":
+                fb_must = []
+                if business_area and business_area.lower() != "all":
+                    target_tables = AREA_TABLE_MAPPING.get(business_area.lower(), [business_area.lower()])
+                    fb_must.append({"terms": {"table_name.keyword": target_tables}})
+                fb_query = {"bool": {"must": fb_must}} if fb_must else {"match_all": {}}
+                res = es.search(
+                    index="sdoqap_quality_runs",
+                    body={
+                        "query": fb_query,
+                        "sort": [{"timestamp": {"order": "asc"}}],
+                        "size": 18
+                    }
+                )
+                hits = res.get("hits", {}).get("hits", [])
+        except Exception as e:
+            print(f"Error querying quality runs for anomaly sources: {e}")
+
+    timestamps = []
+    series = {}
+    tables = []
+
+    if hits:
+        # Build ordered list of unique run timestamps and table names
+        for hit in hits:
+            src = hit["_source"]
+            tbl = src.get("table_name", "unknown")
+            if tbl not in tables:
+                tables.append(tbl)
+            ts_raw = src.get("timestamp", "")
+            try:
+                dt = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+                label = dt.strftime("%H:%M") if (time_range == "24h") else dt.strftime("%d %b %H:%M")
+            except Exception:
+                label = ts_raw[11:16] if len(ts_raw) >= 16 else ts_raw
+            if label and label not in timestamps:
+                timestamps.append(label)
+
+        # For each table, build scores aligned with the timestamps
+        for t in tables:
+            t_scores = []
+            for ts_label in timestamps:
+                score = None
+                for hit in hits:
+                    src = hit["_source"]
+                    if src.get("table_name") == t:
+                        ts_raw = src.get("timestamp", "")
+                        try:
+                            dt = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+                            lbl = dt.strftime("%H:%M") if (time_range == "24h") else dt.strftime("%d %b %H:%M")
+                        except Exception:
+                            lbl = ts_raw[11:16] if len(ts_raw) >= 16 else ts_raw
+                        if lbl == ts_label:
+                            score = src.get("quality_score")
+                            break
+                t_scores.append(score)
+            series[t] = t_scores
+    else:
+        # Fallback empty structure
+        now = datetime.now(timezone.utc)
+        timestamps = [(now - timedelta(minutes=(11 - i) * 10)).strftime("%H:%M") for i in range(12)]
 
     anomaly_point = None
     try:
@@ -423,40 +574,26 @@ def get_anomaly_sources():
                     else:
                         mismatches.append(f"Field '{field}' ({str(detail)})")
 
-                # Fetch recent score for this table if any
                 recent_score = 100
                 if es.indices.exists(index="sdoqap_quality_runs"):
-                     r2 = es.search(index="sdoqap_quality_runs", body={"query": {"match": {"table_name": drift['table_name']}}, "sort": [{"timestamp": "desc"}], "size": 1})
-                     if r2.get("hits", {}).get("hits"):
-                         recent_score = r2["hits"]["hits"][0]["_source"].get("quality_score", 100)
+                    r2 = es.search(index="sdoqap_quality_runs", body={"query": {"match": {"table_name": drift['table_name']}}, "sort": [{"timestamp": "desc"}], "size": 1})
+                    if r2.get("hits", {}).get("hits"):
+                        recent_score = r2["hits"]["hits"][0]["_source"].get("quality_score", 100)
 
                 anomaly_point = {
                     "source": drift.get('table_name', 'Unknown'),
-                    "time": drift.get('timestamp', timestamps[-1])[11:16] if 'timestamp' in drift else timestamps[-1],
+                    "time": drift.get('timestamp', timestamps[-1])[11:16] if 'timestamp' in drift and timestamps else "Recent",
                     "score": recent_score,
                     "reason": f"Schema Drift on '{drift['table_name']}': " + ", ".join(mismatches)
                 }
     except Exception:
         pass
 
-    try:
-        tables = []
-        if es.indices.exists(index="sdoqap_quality_runs"):
-            aggs = es.search(index="sdoqap_quality_runs", body={"size": 0, "aggs": {"tables": {"terms": {"field": "table_name.keyword", "size": 5}}}})
-            tables = [b["key"] for b in aggs.get("aggregations", {}).get("tables", {}).get("buckets", [])]
-    except Exception:
-        tables = []
-
-    response_data = {
+    return {
         "timestamps": timestamps,
         "anomaly": anomaly_point,
-        "series": {}
+        "series": series
     }
-
-    for t in tables:
-        response_data["series"][t] = get_scores_for_table(t)
-
-    return response_data
 
 def _latest_run(es, table_name):
     """Newest quality-run document of one table, or None."""
@@ -692,7 +829,7 @@ def get_diagnostic_clustering(table_name: str = None):
 
 
 @router.get("/api/v1/analytics/impact")
-def get_business_impact():
+def get_business_impact(time_range: Optional[str] = None, business_area: Optional[str] = None):
     es = get_es_client()
     try:
         total_quarantined = 0
@@ -701,7 +838,17 @@ def get_business_impact():
         drift_table = None
 
         if es.indices.exists(index="sdoqap_quality_runs"):
-            res = es.search(index="sdoqap_quality_runs", body={"query": {"match_all": {}}, "size": 100})
+            must_clauses = []
+            if time_range in ("24h", "7d", "30d"):
+                must_clauses.append({"range": {"timestamp": {"gte": f"now-{time_range}"}}})
+            if business_area and business_area.lower() != "all":
+                target_tables = AREA_TABLE_MAPPING.get(business_area.lower(), [business_area.lower()])
+                must_clauses.append({"terms": {"table_name.keyword": target_tables}})
+            search_body = {
+                "query": {"bool": {"must": must_clauses}} if must_clauses else {"match_all": {}},
+                "size": 100
+            }
+            res = es.search(index="sdoqap_quality_runs", body=search_body)
             hits = res.get("hits", {}).get("hits", [])
             total_quarantined = sum(hit["_source"].get("quarantined_records", 0) for hit in hits)
             total_records = sum(hit["_source"].get("total_records", 0) for hit in hits) or 1
@@ -795,59 +942,135 @@ def get_business_impact():
 # silently presented as fully real, consistent with the rest of this session's "no
 # fabricated data" fixes.
 @router.get("/api/v1/analytics/sell-in-out")
-def get_sell_in_out_analytics():
+def get_sell_in_out_analytics(time_range: Optional[str] = None, business_area: Optional[str] = None):
     """
-    Returns Sell-In vs. Sell-Out Volume comparison, reconciliation gap,
-    and correlation with Data Quality & COPDQ for Executive Decision Support.
+    Returns Data Pipeline Flow & Delivery Reconciliation comparison,
+    reconciliation gap, and correlation with Data Quality & COPDQ from real Elasticsearch runs.
     """
     es = get_es_client()
-    total_loss = 18544.0
-    quarantined_count = 1952
-    try:
-        if es.indices.exists(index="sdoqap_quality_runs"):
-            res = es.search(index="sdoqap_quality_runs", body={"query": {"match_all": {}}, "size": 100})
+    hits = []
+    
+    if es.indices.exists(index="sdoqap_quality_runs"):
+        try:
+            must_clauses = []
+            if time_range and time_range != "all":
+                must_clauses.append({"range": {"timestamp": {"gte": f"now-{time_range}"}}})
+            if business_area and business_area.lower() != "all":
+                target_tables = AREA_TABLE_MAPPING.get(business_area.lower(), [business_area.lower()])
+                must_clauses.append({"terms": {"table_name.keyword": target_tables}})
+            query = {"bool": {"must": must_clauses}} if must_clauses else {"match_all": {}}
+            res = es.search(
+                index="sdoqap_quality_runs",
+                body={
+                    "query": query,
+                    "sort": [{"timestamp": {"order": "asc"}}],
+                    "size": 100
+                }
+            )
             hits = res.get("hits", {}).get("hits", [])
-            if hits:
-                q_sum = sum(hit["_source"].get("quarantined_records", 0) for hit in hits)
-                if q_sum > 0:
-                    quarantined_count = q_sum
-                fin_sum = sum(hit["_source"].get("quarantined_financial_value", 0.0) for hit in hits)
-                if fin_sum > 0:
-                    total_loss = fin_sum
-    except Exception:
-        pass
+            # Fall back to all runs if time-window yields 0 results (e.g. historical seed data)
+            if not hits and time_range and time_range != "all":
+                fb_must = []
+                if business_area and business_area.lower() != "all":
+                    target_tables = AREA_TABLE_MAPPING.get(business_area.lower(), [business_area.lower()])
+                    fb_must.append({"terms": {"table_name.keyword": target_tables}})
+                fb_query = {"bool": {"must": fb_must}} if fb_must else {"match_all": {}}
+                res = es.search(
+                    index="sdoqap_quality_runs",
+                    body={
+                        "query": fb_query,
+                        "sort": [{"timestamp": {"order": "asc"}}],
+                        "size": 100
+                    }
+                )
+                hits = res.get("hits", {}).get("hits", [])
+        except Exception as e:
+            print(f"Error querying quality runs for reconciliation: {e}")
 
-    timeline = [
-        {"period": "18 Sep", "sell_in": 14200, "sell_out": 13900, "quarantined_gap": 150, "quality_score": 98.9, "status": "Healthy", "incident": "Data contract verified"},
-        {"period": "19 Sep", "sell_in": 15400, "sell_out": 14950, "quarantined_gap": 220, "quality_score": 98.4, "status": "Healthy", "incident": "Within normal variance"},
-        {"period": "20 Sep", "sell_in": 16800, "sell_out": 15600, "quarantined_gap": 680, "quality_score": 95.8, "status": "Normal", "incident": "Minor POS lag"},
-        {"period": "21 Sep", "sell_in": 18200, "sell_out": 13800, "quarantined_gap": 2850, "quality_score": 83.4, "status": "Critical", "incident": "Schema drift & Missing POS values"},
-        {"period": "22 Sep", "sell_in": 17500, "sell_out": 13200, "quarantined_gap": 3100, "quality_score": 81.8, "status": "Critical", "incident": "Quarantine threshold exceeded"},
-        {"period": "23 Sep", "sell_in": 16900, "sell_out": 15800, "quarantined_gap": 950, "quality_score": 94.2, "status": "Recovering", "incident": "Remediation ticket in progress"},
-        {"period": "24 Sep", "sell_in": 18500, "sell_out": 17900, "quarantined_gap": 380, "quality_score": 97.9, "status": "Healthy", "incident": "Pipeline normalized"}
-    ]
+    timeline = []
+    if hits:
+        for hit in hits:
+            src = hit["_source"]
+            ts_raw = src.get("timestamp", "")
+            table_name = src.get("table_name", "unknown")
+            total = src.get("total_records", 0)
+            clean = src.get("clean_records", 0)
+            quar = src.get("quarantined_records", 0)
+            score = src.get("quality_score", 100.0)
+            breakdown = src.get("quarantine_breakdown", {})
+            
+            try:
+                dt = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+                period_label = dt.strftime("%d %b %H:%M")
+            except Exception:
+                period_label = ts_raw[:16] if ts_raw else "Run"
 
-    total_sell_in = sum(d["sell_in"] for d in timeline)
-    total_sell_out = sum(d["sell_out"] for d in timeline)
-    total_gap = total_sell_in - total_sell_out
-    total_quarantined_gap = sum(d["quarantined_gap"] for d in timeline)
+            if breakdown and isinstance(breakdown, dict) and len(breakdown) > 0:
+                top_key = list(breakdown.keys())[0]
+                top_val = breakdown[top_key]
+                cleaned_key = top_key.replace("|", "").strip()
+                incident = f"{table_name}: {cleaned_key} ({top_val} rows)"
+            elif quar > 0:
+                incident = f"{table_name}: Quarantined {quar} rows"
+            else:
+                incident = f"{table_name}: Verified 100% clean"
+
+            status = "Healthy" if score >= 95 else ("Normal" if score >= 90 else "Critical")
+
+            timeline.append({
+                "period": period_label,
+                "dataset": table_name,
+                "run_id": src.get("run_id", ""),
+                "sell_in": total,
+                "sell_out": clean,
+                "inbound": total,
+                "delivered": clean,
+                "quarantined_gap": quar,
+                "quality_score": round(score, 1),
+                "status": status,
+                "incident": incident
+            })
+    else:
+        timeline = [
+            {"period": "Baseline", "dataset": "System", "sell_in": 0, "sell_out": 0, "inbound": 0, "delivered": 0, "quarantined_gap": 0, "quality_score": 100.0, "status": "Healthy", "incident": "Awaiting initial data ingestion"}
+        ]
+
+    total_inbound = sum(d["inbound"] for d in timeline)
+    total_delivered = sum(d["delivered"] for d in timeline)
+    total_gap = sum(d["quarantined_gap"] for d in timeline)
+    accuracy_pct = round((total_delivered / total_inbound) * 100, 1) if total_inbound > 0 else 100.0
+
+    # Dynamic COPDQ calculation
+    fin_sum = sum(hit["_source"].get("quarantined_financial_value", 0.0) for hit in hits) if hits else 0.0
+    if fin_sum > 0:
+        copdq_val = round(fin_sum, 0)
+        copdq_type = "financial_loss"
+    else:
+        # Transparent Operational Waste calculation ($2.50/record engineering remediation TCO)
+        copdq_val = round(total_gap * 2.50, 0)
+        copdq_type = "operational_waste"
 
     return {
         "summary": {
-            "total_sell_in_volume": total_sell_in,
-            "total_sell_out_volume": total_sell_out,
+            "total_sell_in_volume": total_inbound,
+            "total_sell_out_volume": total_delivered,
+            "total_inbound_volume": total_inbound,
+            "total_delivered_volume": total_delivered,
             "reconciliation_gap_volume": total_gap,
-            "quarantined_data_gap_volume": total_quarantined_gap,
-            "sales_accuracy_pct": round((total_sell_out / total_sell_in) * 100, 1) if total_sell_in > 0 else 0.0,
-            "copdq_sales_loss_usd": round(total_loss, 0),
-            "quarantined_records_count": quarantined_count
+            "quarantined_data_gap_volume": total_gap,
+            "sales_accuracy_pct": accuracy_pct,
+            "data_integrity_pct": accuracy_pct,
+            "copdq_sales_loss_usd": copdq_val,
+            "copdq_type": copdq_type,
+            "quarantined_records_count": total_gap
         },
         "timeline": timeline,
-        "is_example": True,
+        "is_example": False,
         "business_impact_narrative": (
-            f"การเปรียบเทียบ Sell-In ({total_sell_in:,} ชิ้น) กับ Sell-Out ({total_sell_out:,} ชิ้น) เผยให้เห็นช่องว่าง (Discrepancy Gap) {total_gap:,} ชิ้น "
-            f"โดยมีข้อมูลตกค้างใน Quarantine ถึง {total_quarantined_gap:,} ชิ้น ในช่วงที่ Data Quality ตกต่ำกว่า SLA 95% "
-            f"ส่งผลให้ระบบรายงานคาดการณ์สต็อกคลาดเคลื่อน และสร้างความเสี่ยงต่อยอดขายประเมินตาม Gartner COPDQ อยู่ที่ ${total_loss:,.0f} USD"
+            f"การกระทบยอดปริมาณข้อมูลในท่อส่ง (Volume Flow Reconciliation) ตรวจพบ Inbound Volume รวม {total_inbound:,} รายการ "
+            f"ส่งมอบเข้าสู่ระบบปลายทางสำเร็จ (Delivered Active) {total_delivered:,} รายการ และถูกคัดแยกเข้า Quarantine {total_gap:,} รายการ "
+            f"({round((total_gap / total_inbound) * 100, 2) if total_inbound > 0 else 0}% ของปริมาณทั้งหมด) "
+            f"คิดเป็นต้นทุนความสูญเสียทางวิศวกรรมและการจัดการ (TCO) ประเมินอยู่ที่ ${copdq_val:,.0f} USD"
         )
     }
 

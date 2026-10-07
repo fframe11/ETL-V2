@@ -131,6 +131,7 @@ services:
       - ELASTICSEARCH_PORT=${ELASTICSEARCH_PORT:-9200}
       - HADOOP_USER_NAME=spark
       - N8N_WEBHOOK_URL=http://n8n:5678
+      - TRIGGER_SHARED_SECRET=${TRIGGER_SHARED_SECRET}
     depends_on:
       namenode:
         condition: service_healthy
@@ -140,6 +141,7 @@ services:
     ports:
       - "8081:8080" # Spark Web UI (map to 8081 to avoid conflict)
       - "7077:7077"
+      - "8099:8099"
     healthcheck:
       test: ["CMD", "bash", "-c", "ps aux | grep -v grep | grep -q org.apache.spark.deploy.master.Master || exit 1"]
       interval: 10s
@@ -148,6 +150,7 @@ services:
       start_period: 120s
     volumes:
       - ./services/spark:/opt/spark-apps
+    entrypoint: ["bash", "/opt/spark-apps/entrypoint-sdoqap.sh"]
     deploy:
       resources:
         limits:
@@ -266,6 +269,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - SPARK_MASTER_HOST=${SPARK_MASTER_HOST:-spark-master}
       - SPARK_MASTER_PORT=${SPARK_MASTER_PORT:-7077}
+      - TRIGGER_SHARED_SECRET=${TRIGGER_SHARED_SECRET}
     networks:
       - sdoqap_network
 

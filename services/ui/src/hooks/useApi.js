@@ -11,7 +11,7 @@ export function useApi(endpoint, options = {}) {
   const fetchData = useCallback(async () => {
     if (!enabled) return;
     try {
-      const res = await fetch(`${API_BASE}${endpoint}`, { credentials: "same-origin" });
+      const res = await fetch(`${API_BASE}${endpoint}`, { credentials: "same-origin", cache: "no-cache" });
       if (res.status === 401 && window.location.pathname !== "/login") {
         window.location.href = "/login";
         return;
@@ -20,8 +20,10 @@ export function useApi(endpoint, options = {}) {
       const json = await res.json();
       setData(json);
       setError(null);
+      return json;
     } catch (err) {
       setError(err.message);
+      return null;
     } finally {
       setLoading(false);
     }

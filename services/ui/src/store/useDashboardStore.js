@@ -6,7 +6,7 @@ import { create } from 'zustand';
  */
 export const useDashboardStore = create((set) => ({
   // Filter States
-  timeRange: '24h',
+  timeRange: 'all',
   selectedAreaFilter: 'All',
   selectedSeverityFilter: 'All',
   selectedSourceFilter: 'All',
@@ -21,7 +21,7 @@ export const useDashboardStore = create((set) => ({
   
   // Bulk Reset
   resetFilters: () => set({
-    timeRange: '24h',
+    timeRange: 'all',
     selectedAreaFilter: 'All',
     selectedSeverityFilter: 'All',
     selectedSourceFilter: 'All'

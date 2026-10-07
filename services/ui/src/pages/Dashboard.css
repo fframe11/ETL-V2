@@ -619,6 +619,31 @@
   color: #fff;
 }
 
+@keyframes execSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.exec-btn-refreshing {
+  opacity: 0.85;
+  cursor: wait !important;
+  pointer-events: none;
+  background: var(--bg-hover) !important;
+  border-color: var(--accent-purple, #8B5CF6) !important;
+  color: var(--accent-purple, #8B5CF6) !important;
+}
+
+.exec-btn-refreshing svg {
+  animation: execSpin 0.75s linear infinite;
+}
+
+.exec-refresh-time {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-right: 4px;
+}
+
 /* ── Executive 6-Card KPI Grid ── */
 .exec-kpi-grid {
   display: grid;
