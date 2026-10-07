@@ -674,7 +674,7 @@ export default function Dashboard() {
                     <span className="exec-chip exec-chip-good" style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>Target 95.0%</span>
                   </div>
                   <p style={{ marginTop: '2px', fontSize: '11px', color: 'var(--text-muted)' }}>
-                    Quality Score (%) vs 95% SLA Target across recent ingestion cycles
+                    Quality Score (%) vs 95% SLA Target
                   </p>
                 </div>
                 {/* Visual Mode Switcher */}
