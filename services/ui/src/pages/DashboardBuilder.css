@@ -98,6 +98,17 @@
 .dbb-filter select, .dbb-filter input { padding: 5px 8px; border: 1px solid var(--dbb-border); border-radius: 6px; background: #fff; color: var(--dbb-ink); font: inherit; font-size: 13px; }
 .dbb-filter input + input { margin-left: 6px; }
 .dbb-drills { display: flex; flex-wrap: wrap; gap: 6px; }
+.dbb-canvas-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; min-height: 32px; }
+.dbb-export { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 12px; font-size: 13px; }
+.dbb-export button {
+  padding: 5px 12px; border: 1px solid var(--dbb-border); border-radius: 6px; background: var(--dbb-surface);
+  color: var(--dbb-ink); font-size: 13px; cursor: pointer; transition: background-color 0.15s;
+}
+.dbb-export button:hover:not(:disabled) { background: var(--dbb-primary-soft); }
+.dbb-export button:focus-visible { outline: 2px solid var(--dbb-primary); outline-offset: 2px; }
+.dbb-export button:disabled { cursor: not-allowed; opacity: 0.5; }
+.dbb-export-warning { flex-basis: 100%; margin: 0; padding: 6px 10px; border: 1px solid #fedf89; border-radius: 6px; background: #fffaeb; color: #8a5a00; font-size: 12px; }
+.dbb-export .dbb-error-inline { flex-basis: 100%; margin: 0; text-align: right; }
 .dbb-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); grid-auto-rows: 72px; gap: 12px; }
 .dbb-cell {
   display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; padding: 12px 14px;

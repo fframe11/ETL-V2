@@ -11,7 +11,8 @@ function WidgetBody({ widget, data, onDrill, labels }) {
   return <ChartWidget widget={widget} data={data} onDrill={onDrill} />;
 }
 
-export default function DashboardCanvas({ spec, data, selections = {}, onSelectionsChange, busy = false }) {
+// `tools` (optional) is drawn beside the row count, e.g. the CSV export of the filtered rows.
+export default function DashboardCanvas({ spec, data, selections = {}, onSelectionsChange, busy = false, tools = null }) {
   // Only a select control shows a `values` selection; a date range control cannot, so a
   // drill value on a date column needs its own chip.
   const filterColumns = new Set(spec.filters.filter((f) => f.type === "select").map((f) => f.column));
@@ -44,10 +45,15 @@ export default function DashboardCanvas({ spec, data, selections = {}, onSelecti
           ))}
         </div>
       )}
-      {data && (
-        <p className="dbb-muted">
-          {data.rows_after_filter.toLocaleString("en-US")} จาก {data.rows_total.toLocaleString("en-US")} แถว
-        </p>
+      {(data || tools) && (
+        <div className="dbb-canvas-bar">
+          {data && (
+            <p className="dbb-muted">
+              {data.rows_after_filter.toLocaleString("en-US")} จาก {data.rows_total.toLocaleString("en-US")} แถว
+            </p>
+          )}
+          {tools}
+        </div>
       )}
       <div className="dbb-grid">
         {spec.widgets.map((w) => (

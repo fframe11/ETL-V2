@@ -1061,3 +1061,30 @@ it("never applies a column meaning that arrives after the dataset was changed", 
   // the late reply did not even replace the state: the orders editor never had to reload
   expect(fetch.mock.calls.filter(([u]) => String(u).includes("/semantic/orders"))).toHaveLength(1);
 });
+
+// --- CSV export of the filtered rows ---------------------------------------------------------------
+const EXPORT_FILE = ["/dashboards/export", { headers: { "Content-Disposition": 'attachment; filename="sales_20261008.csv"' } }];
+
+it("exports the rows the current filters select", async () => {
+  window.URL.createObjectURL = vi.fn(() => "blob:x");
+  window.URL.revokeObjectURL = vi.fn();
+  const save = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  await generateDashboard([EXPORT_FILE]);
+  fireEvent.change(screen.getByLabelText("ภูมิภาค"), { target: { value: "North" } });
+  await settle();
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "ส่งออก CSV" })); });
+  await settle();
+  expect(JSON.parse(callTo("/dashboards/export")[1].body)).toEqual(
+    { table_name: "sales", selections: { region: { values: ["North"] } }, include_personal: false });
+  expect(save).toHaveBeenCalledTimes(1);
+});
+
+it("does not export while a filter is still being recomputed", async () => {
+  const pending = await openDashboard();
+  const button = screen.getByRole("button", { name: "ส่งออก CSV" });
+  expect(button).toBeEnabled();
+  filterRegion("North");
+  expect(button).toBeDisabled();
+  await answer(pending.render[0], rendered(2));
+  expect(button).toBeEnabled();
+});

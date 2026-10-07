@@ -111,3 +111,9 @@ it("labels table columns and drill chips with the names from the semantic layer"
   expect(table.queryByRole("button", { name: "amount" })).toBeNull();
   expect(screen.getByRole("button", { name: "ล้างตัวกรอง กลุ่มลูกค้า" })).toHaveTextContent("กลุ่มลูกค้า: A");
 });
+
+it("shows the export tools beside the row count", () => {
+  draw({ tools: <button type="button">ส่งออก CSV</button> });
+  const bar = screen.getByText("6 จาก 6 แถว").closest(".dbb-canvas-bar");
+  expect(within(bar).getByRole("button", { name: "ส่งออก CSV" })).toBeInTheDocument();
+});

@@ -5,6 +5,7 @@ import DataPreview from "../components/builder/DataPreview";
 import { QualityNotice } from "../components/builder/QualityNotice";
 import ContextForm from "../components/builder/ContextForm";
 import DashboardCanvas from "../components/builder/DashboardCanvas";
+import ExportCsv from "../components/builder/ExportCsv";
 import RefinePanel from "../components/builder/RefinePanel";
 import SaveDialog from "../components/builder/SaveDialog";
 import SavedDashboards from "../components/builder/SavedDashboards";
@@ -300,7 +301,8 @@ export default function DashboardBuilder() {
           <QualityNotice quality={quality} tableRows={catalogEntry?.records} />
           <div className="dbb-workspace">
             <DashboardCanvas spec={draft.spec} data={draft.data} selections={selections}
-              onSelectionsChange={changeSelections} busy={busy === "render"} />
+              onSelectionsChange={changeSelections} busy={busy === "render"}
+              tools={<ExportCsv table={dataset.name} selections={selections} disabled={busy === "render"} />} />
             <RefinePanel tableName={dataset.name} spec={draft.spec} onRefine={refine} busy={busy === "refine"} changes={changes}
               history={refinements} canUndo={undoStack.length > 0} onUndo={undo} undoing={busy === "undo"} />
           </div>
