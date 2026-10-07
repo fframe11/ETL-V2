@@ -279,7 +279,7 @@ def fallback_spec(profile, context="", audience="business", metrics=None):
     if audience != "management" or len(widgets) == 1:
         widgets.append({"type": "table", "title": "ตัวอย่างข้อมูล", "columns": [c["name"] for c in columns[:12 if audience == "analyst" else 8]]})
     filters = [{"column": c["name"]} for c in categories[:2]] + [{"column": d["name"]} for d in dates[:1]]
-    title ="แดชบอร์ดผู้บริหาร" if audience == "management" else "แดชบอร์ดภาพรวม"
+    title = "แดชบอร์ดผู้บริหาร" if audience == "management" else "แดชบอร์ดภาพรวม"
     return {"title": title, "description": context[:300], "widgets": widgets, "filters": filters}
 
 

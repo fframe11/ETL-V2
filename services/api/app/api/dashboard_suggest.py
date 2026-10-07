@@ -143,7 +143,7 @@ def _suggestion(rule, key, text, widget):
 def suggest_from_profile(profile, audience="business", limit=DEFAULT_LIMIT):
     measures, categories, dates = _usable(profile)
     main = _metric(measures[0]) if measures else ({"agg": "count", "column": None}, "จำนวนแถว")
-    by_rule ={rule: [] for rule in ("R1", "R2", "R3", "R4", "R5", "R7", "R8")}
+    by_rule = {rule: [] for rule in ("R1", "R2", "R3", "R4", "R5", "R7", "R8")}
 
     if dates:
         date = dates[0]["name"]
