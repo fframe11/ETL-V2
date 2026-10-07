@@ -152,7 +152,16 @@
 .dbb-meta-table tr.is-changed { background: #fffaeb; }
 .dbb-fieldset-plain { border: 0; margin: 0; padding: 0; min-width: 0; }
 .dbb-metrics ul { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
-.dbb-metrics li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--dbb-border); border-radius: 6px; font-size: 13px; }
+/* name and formula | current value | edit and delete: fixed columns so every value starts at the same x */
+.dbb-metrics li { display: grid; grid-template-columns: minmax(0, 1fr) 11rem auto; align-items: center; gap: 8px 16px; padding: 8px 10px; border: 1px solid var(--dbb-border); border-radius: 6px; font-size: 13px; }
+.dbb-metrics li.is-invalid { display: block; }
+.dbb-metrics .dbb-toolbar { align-items: center; }
+.dbb-metrics .dbb-toolbar button {
+  padding: 7px 14px; border: 1px solid var(--dbb-border); border-radius: 6px; background: var(--dbb-surface);
+  color: var(--dbb-ink); font-size: 13px; cursor: pointer;
+}
+.dbb-metrics .dbb-toolbar button:disabled { cursor: not-allowed; opacity: 0.5; }
+@media (max-width: 640px) { .dbb-metrics li { grid-template-columns: minmax(0, 1fr) auto; } .dbb-metrics li > .dbb-metric-value { grid-column: 1; } }
 .dbb-metrics li.is-invalid { border-color: #fecdca; background: #fef3f2; color: var(--dbb-down); }
 .dbb-metric-value { font-variant-numeric: tabular-nums; font-weight: 600; }
 .dbb-metric-form { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 8px 12px; padding: 12px; border: 1px solid var(--dbb-border); border-radius: 6px; font-size: 13px; }
