@@ -4,10 +4,10 @@ import ChartWidget from "./ChartWidget";
 import TableWidget from "./TableWidget";
 import FilterBar from "./FilterBar";
 
-function WidgetBody({ widget, data, onDrill }) {
+function WidgetBody({ widget, data, onDrill, labels }) {
   if (data?.error) return <p className="dbb-error-inline">{data.error}</p>;
   if (widget.type === "kpi") return <KpiCard widget={widget} data={data} />;
-  if (widget.type === "table") return <TableWidget widget={widget} data={data} />;
+  if (widget.type === "table") return <TableWidget widget={widget} data={data} labels={labels} />;
   return <ChartWidget widget={widget} data={data} onDrill={onDrill} />;
 }
 
@@ -15,6 +15,7 @@ export default function DashboardCanvas({ spec, data, selections = {}, onSelecti
   // Only a select control shows a `values` selection; a date range control cannot, so a
   // drill value on a date column needs its own chip.
   const filterColumns = new Set(spec.filters.filter((f) => f.type === "select").map((f) => f.column));
+  const labels = data?.column_labels || {}; // display names from the semantic layer
   const drills = Object.entries(selections).filter(([column, sel]) => !filterColumns.has(column) && sel?.values?.length);
   // A bar or slice of a date column is a time bucket ("2025-03-01" = March), so the server needs the grain.
   const drill = (column, value, grain) =>
@@ -37,8 +38,8 @@ export default function DashboardCanvas({ spec, data, selections = {}, onSelecti
       {drills.length > 0 && (
         <div className="dbb-drills" aria-label="ตัวกรองจากการคลิกกราฟ">
           {drills.map(([column, sel]) => (
-            <button type="button" key={column} className="dbb-chip is-active" onClick={() => clear(column)} aria-label={`ล้างตัวกรอง ${column}`}>
-              {column}: {sel.values[0]} ×
+            <button type="button" key={column} className="dbb-chip is-active" onClick={() => clear(column)} aria-label={`ล้างตัวกรอง ${labels[column] || column}`}>
+              {labels[column] || column}: {sel.values[0]} ×
             </button>
           ))}
         </div>
@@ -57,7 +58,7 @@ export default function DashboardCanvas({ spec, data, selections = {}, onSelecti
             style={{ "--x": w.layout.x + 1, "--y": w.layout.y + 1, "--w": w.layout.w, "--h": w.layout.h }}
           >
             <h3 className="dbb-cell-title">{w.title}</h3>
-            <WidgetBody widget={w} data={data?.widgets?.[w.id]} onDrill={drill} />
+            <WidgetBody widget={w} data={data?.widgets?.[w.id]} onDrill={drill} labels={labels} />
           </article>
         ))}
       </div>

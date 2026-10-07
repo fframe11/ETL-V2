@@ -15,8 +15,8 @@ it("draws every widget with its title and the KPI in BI short form", () => {
   for (const title of ["ภาพรวมยอดขาย", "ยอดขายรวม", "ยอดขายตามภูมิภาค", "รายการล่าสุด"]) {
     expect(screen.getByText(title)).toBeInTheDocument();
   }
-  expect(screen.getByText("฿1.77M")).toBeInTheDocument();
-  expect(screen.getByText(/46\.2%/)).toHaveClass("is-down");
+  expect(screen.getByText("$1.77M")).toBeInTheDocument();
+  expect(screen.getByText(/46\.2%/)).toHaveClass("is-bad");
   expect(screen.getByText("6 จาก 6 แถว")).toBeInTheDocument();
 });
 
@@ -73,7 +73,7 @@ it("sorts a table widget by a clicked column", () => {
 it("shows a widget's own error without hiding the others", () => {
   draw({ data: { ...DATA, widgets: { ...DATA.widgets, w2: { error: "คำนวณวิดเจ็ตนี้ไม่ได้: boom" } } } });
   expect(screen.getByText("คำนวณวิดเจ็ตนี้ไม่ได้: boom")).toBeInTheDocument();
-  expect(screen.getByText("฿1.77M")).toBeInTheDocument();
+  expect(screen.getByText("$1.77M")).toBeInTheDocument();
 });
 
 it("shows a drill chip for a value selection on a date range filter column and clears it", () => {
@@ -95,4 +95,19 @@ it("keeps an active select value visible even when it is not among the options",
   expect(within(select).getByRole("option", { name: "West" })).toBeInTheDocument();
   fireEvent.change(select, { target: { value: "" } });
   expect(onChange).toHaveBeenCalledWith({});
+});
+
+it("colours a drop as good when lower is better", () => {
+  const spec = { ...SPEC, widgets: SPEC.widgets.map((w) => (w.id === "w1" ? { ...w, higher_is_better: false } : w)) };
+  draw({ spec });
+  expect(screen.getByText(/46\.2%/)).toHaveClass("is-good");
+});
+
+it("labels table columns and drill chips with the names from the semantic layer", () => {
+  draw({ data: { ...DATA, column_labels: { region: "ภูมิภาค", amount: "ยอดขาย", segment: "กลุ่มลูกค้า" } },
+    selections: { segment: { values: ["A"] } } });
+  const table = within(screen.getByRole("article", { name: "รายการล่าสุด" }));
+  expect(table.getByRole("button", { name: "ยอดขาย" })).toBeInTheDocument();
+  expect(table.queryByRole("button", { name: "amount" })).toBeNull();
+  expect(screen.getByRole("button", { name: "ล้างตัวกรอง กลุ่มลูกค้า" })).toHaveTextContent("กลุ่มลูกค้า: A");
 });

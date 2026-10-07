@@ -14,7 +14,7 @@ function cell(value) {
   return String(value);
 }
 
-export default function TableWidget({ widget, data }) {
+export default function TableWidget({ widget, data, labels = {} }) {
   const [sort, setSort] = useState(null);
   const columns = data?.columns || widget.columns;
   const rows = useMemo(() => {
@@ -35,7 +35,7 @@ export default function TableWidget({ widget, data }) {
             {columns.map((c) => (
               <th key={c} aria-sort={sort?.column === c ? (sort.desc ? "descending" : "ascending") : "none"}>
                 <button type="button" onClick={() => toggle(c)}>
-                  {c}{sort?.column === c ? (sort.desc ? " ↓" : " ↑") : ""}
+                  {labels[c] || c}{sort?.column === c ? (sort.desc ? " ↓" : " ↑") : ""}
                 </button>
               </th>
             ))}
