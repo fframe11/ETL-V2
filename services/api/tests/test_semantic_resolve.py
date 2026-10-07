@@ -113,3 +113,41 @@ def test_apply_to_profile_removes_hidden_columns_and_adds_meaning():
     assert country["label"] == "Country" and country["role"] == "dimension"
     assert applied["kind_counts"]["text"] == 1
     assert len(PROFILE["columns"]) == 5  # the original profile is untouched
+
+
+def test_approved_pii_true_on_non_name_column_is_hidden():
+    # PII test (a): a column IN approved with pii true that is NOT name-pii is hidden
+    doc = {"approved": approved(all_columns(Total_Sales=dict(USD, pii=True)))}
+    view = sl.resolve("sales", doc, PROFILE)
+    assert view["hidden_columns"] == ["Customer_Name", "Total_Sales"]
+
+
+def test_approved_absent_name_pii_column_is_hidden():
+    # PII test (b): approved version exists, name-pii column absent from approved: hidden
+    cols = all_columns()
+    del cols["Customer_Name"]
+    doc = {"approved": approved(cols)}
+    view = sl.resolve("sales", doc, PROFILE)
+    assert "Customer_Name" in view["hidden_columns"]
+
+
+def test_approved_pii_false_beats_draft_pii_true_on_name_pii_column():
+    # PII test (c): approved pii false on name-pii column beats draft pii true: visible
+    doc = {
+        "approved": approved(all_columns(Customer_Name={"role": "text", "pii": False})),
+        "draft": {"columns": all_columns(Customer_Name={"role": "text", "pii": True}), "metrics": []}
+    }
+    view = sl.resolve("sales", doc, PROFILE)
+    assert "Customer_Name" not in view["hidden_columns"]
+
+
+def test_approved_absent_non_name_column_with_draft_pii_true_is_hidden():
+    # PII test (d): approved exists, column absent from approved, draft says pii true: hidden
+    cols = all_columns()
+    del cols["Total_Sales"]
+    doc = {
+        "approved": approved(cols),
+        "draft": {"columns": all_columns(Total_Sales=dict(USD, pii=True)), "metrics": []}
+    }
+    view = sl.resolve("sales", doc, PROFILE)
+    assert "Total_Sales" in view["hidden_columns"]
