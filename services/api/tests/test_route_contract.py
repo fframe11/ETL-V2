@@ -130,6 +130,11 @@ CALLS = [
     ("GET", "/api/v1/dashboards/saved/D1", "/api/v1/dashboards/saved/{dashboard_id}"),
     ("PUT", "/api/v1/dashboards/saved/D1", "/api/v1/dashboards/saved/{dashboard_id}"),
     ("DELETE", "/api/v1/dashboards/saved/D1", "/api/v1/dashboards/saved/{dashboard_id}"),
+    # DashboardBuilder.jsx via utils/semanticApi.js
+    ("GET", "/api/v1/semantic/t1", "/api/v1/semantic/{table_name}"),
+    ("POST", "/api/v1/semantic/t1/draft", "/api/v1/semantic/{table_name}/draft"),
+    ("PUT", "/api/v1/semantic/t1/draft", "/api/v1/semantic/{table_name}/draft"),
+    ("POST", "/api/v1/semantic/t1/approve", "/api/v1/semantic/{table_name}/approve"),
     # infra/n8n/ingestion_workflow.json and infra/grafana alert_rules.yaml
     same("POST", "/api/v1/system/cleanup"),
     same("POST", "/api/v1/system/alert"),
