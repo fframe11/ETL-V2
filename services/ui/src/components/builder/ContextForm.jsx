@@ -71,12 +71,14 @@ export default function ContextForm({ table, tableName, value, onChange, onGener
           </button>
         ))}
       </div>
-      <div className="dbb-ai-row" aria-live="polite">
+      <div className="dbb-ai-row">
         <button type="button" onClick={rank} disabled={!suggestions?.length || ai.status === "loading"}>
           {ai.status === "loading" ? "AI กำลังเรียบเรียง…" : "เรียบเรียงด้วย AI"}
         </button>
-        {ai.status === "done" && <span className="dbb-muted">จัดลำดับและเรียบเรียงโดย AI ({ai.model})</span>}
-        {ai.status === "error" && <span className="dbb-error-inline">{ai.message}</span>}
+        {/* always mounted, so a screen reader announces the text that appears in it */}
+        <span className={ai.status === "error" ? "dbb-error-inline" : "dbb-muted"} aria-live="polite">
+          {ai.status === "done" ? `จัดลำดับและเรียบเรียงโดย AI (${ai.model})` : ai.status === "error" ? ai.message : null}
+        </span>
       </div>
       <textarea id="dbb-context-input" rows={4} maxLength={2000} value={value.context}
         placeholder="เลือกคำแนะนำด้านบน หรือพิมพ์สิ่งที่อยากเห็น"

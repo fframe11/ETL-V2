@@ -236,12 +236,16 @@ const rankCalls = () => fetch.mock.calls.filter(([url]) => String(url).includes(
 
 it("lets the user ask the AI to reorder and reword the suggestions", async () => {
   await openRequestStep([["/dashboards/rank-suggestions", { body: RANKED }]]);
+  expect(rankCalls()).toHaveLength(0); // the AI is never asked on its own
+  expect(rankButton().closest("[aria-live]")).toBeNull(); // the live region must not wrap the button
   fireEvent.click(rankButton());
   await settle();
   expect(JSON.parse(rankCalls()[0][1].body)).toEqual({ table_name: "sales", audience: "business" });
   expect(screen.getByRole("button", { name: RANKED_TEXT })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: EXAMPLE })).toBeNull();
-  expect(screen.getByText("จัดลำดับและเรียบเรียงโดย AI (openai/gpt-oss-120b)")).toBeInTheDocument();
+  const note = screen.getByText("จัดลำดับและเรียบเรียงโดย AI (openai/gpt-oss-120b)");
+  expect(note).toBeInTheDocument();
+  expect(note).toHaveAttribute("aria-live", "polite");
 });
 
 it("keeps the rule-made suggestions and says why when the AI cannot help", async () => {
@@ -260,6 +264,7 @@ it("goes back to the rule-made list when the reader type changes", async () => {
   expect(screen.queryByRole("button", { name: EXAMPLE })).toBeNull();
   fireEvent.click(screen.getByRole("radio", { name: "Management" }));
   await settle();
+  expect(rankCalls()).toHaveLength(1); // only the click asked; changing the reader type never does
   expect(screen.queryByText(/จัดลำดับและเรียบเรียงโดย AI/)).toBeNull();
   expect(screen.getByRole("button", { name: EXAMPLE })).toBeInTheDocument();
 });
