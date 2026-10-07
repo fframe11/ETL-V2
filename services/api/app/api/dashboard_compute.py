@@ -90,25 +90,46 @@ def _matches(series, values):
     return _labels(series).isin([str(v) for v in values]).astype(bool)
 
 
+def _naive(value):
+    stamp = pd.Timestamp(value)
+    return stamp.tz_convert(None) if stamp.tzinfo else stamp
+
+
+def _date_matches(series, values):
+    """A date value without a time part matches the whole calendar day, otherwise the exact instant."""
+    days, mask = series.dt.normalize(), pd.Series(False, index=series.index)
+    for value in values:
+        stamp = _naive(value)
+        mask |= (days == stamp) if stamp == stamp.normalize() else (series == stamp)
+    return mask
+
+
 def where_mask(frame, where):
     """Rows matching one metric condition (semantic_layer.WHERE_OPS). Text comparisons use
     the labels the charts show, so "(ว่าง)" matches empty values."""
     series, op, value = frame[where["column"]], where["op"], where["value"]
     if op in ("eq", "ne", "in"):
-        mask = _matches(series, value if op == "in" else [value])
+        values = value if op == "in" else [value]
+        if pd.api.types.is_datetime64_any_dtype(series):
+            mask = _date_matches(series, values)
+        else:
+            mask = _matches(series, values)
         return ~mask if op == "ne" else mask
     if pd.api.types.is_datetime64_any_dtype(series):
-        bound = pd.Timestamp(value)
-        bound = bound.tz_convert(None) if bound.tzinfo else bound
+        bound = _naive(value)
     else:
         series, bound = pd.to_numeric(series, errors="coerce"), value
     return _COMPARE[op](series, bound).fillna(False).astype(bool)
 
 
 def _part_value(frame, part):
+    """A ratio part before rounding; only the final result goes through _value."""
     if part.get("where"):
         frame = frame[where_mask(frame, part["where"])]
-    return _aggregate(frame, part)
+    if part["agg"] in ("count", "count_distinct", "count_missing"):
+        return _aggregate(frame, part)
+    value = getattr(to_numeric_safe(frame[part["column"]]), _REDUCERS[part["agg"]])()
+    return None if pd.isna(value) else float(value)
 
 
 def evaluate_metric(frame, metric):

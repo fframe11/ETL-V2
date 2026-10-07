@@ -78,3 +78,62 @@ def test_metric_values_reports_every_metric_and_survives_a_broken_one():
     broken = simple(part("sum", "gone"))
     values = dc.metric_values(DF, [dict(MARGIN, id="margin"), dict(broken, id="broken")])
     assert values["margin"] == pytest.approx(21.8) and values["broken"] is None
+
+
+def count_where(where):
+    return dc.evaluate_metric(DF, simple(part("count", where=where)))
+
+
+@pytest.mark.parametrize("where,expected", [
+    ({"column": "order_date", "op": "eq", "value": "2025-01-05"}, 2),
+    ({"column": "order_date", "op": "ne", "value": "2025-01-05"}, 4),
+    ({"column": "order_date", "op": "in", "value": ["2025-01-05", "2025-03-11"]}, 3),
+    ({"column": "order_date", "op": "eq", "value": "2025-01-05T00:00:00+00:00"}, 2),
+    ({"column": "order_date", "op": "eq", "value": "2025-01-05T10:30:00"}, 0),
+])
+def test_date_equality_conditions_compare_by_calendar_day(where, expected):
+    assert count_where(where) == expected
+
+
+@pytest.mark.parametrize("where,expected", [
+    ({"column": "sales", "op": "lte", "value": 50}, 2),
+    ({"column": "sales", "op": "gte", "value": 100}, 2),
+    ({"column": "sales", "op": "lt", "value": 80}, 3),
+])
+def test_where_comparisons_on_a_numeric_column(where, expected):
+    assert count_where(where) == expected
+
+
+def test_count_distinct_with_a_condition():
+    north = part("count_distinct", "order_id", {"column": "region", "op": "eq", "value": "North"})
+    south_east = part("count_distinct", "order_id", {"column": "region", "op": "in", "value": ["South", "East"]})
+    assert dc.evaluate_metric(DF, simple(north)) == 1
+    assert dc.evaluate_metric(DF, simple(south_east)) == 3
+
+
+def test_grouped_ratio_is_missing_for_zero_and_absent_denominators():
+    frame = pd.DataFrame({
+        "g": ["x", "x", "y", "z"], "num": [1.0, 1.0, 1.0, 1.0],
+        "den": [0.0, 0.0, 5.0, 9.0], "flag": ["yes", "yes", "yes", "no"],
+    })
+    metric = ratio(part("sum", "num"), part("sum", "den", {"column": "flag", "op": "eq", "value": "yes"}), "number")
+    values = dc.grouped_metric(frame, ["g"], metric)
+    assert pd.isna(values["x"]) and pd.isna(values["z"]) and values["y"] == pytest.approx(0.2)
+
+
+def test_ratio_with_an_empty_numerator_is_none_and_nan_values_are_skipped():
+    frame = pd.DataFrame({"a": [float("nan"), float("nan")], "b": [1.0, 2.0]})
+    assert dc.evaluate_metric(frame, ratio(part("avg", "a"), part("avg", "b"), "number")) is None
+    assert dc.evaluate_metric(pd.DataFrame({"v": [1.0, float("nan"), 2.0]}), simple(part("sum", "v"))) == 3.0
+
+
+def test_ratio_does_not_round_its_parts_and_matches_the_grouped_value():
+    frame = pd.DataFrame({"g": ["k"] * 3, "a": [1.0, 0.0, 0.0], "b": [1.0, 1.0, 1.0]})
+    third = ratio(part("avg", "a"), part("avg", "b"))
+    assert dc.evaluate_metric(frame, third) == pytest.approx(33.3333, abs=1e-4)
+    assert dc.evaluate_metric(frame, third) == pytest.approx(dc.grouped_metric(frame, ["g"], third)["k"], abs=1e-4)
+
+
+def test_a_tiny_non_zero_denominator_is_not_rounded_to_zero():
+    frame = pd.DataFrame({"a": [1.0, 1.0, 1.0], "b": [0.00001, 0.00001, 0.00001]})
+    assert dc.evaluate_metric(frame, ratio(part("sum", "a"), part("sum", "b"), "number")) == pytest.approx(100000.0)
