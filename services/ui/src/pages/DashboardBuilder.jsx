@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { PageHeader } from "../components/ui";
 import DatasetPicker, { datasetLabel } from "../components/builder/DatasetPicker";
 import DataPreview from "../components/builder/DataPreview";
@@ -8,6 +8,7 @@ import DashboardCanvas from "../components/builder/DashboardCanvas";
 import RefinePanel from "../components/builder/RefinePanel";
 import SaveDialog from "../components/builder/SaveDialog";
 import SavedDashboards from "../components/builder/SavedDashboards";
+import SemanticEditor from "../components/builder/SemanticEditor";
 import { dashboardsApi } from "../utils/dashboardsApi";
 import "./DashboardBuilder.css";
 
@@ -64,11 +65,21 @@ export default function DashboardBuilder() {
   const [undoStack, setUndoStack] = useState([]); // the spec and request history before each AI refinement
   const [showSave, setShowSave] = useState(false);
   const [notice, setNotice] = useState("");
+  // The column meaning being edited in the "ดูข้อมูล" step (SemanticEditor's value). It lives here so
+  // unsaved edits survive moving between steps; the editor reloads it when it belongs to another table.
+  const [semantic, setSemantic] = useState(null);
   // Guards against late responses: `epoch` changes with the dataset, `seq` counts the calls per kind,
   // and `committed` holds the selections that match the data currently on screen.
   const epoch = useRef(0);
   const seq = useRef({});
   const committed = useRef({});
+  // The table the builder is on right now, so a column meaning reply for another table (a request the
+  // editor started before the dataset changed, even after the editor unmounted) is never applied.
+  const currentTable = useRef(null);
+  currentTable.current = dataset?.name ?? null;
+  const changeSemantic = useCallback((next) => {
+    if (next?.table === currentTable.current) setSemantic(next);
+  }, []);
 
   const maxStep = draft ? 3 : dataset ? 2 : 0;
   const catalogEntry = catalog.find((d) => d.name === dataset?.name);
@@ -91,6 +102,7 @@ export default function DashboardBuilder() {
       setSaved(null);
       setError("");
       setBusy("");
+      setSemantic(null);
     }
     setDataset(next);
   };
@@ -192,13 +204,15 @@ export default function DashboardBuilder() {
     bump("undo");
     committed.current = {};
     setBusy(""); // the calls invalidated above will not clear their own busy flag any more
+    if (doc.table_name !== dataset?.name) setSemantic(null); // another table: its column meaning is not this one's
     setDataset({ name: doc.table_name });
     setRequest({ context: doc.context || "", audience: doc.audience || "business" });
     setRefinements(doc.refinements || []);
     setChanges(null);
     setUndoStack([]);
     setSaved({ id: doc.id, name: doc.name, description: doc.description || "" });
-    setDraft({ spec: rendered.spec, data: rendered.data, engine: "saved", model: null, warnings: [], savedName: doc.name });
+    // the render re-checks the saved spec against today's data and semantic layer: say what it dropped
+    setDraft({ spec: rendered.spec, data: rendered.data, engine: "saved", model: null, warnings: rendered.warnings || [], savedName: doc.name });
     setSelections({});
     setNotice("");
     setStep(3);
@@ -241,10 +255,26 @@ export default function DashboardBuilder() {
       {step === 1 && dataset && (
         <section className="dbb-panel" aria-label={STEPS[1]}>
           <QualityNotice quality={quality} tableRows={catalogEntry?.records} />
-          <DataPreview table={dataset.name} />
+          <DataPreview
+            table={dataset.name}
+            hiddenColumns={semantic?.table === dataset.name ? semantic.view.hidden_columns : []}
+            renderColumns={(profile) => (
+              <SemanticEditor table={dataset.name} profile={profile} value={semantic} onChange={changeSemantic} />
+            )}
+          />
           <div className="dbb-actions">
             <button type="button" onClick={() => setStep(0)}>ย้อนกลับ</button>
-            <button type="button" className="dbb-btn-primary" onClick={() => setStep(2)}>ถัดไป</button>
+            <button
+              type="button"
+              className="dbb-btn-primary"
+              onClick={() => {
+                // a reminder, not a block: the dashboard can be built from the stored meaning
+                setNotice(semantic?.table === dataset.name && semantic.dirty ? "มีการแก้ไขความหมายคอลัมน์ที่ยังไม่บันทึก" : "");
+                setStep(2);
+              }}
+            >
+              ถัดไป
+            </button>
           </div>
         </section>
       )}

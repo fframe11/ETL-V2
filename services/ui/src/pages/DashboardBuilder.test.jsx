@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { render, screen, fireEvent, act, within } from "@testing-library/react";
 import { renderPage } from "../test/renderPage";
 import DashboardBuilder from "./DashboardBuilder";
-import { SPEC, DATA } from "../test/dashboardFixtures";
+import { SPEC, DATA, SEMANTIC_VIEW } from "../test/dashboardFixtures";
 
 const DATASETS = { datasets: [
   { name: "sales", source: "File upload", records: 1200, columns: 6,
@@ -93,6 +93,7 @@ const SUGGESTIONS = { table_name: "sales", suggestions: [
 function builderRoutes(extra = []) {
   return [
     ...extra,
+    ["/semantic/sales", { body: SEMANTIC_VIEW }], // the "ดูข้อมูล" step loads the column meaning
     ["/dashboards/suggest-changes", { body: CHANGES }],
     ["/dashboards/datasets/sales/suggestions", { body: SUGGESTIONS }],
     ["/dashboards/datasets/sales/preview", { body: PREVIEW }],
@@ -989,4 +990,74 @@ it("sends only the last 50 refinements, which the server accepts", async () => {
   expect(refinements).toHaveLength(50);
   expect(refinements[0]).toBe("คำสั่งที่ 3");
   expect(refinements[49]).toBe("คำสั่งที่ 52");
+});
+
+// --- the semantic layer in the "ดูข้อมูล" step ----------------------------------------------------
+it("lets the user check column meaning before asking for a dashboard, without calling the AI", async () => {
+  await renderPage(DashboardBuilder, "/dashboard-builder", builderRoutes());
+  fireEvent.click(screen.getByRole("radio", { name: "เลือก sales" }));
+  fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+  await settle();
+  expect(screen.getByRole("status")).toHaveTextContent("ร่างแล้ว รออนุมัติ");
+  expect(callTo("/semantic/sales/draft")).toBeUndefined();
+  fireEvent.change(screen.getByLabelText("ชื่อที่แสดง region"), { target: { value: "ภาค" } });
+  fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+  expect(screen.getByText("มีการแก้ไขความหมายคอลัมน์ที่ยังไม่บันทึก")).toBeInTheDocument();
+  expect(screen.getByLabelText(/อยากวิเคราะห์อะไรจาก/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /ดูข้อมูล/ }));
+  await settle();
+  expect(screen.getByLabelText("ชื่อที่แสดง region")).toHaveValue("ภาค");
+});
+
+it("marks personal columns in the sample and still shows them", async () => {
+  const view = { ...SEMANTIC_VIEW, hidden_columns: ["region"] };
+  await renderPage(DashboardBuilder, "/dashboard-builder", builderRoutes([["/semantic/sales", { body: view }]]));
+  fireEvent.click(screen.getByRole("radio", { name: "เลือก sales" }));
+  fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+  await settle();
+  expect(screen.getByRole("columnheader", { name: "region ส่วนบุคคล" })).toBeInTheDocument();
+  expect(screen.getByText("North")).toBeInTheDocument();
+});
+
+it("explains widgets dropped when a saved dashboard is opened", async () => {
+  const note = "ตัดวิดเจ็ต 'ตามชื่อลูกค้า': ไม่มีคอลัมน์ Customer_Name";
+  await renderPage(DashboardBuilder, "/dashboard-builder", [
+    [`/dashboards/saved/${ID}`, { body: SAVED_DOC }],
+    ["/dashboards/saved", { body: { dashboards: [SUMMARY] } }],
+    ["/dashboards/datasets", { body: DATASETS }],
+    ["/dashboards/render", { body: { spec: SPEC, data: DATA, warnings: [note] } }]
+  ]);
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "เปิด ยอดขายผู้บริหาร" })); });
+  await settle();
+  expect(screen.getByText(note)).toBeInTheDocument();
+});
+
+it("never applies a column meaning that arrives after the dataset was changed", async () => {
+  const reply = (body) => ({ ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body), blob: async () => new Blob() });
+  const viewOf = (table, label) => ({ ...SEMANTIC_VIEW, table_name: table,
+    effective: { ...SEMANTIC_VIEW.effective, columns: { ...SEMANTIC_VIEW.effective.columns,
+      region: { ...SEMANTIC_VIEW.effective.columns.region, label } } } });
+  let answerSales;
+  vi.stubGlobal("fetch", vi.fn((url) => {
+    const u = String(url);
+    if (u.includes("/semantic/sales")) return new Promise((resolve) => { answerSales = () => resolve(reply(viewOf("sales", "ภาคเก่า"))); });
+    if (u.includes("/semantic/orders")) return Promise.resolve(reply(viewOf("orders", "ภาคใหม่")));
+    return Promise.resolve(reply(u.includes("/preview") ? PREVIEW : TWO_DATASETS));
+  }));
+  await act(async () => { render(<MemoryRouter><DashboardBuilder /></MemoryRouter>); });
+  await settle();
+  fireEvent.click(screen.getByRole("radio", { name: "เลือก sales" }));
+  fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+  await settle();
+  fireEvent.click(screen.getByRole("button", { name: "ย้อนกลับ" }));
+  await settle();
+  fireEvent.click(screen.getByRole("radio", { name: "เลือก orders" }));
+  fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+  await settle();
+  expect(screen.getByLabelText("ชื่อที่แสดง region")).toHaveValue("ภาคใหม่");
+  await act(async () => { answerSales(); });
+  await settle();
+  expect(screen.getByLabelText("ชื่อที่แสดง region")).toHaveValue("ภาคใหม่");
+  // the late reply did not even replace the state: the orders editor never had to reload
+  expect(fetch.mock.calls.filter(([u]) => String(u).includes("/semantic/orders"))).toHaveLength(1);
 });
