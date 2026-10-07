@@ -28,10 +28,13 @@ export function updateColumn(meta, patch) {
   return next;
 }
 
+// What the person edits: the saved draft over an approved version (view.editing), else the effective meaning.
+const shown = (view) => view.editing ?? view.effective;
+
 // The editor state for a view from GET/PUT/POST /api/v1/semantic/{table}.
 export function fromView(table, view) {
   if (!view?.effective) throw new Error("โหลดความหมายคอลัมน์ไม่ได้");
-  return { table, view, columns: view.effective.columns, metrics: view.effective.metrics,
+  return { table, view, columns: shown(view).columns, metrics: shown(view).metrics,
     dirty: false, conflict: false, warnings: view.warnings || [] };
 }
 
@@ -125,7 +128,9 @@ export function idProblem(id, metrics, editingIndex) {
 function parseValue(where, kind) {
   const number = (v) => (kind === "numeric" && PLAIN_NUMBER.test(v) ? Number(v) : v);
   if (where.op === "in") return whereValues(where).map(number);
-  return typeof where.value === "string" ? number(where.value.trim()) : where.value;
+  // An "in" list switched to eq/ne without retyping shows as "N, S" in the box, so it is sent as that text.
+  const value = Array.isArray(where.value) ? where.value.join(", ") : where.value;
+  return typeof value === "string" ? number(value.trim()) : value;
 }
 
 // The metric as the API expects it (semantic_layer.clean_metric). Without an id the server makes one from the label.
@@ -155,11 +160,11 @@ export function columnsFor(agg, profile, columns, hidden) {
     .map((c) => c.name);
 }
 
-// The value the server computed, shown only while the metric is unchanged since then.
+// The value the server computed for what is being edited, shown only while the metric is unchanged since then.
 export function metricValueText(metric, view) {
-  const original = view.effective.metrics.find((m) => m.id === metric.id);
+  const original = shown(view).metrics.find((m) => m.id === metric.id);
   if (!original || JSON.stringify(original) !== JSON.stringify(metric)) return "บันทึกร่างเพื่อดูค่า";
-  const value = view.metric_values?.[metric.id];
+  const value = (view.editing?.metric_values ?? view.metric_values)?.[metric.id];
   if (value === null || value === undefined) return "ยังไม่มีค่า";
   return `ค่าปัจจุบัน ${formatValue(value, metric.format, metric.currency)}`;
 }

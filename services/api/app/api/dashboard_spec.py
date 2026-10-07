@@ -90,6 +90,10 @@ def _presentation(metric, raw, columns, by_id):
             return "currency", meta.get("currency"), True
         if meta.get("unit") == "percent" and metric["agg"] != "sum":
             return "percent", None, True
+        # A plain number unit may just be the rules' guess for a rate (nobody approved it), so the
+        # LLM's percent stays; a sum of rates is not a rate.
+        if meta.get("unit") == "number" and raw.get("format") == "percent" and metric["agg"] != "sum":
+            return "percent", None, True
         return "number", None, True
     return (raw.get("format") if raw.get("format") in FORMATS else "number"), None, True
 

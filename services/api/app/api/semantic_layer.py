@@ -4,6 +4,7 @@ and the dataset's metric definitions.
 Pure functions only (no Elasticsearch, no LLM) so every rule can be tested on its own:
 semantic.py stores the documents and semantic_llm.py drafts them with Groq. Whatever a
 person or the LLM sends goes through validate_semantic() before it is stored or used."""
+import math
 import re
 from datetime import datetime
 
@@ -19,6 +20,7 @@ METRIC_FORMATS = ("number", "currency", "percent")
 MAX_METRICS = 20
 MAX_IN_VALUES = 50
 MAX_RULE_MONEY_METRICS = 5
+MAX_WHERE_TEXT = 200
 
 _CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
 _METRIC_ID_RE = re.compile(r"^[a-z0-9_]{1,40}$")
@@ -33,7 +35,10 @@ PERSON_WORDS = {"customer", "first", "last", "full", "user", "contact", "person"
 PERSON_NAMES = {"name", "username", "fullname", "firstname", "lastname", "customername", "surname"}
 THAI_PII = ("ชื่อลูกค้า", "ชื่อผู้", "ชื่อจริง", "นามสกุล", "ชื่อ-สกุล", "อีเมล", "เบอร์โทร", "ที่อยู่",
             "บัตรประชาชน", "เลขบัตร")
-IDENTIFIER_WORDS = {"id", "code", "no", "uuid", "sku", "key"}
+# "id" and "uuid" always name an identifier. A column ending in one of the CODE_WORDS is an
+# identifier unless it is categorical: Country_Code with 4 distinct values is something to group by.
+IDENTIFIER_WORDS = {"id", "uuid"}
+CODE_WORDS = {"code", "no", "sku", "key"}
 PERCENT_WORDS = {"pct", "percent", "percentage", "rate", "ratio", "score", "margin"}
 MONEY_WORDS = {"sales", "revenue", "amount", "price", "cost", "profit", "income", "value", "spend"}
 AGE_WORDS = {"age"}
@@ -82,7 +87,7 @@ def rule_column(col):
         meta.update(role="measure", unit=unit, default_agg=agg, duration_unit=duration_unit)
 
     low, high = col.get("min"), col.get("max")
-    if words and (words[-1] in IDENTIFIER_WORDS or words[0] == "id"):
+    if words and (words[-1] in IDENTIFIER_WORDS or words[0] == "id" or (words[-1] in CODE_WORDS and kind != "categorical")):
         meta["role"] = "identifier"
     elif kind == "date":
         meta["role"] = "time"
@@ -216,8 +221,22 @@ def _is_iso(value):
     return True
 
 
+def _finite(value):
+    """A number JSON can carry: not bool, not NaN or infinity, not too large for a float."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except OverflowError:
+        return False
+
+
 def _scalar(value):
-    return isinstance(value, (str, int, float, bool))
+    if isinstance(value, bool):
+        return True
+    if isinstance(value, str):
+        return len(value) <= MAX_WHERE_TEXT
+    return _finite(value)
 
 
 def _clean_where(raw, by_name):
@@ -236,7 +255,7 @@ def _clean_where(raw, by_name):
             return None, f"เงื่อนไข in ต้องเป็นรายการ 1 ถึง {MAX_IN_VALUES} ค่า"
     elif op in ("gt", "gte", "lt", "lte"):
         if kind == "numeric":
-            if isinstance(value, bool) or not isinstance(value, (int, float)):
+            if not _finite(value):
                 return None, f"{op} บน {column} ต้องเทียบกับตัวเลข"
         elif kind == "date":
             if not _is_iso(value):
@@ -305,7 +324,7 @@ def clean_metric(item, by_name, used, warnings=None):
         warnings.append(f"metric '{label}': higher_is_better ต้องเป็น true หรือ false ใช้ true แทน")
         metric["higher_is_better"] = True
     given = item.get("id")
-    ok = isinstance(given, str) and _METRIC_ID_RE.match(given) and given not in used
+    ok = isinstance(given, str) and _METRIC_ID_RE.fullmatch(given) and given not in used
     metric["id"] = given if ok else unique_id(label, used)
     return metric, None
 
@@ -345,8 +364,36 @@ def _stored_columns(part, by_name, warnings):
     return {name: clean_column(meta, by_name[name], warnings) for name, meta in stored.items() if name in by_name}
 
 
-def resolve(table_name, doc, profile, available=True):
-    """The semantic view Create Dashboard uses (spec section 8)."""
+def _json_safe(value):
+    """The stored part with every NaN or infinity turned into None: the API cannot answer with them."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    return value
+
+
+def _editing(draft, approved, draft_columns, columns, metrics, by_name):
+    """What the editor shows (and saves again): the draft over an approved version, because the
+    approved content alone would hide the work a person saved and the next approval would drop it.
+    Without a draft, or when the draft is the base, it is the effective meaning."""
+    if not (approved and draft):
+        return {"columns": columns, "metrics": metrics}
+    shown = {name: draft_columns.get(name) or columns[name] for name in by_name}
+    used, drafted = set(), []
+    for item in draft.get("metrics") or []:
+        metric, problem = clean_metric(item, by_name, used)
+        if not problem:
+            drafted.append(metric)
+            used.add(metric["id"])
+    return {"columns": shown, "metrics": drafted}
+
+
+def resolve(table_name, doc, profile, available=True, salvaged_pii=()):
+    """The semantic view Create Dashboard uses (spec section 8). salvaged_pii names columns a
+    person flagged personal in a stored document that could not be read as a whole."""
     doc = doc or {}
     by_name = {c["name"]: c for c in profile["columns"]}
     rules = rule_draft(profile)
@@ -367,6 +414,7 @@ def resolve(table_name, doc, profile, available=True):
             pii = approved_columns[name]["pii"]
         else:
             pii = draft_columns.get(name, {}).get("pii", False) or rules["columns"][name]["pii"]
+        pii = pii or name in salvaged_pii
         columns[name] = {**meta, "pii": bool(pii)}
         if pii:
             hidden.append(name)
@@ -396,7 +444,8 @@ def resolve(table_name, doc, profile, available=True):
     return {"table_name": table_name, "status": status, "pending_draft": bool(approved and draft),
             "version": approved["version"] if approved else 0,
             "effective": {"columns": columns, "metrics": metrics},
-            "draft": draft, "approved": approved,
+            "editing": _editing(draft, approved, draft_columns, columns, metrics, by_name),
+            "draft": _json_safe(draft), "approved": _json_safe(approved),
             "drift": {"new_columns": new_columns, "missing_columns": missing_columns},
             "invalid_metrics": invalid, "hidden_columns": hidden,
             "history": doc.get("history") or [], "warnings": warnings}

@@ -74,11 +74,7 @@ def _dataset(table_name):
     usable metric definitions). The semantic view is read once per request; without
     Elasticsearch it is the rule guess, which still hides columns whose names look personal."""
     df, profile = dashboard_data.load_active_dataset(table_name)
-    try:
-        view = semantic.load_view(table_name, profile, _es_or_none())
-    except Exception:  # a stored document the rules cannot read: hide by the name rules, never a 500
-        logger.warning("The semantic layer of %s is unreadable; using the name rules", table_name, exc_info=True)
-        view = semantic_layer.resolve(table_name, None, profile, available=False)
+    view = semantic.load_view(table_name, profile, _es_or_none())
     return df, semantic_layer.apply_to_profile(profile, view), view["effective"]["metrics"]
 
 

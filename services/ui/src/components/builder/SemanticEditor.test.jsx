@@ -206,3 +206,18 @@ it("locks the metric panel while a request is in flight", async () => {
   await settle();
   expect(screen.getByRole("button", { name: "เพิ่ม metric" })).toBeEnabled();
 });
+
+it("shows a saved draft over an approved version and saves it again unchanged", async () => {
+  const draftAmount = { ...SEMANTIC_VIEW.effective.columns.amount, currency: "USD" };
+  const pending = { ...APPROVED_VIEW, pending_draft: true,
+    editing: { columns: { ...SEMANTIC_VIEW.effective.columns, amount: draftAmount }, metrics: SEMANTIC_VIEW.effective.metrics,
+      metric_values: SEMANTIC_VIEW.metric_values } };
+  mockFetchByUrl([["/semantic/sales/approve", { body: APPROVED_VIEW }], ["/semantic/sales", { body: pending }]]);
+  render(<Harness />);
+  await settle();
+  expect(screen.getByLabelText("สกุลเงิน amount")).toHaveValue("USD");
+  expect(screen.getByRole("status")).toHaveTextContent("มีร่างที่ยังไม่อนุมัติ");
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "อนุมัติ" })); });
+  await settle();
+  expect(JSON.parse(callTo("/semantic/sales/approve", "POST")[1].body).columns.amount.currency).toBe("USD");
+});

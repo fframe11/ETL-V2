@@ -73,12 +73,18 @@ def decode_doc(source):
             "approved": _decode_part(source.get("approved")), "history": source.get("history") or []}
 
 
-def read_doc(es, table_name):
+def _read_source(es, table_name):
+    """The stored document exactly as Elasticsearch holds it, or None."""
     if not es.indices.exists(index=SEMANTIC_INDEX):
         return None
     res = es.search(index=SEMANTIC_INDEX, query={"bool": {"filter": [{"term": {"table_name.keyword": table_name}}]}}, size=1)
     hits = res["hits"]["hits"]
-    return decode_doc(hits[0]["_source"]) if hits else None
+    return hits[0]["_source"] if hits else None
+
+
+def read_doc(es, table_name):
+    source = _read_source(es, table_name)
+    return decode_doc(source) if source else None
 
 
 @contextmanager
@@ -135,17 +141,35 @@ def _es_or_none():
         return None
 
 
+def _flagged_personal(source, profile):
+    """Columns a stored document marks personal (a boolean true), read straight from the raw
+    parts so a part that is broken elsewhere cannot make the flag disappear."""
+    names = {c["name"] for c in profile["columns"]}
+    found = set()
+    for key in ("approved", "draft"):
+        try:
+            columns = json.loads(source[key]["content_json"])["columns"]
+            found |= {n for n, m in columns.items() if n in names and isinstance(m, dict) and m.get("pii") is True}
+        except Exception:  # this part is unreadable or has the wrong shape; the other one may still be usable
+            continue
+    return found
+
+
 def load_view(table_name, profile, es):
-    """The semantic view Create Dashboard uses. Without Elasticsearch it is the rule
-    guess (status "unavailable"), which still hides columns whose names look personal."""
+    """The semantic view Create Dashboard uses. Without Elasticsearch, or when the stored
+    document cannot be read, it is the rule guess (status "unavailable") plus every personal
+    flag that can still be found in the stored parts, so columns a person flagged stay hidden."""
     if es is None:
         return resolve(table_name, None, profile, available=False)
+    source = None
     try:
-        doc = read_doc(es, table_name)
-    except Exception:  # ES answered the ping but not the read: hide by the name rules, as when it is down
-        logger.warning("Reading the semantic layer of %s failed; using the name rules", table_name, exc_info=True)
-        return resolve(table_name, None, profile, available=False)
-    return resolve(table_name, doc, profile)
+        source = _read_source(es, table_name)
+        return resolve(table_name, decode_doc(source) if source else None, profile)
+    except Exception:  # ES answered the ping but not the read, or the document has the wrong shape
+        logger.warning("The semantic layer of %s is unreadable; using the name rules and its stored personal flags",
+                       table_name, exc_info=True)
+        flagged = _flagged_personal(source, profile) if isinstance(source, dict) else set()
+        return resolve(table_name, None, profile, available=False, salvaged_pii=flagged)
 
 
 def _empty(table_name):
@@ -160,9 +184,18 @@ def _complete(semantic, view, profile):
     return {"columns": columns, "metrics": semantic["metrics"]}
 
 
-def _answer(table_name, doc, profile, df, warnings=()):
-    view = resolve(table_name, doc, profile)
+def _with_values(view, df):
+    """Current values for the metrics the page shows: the effective ones, and the ones being
+    edited (computed again only when a saved draft makes them differ)."""
     view["metric_values"] = metric_values(df, view["effective"]["metrics"])
+    editing = view["editing"]
+    editing["metric_values"] = (view["metric_values"] if editing["metrics"] == view["effective"]["metrics"]
+                                else metric_values(df, editing["metrics"]))
+    return view
+
+
+def _answer(table_name, doc, profile, df, warnings=()):
+    view = _with_values(resolve(table_name, doc, profile), df)
     view["warnings"] = list(warnings) + view["warnings"]
     return view
 
@@ -170,9 +203,7 @@ def _answer(table_name, doc, profile, df, warnings=()):
 @router.get("/{table_name}")
 def get_semantic(table_name: str):
     df, profile = dashboard_data.load_active_dataset(table_name)
-    view = load_view(table_name, profile, _es_or_none())
-    view["metric_values"] = metric_values(df, view["effective"]["metrics"])
-    return view
+    return _with_values(load_view(table_name, profile, _es_or_none()), df)
 
 
 @router.post("/{table_name}/draft")

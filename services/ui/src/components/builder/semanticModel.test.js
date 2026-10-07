@@ -1,6 +1,6 @@
 import { it, expect } from "vitest";
 import {
-  roleOptions, updateColumn, differsFromApproved, statusText,
+  fromView, roleOptions, updateColumn, differsFromApproved, statusText,
   describeMetric, toMetricBody, columnsFor, metricValueText, emptyMetric, whereProblem, idProblem, MAX_METRICS
 } from "./semanticModel";
 import { PROFILE, SEMANTIC_VIEW } from "../../test/dashboardFixtures";
@@ -98,4 +98,43 @@ it("checks an id against the server rule and the other metrics", () => {
   expect(idProblem("avg_amount", metrics, 1)).toBe("");
   expect(idProblem("avg_amount", metrics, 0)).toBe("รหัสนี้ซ้ำกับ metric อื่น");
   expect(MAX_METRICS).toBe(20);
+});
+
+const DRAFT_AMOUNT = { ...SEMANTIC_VIEW.effective.columns.amount, currency: "USD" };
+const DRAFT_METRIC = { ...SEMANTIC_VIEW.effective.metrics[1], label: "ยอดขายเฉลี่ยใหม่" };
+const PENDING_VIEW = {
+  ...SEMANTIC_VIEW, status: "approved", version: 2, pending_draft: true,
+  approved: { version: 2, columns: SEMANTIC_VIEW.effective.columns, metrics: SEMANTIC_VIEW.effective.metrics },
+  editing: { columns: { ...SEMANTIC_VIEW.effective.columns, amount: DRAFT_AMOUNT }, metrics: [DRAFT_METRIC],
+    metric_values: { avg_amount: 90.5 } }
+};
+
+it("starts the editor from the saved draft when one waits over an approved version", () => {
+  const state = fromView("sales", PENDING_VIEW);
+  expect(state.columns.amount.currency).toBe("USD");
+  expect(state.metrics).toEqual([DRAFT_METRIC]);
+  expect(state.dirty).toBe(false);
+  // the approved version is still what a column is compared with
+  expect(differsFromApproved("amount", state.columns.amount, PENDING_VIEW)).toBe(true);
+  expect(differsFromApproved("region", state.columns.region, PENDING_VIEW)).toBe(false);
+});
+
+it("falls back to the effective meaning when the view has no editing block", () => {
+  const state = fromView("sales", SEMANTIC_VIEW);
+  expect(state.columns).toBe(SEMANTIC_VIEW.effective.columns);
+  expect(state.metrics).toBe(SEMANTIC_VIEW.effective.metrics);
+});
+
+it("shows the value of the metric being edited, not the approved one with the same id", () => {
+  const view = { ...PENDING_VIEW, metric_values: { ...PENDING_VIEW.metric_values, avg_amount: 83.3333 } };
+  expect(metricValueText(DRAFT_METRIC, view)).toBe("ค่าปัจจุบัน 90.5");
+  expect(metricValueText(SEMANTIC_VIEW.effective.metrics[1], view)).toBe("บันทึกร่างเพื่อดูค่า");
+});
+
+it("sends a plain value when an in condition is switched to eq without retyping", () => {
+  const where = { column: "region", op: "eq", value: ["N", "S"] };
+  const form = { ...emptyMetric(), label: "ภาคเหนือ", measure: { agg: "count", column: null, where } };
+  expect(toMetricBody(form, PROFILE).measure.where).toEqual({ column: "region", op: "eq", value: "N, S" });
+  expect(toMetricBody({ ...form, measure: { ...form.measure, where: { ...where, op: "ne", value: ["N"] } } }, PROFILE).measure.where.value).toBe("N");
+  expect(toMetricBody({ ...form, measure: { ...form.measure, where: { ...where, op: "in" } } }, PROFILE).measure.where.value).toEqual(["N", "S"]);
 });
