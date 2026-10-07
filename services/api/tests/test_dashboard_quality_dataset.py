@@ -100,6 +100,7 @@ def test_the_dataset_list_puts_quality_runs_first(es, monkeypatch):
 
 def test_a_data_quality_dashboard_can_be_generated_and_computed(es, monkeypatch):
     monkeypatch.setattr(dashboard_llm, "groq_settings", lambda: ("", "openai/gpt-oss-120b"))
+    monkeypatch.setattr(dashboards, "_es_or_none", lambda: es)  # no semantic layer stored: the name rules apply
     body = client().post("/api/v1/dashboards/generate",
                          json={"table_name": Q, "context": "สร้าง Dashboard สำหรับติดตาม Data Quality", "audience": "management"}).json()
     assert body["engine"] == "rules"

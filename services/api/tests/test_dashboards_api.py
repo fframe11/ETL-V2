@@ -37,6 +37,7 @@ def client(logged_in=True):
 def dataset(monkeypatch):
     monkeypatch.setattr(dashboard_data, "load_active_dataset", lambda name: (DF, PROFILE))
     monkeypatch.setattr(dashboard_llm, "groq_settings", lambda: ("", "openai/gpt-oss-120b"))
+    monkeypatch.setattr(dashboards, "_es_or_none", lambda: None)  # the semantic view falls back to the name rules
 
 
 def llm_answers(monkeypatch, *answers):

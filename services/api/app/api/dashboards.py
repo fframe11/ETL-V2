@@ -2,6 +2,7 @@
 draft a dashboard spec from the user's request, recompute it for the viewer's filters
 and refine it with follow-up instructions and save it (ES index sdoqap_dashboards)."""
 import json
+import logging
 import re
 import uuid
 from datetime import datetime, timezone
@@ -10,12 +11,13 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from . import dashboard_data, dashboard_llm, dashboard_suggest
+from . import dashboard_data, dashboard_llm, dashboard_suggest, semantic, semantic_layer
 from .auth import require_session
 from .config import get_es_client
 from .dashboard_compute import compute_dashboard
 from .dashboard_spec import AUDIENCES, SpecError, validate_spec
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/dashboards", tags=["dashboards"], dependencies=[Depends(require_session)])
 
 DASHBOARDS_INDEX = "sdoqap_dashboards"
@@ -67,9 +69,23 @@ def _es_or_none():
         return None
 
 
-def _checked_spec(raw, profile):
+def _dataset(table_name):
+    """(DataFrame, profile without the hidden personal columns and with each column's meaning,
+    usable metric definitions). The semantic view is read once per request; without
+    Elasticsearch it is the rule guess, which still hides columns whose names look personal."""
+    df, profile = dashboard_data.load_active_dataset(table_name)
     try:
-        return validate_spec(raw, profile)[0]
+        view = semantic.load_view(table_name, profile, _es_or_none())
+    except Exception:  # a stored document the rules cannot read: hide by the name rules, never a 500
+        logger.warning("The semantic layer of %s is unreadable; using the name rules", table_name, exc_info=True)
+        view = semantic_layer.resolve(table_name, None, profile, available=False)
+    return df, semantic_layer.apply_to_profile(profile, view), view["effective"]["metrics"]
+
+
+def _checked_spec(raw, profile, metrics=None):
+    """(spec, warnings), or 422 when nothing in the spec can be drawn."""
+    try:
+        return validate_spec(raw, profile, metrics)
     except SpecError as exc:
         raise HTTPException(status_code=422, detail=f"สเปกแดชบอร์ดใช้ไม่ได้: {exc}")
 
@@ -95,22 +111,22 @@ def preview_dashboard_dataset(table_name: str):
 @router.get("/datasets/{table_name}/suggestions")
 def dashboard_suggestions(table_name: str, audience: str = "business"):
     audience = _audience(audience)
-    _, profile = dashboard_data.load_active_dataset(table_name)
+    _, profile, _ = _dataset(table_name)
     found = dashboard_suggest.suggest_from_profile(profile, audience)
     return {"table_name": table_name, "suggestions": [{"id": s["id"], "rule": s["rule"], "text": s["text"]} for s in found]}
 
 
 @router.post("/suggest-changes")
 def suggest_dashboard_changes(payload: SuggestChangesPayload):
-    _, profile = dashboard_data.load_active_dataset(payload.table_name)
-    spec = _checked_spec(payload.spec, profile)
-    return {"suggestions": dashboard_suggest.suggest_refinements(profile, spec)}
+    _, profile, metrics = _dataset(payload.table_name)
+    spec, _ = _checked_spec(payload.spec, profile, metrics)
+    return {"suggestions": dashboard_suggest.suggest_refinements(profile, spec, metrics=metrics)}
 
 
 @router.post("/rank-suggestions")
 def rank_dashboard_suggestions(payload: RankPayload):
     audience = _audience(payload.audience)
-    _, profile = dashboard_data.load_active_dataset(payload.table_name)
+    _, profile, _ = _dataset(payload.table_name)
     candidates = dashboard_suggest.suggest_from_profile(profile, audience, dashboard_llm.RANK_CANDIDATES)
     if not candidates:
         return {"suggestions": [], "engine": "rules", "model": None}
@@ -125,31 +141,32 @@ def rank_dashboard_suggestions(payload: RankPayload):
 @router.post("/generate")
 def generate_dashboard(payload: GeneratePayload):
     audience = _audience(payload.audience)
-    df, profile = dashboard_data.load_active_dataset(payload.table_name)
-    result = dashboard_llm.generate_spec(payload.table_name, profile, payload.context.strip(), audience)
-    result["data"] = compute_dashboard(df, result["spec"], profile)
+    df, profile, metrics = _dataset(payload.table_name)
+    result = dashboard_llm.generate_spec(payload.table_name, profile, payload.context.strip(), audience, metrics)
+    result["data"] = compute_dashboard(df, result["spec"], profile, metrics=metrics)
     return result
 
 
 @router.post("/refine")
 def refine_dashboard(payload: RefinePayload):
-    df, profile = dashboard_data.load_active_dataset(payload.table_name)
-    current = _checked_spec(payload.spec, profile)
+    df, profile, metrics = _dataset(payload.table_name)
+    current, _ = _checked_spec(payload.spec, profile, metrics)
     try:
-        result = dashboard_llm.refine_spec(payload.table_name, profile, current, payload.instruction.strip())
+        result = dashboard_llm.refine_spec(payload.table_name, profile, current, payload.instruction.strip(), metrics)
     except dashboard_llm.LLMUnavailable as exc:
         raise HTTPException(status_code=503, detail=f"ปรับด้วย AI ไม่ได้ตอนนี้: {exc}")
     except SpecError as exc:
         raise HTTPException(status_code=422, detail=f"AI ตอบสเปกที่ใช้ไม่ได้: {exc}")
-    result["data"] = compute_dashboard(df, result["spec"], profile)
+    result["data"] = compute_dashboard(df, result["spec"], profile, metrics=metrics)
     return result
 
 
 @router.post("/render")
 def render_dashboard(payload: RenderPayload):
-    df, profile = dashboard_data.load_active_dataset(payload.table_name)
-    spec = _checked_spec(payload.spec, profile)
-    return {"spec": spec, "data": compute_dashboard(df, spec, profile, payload.selections)}
+    df, profile, metrics = _dataset(payload.table_name)
+    spec, warnings = _checked_spec(payload.spec, profile, metrics)
+    return {"spec": spec, "warnings": warnings,
+            "data": compute_dashboard(df, spec, profile, payload.selections, metrics)}
 
 
 def _summary(doc):
@@ -175,8 +192,8 @@ def _find(es, dashboard_id):
 
 
 def _document(payload, user, dashboard_id, created_at=None, created_by=None):
-    _, profile = dashboard_data.load_active_dataset(payload.table_name)
-    spec = _checked_spec(payload.spec, profile)
+    _, profile, metrics = _dataset(payload.table_name)
+    spec, _ = _checked_spec(payload.spec, profile, metrics)
     now = datetime.now(timezone.utc).isoformat()
     return {"id": dashboard_id, "name": payload.name.strip(), "description": payload.description.strip(),
             "table_name": payload.table_name, "context": payload.context, "audience": _audience(payload.audience),
