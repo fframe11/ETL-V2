@@ -179,54 +179,54 @@ def _top(totals, limit, ascending=False):
     return list(totals.sort_values(ascending=ascending, kind="stable").index[:limit])
 
 
-def _pivot_rows(frame, keys, metric, group):
+def _pivot_rows(frame, keys, definition, group):
     """rows [{"x": key, <series>: value}] for the given x keys, and the series names."""
     if not group:
-        totals = _grouped(frame, ["_x"], metric)
+        totals = grouped_metric(frame, ["_x"], definition)
         return [{"x": k, "value": _value(totals.get(k))} for k in keys], ["value"]
     frame = frame.assign(_g=_labels(frame[group]))
-    totals = _grouped(frame, ["_g"], metric)
+    totals = grouped_metric(frame, ["_g"], definition)
     names = _top(totals, MAX_SERIES)
     if len(totals) > MAX_SERIES:
         frame = frame.assign(_g=frame["_g"].where(frame["_g"].isin(names), OTHER))
         names = names + [OTHER]
-    cells = _grouped(frame, ["_x", "_g"], metric)
+    cells = grouped_metric(frame, ["_x", "_g"], definition)
     return [{"x": k, **{s: _value(cells.get((k, s))) for s in names}} for k in keys], names
 
 
 def _kpi(df, w):
-    out = {"value": _value(_aggregate(df, w["metric"]))}
+    definition = w["_definition"]
+    out = {"value": evaluate_metric(df, definition)}
     compare = w.get("compare")
     if compare:
         buckets = _bucket(df[compare["date_column"]], compare["time_grain"])
         periods = sorted(buckets.dropna().unique())
         if len(periods) >= 2:
-            current = _aggregate(df[buckets == periods[-1]], w["metric"])
-            previous = _aggregate(df[buckets == periods[-2]], w["metric"])
+            current = evaluate_metric(df[buckets == periods[-1]], definition)
+            previous = evaluate_metric(df[buckets == periods[-2]], definition)
             change = round((current - previous) / abs(previous) * 100, 1) if previous and current is not None else None
-            out.update(current=_value(current), previous=_value(previous),
-                       period=_day(periods[-1]), change_pct=change)
+            out.update(current=current, previous=previous, period=_day(periods[-1]), change_pct=change)
     return out
 
 
 def _bar(df, w):
     frame = df.assign(_x=_x_labels(df, w))
-    totals = _grouped(frame, ["_x"], w["metric"])
+    totals = grouped_metric(frame, ["_x"], w["_definition"])
     if w["sort"] == "x":
         keys = sorted(totals.index)[: w["limit"]]
     else:
         keys = _top(totals, w["limit"], ascending=(w["sort"] == "asc"))
-    rows, series = _pivot_rows(frame[frame["_x"].isin(keys)], keys, w["metric"], w["group_by"])
+    rows, series = _pivot_rows(frame[frame["_x"].isin(keys)], keys, w["_definition"], w["group_by"])
     return {"rows": rows, "series": series}
 
 
 def _pie(df, w):
     frame = df.assign(_x=_x_labels(df, w))
-    totals = _grouped(frame, ["_x"], w["metric"])
+    totals = grouped_metric(frame, ["_x"], w["_definition"])
     keys = _top(totals, w["limit"])
     if len(totals) > len(keys):
         frame = frame.assign(_x=frame["_x"].where(frame["_x"].isin(keys), OTHER))
-        totals = _grouped(frame, ["_x"], w["metric"])
+        totals = grouped_metric(frame, ["_x"], w["_definition"])
         keys = keys + [OTHER]
     return {"rows": [{"x": k, "value": _value(totals.get(k))} for k in keys], "series": ["value"]}
 
@@ -238,7 +238,7 @@ def _time(df, w):
     label = _day if w["time_grain"] else _value
     frame = frame[frame["_t"].isin(points)]
     frame = frame.assign(_x=frame["_t"].map(label))
-    rows, series = _pivot_rows(frame, [label(t) for t in points], w["metric"], w["group_by"])
+    rows, series = _pivot_rows(frame, [label(t) for t in points], w["_definition"], w["group_by"])
     return {"rows": rows, "series": series}
 
 
@@ -308,15 +308,29 @@ def filter_options(df, spec):
     return options
 
 
-def compute_dashboard(df, spec, profile, selections=None):
+def _definition(metric, by_id, fmt):
+    """The metric definition behind a widget metric ({"metric_id"} or {"agg", "column"})."""
+    if "metric_id" in metric:
+        return by_id[metric["metric_id"]]
+    return {"type": "simple", "format": fmt, "measure": {"agg": metric["agg"], "column": metric["column"], "where": None}}
+
+
+def compute_dashboard(df, spec, profile, selections=None, metrics=None):
+    """Numbers for every widget of a validated spec. metrics are the semantic-layer
+    definitions that {"metric_id"} widgets name (semantic.load_view(...)["effective"]["metrics"])."""
     kinds = {c["name"]: c["kind"] for c in profile["columns"]}
+    by_id = {m["id"]: m for m in metrics or []}
     filtered = apply_filters(df, selections, kinds)
     widgets = {}
     for w in spec["widgets"]:
         try:
-            widgets[w["id"]] = _COMPUTE[w["type"]](filtered, w)
+            item = dict(w)
+            if "metric" in w:
+                item["_definition"] = _definition(w["metric"], by_id, w.get("format", "number"))
+            widgets[w["id"]] = _COMPUTE[w["type"]](filtered, item)
         except Exception as exc:  # one broken widget must not blank the whole dashboard
             logger.exception("Dashboard widget %s (%s) could not be computed", w["id"], w["type"])
             widgets[w["id"]] = {"error": f"คำนวณวิดเจ็ตนี้ไม่ได้: {exc}"}
     return {"widgets": widgets, "filter_options": filter_options(df, spec),
-            "rows_total": len(df), "rows_after_filter": len(filtered)}
+            "rows_total": len(df), "rows_after_filter": len(filtered),
+            "column_labels": {c["name"]: c.get("label") or c["name"] for c in profile["columns"]}}

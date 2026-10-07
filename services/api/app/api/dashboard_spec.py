@@ -47,10 +47,16 @@ def _known(value, kinds):
     return isinstance(value, str) and value in kinds
 
 
-def _metric(raw, kinds):
-    """(metric, problem). count takes no column; sum/avg/min/max need a numeric one."""
+def _metric(raw, kinds, columns, by_id):
+    """(metric, problem). count takes no column; sum/avg/min/max need a numeric column that is
+    not an identifier; {"metric_id"} must name a usable metric of the semantic layer."""
     if not isinstance(raw, dict):
         return None, "ไม่มี metric"
+    if "metric_id" in raw:
+        metric_id = raw["metric_id"]
+        if not isinstance(metric_id, str) or metric_id not in by_id:
+            return None, f"ไม่มี metric {metric_id}"
+        return {"metric_id": metric_id}, None
     agg, column = raw.get("agg"), raw.get("column")
     if agg not in AGGREGATIONS:
         return None, f"ไม่รองรับการคำนวณ {agg}"
@@ -60,15 +66,45 @@ def _metric(raw, kinds):
         return None, f"ไม่มีคอลัมน์ {column}"
     if agg in NUMERIC_AGGREGATIONS and kinds[column] != "numeric":
         return None, f"{agg} ใช้ได้กับคอลัมน์ตัวเลขเท่านั้น ({column})"
+    if agg in NUMERIC_AGGREGATIONS and columns[column].get("role") == "identifier":
+        return None, f"{agg} ใช้กับคอลัมน์รหัสไม่ได้ ({column})"
     return {"agg": agg, "column": column}, None
 
 
-def _default_title(w):
+def _label(columns, name):
+    """The display name of a column: its semantic label, or the column name."""
+    return columns[name].get("label") or name
+
+
+def _presentation(metric, raw, columns, by_id):
+    """(format, currency, higher_is_better). The semantic layer decides; the format the LLM
+    sent is used only when the semantic layer says nothing about the column."""
+    if "metric_id" in metric:
+        definition = by_id[metric["metric_id"]]
+        return definition["format"], definition.get("currency"), definition.get("higher_is_better", True)
+    if metric["agg"] in ("count", "count_distinct", "count_missing"):
+        return "number", None, True
+    meta = columns[metric["column"]]
+    if meta.get("role") == "measure":
+        if meta.get("unit") == "currency":
+            return "currency", meta.get("currency"), True
+        if meta.get("unit") == "percent" and metric["agg"] != "sum":
+            return "percent", None, True
+        return "number", None, True
+    return (raw.get("format") if raw.get("format") in FORMATS else "number"), None, True
+
+
+def _default_title(w, columns, by_id):
     if w["type"] == "table":
         return "ตารางข้อมูล"
     metric = w["metric"]
-    label = "จำนวนแถว" if metric["agg"] == "count" else f"{metric['agg']}({metric['column']})"
-    return f"{label} ตาม {w['x']}" if w.get("x") else label
+    if "metric_id" in metric:
+        label = by_id[metric["metric_id"]]["label"]
+    elif metric["agg"] == "count":
+        label = "จำนวนแถว"
+    else:
+        label = f"{metric['agg']}({_label(columns, metric['column'])})"
+    return f"{label} ตาม {_label(columns, w['x'])}" if w.get("x") else label
 
 
 def _layout(raw, wtype):
@@ -79,7 +115,7 @@ def _layout(raw, wtype):
     return size, (_int(raw.get("y"), _LAST, 0, _LAST), _int(raw.get("x"), 0, 0, GRID_COLUMNS))
 
 
-def _widget(raw, kinds, warnings):
+def _widget(raw, kinds, warnings, columns, by_id):
     """(widget, reading order) or None when the widget cannot be drawn."""
     if not isinstance(raw, dict):
         return None
@@ -96,16 +132,19 @@ def _widget(raw, kinds, warnings):
     w = {"id": raw.get("id"), "type": wtype, "title": title}
     if wtype == "table":
         listed = raw.get("columns") if isinstance(raw.get("columns"), list) else []
+        unknown = [c for c in listed if isinstance(c, str) and c not in kinds]
+        if unknown:
+            warnings.append(f"'{name}': ตัดคอลัมน์ {', '.join(unknown)} ออกจากตาราง เพราะไม่มีในชุดข้อมูลหรือเป็นข้อมูลส่วนบุคคล")
         w["columns"] = list(dict.fromkeys(c for c in listed if _known(c, kinds)))[:MAX_TABLE_COLUMNS] or list(kinds)[:8]
         order = raw.get("order_by")
         if isinstance(order, dict) and order.get("column") in w["columns"]:
             w["order_by"] = {"column": order["column"], "desc": bool(order.get("desc", True))}
     else:
-        metric, problem = _metric(raw.get("metric"), kinds)
+        metric, problem = _metric(raw.get("metric"), kinds, columns, by_id)
         if problem:
             return drop(problem)
         w["metric"] = metric
-        w["format"] = raw.get("format") if raw.get("format") in FORMATS else "number"
+        w["format"], w["currency"], w["higher_is_better"] = _presentation(metric, raw, columns, by_id)
     if wtype == "kpi" and isinstance(raw.get("compare"), dict):
         compare = raw["compare"]
         if _known(compare.get("date_column"), kinds) and kinds[compare["date_column"]] == "date":
@@ -117,6 +156,8 @@ def _widget(raw, kinds, warnings):
         x = raw.get("x")
         if not _known(x, kinds):
             return drop(f"ไม่มีคอลัมน์ {x}")
+        if columns[x].get("role") == "identifier":
+            return drop(f"ใช้คอลัมน์รหัส {x} เป็นแกนกราฟไม่ได้")
         if wtype in ("line", "area") and kinds[x] not in ("date", "numeric"):
             return drop(f"กราฟเส้นต้องใช้แกน X เป็นวันที่หรือตัวเลข ({x})")
         w["x"] = x
@@ -125,7 +166,8 @@ def _widget(raw, kinds, warnings):
         w["time_grain"] = raw.get("time_grain") if raw.get("time_grain") in TIME_GRAINS else "month"
     if wtype in ("bar", "line", "area"):
         group = raw.get("group_by")
-        w["group_by"] = group if _known(group, kinds) and group != w["x"] else None
+        usable = _known(group, kinds) and group != w["x"] and columns[group].get("role") != "identifier"
+        w["group_by"] = group if usable else None
         w["stacked"] = bool(raw.get("stacked")) and w["group_by"] is not None
     if wtype in ("line", "area"):
         grain = raw.get("time_grain") if raw.get("time_grain") in TIME_GRAINS else "month"
@@ -136,7 +178,7 @@ def _widget(raw, kinds, warnings):
         default, high = LIMITS[wtype]
         w["limit"] = _int(raw.get("limit"), default, 1, high)
     if not w["title"]:
-        w["title"] = _default_title(w)
+        w["title"] = _default_title(w, columns, by_id)
     w["layout"], order = _layout(raw.get("layout"), wtype)
     return w, order
 
@@ -170,7 +212,7 @@ def _assign_ids(items, prefix):
             used.add(item["id"])
 
 
-def _filters(raw_filters, kinds, warnings):
+def _filters(raw_filters, kinds, warnings, columns):
     out, seen = [], set()
     for raw in raw_filters if isinstance(raw_filters, list) else []:
         if not isinstance(raw, dict):
@@ -184,22 +226,26 @@ def _filters(raw_filters, kinds, warnings):
         seen.add(column)
         out.append({"id": raw.get("id"), "column": column,
                     "type": "date_range" if kinds[column] == "date" else "select",
-                    "label": _text(raw.get("label"), 40) or column})
+                    "label": _text(raw.get("label"), 40) or _label(columns, column)})
     return out
 
 
-def validate_spec(raw, profile):
-    """(spec, warnings). Raises SpecError when raw is not an object or no widget survives."""
+def validate_spec(raw, profile, metrics=None):
+    """(spec, warnings). Raises SpecError when raw is not an object or no widget survives.
+    profile may carry the semantic fields of each column (semantic_layer.apply_to_profile:
+    role, label, unit, currency) and metrics are the dataset's usable metric definitions."""
     if not isinstance(raw, dict):
         raise SpecError("สเปกต้องเป็น JSON object")
     kinds = {c["name"]: c["kind"] for c in profile["columns"]}
+    columns = {c["name"]: c for c in profile["columns"]}
+    by_id = {m["id"]: m for m in metrics or []}
     warnings = []
     raw_widgets = raw.get("widgets") if isinstance(raw.get("widgets"), list) else []
     if len(raw_widgets) > MAX_WIDGETS:
         warnings.append(f"ใช้ {MAX_WIDGETS} วิดเจ็ตแรก จาก {len(raw_widgets)}")
     placed = []
     for index, item in enumerate(raw_widgets[:MAX_WIDGETS]):
-        result = _widget(item, kinds, warnings)
+        result = _widget(item, kinds, warnings, columns, by_id)
         if result:
             widget, order = result
             placed.append((order, index, widget))
@@ -208,7 +254,7 @@ def validate_spec(raw, profile):
     widgets = [w for _, _, w in sorted(placed, key=lambda p: (p[0], p[1]))]
     _assign_ids(widgets, "w")
     _pack(widgets)
-    filters = _filters(raw.get("filters"), kinds, warnings)
+    filters = _filters(raw.get("filters"), kinds, warnings, columns)
     _assign_ids(filters, "f")
     return {"version": SPEC_VERSION, "title": _text(raw.get("title"), 120) or "แดชบอร์ด",
             "description": _text(raw.get("description"), 300),
