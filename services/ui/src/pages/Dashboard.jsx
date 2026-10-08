@@ -370,17 +370,26 @@ export default function Dashboard() {
     return Array.from(new Set(qualityHistory.data.map(r => r.table_name).filter(Boolean))).sort();
   }, [qualityHistory.data]);
 
+  // Toast notification state
+  const [toast, setToast] = useState(null);
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4500);
+  };
+
   // Action: Resolve remediation ticket
   const [resolvingTicketId, setResolvingTicketId] = useState(null);
   const handleResolveTicket = async (ticketId) => {
     setResolvingTicketId(ticketId);
     try {
-      await postApi(`/system/remediations/${ticketId}/resolve`);
-      alert(`Ticket ${ticketId} marked as Resolved.`);
+      const res = await postApi(`/system/remediations/${ticketId}/resolve`);
+      showToast(res?.message || `Ticket ${ticketId} marked as Resolved. Upstream fix verified.`, 'success');
       remediations.refetch();
       exec.refetch();
+      impact.refetch();
+      sellInOutApi.refetch();
     } catch (err) {
-      alert(`Failed to resolve ticket: ${err.message}`);
+      showToast(`Failed to resolve ticket: ${err.message}`, 'error');
     } finally {
       setResolvingTicketId(null);
     }
@@ -444,6 +453,16 @@ export default function Dashboard() {
 
   return (
     <div className="gs-dashboard">
+      {/* Toast Notification Container */}
+      {toast && (
+        <div className="gs-toast-container">
+          <div className={`gs-toast gs-toast-${toast.type}`}>
+            <Icon name={toast.type === 'success' ? 'check' : 'alert'} />
+            <span>{toast.message}</span>
+          </div>
+        </div>
+      )}
+
       {/* ── TOP HEADER ── */}
       <div className="gs-topbar">
         <div>

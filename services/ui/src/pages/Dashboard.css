@@ -927,3 +927,49 @@
 .biz-flow-title { font-size: 11px; font-weight: 800; color: var(--text-main); margin-bottom: 2px; }
 .biz-flow-sub { font-size: 9px; color: var(--text-muted); }
 .biz-flow-arrow { font-size: 16px; color: var(--text-muted); font-weight: bold; flex-shrink: 0; }
+
+/* ── Modern Toast Notification System ── */
+.gs-toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 99999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.gs-toast {
+  pointer-events: auto;
+  min-width: 280px;
+  max-width: 460px;
+  padding: 12px 18px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  animation: slideInUpToast 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.gs-toast-success {
+  background: #064E3B;
+  color: #ECFDF5;
+  border: 1px solid #059669;
+}
+.gs-toast-error {
+  background: #7F1D1D;
+  color: #FEF2F2;
+  border: 1px solid #DC2626;
+}
+@keyframes slideInUpToast {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

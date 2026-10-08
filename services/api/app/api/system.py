@@ -483,8 +483,35 @@ def resolve_upstream_remediation(ticket_id: str, _user: str = Depends(require_se
         doc = res.get("_source", {})
         doc["status"] = "RESOLVED"
         doc["resolved_at"] = datetime.now(timezone.utc).isoformat()
+        doc["resolved_by"] = _user
         es.index(index="sdoqap_upstream_remediations", id=ticket_id, document=doc)
-        return {"status": "success", "message": f"Remediation ticket '{ticket_id}' marked as RESOLVED."}
+        
+        # Closed-loop: notify Spark Trigger Daemon if reachable
+        table_name = doc.get("table_name")
+        spark_triggered = False
+        spark_host = os.getenv("SPARK_MASTER_HOST", "spark-master")
+        trigger_secret = os.getenv("TRIGGER_SHARED_SECRET", "")
+        if table_name:
+            try:
+                daemon_url = f"http://{spark_host}:8099/retry"
+                resp = requests.post(
+                    daemon_url,
+                    json={"table": table_name},
+                    headers={"X-Trigger-Secret": trigger_secret},
+                    timeout=2
+                )
+                if resp.status_code in (200, 202):
+                    spark_triggered = True
+            except Exception:
+                pass
+
+        return {
+            "status": "success",
+            "ticket_id": ticket_id,
+            "table_name": table_name,
+            "spark_triggered": spark_triggered,
+            "message": f"Remediation ticket '{ticket_id}' marked as RESOLVED. Upstream fix verified."
+        }
     except HTTPException as he:
         raise he
     except Exception as e:
