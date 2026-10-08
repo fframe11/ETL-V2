@@ -179,7 +179,7 @@ delta_table.alias("old").merge(source, key_condition) \
 
 ทุกกฎมีฟิลด์ `confidence` และบันทึกลง `sdoqap_rules_registry` กับ `rules_config.json` ตัวอย่าง DSL ในรายงานต้นฉบับ (`impute_median`, `set_absolute_value`, `group_by`) **ไม่มีในระบบ**
 
-ส่วนวงจรปิดฝั่งต้นน้ำ: `/api/v1/system/remediations` ออกตั๋วงานพร้อมระบบเป้าหมายและคำแนะนำ และ `/{ticket_id}/resolve` ปิดตั๋ว (บันทึก `resolved_by`) แล้วเรียก `POST /retry` ของ trigger daemon (พอร์ต 8099, header `X-Trigger-Secret`) เพื่อประมวลผลตารางนั้นใหม่ ผลตอบกลับมี `spark_triggered` บอกว่าเรียก daemon สำเร็จหรือไม่ (เพิ่มใน commit `33ff867` ของเพื่อน ก่อนหน้านั้น endpoint นี้แค่ตั้งสถานะ `RESOLVED` ไม่ได้ trigger อะไร) ข้อสังเกต: ถ้าเรียก daemon ไม่สำเร็จ โค้ดกลืนข้อผิดพลาดและตอบ `spark_triggered: false` โดยตั๋วยังถูกปิดแล้ว
+ส่วนวงจรปิดฝั่งต้นน้ำ: `/api/v1/system/remediations` ออกตั๋วงานพร้อมระบบเป้าหมายและคำแนะนำ และ `/{ticket_id}/resolve` ปิดตั๋ว (บันทึก `resolved_by`) แล้วเรียก `POST /retry` ของ trigger daemon (พอร์ต 8099, header `X-Trigger-Secret`) เพื่อประมวลผลตารางนั้นใหม่ ผลตอบกลับมี `spark_triggered` บอกว่าเรียก daemon สำเร็จหรือไม่ (เพิ่มใน commit `33ff867` ของเพื่อน ก่อนหน้านั้น endpoint นี้แค่ตั้งสถานะ `RESOLVED` ไม่ได้ trigger อะไร) ถ้าเรียก daemon ไม่สำเร็จ ตั๋วยังถูกปิด แต่ผลตอบกลับมี `spark_triggered: false` พร้อม `trigger_error` (ชนิดข้อผิดพลาด หรือรหัส HTTP ที่ daemon ตอบ ไม่มีโฮสต์หรือ secret) ข้อความระบุว่ายังไม่ได้เริ่มประมวลผล มี log ระดับ warning และหน้า Dashboard แสดง toast สีเหลือง (แก้ใน commit ถัดจาก `33ff867` ก่อนหน้านั้นโค้ดกลืนข้อผิดพลาดเงียบ ๆ)
 
 **ข้อจำกัดที่วัดได้** (`e-runs.jsonl`, 8 ต.ค. 2569): ในรอบทดสอบ 10,000 แถวสังเคราะห์ เมื่อรัน `auto_remediation_engine.py` ด้วยมือแล้วประมวลผลซ้ำ ได้ `rows_recovered_by_revalidation = 0` และเส้นทางอัตโนมัติถูกบล็อกเพราะ container Spark ไม่มีตัวแปร `ELASTICSEARCH_URL` ดังนั้น **ยังไม่มีหลักฐานอัตราการกู้คืนข้อมูล** (ตัวเลข 78.4% ในรายงานต้นฉบับไม่มีที่มา)
 
@@ -196,7 +196,7 @@ Delta Lake เก็บข้อมูลแถวและรองรับ AC
 - **Auth**: session cookie (HttpOnly, SameSite=lax, `secure` ตามค่าตั้ง) จากการล็อกอินผู้ดูแลระบบ เทียบรหัสด้วย `hmac.compare_digest`; n8n ใช้ `X-Service-Key`; webhook แจ้งเตือนใช้ `X-Webhook-Secret`
 - **ต้องล็อกอิน**: ทุก endpoint ของ dashboards และ semantic, ส่วนที่เขียนหรือประมวลผลของ whitebox, และ route ส่งออกแถวระดับ row ของ Data Export (`preview`, `records`, `raw`, `active`, `quarantine`, `reddit`) ซึ่งยังไม่ปิดบังค่าตามการออกแบบ
 - **PII ใน dashboard**: ไม่ส่งแถวให้ LLM (หัวข้อ 5.1) และ export ไม่รวมคอลัมน์ PII เป็นค่าเริ่มต้น
-- **ช่องว่างที่ต้องปิด**: `auto_remediation_engine.py` ส่งตัวอย่างแถวจาก Quarantine ให้ LLM **โดยไม่มีขั้นตอนปิดบังข้อมูลส่วนบุคคล** (ค้นหา redact/mask/pii ในไฟล์นี้และ `ai_rule_advisor.py` ไม่พบ) รายงานต้นฉบับกล่าวว่ามี "PII Redactor" ซึ่งไม่เป็นจริงในส่วนนี้ ควรเพิ่มก่อนเปิดใช้กับข้อมูลที่มีตัวตนบุคคล
+- **ตัวอย่างแถวที่ส่งให้ LLM**: ทั้ง `ai_rule_advisor.py` และ `auto_remediation_engine.py` แทนค่าของคอลัมน์ที่ระบุตัวตนด้วย `<redacted>` ก่อนส่ง (ฟังก์ชันกลาง `sdoqap/common/redaction.py` มีเทสต์) ตัดสินจาก **ชื่อคอลัมน์** (id, uuid, name, email, phone, mobile, tel, address, ssn) และคีย์หลักของตาราง ข้อจำกัด: คอลัมน์ PII ที่ชื่ออื่น (เช่น `dob`, `citizen`) และข้อความอิสระที่มี PII ปนอยู่ ยังหลุดไปได้ ผลการแก้: `auto_remediation_engine.py` เคยส่งแถวดิบโดยไม่ปิดบัง (แก้แล้ว) ส่วนฉบับก่อนของรายงานนี้เข้าใจผิดว่า `ai_rule_advisor.py` ไม่ปิดบังด้วย ซึ่งไม่จริง
 
 ---
 
@@ -294,7 +294,7 @@ Delta Lake เก็บข้อมูลแถวและรองรับ AC
 ## 7.2 ข้อจำกัดและสิ่งที่ยังไม่ได้พิสูจน์
 1. **Recall บนข้อมูลสังเคราะห์ราว 0.59** ยังไม่ตรวจอีเมล เบอร์โทร และวันที่ไม่สมเหตุสมผล
 2. **การเยียวยาด้วย AI ยังไม่มีหลักฐานอัตรากู้คืน** (วัดได้ 0 แถว) เส้นทางอัตโนมัติขาด `ELASTICSEARCH_URL` ใน container Spark และ advisor ที่ทดสอบเสนอกฎที่ชี้ไปคอลัมน์ที่ไม่มีอยู่จริง (`value_in_age` แทน `age`) ได้กฎที่นำไปใช้ได้ 0 ข้อ
-3. **ส่งตัวอย่างแถวให้ LLM โดยไม่ปิดบัง PII** ในเส้นทางเยียวยา
+3. **การปิดบัง PII ก่อนส่งให้ LLM ตัดสินจากชื่อคอลัมน์เท่านั้น** คอลัมน์ PII ที่ตั้งชื่อต่างไปจากรายการ และข้อความอิสระ ยังหลุดได้ ควรใช้ธง PII จาก semantic layer มาช่วย
 4. **ลบหรือเปลี่ยนชื่อคอลัมน์ทำให้ทั้งรอบถูกกักกัน**
 5. **benchmark 500,000 และ 1,000,000 แถวยังไม่มีผลที่ commit** และ `d-scale.json` ขัดกับผลรันใน Elasticsearch
 6. เอนจินโต้ตอบเก็บสถานะร่วมกันทุกผู้ใช้, rate limit นับตาม IP ของ nginx, ผู้ดูแลระบบมีบัญชีเดียว
@@ -302,7 +302,7 @@ Delta Lake เก็บข้อมูลแถวและรองรับ AC
 
 ## 7.3 แนวทางต่อยอด
 1. เพิ่มกฎตรวจรูปแบบอีเมล เบอร์โทร และวันที่ไม่สมเหตุสมผลจากโปรไฟล์
-2. เพิ่มขั้นปิดบัง PII ก่อนส่งตัวอย่างให้ LLM และใส่ `ELASTICSEARCH_URL` ให้ container Spark
+2. ให้การปิดบัง PII ใช้ธง PII จาก semantic layer ร่วมกับชื่อคอลัมน์ และใส่ `ELASTICSEARCH_URL` ให้ container Spark
 3. ทำ benchmark 500,000 และ 1,000,000 แถวให้ผ่านและเก็บหลักฐาน
 4. เพิ่มบทบาทผู้ใช้ (RBAC) และแยกสถานะเอนจินโต้ตอบรายผู้ใช้
 5. ทำ Helm chart และ connector ไป object storage ตามที่วางแผน
@@ -369,13 +369,14 @@ docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 | จำนวน container | 14 | 16 (หลัก 8) |
 | Spark / Delta / ES / Hadoop / Grafana | 3.5 / 3.2 / 8.11.0 / 3.3 / 10.2 | 3.4.1 / 2.4.0 / 8.10.2 / 3.2.1 / 10.1.5 |
 | ช่องทางที่ 4 | n8n | PostgreSQL (n8n เป็นตัวตั้งเวลา) |
-| Auth | API Key, Bearer, IP whitelist | session cookie, `X-Service-Key`, `X-Webhook-Secret` |
+| Auth ของ API ระบบเอง | API Key, Bearer, IP whitelist | session cookie, `X-Service-Key`, `X-Webhook-Secret` (ไม่มี IP whitelist) |
+| Auth ตอนดึงจาก REST ต้นทาง | API Key, Bearer | ตรงตามต้นฉบับ: ส่ง `api-key` และ `Authorization: Bearer` ให้ต้นทางได้ และจำกัดโฮสต์ด้วย `API_INGEST_ALLOWED_HOSTS` |
 | ประตูตรวจ | 4 ประตู | 21 stage |
 | IQR | 3.0× | default 1.5× (ตั้งต่อตารางได้) |
 | ZORDER | `event_date` ทุก 10 รอบ | `row_hash` ตามรอบ `should_optimize` + VACUUM 168h |
 | DSL เยียวยา | `impute_median`, `set_absolute_value` | `fillna`, `calculate`, `cast`, `filter` |
 | COPDQ | $25 x น้ำหนัก | 3 วิธีในหัวข้อ 6.6 |
-| PII Redactor | มี (regex และ NER) | ไม่มีในเส้นทางเยียวยา dashboard ไม่ส่งแถวให้ LLM |
+| PII Redactor | มี (regex และ NER) | แทนค่าด้วย `<redacted>` ตามชื่อคอลัมน์และคีย์หลัก (ไม่มี NER) ใช้กับ advisor และ remediation engine, dashboard ไม่ส่งแถวให้ LLM |
 | ชุดข้อมูลประเมิน | Olist, retail 500k+ | คะแนนนักศึกษา, ลูกค้าสังเคราะห์, drift |
 | Throughput | 12,500 แถว/วินาที | ราว 986 แถว/วินาที ที่ 100,000 แถว |
 | Precision | 99.85% | 95.89% (นักศึกษา), 92 ถึง 94% (สังเคราะห์) |
