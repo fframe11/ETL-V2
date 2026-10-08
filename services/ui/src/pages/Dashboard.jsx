@@ -23,6 +23,7 @@ import DataFlowStreamChart from '../components/DataFlowStreamChart';
 import { useDashboardStore } from '../store/useDashboardStore';
 import { getPage } from '../config/pages';
 import { formatUsd, formatThbApprox, formatUsdWithThb } from '../utils/currency';
+import { resolveToast } from '../utils/remediationToast';
 import { InfoHint } from '../components/ui';
 import "./Dashboard.css";
 
@@ -374,7 +375,7 @@ export default function Dashboard() {
   const [toast, setToast] = useState(null);
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 4500);
+    setTimeout(() => setToast(null), type === 'warning' ? 9000 : 4500);
   };
 
   // Action: Resolve remediation ticket
@@ -383,7 +384,8 @@ export default function Dashboard() {
     setResolvingTicketId(ticketId);
     try {
       const res = await postApi(`/system/remediations/${ticketId}/resolve`);
-      showToast(res?.message || `Ticket ${ticketId} marked as Resolved. Upstream fix verified.`, 'success');
+      const outcome = resolveToast(res, ticketId);
+      showToast(outcome.message, outcome.type);
       remediations.refetch();
       exec.refetch();
       impact.refetch();

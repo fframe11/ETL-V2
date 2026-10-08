@@ -1,3 +1,4 @@
+import logging
 import os
 import json
 import socket
@@ -13,6 +14,8 @@ from pydantic import BaseModel
 
 from .config import get_es_client
 from .auth import require_session, require_session_or_service_key, require_webhook_secret
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["system"])
 
@@ -486,31 +489,46 @@ def resolve_upstream_remediation(ticket_id: str, _user: str = Depends(require_se
         doc["resolved_by"] = _user
         es.index(index="sdoqap_upstream_remediations", id=ticket_id, document=doc)
         
-        # Closed-loop: notify Spark Trigger Daemon if reachable
+        # Closed-loop: ask the Spark Trigger Daemon to reprocess the table. The ticket is already
+        # closed, so a failure here is reported to the caller and logged, never swallowed.
         table_name = doc.get("table_name")
         spark_triggered = False
+        trigger_error = None
         spark_host = os.getenv("SPARK_MASTER_HOST", "spark-master")
         trigger_secret = os.getenv("TRIGGER_SHARED_SECRET", "")
-        if table_name:
+        if not table_name:
+            trigger_error = "ticket has no table_name"
+        else:
             try:
-                daemon_url = f"http://{spark_host}:8099/retry"
                 resp = requests.post(
-                    daemon_url,
+                    f"http://{spark_host}:8099/retry",
                     json={"table": table_name},
                     headers={"X-Trigger-Secret": trigger_secret},
                     timeout=2
                 )
                 if resp.status_code in (200, 202):
                     spark_triggered = True
-            except Exception:
-                pass
+                else:
+                    trigger_error = f"daemon answered HTTP {resp.status_code}"
+            except Exception as exc:
+                # Only the exception type: its text can carry the host or the secret.
+                trigger_error = f"daemon unreachable ({type(exc).__name__})"
+        if trigger_error:
+            logger.warning("Ticket %s resolved but reprocessing of %s was not started: %s",
+                           ticket_id, table_name, trigger_error)
 
+        if spark_triggered:
+            message = f"Remediation ticket '{ticket_id}' marked as RESOLVED. Reprocessing of '{table_name}' started."
+        else:
+            message = (f"Remediation ticket '{ticket_id}' marked as RESOLVED, but reprocessing was "
+                       f"not started ({trigger_error}).")
         return {
             "status": "success",
             "ticket_id": ticket_id,
             "table_name": table_name,
             "spark_triggered": spark_triggered,
-            "message": f"Remediation ticket '{ticket_id}' marked as RESOLVED. Upstream fix verified."
+            "trigger_error": trigger_error,
+            "message": message
         }
     except HTTPException as he:
         raise he

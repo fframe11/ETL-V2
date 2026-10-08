@@ -963,6 +963,11 @@
   color: #FEF2F2;
   border: 1px solid #DC2626;
 }
+.gs-toast-warning {
+  background: #78350F;
+  color: #FFFBEB;
+  border: 1px solid #D97706;
+}
 @keyframes slideInUpToast {
   from {
     opacity: 0;
