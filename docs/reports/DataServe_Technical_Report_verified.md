@@ -280,7 +280,7 @@ Delta Lake เก็บข้อมูลแถวและรองรับ AC
 สูตร `$25 x น้ำหนัก 2.5/1.8/1.2/1.0` ในรายงานต้นฉบับ **ไม่มีในโค้ด** ระบบคำนวณ 3 แบบ:
 1. **มูลค่าการเงินที่ถูกกักกัน** (`stages/metrics.py`, stage `copdq`): ผลรวมของคอลัมน์การเงินตัวแรกที่พบ (`total_sales`, `sales`, `revenue`, `profit`, `price`, `amount`, `total`) บนแถว Quarantine ถ้าไม่มีคอลัมน์เหล่านี้ ค่าเป็น 0
 2. **Operational impact score** (stage `operational_impact`): ผลรวมของน้ำหนักสูงสุดต่อแถว (ตาม `column_weights`, คีย์หลักใช้น้ำหนักเต็ม, ขั้นต่ำ 0.2 ต่อแถวที่ถูกกักกัน) หารจำนวนแถวทั้งหมด คูณ 100
-3. **หน้า Analytics** (`analytics.py`): กรอบ Cost of Correction + Cost of Lost Opportunities + Cost of Risk และกรณีไม่มีข้อมูลการเงินใช้ `ส่วนต่าง x 2.50`
+3. **หน้า Business Impact** (`analytics.py`, `/api/v1/analytics/impact`): Total COPDQ = Cost of Correction (แถวกักกัน x 2 ดอลลาร์) + Cost of Lost Opportunities (มูลค่าการเงินจริงของแถวกักกัน หรือถ้าไม่มีคอลัมน์ยอดเงินใช้ แถวกักกัน x 0.05 x 50 ดอลลาร์) + Cost of Risk (แถวกักกัน x คะแนน `drift_severity`, ตัวคูณ 1 เมื่อไม่มี drift) เป็นค่าประมาณจากสมมติฐาน ส่วนหน้า sell-in/sell-out ใช้ `ส่วนต่าง x 2.50` เมื่อไม่มีข้อมูลการเงิน
 
 ตัวเลข $42,750 ในรายงานต้นฉบับไม่มีที่มา
 
