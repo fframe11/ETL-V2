@@ -41,6 +41,7 @@ from urllib.parse import urlparse
 
 # ─── Environment bootstrap (same pattern as spark_quality_engine.py) ──────────
 
+from sdoqap.common.redaction import redact_identifiers
 from sdoqap.common.settings import load_env_file
 load_env_file(os.path.dirname(os.path.abspath(__file__)))
 
@@ -255,23 +256,10 @@ class AIRuleAdvisor:
 
     # ── Prompt builder (private) ──────────────────────────────────────────
 
-    _IDENTIFIER_COLUMN = re.compile(r"(^|_)(id|uuid|name|email|phone|mobile|tel|address|ssn)(_|$)", re.I)
-
     def _redact_identifiers(self, rows, primary_key=None):
-        """Replace values of identifying columns (and the table's primary key) with a
-        placeholder: quarantined rows are sent to an external LLM, which needs the
-        defect pattern, not the person. Column names and non-identifying values stay."""
-        keys = {k.strip() for k in str(primary_key or "").split(",") if k.strip() and k.strip() != "unknown"}
-        redacted = []
-        for row in rows:
-            if not isinstance(row, dict):
-                redacted.append(row)
-                continue
-            redacted.append({
-                col: ("<redacted>" if (col in keys or self._IDENTIFIER_COLUMN.search(str(col))) and val is not None else val)
-                for col, val in row.items()
-            })
-        return redacted
+        """Quarantined rows are sent to an external LLM, which needs the defect pattern,
+        not the person (see sdoqap.common.redaction)."""
+        return redact_identifiers(rows, primary_key)
 
     def _build_analysis_prompt(self, table_name, quarantined_rows,
                                column_stats, historical_context):

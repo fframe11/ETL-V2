@@ -10,6 +10,7 @@ import requests
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from sdoqap.common.redaction import redact_identifiers
 from sdoqap.common.settings import load_env_file
 load_env_file(os.path.dirname(os.path.abspath(__file__)))
 
@@ -235,11 +236,11 @@ class AutoRemediationEngine:
         if not sample_batch:
             return None
             
-        samples = [item["record"] for item in sample_batch[:5]]
-        
         # Get target columns and metadata
         schema_cols = self.schema_spec.get("schema_spec", {}) if self.schema_spec else {}
         primary_key = self.schema_spec.get("primary_key") if self.schema_spec else None
+        # The samples go to an LLM (Ollama, then Groq): it needs the defect pattern, not the person.
+        samples = redact_identifiers([item["record"] for item in sample_batch[:5]], primary_key)
         date_column = self.schema_spec.get("date_column") if self.schema_spec else None
         
         prompt = f'''You are an expert Data Engineer.
