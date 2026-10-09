@@ -72,6 +72,7 @@ services/ui/src/test/text-report.json
 
 # Interactive-engine runtime output (bind-mounted into the api container)
 data/evaluation/student_course_score_evaluation_dataset/output_runs/
+student_course_score_evaluation_dataset/
 docs/testing/evidence/tmp/
 docs/testing/evidence/.verify.jar
 

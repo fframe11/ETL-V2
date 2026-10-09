@@ -60,6 +60,9 @@ services:
   namenode:
     image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
     container_name: sdoqap-namenode
+    hostname: namenode
+    extra_hosts:
+      - "namenode:127.0.0.1"
     restart: always
     environment:
       - CLUSTER_NAME=sdoqap_lake
@@ -90,6 +93,9 @@ services:
   datanode:
     image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
     container_name: sdoqap-datanode
+    hostname: datanode
+    extra_hosts:
+      - "datanode:127.0.0.1"
     restart: always
     environment:
       - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
@@ -119,6 +125,9 @@ services:
       context: ./services/spark
       dockerfile: Dockerfile
     container_name: sdoqap-spark-master
+    hostname: spark-master
+    extra_hosts:
+      - "spark-master:127.0.0.1"
     restart: always
     env_file:
       - .env
@@ -165,6 +174,9 @@ services:
       context: ./services/spark
       dockerfile: Dockerfile
     container_name: sdoqap-spark-worker
+    hostname: spark-worker
+    extra_hosts:
+      - "spark-worker:127.0.0.1"
     restart: always
     env_file:
       - .env
