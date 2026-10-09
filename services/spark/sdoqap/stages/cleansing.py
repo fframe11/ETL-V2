@@ -47,6 +47,7 @@ def auto_clean(ctx):
 @stage("validation", "ตรวจค่าว่าง ชนิดข้อมูล และวันที่", "transform")
 def validation(ctx):
     primary_key, df, schema_spec, date_column = ctx.primary_key, ctx.df, ctx.schema_spec, ctx.date_column
+    rules = ctx.rules
     # 3. DATA VALIDATION (Row-level Quality check)
     pk_cols = [primary_key] if isinstance(primary_key, str) else primary_key
     if isinstance(primary_key, list):
@@ -60,7 +61,12 @@ def validation(ctx):
                            .withColumn("reject_reason", F.when(F.col("is_invalid"), F.lit("missing_primary_key")).otherwise(F.lit("")))
 
     # ─── Null Validation: Check all schema columns for null values ─────────────
-    non_pk_cols = [c for c in schema_spec.keys() if c not in pk_cols and c in df.columns]
+    null_cfg = (rules.get("null_checks") or {}) if isinstance(rules, dict) else {}
+    configured_null_cols = null_cfg.get("columns") if isinstance(null_cfg, dict) else None
+    if configured_null_cols:
+        non_pk_cols = [c for c in configured_null_cols if c not in pk_cols and c in df.columns]
+    else:
+        non_pk_cols = [c for c in schema_spec.keys() if c not in pk_cols and c in df.columns]
     for col_name in non_pk_cols:
         null_reason = f"null_value_in_{col_name}"
         df_with_status = df_with_status.withColumn(

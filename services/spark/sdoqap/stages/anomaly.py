@@ -12,15 +12,20 @@ def anomaly_iqr(ctx):
     try:
         from dynamic_rules_engine import compute_value_range_rules, flag_outlier_rows
         vr_config = rules.get("value_range", {})
+        od_config = rules.get("outlier_detection", {})
         vr_mode = vr_config.get("mode", "off") if isinstance(vr_config, dict) else "off"
+        od_method = od_config.get("method") if isinstance(od_config, dict) else None
         
-        if vr_mode in ("auto", "adaptive"):
-            # Identify numeric columns from schema_spec
-            numeric_cols = [col for col, t in schema_spec.items() 
-                           if t in ("IntegerType", "DoubleType") and col in clean_df.columns]
+        if vr_mode in ("auto", "adaptive") or od_method == "iqr":
+            # Identify numeric columns from outlier_detection columns or schema_spec
+            if od_method == "iqr" and od_config.get("columns"):
+                numeric_cols = [c for c in od_config.get("columns", []) if c in clean_df.columns]
+            else:
+                numeric_cols = [col for col, t in schema_spec.items() 
+                               if t in ("IntegerType", "DoubleType") and col in clean_df.columns]
             
             if numeric_cols:
-                iqr_mult = vr_config.get("iqr_multiplier", 1.5) if isinstance(vr_config, dict) else 1.5
+                iqr_mult = od_config.get("multiplier", 1.5) if od_method == "iqr" else vr_config.get("iqr_multiplier", 1.5)
                 value_range_profile = compute_value_range_rules(clean_df, numeric_cols, multiplier=iqr_mult)
                 
                 if value_range_profile:

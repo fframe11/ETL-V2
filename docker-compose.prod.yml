@@ -1,0 +1,63 @@
+# SDOQAP Production Docker Compose Override
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  elasticsearch:
+    ports: [] # Close host exposure; communicate only within internal docker network
+    environment:
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  kibana:
+    ports: [] # Internal only; accessed via VPN or SSH tunnel in production
+
+  namenode:
+    ports: [] # Internal only; cluster communication on sdoqap_network
+
+  datanode:
+    ports: [] # Internal only
+
+  spark-master:
+    ports: [] # Internal only; trigger daemon accessed via API container
+
+  spark-worker:
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
+  api:
+    ports: [] # Accessed strictly through Nginx reverse proxy
+    environment:
+      - SESSION_COOKIE_SECURE=true
+      - ADMIN_USERNAME=${ADMIN_USERNAME:?set ADMIN_USERNAME in .env}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}
+      - SESSION_SECRET_KEY=${SESSION_SECRET_KEY:?set SESSION_SECRET_KEY in .env}
+
+  ui:
+    # Internal only; proxied by Nginx
+
+  postgres:
+    ports: [] # Internal only; not accessible from public internet
+
+  grafana:
+    ports: [] # Internal only; reverse-proxied or tunneled in production
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-sdoqap_grafana_secure}
+
+  n8n:
+    ports: [] # Internal only
+
+  nginx:
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    environment:
+      - NGINX_PORT=443

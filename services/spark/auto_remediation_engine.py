@@ -17,6 +17,15 @@ load_env_file(os.path.dirname(os.path.abspath(__file__)))
 def _get_es_connection():
     from urllib.parse import urlparse
     es_url = os.getenv("ELASTICSEARCH_URL", "")
+    if not es_url:
+        user = os.getenv("ELASTICSEARCH_USER", "elastic")
+        password = os.getenv("ELASTICSEARCH_PASSWORD", "")
+        host = os.getenv("ELASTICSEARCH_HOST", "elasticsearch")
+        port = os.getenv("ELASTICSEARCH_PORT", "9200")
+        if password:
+            es_url = f"http://{user}:{password}@{host}:{port}"
+        else:
+            es_url = f"http://{host}:{port}"
     parsed = urlparse(es_url)
     auth = (parsed.username, parsed.password) if parsed.username else None
     if parsed.username:

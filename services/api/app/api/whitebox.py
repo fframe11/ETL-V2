@@ -525,9 +525,10 @@ def _generate_recommendations(profile: Dict[str, Any], context: Dict[str, Any]) 
                 elif any(k in c_low for k in ("price", "salary", "income", "stock", "cost", "revenue", "amount", "fee", "balance")):
                     sug_min = 0.0
                     rec_title = f"Domain Boundary Range on {col} (>= 0)"
+                elif obs_min is not None and obs_min >= 0:
+                    sug_min = 0.0
+                    rec_title = f"Non-Negative Range on {col} (>= 0)"
                 else:
-                    # No domain evidence in the name. A ">= 0" guard on a column that has no
-                    # negative value today would flag nothing, so it is not recommended.
                     rec_title = f"Domain Range on {col}"
 
                 if sug_min is not None or sug_max is not None:

@@ -74,3 +74,9 @@ services/ui/src/test/text-report.json
 data/evaluation/student_course_score_evaluation_dataset/output_runs/
 docs/testing/evidence/tmp/
 docs/testing/evidence/.verify.jar
+
+# SSL Certificates and Keys
+certs/
+*.pem
+*.key
+*.crt

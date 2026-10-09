@@ -11,7 +11,7 @@ services:
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:?set ELASTIC_PASSWORD in .env}
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
     ports:
-      - "${ES_HOST_PORT:-9200}:9200"
+      - "${HOST_BIND_IP:-127.0.0.1}:${ES_HOST_PORT:-9200}:9200"
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
     healthcheck:
@@ -39,7 +39,7 @@ services:
       - NODE_OPTIONS=--max-old-space-size=768
       - SERVER_PUBLICBASEURL=http://localhost:5601
     ports:
-      - "${KIBANA_PORT}:5601"
+      - "${HOST_BIND_IP:-127.0.0.1}:${KIBANA_PORT:-5601}:5601"
     depends_on:
       elasticsearch:
         condition: service_healthy
@@ -69,8 +69,8 @@ services:
     env_file:
       - .env
     ports:
-      - "9870:9870"
-      - "9002:9000" # Map to 9002 to avoid conflict with other services (like MinIO) on 9000
+      - "${HOST_BIND_IP:-127.0.0.1}:9870:9870"
+      - "${HOST_BIND_IP:-127.0.0.1}:9002:9000" # Map to 9002 to avoid conflict with other services (like MinIO) on 9000
     volumes:
       - hadoop_namenode:/hadoop/dfs/name
     healthcheck:
@@ -129,6 +129,7 @@ services:
       - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:?set ELASTICSEARCH_PASSWORD in .env}
       - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST:-elasticsearch}
       - ELASTICSEARCH_PORT=${ELASTICSEARCH_PORT:-9200}
+      - ELASTICSEARCH_URL=http://${ELASTICSEARCH_USER:-elastic}:${ELASTICSEARCH_PASSWORD:?set ELASTICSEARCH_PASSWORD in .env}@${ELASTICSEARCH_HOST:-elasticsearch}:${ELASTICSEARCH_PORT:-9200}
       - HADOOP_USER_NAME=spark
       - N8N_WEBHOOK_URL=http://n8n:5678
       - TRIGGER_SHARED_SECRET=${TRIGGER_SHARED_SECRET}
@@ -139,9 +140,9 @@ services:
         condition: service_healthy
 
     ports:
-      - "8081:8080" # Spark Web UI (map to 8081 to avoid conflict)
-      - "7077:7077"
-      - "8099:8099"
+      - "${HOST_BIND_IP:-127.0.0.1}:8081:8080" # Spark Web UI (map to 8081 to avoid conflict)
+      - "${HOST_BIND_IP:-127.0.0.1}:7077:7077"
+      - "${HOST_BIND_IP:-127.0.0.1}:8099:8099"
     healthcheck:
       test: ["CMD", "bash", "-c", "ps aux | grep -v grep | grep -q org.apache.spark.deploy.master.Master || exit 1"]
       interval: 10s
@@ -177,6 +178,7 @@ services:
       - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:?set ELASTICSEARCH_PASSWORD in .env}
       - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST:-elasticsearch}
       - ELASTICSEARCH_PORT=${ELASTICSEARCH_PORT:-9200}
+      - ELASTICSEARCH_URL=http://${ELASTICSEARCH_USER:-elastic}:${ELASTICSEARCH_PASSWORD:?set ELASTICSEARCH_PASSWORD in .env}@${ELASTICSEARCH_HOST:-elasticsearch}:${ELASTICSEARCH_PORT:-9200}
       - HADOOP_USER_NAME=spark
       - N8N_WEBHOOK_URL=http://n8n:5678
     depends_on:
@@ -201,7 +203,7 @@ services:
 
 
   n8n:
-    image: n8nio/n8n:latest
+    image: n8nio/n8n:2.27.4
     container_name: sdoqap-n8n
     restart: always
     env_file:
@@ -215,7 +217,7 @@ services:
       # secret into the tracked workflow JSON.
       - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
     ports:
-      - "${N8N_PORT}:5678"
+      - "${HOST_BIND_IP:-127.0.0.1}:${N8N_PORT}:5678"
     volumes:
       - n8n_data:/home/node/.n8n
       - ./data/stress:/stress_test
@@ -244,7 +246,7 @@ services:
       retries: 5
       start_period: 30s
     ports:
-      - "${API_PORT}:8000"
+      - "${HOST_BIND_IP:-127.0.0.1}:${API_PORT}:8000"
     # network_mode: host
     container_name: sdoqap-api
     env_file:
@@ -289,10 +291,10 @@ services:
       elasticsearch:
         condition: service_healthy
     ports:
-      - "${GRAFANA_PORT}:3000"
+      - "${HOST_BIND_IP:-127.0.0.1}:${GRAFANA_PORT}:3000"
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       # Read by the provisioned webhook contact point (alert_rules.yaml) and sent as
       # "Authorization: Bearer ..." to POST /api/v1/system/alert.
       - ALERT_WEBHOOK_SECRET=${ALERT_WEBHOOK_SECRET}
@@ -321,7 +323,7 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-sdoqap}
       - POSTGRES_DB=${POSTGRES_DB:-sdoqap_oltp}
     ports:
-      - "${POSTGRES_HOST_PORT:-5432}:5432"
+      - "${HOST_BIND_IP:-127.0.0.1}:${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - "./data/stress/import_sales.sql:/docker-entrypoint-initdb.d/import_sales.sql:ro"
@@ -340,7 +342,7 @@ services:
 
   pgadmin:
     profiles: ["tools"]
-    image: dpage/pgadmin4:latest
+    image: dpage/pgadmin4:8.4
     container_name: sdoqap-pgadmin
     restart: unless-stopped
     environment:
@@ -349,7 +351,7 @@ services:
       - PGADMIN_CONFIG_SERVER_MODE=False
       - PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED=False
     ports:
-      - "${PGADMIN_HOST_PORT:-5050}:80"
+      - "${HOST_BIND_IP:-127.0.0.1}:${PGADMIN_HOST_PORT:-5050}:80"
     volumes:
       - pgadmin_data:/var/lib/pgadmin
     depends_on:
@@ -360,7 +362,7 @@ services:
 
   ollama:
     profiles: ["ai"]
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.32.13
     container_name: sdoqap-ollama
     restart: always
     volumes:
@@ -448,7 +450,7 @@ services:
     container_name: sdoqap-kafka
     restart: always
     ports:
-      - "9092:29092"
+      - "${HOST_BIND_IP:-127.0.0.1}:9092:29092"
     depends_on:
       zookeeper:
         condition: service_healthy

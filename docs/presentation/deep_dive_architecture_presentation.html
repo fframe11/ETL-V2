@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DataServe System Architecture Deep-Dive Presentation</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #07070e; color: #e2e8f0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; overflow: hidden; height: 100vh; }
+    
+    #app { display: flex; flex-direction: column; height: 100vh; }
+    
+    /* Topbar */
+    #topbar {
+      background: #0c0c18;
+      border-bottom: 1px solid #1a1a2e;
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+    .brand-badge {
+      background: linear-gradient(135deg, #6366f1, #3b82f6);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 4px 10px;
+      border-radius: 6px;
+      letter-spacing: 0.5px;
+    }
+    .title-text { font-size: 13px; font-weight: 600; color: #94a3b8; }
+    
+    /* Progress bar */
+    #progress-container { width: 100%; height: 3px; background: #151528; }
+    #progress-bar { height: 100%; width: 10%; background: linear-gradient(90deg, #6366f1, #10b981); transition: width 0.3s ease; }
+    
+    /* Main Layout */
+    #main-container {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      overflow: hidden;
+      transition: grid-template-columns 0.3s ease;
+    }
+    #main-container.fullscreen-slides {
+      grid-template-columns: 1fr 0px;
+    }
+    
+    /* Slide Canvas */
+    #slide-viewport {
+      overflow-y: auto;
+      padding: 32px 40px;
+      background: #080810;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    
+    .slide-card {
+      display: none;
+      animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      max-width: 1080px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    .slide-card.active { display: block; }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    /* Script / Teleprompter Area */
+    #script-sidebar {
+      background: #0a0a14;
+      border-left: 1px solid #1a1a2e;
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .script-item { display: none; }
+    .script-item.active { display: block; }
+    
+    /* Footer */
+    #footer {
+      background: #0c0c18;
+      border-top: 1px solid #1a1a2e;
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    
+    /* Components */
+    .btn {
+      background: #18182e;
+      border: 1px solid #282846;
+      color: #cbd5e1;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .btn:hover { background: #222240; border-color: #3b3b64; color: #fff; }
+    .btn-primary { background: #4f46e5; border-color: #6366f1; color: #fff; }
+    .btn-primary:hover { background: #4338ca; }
+    
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .badge-purple { background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3); }
+    .badge-blue { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
+    .badge-emerald { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .badge-amber { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+    .badge-rose { background: rgba(244, 63, 94, 0.15); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.3); }
+    
+    .panel {
+      background: #0f0f1c;
+      border: 1px solid #1e1e36;
+      border-radius: 10px;
+      padding: 16px 20px;
+    }
+    
+    .diagram-box {
+      font-family: 'Fira Code', monospace;
+      font-size: 11px;
+      line-height: 1.5;
+      background: #06060c;
+      border: 1px solid #1a1a2e;
+      border-radius: 8px;
+      padding: 14px 18px;
+      color: #94a3b8;
+      overflow-x: auto;
+      white-space: pre;
+    }
+    
+    .speech-box {
+      background: rgba(99, 102, 241, 0.05);
+      border-left: 3px solid #6366f1;
+      padding: 12px 14px;
+      border-radius: 0 8px 8px 0;
+      font-size: 12.5px;
+      line-height: 1.7;
+      color: #cbd5e1;
+    }
+    
+    .evidence-tag {
+      font-family: monospace;
+      font-size: 10.5px;
+      color: #64748b;
+      background: #080812;
+      padding: 4px 8px;
+      border-radius: 4px;
+      border: 1px solid #1a1a2a;
+      display: block;
+      margin-top: 6px;
+    }
+    
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #24243e;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .dot.active { background: #6366f1; width: 22px; border-radius: 4px; }
+    
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11.5px;
+    }
+    table.data-table th {
+      background: #141428;
+      color: #94a3b8;
+      font-weight: 700;
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid #22223e;
+    }
+    table.data-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #151528;
+      vertical-align: top;
+      color: #cbd5e1;
+    }
+    table.data-table tr:hover td { background: #131326; }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <!-- TOP BAR -->
+  <div id="topbar">
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <span class="brand-badge">DataServe</span>
+      <span class="title-text" id="slide-title-header">สถาปัตยกรรมระบบเชิงลึก: Deep-Dive System Architecture</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 16px;">
+      <div id="dots-container" style="display: flex; gap: 6px; align-items: center;"></div>
+      <button class="btn" id="btn-toggle-view" onclick="toggleViewMode()">
+        <span id="view-mode-label">Slide Only View</span>
+      </button>
+      <span style="font-size: 12px; font-weight: 700; color: #64748b; font-family: monospace;" id="slide-counter">1 / 10</span>
+    </div>
+  </div>
+  
+  <div id="progress-container"><div id="progress-bar"></div></div>
+
+  <!-- MAIN CONTAINER -->
+  <div id="main-container">
+    
+    <!-- SLIDE VIEWPORT -->
+    <div id="slide-viewport">
+      
+      <!-- ── SLIDE 1: ภาพรวมสถาปัตยกรรม ── -->
+      <div class="slide-card active" id="slide-1">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-purple">Slide 01 · Overview</span>
+          <span class="badge badge-emerald">Modern Medallion Lakehouse</span>
+        </div>
+        <h1 style="font-size: 26px; font-weight: 800; color: #fff; margin-bottom: 6px;">
+          DataServe: Enterprise Data Operations & Quality Platform
+        </h1>
+        <p style="font-size: 13px; color: #94a3b8; margin-bottom: 24px;">
+          สถาปัตยกรรมทะเลสาบข้อมูล เอนจินคู่ และการประกันคุณภาพข้อมูลอัตโนมัติแบบวงจรปิด
+        </p>
+        
+        <div class="grid-4" style="margin-bottom: 20px;">
+          <div class="panel">
+            <span class="badge badge-purple" style="margin-bottom: 8px;">01. Dual-Engine</span>
+            <h3 style="font-size: 13px; font-weight: 700; color: #f1f5f9; margin-bottom: 4px;">เอนจินคู่สอดประสาน</h3>
+            <p style="font-size: 11px; color: #94a3b8; line-height: 1.5;">FastAPI + Pandas ตอบสนองทันทีบนเว็บ ผสาน Spark 3.4.1 คลัสเตอร์ประมวลผลขนาดใหญ่</p>
+          </div>
+          <div class="panel">
+            <span class="badge badge-blue" style="margin-bottom: 8px;">02. Silver Dual-Zone</span>
+            <h3 style="font-size: 13px; font-weight: 700; color: #f1f5f9; margin-bottom: 4px;">คัดแยกเด็ดขาด</h3>
+            <p style="font-size: 11px; color: #94a3b8; line-height: 1.5;">Active Store (Upsert Clean) แยกกับ Quarantine Store (Idempotent Delta) ไร้ข้อมูลเสียปนเปื้อน</p>
+          </div>
+          <div class="panel">
+            <span class="badge badge-amber" style="margin-bottom: 8px;">03. 3D COPDQ</span>
+            <h3 style="font-size: 13px; font-weight: 700; color: #f1f5f9; margin-bottom: 4px;">ประเมินเป็นตัวเงิน</h3>
+            <p style="font-size: 11px; color: #94a3b8; line-height: 1.5;">แปลงความผิดปกติของข้อมูลเป็นความเสียหายทางการเงิน 3 มิติ: ต้นทุนแก้ไข, โอกาสเสีย, และความเสี่ยง</p>
+          </div>
+          <div class="panel">
+            <span class="badge badge-emerald" style="margin-bottom: 8px;">04. Closed-Loop</span>
+            <h3 style="font-size: 13px; font-weight: 700; color: #f1f5f9; margin-bottom: 4px;">วงจรปิดกู้คืนถึงต้นน้ำ</h3>
+            <p style="font-size: 11px; color: #94a3b8; line-height: 1.5;">แปลงแถวเสียเป็นตั๋วงานเชิงรุก พร้อมคำสั่งยิงไปป์ไลน์รันใหม่ทันทีที่วิศวกรกด Resolve</p>
+          </div>
+        </div>
+        
+        <div class="diagram-box">
+[ Multi-Source Ingestion ] ──► [ Dual-Engine QA ] ──┬──► [ Active Store (Delta Lake) ] ──► BI / Machine Learning
+                                                     └──► [ Quarantine (Dead-Letter) ] ──► [ Closed-Loop Trigger ]
+                                                                                                  │
+                                                                                                  ▼
+                                                                                       [ Upstream Rectification ]
+        </div>
+        <div style="margin-top: 14px; font-size: 11px; color: #64748b; text-align: center;">
+          หลักการสำคัญ: ไม่เพียงแค่ตรวจจับข้อผิดพลาด แต่ปกป้องระบบปลายทาง และส่งแรงขับเคลื่อนกลับไปแก้ถึงต้นน้ำ
+        </div>
+      </div>
+
+      <!-- ── SLIDE 2: ผัง 8 เลเยอร์ ── -->
+      <div class="slide-card" id="slide-2">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-blue">Slide 02 · Blueprint</span>
+          <span class="badge badge-purple">8-Layer Architecture</span>
+        </div>
+        <h2 style="font-size: 22px; font-weight: 800; color: #fff; margin-bottom: 6px;">
+          8-Layer Architectural Blueprint: End-to-End Data Lifecycle
+        </h2>
+        <p style="font-size: 12px; color: #94a3b8; margin-bottom: 18px;">
+          การแบ่งระดับชั้นสถาปัตยกรรมตามวงจรชีวิตของข้อมูลตั้งแต่การรับเข้าจนถึงการนำไปใช้ประโยชน์
+        </p>
+        
+        <div class="grid-2" style="margin-bottom: 16px;">
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div class="panel" style="padding: 10px 14px;">
+              <span class="badge badge-blue">Layer 1</span> <strong>Multi-Source Ingestion & Trigger:</strong> รับ Batch, RDBMS Read-Only, REST API และ Kafka
+            </div>
+            <div class="panel" style="padding: 10px 14px;">
+              <span class="badge badge-purple">Layer 2</span> <strong>Bronze & Pre-Flight Governance:</strong> HDFS Storage, Schema Drift Gate (+1/+5/+5) และ PII ธง
+            </div>
+            <div class="panel" style="padding: 10px 14px;">
+              <span class="badge badge-amber">Layer 3</span> <strong>Dual-Engine QA Processing:</strong> Whitebox Engine (Pandas) + Spark Cluster 21-Stage
+            </div>
+            <div class="panel" style="padding: 10px 14px;">
+              <span class="badge badge-emerald">Layer 4</span> <strong>Silver Medallion Dual-Zone:</strong> Active Store (Delta Upsert) vs. Quarantine Store (Dead-Letter)
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div class="panel" style="padding: 10px 14px;">
+              <span class="badge badge-blue">Layer 5</span> <strong>Gold Observability Telemetry:</strong> Elasticsearch 8.10.2 indices, Kibana และ Grafana
+            </div>
+            <div class="panel" style="padding: 10px 14px;">
+              <span class="badge badge-purple">Layer 6</span> <strong>Serving API & COPDQ Engine:</strong> 5-Domain Mapping, สูตรความเสียหาย 3 มิติ และ Trust-Check API
+            </div>
+            <div class="panel" style="padding: 10px 14px;">
+              <span class="badge badge-amber">Layer 7</span> <strong>Central Portal UI Layer:</strong> React 18, Zustand State Sync และ Real-Time Flow Simulation
+            </div>
+            <div class="panel" style="padding: 10px 14px;">
+              <span class="badge badge-emerald">Layer 8</span> <strong>Closed-Loop Healing:</strong> ออกตั๋วงาน Upstream และยิง POST /retry กลับมาประมวลผลใหม่
+            </div>
+          </div>
+        </div>
+        
+        <div class="diagram-box">
+Ingest (L1) ──► Bronze & Drift (L2) ──► Dual-Engine QA (L3) ──► Silver Dual-Zone (L4) ──► Observability (L5) ──► Serving API & UI (L6/L7) ──► Closed-Loop Healing (L8)
+        </div>
+      </div>
+
+      <!-- ── SLIDE 3: Layer 1 & 2 ── -->
+      <div class="slide-card" id="slide-3">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-blue">Slide 03 · Pre-Flight</span>
+          <span class="badge badge-amber">Ingestion & Schema Drift</span>
+        </div>
+        <h2 style="font-size: 22px; font-weight: 800; color: #fff; margin-bottom: 6px;">
+          Layer 1 & 2: ประตูด่านหน้าและธรรมาภิบาลโครงสร้าง
+        </h2>
+        <p style="font-size: 12px; color: #94a3b8; margin-bottom: 18px;">
+          ระบบคัดกรองความปลอดภัยของข้อมูลเข้า ป้องกันการล้มเหลวแบบเงียบ และจัดการ Schema Drift แบบอัตโนมัติ
+        </p>
+        
+        <div class="grid-2" style="margin-bottom: 16px;">
+          <div class="panel">
+            <h3 style="font-size: 13px; font-weight: 700; color: #818cf8; margin-bottom: 8px;">Layer 1: Multi-Source Ingestion Hub</h3>
+            <ul style="font-size: 11.5px; color: #cbd5e1; line-height: 1.7; padding-left: 18px;">
+              <li><strong>Batch CSV/Excel:</strong> SHA-256 Checksum ป้องกันไฟล์ซ้ำ, ตรวจคีย์หลักก่อนลง HDFS (รองรับ <code>utf-8-sig</code>)</li>
+              <li><strong>RDBMS Ingestion:</strong> คำสั่ง SQL <code>SELECT</code> (Read-Only) จำกัดโฮสต์ใน <code>RDBMS_ALLOWED_HOSTS</code></li>
+              <li><strong>REST API Ingestion:</strong> รองรับ data.go.th และ Fail-Closed ผ่าน <code>API_INGEST_ALLOWED_HOSTS</code></li>
+              <li><strong>Trigger Daemon:</strong> พอร์ต <code>8099</code> รับคิว FIFO ควบคุมด้วย <code>X-Trigger-Secret</code></li>
+            </ul>
+          </div>
+          <div class="panel">
+            <h3 style="font-size: 13px; font-weight: 700; color: #34d399; margin-bottom: 8px;">Layer 2: Schema Drift Pre-Flight Gate</h3>
+            <ul style="font-size: 11.5px; color: #cbd5e1; line-height: 1.7; padding-left: 18px;">
+              <li><strong>Scoring Mechanism:</strong> คอลัมน์ใหม่ +1, คอลัมน์สูญหาย +5, ชนิดข้อมูลไม่ตรง +5</li>
+              <li><strong>Safe Drift Auto-Evolution:</strong> กรณีพบเฉพาะคอลัมน์ใหม่ ร่วมกับนโยบาย <code>policy_allow_new</code> อัปเดต Registry ทันที</li>
+              <li><strong>Missing Columns:</strong> เติมค่า <code>NULL</code> อัตโนมัติ พร้อมส่ง Critical Alert (Slack/LINE Notify)</li>
+              <li><strong>Type Mismatch:</strong> แคสต์เป็น String ชั่วคราวป้องกันไปป์ไลน์หยุดชะงัก</li>
+              <li><strong>Semantic PII Guard:</strong> ตั้งธง PII ภาษาไทย-อังกฤษ เพื่อตัดออกจาก Export CSV และห้ามส่งให้ LLM</li>
+            </ul>
+          </div>
+        </div>
+        
+        <div class="diagram-box">
+Incoming Data ──► [ Checksum & PK Check ] ──► [ HDFS /data/raw/ ] ──► [ Schema Drift Evaluator ]
+                                                                             ├── Safe (New cols)   ──► Auto-Evolve Schema
+                                                                             └── Broken (Missing) ──► Fill NULL + Send Alert
+        </div>
+      </div>
+
+      <!-- ── SLIDE 4: Layer 3 Dual Engine ── -->
+      <div class="slide-card" id="slide-4">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-purple">Slide 04 · Compute</span>
+          <span class="badge badge-blue">Dual-Engine Architecture</span>
+        </div>
+        <h2 style="font-size: 22px; font-weight: 800; color: #fff; margin-bottom: 6px;">
+          Layer 3: สถาปัตยกรรมเอนจินคู่ (Dual-Engine Architecture)
+        </h2>
+        <p style="font-size: 12px; color: #94a3b8; margin-bottom: 18px;">
+          แยกหน้าที่ระหว่างการตอบสนองทันทีบนหน้าพอร์ทัล ออกจากการประมวลผลขนาดใหญ่แบบขนานบนคลัสเตอร์
+        </p>
+        
+        <div style="margin-bottom: 16px;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 25%;">มิติเปรียบเทียบ</th>
+                <th style="width: 37%;">1. Interactive Whitebox Engine</th>
+                <th style="width: 38%;">2. Distributed Spark Batch Engine</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>เทคโนโลยีหลัก</strong></td>
+                <td>FastAPI, Python 3.10, Pandas</td>
+                <td>Apache Spark 3.4.1 (Bitnami Image)</td>
+              </tr>
+              <tr>
+                <td><strong>ลักษณะการทำงาน</strong></td>
+                <td>Synchronous In-Memory Profiling</td>
+                <td>Distributed Batch Compute (Master-Worker)</td>
+              </tr>
+              <tr>
+                <td><strong>ช่องทางเรียกใช้งาน</strong></td>
+                <td><code>/api/v1/whitebox/*</code>, <code>/rules</code></td>
+                <td>Spark Trigger Daemon (พอร์ต <code>8099</code>)</td>
+              </tr>
+              <tr>
+                <td><strong>บทบาททางสถาปัตยกรรม</strong></td>
+                <td>สร้างข้อเสนอกฎ 3 ด้านทันที และตรวจ Referential Integrity ข้ามตาราง</td>
+                <td>ดำเนินการครบ 21 Stages, คัดแยกแถวเสีย และบันทึก Delta Lake</td>
+              </tr>
+              <tr>
+                <td><strong>เกณฑ์ Outlier</strong></td>
+                <td>โปรไฟล์นับด้วย $1.5 \times \text{IQR}$ และเสนอกฎ <code>auto_iqr</code> ที่ $3.0 \times \text{IQR}$ (Tukey Far-Out)</td>
+                <td>ตรวจจับความผิดปกติด้วย Tukey IQR $1.5 \times \text{IQR}$ และ Z-Score $3\sigma$</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        
+        <div class="panel" style="padding: 12px 18px;">
+          <strong>ข้อเสนอกฎ 3 ด้านของ Whitebox Engine:</strong> (1) Completeness สำหรับคอลัมน์สำคัญ (2) Non-Negative Range <code>>= 0</code> สำหรับยอดขายและสต็อก (3) Tukey Outer Fence ($3.0 \times \text{IQR}$) สำหรับดักจับค่าหลุดโลกที่ชัดเจน
+        </div>
+      </div>
+
+      <!-- ── SLIDE 5: 21 Stages ── -->
+      <div class="slide-card" id="slide-5">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-purple">Slide 05 · Pipeline</span>
+          <span class="badge badge-emerald">Spark 21-Stage Plan</span>
+        </div>
+        <h2 style="font-size: 22px; font-weight: 800; color: #fff; margin-bottom: 6px;">
+          Spark Distributed Compute: แผนงานประมวลผล 21 Stages
+        </h2>
+        <p style="font-size: 12px; color: #94a3b8; margin-bottom: 18px;">
+          สถาปัตยกรรมการคัดแยกคุณภาพข้อมูลอย่างเข้มงวดตามแผนงาน <code>plan.py</code> รันด้วย <code>shuffle.partitions=200</code>
+        </p>
+        
+        <div class="grid-3" style="margin-bottom: 16px;">
+          <div class="panel">
+            <span class="badge badge-blue" style="margin-bottom: 8px;">ช่วงที่ 1: Align (1 Stage)</span>
+            <ul style="font-size: 11px; color: #cbd5e1; line-height: 1.6; padding-left: 16px;">
+              <li><code>schema_align</code>: ปรับชื่อคอลัมน์และโครงสร้างพื้นฐานให้ตรงกับข้อกำหนด</li>
+            </ul>
+            <div style="margin-top: 12px; font-size: 10.5px; color: #64748b;">
+              ปรับโครงสร้างเบื้องต้นก่อนเข้าสู่การแปลงข้อมูล
+            </div>
+          </div>
+          
+          <div class="panel">
+            <span class="badge badge-purple" style="margin-bottom: 8px;">ช่วงที่ 2: Transform (12 Stages)</span>
+            <ul style="font-size: 11px; color: #cbd5e1; line-height: 1.6; padding-left: 16px;">
+              <li><code>schema_drift</code>, <code>auto_clean</code></li>
+              <li><code>validation</code>, <code>dedup</code></li>
+              <li><code>standardize_dates</code> (พ.ศ. ➔ ค.ศ.)</li>
+              <li><code>standardize_categories</code></li>
+              <li><code>range_rules</code> (ขอบเขตธุรกิจ)</li>
+              <li><code>anomaly_iqr</code> ($1.5 \times \text{IQR}$)</li>
+              <li><code>anomaly_zscore</code> ($3\sigma$)</li>
+              <li><code>anomaly_induced</code> (Decision Tree)</li>
+              <li><code>quarantine_assembly</code> (แยกแถวเสีย)</li>
+              <li><code>column_filter</code> (คัดกรองคอลัมน์)</li>
+            </ul>
+          </div>
+          
+          <div class="panel">
+            <span class="badge badge-emerald" style="margin-bottom: 8px;">ช่วงที่ 3: Post-Load (8 Stages)</span>
+            <ul style="font-size: 11px; color: #cbd5e1; line-height: 1.6; padding-left: 16px;">
+              <li><code>distribution</code>: คำนวณการกระจายตัว</li>
+              <li><code>quarantine_breakdown</code>: วิเคราะห์สาเหตุ</li>
+              <li><code>copdq</code>: ประเมินมูลค่าความเสียหาย</li>
+              <li><code>freshness</code>: คำนวณความสดของข้อมูล</li>
+              <li><code>quality_score</code>: เทียบสถิติในอดีต</li>
+              <li><code>ai_advisory</code>: สร้างตั๋วงานต้นทาง</li>
+              <li><code>operational_impact</code>: ประเมินระบบปลายทาง</li>
+              <li><code>report</code>: สรุปผลรอบการรัน</li>
+            </ul>
+          </div>
+        </div>
+        
+        <div class="diagram-box">
+Raw DataFrame ──► [ ALIGN (1) ] ──► [ TRANSFORM & CLEANSE (12) ] ──┬──► Active Delta Lake (Upsert)
+                                                                   ├──► Quarantine Delta Lake (Append)
+                                                                   └──► [ POST-LOAD ANALYTICS (8) ] ──► Elasticsearch
+        </div>
+      </div>
+
+      <!-- ── SLIDE 6: Silver Dual-Zone ── -->
+      <div class="slide-card" id="slide-6">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-emerald">Slide 06 · Storage</span>
+          <span class="badge badge-blue">Silver Medallion Dual-Zone</span>
+        </div>
+        <h2 style="font-size: 22px; font-weight: 800; color: #fff; margin-bottom: 6px;">
+          Layer 4: สถาปัตยกรรมจัดเก็บข้อมูล Silver Dual-Zone บน Delta Lake
+        </h2>
+        <p style="font-size: 12px; color: #94a3b8; margin-bottom: 18px;">
+          การคัดแยกข้อมูลดีและข้อมูลเสียออกเป็น 2 โซนอิสระ รับประกัน ACID Transactions และคุณสมบัติ Idempotency
+        </p>
+        
+        <div class="grid-2" style="margin-bottom: 16px;">
+          <div class="panel">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <h3 style="font-size: 13px; font-weight: 700; color: #34d399;">Active Store (Clean Silver Zone)</h3>
+              <span class="badge badge-emerald">Delta Lake</span>
+            </div>
+            <ul style="font-size: 11.5px; color: #cbd5e1; line-height: 1.7; padding-left: 18px;">
+              <li><strong>ตำแหน่ง:</strong> <code>/data/active/&lt;table_name&gt;/</code> บน HDFS</li>
+              <li><strong>วิธีการเขียน:</strong> ใช้คำสั่ง <strong><code>MERGE INTO</code> (Upsert)</strong> ตาม Primary Key</li>
+              <li><strong>ACID Transactions:</strong> ป้องกันข้อมูลชนกันระหว่างเขียน รองรับ Concurrent Writes</li>
+              <li><strong>Idempotency:</strong> รันซ้ำกี่ครั้งก็ได้ผลถูกต้องเท่าเดิม ไม่เกิดแถวข้อมูลเบิ้ลซ้ำ</li>
+              <li><strong>พร้อมใช้งาน:</strong> ส่งมอบต่อให้ Data Warehouse, BI Dashboard และ AI Models</li>
+            </ul>
+          </div>
+          
+          <div class="panel">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <h3 style="font-size: 13px; font-weight: 700; color: #fb7185;">Quarantine Store (Error Isolation Zone)</h3>
+              <span class="badge badge-rose">Delta Lake DLQ</span>
+            </div>
+            <ul style="font-size: 11.5px; color: #cbd5e1; line-height: 1.7; padding-left: 18px;">
+              <li><strong>ตำแหน่ง:</strong> <code>/data/quarantine/&lt;table_name&gt;/</code> บน HDFS</li>
+              <li><strong>วิธีการเขียน:</strong> ลบข้อมูลเก่าของ <code>ingest_id</code> ออกก่อน แล้ว Append ใหม่</li>
+              <li><strong>พาร์ทิชัน:</strong> แบ่งตาม <code>run_id</code> ทำหน้าที่เป็น Dead-Letter Queue</li>
+              <li><strong>เมทาดาต้าแถวเสีย:</strong> รักษาค่าเดิมครบ พร้อมฟิลด์ <code>run_id</code>, <code>ingest_id</code>, และ <code>reject_reason</code> (เชื่อมหลายสาเหตุด้วย <code>; </code>)</li>
+              <li><strong>ไม่สูญหาย:</strong> ข้อมูลเสียไม่ถูกกลืนทิ้ง นำไปกระทบยอดและตรวจสอบย้อนหลังได้ 100%</li>
+            </ul>
+          </div>
+        </div>
+        
+        <div class="panel" style="padding: 10px 16px; text-align: center; font-size: 11.5px; color: #94a3b8;">
+          <strong>สมดุลการกระทบยอดข้อมูล:</strong> Inbound Volume = Active Rows + Quarantined Rows + Pre-Clean Duplicate Rows
+        </div>
+      </div>
+
+      <!-- ── SLIDE 7: Layer 5 & 6 ── -->
+      <div class="slide-card" id="slide-7">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-blue">Slide 07 · Observability</span>
+          <span class="badge badge-purple">Serving & Trust-Check</span>
+        </div>
+        <h2 style="font-size: 22px; font-weight: 800; color: #fff; margin-bottom: 6px;">
+          Layer 5 & 6: การสังเกตการณ์ การให้บริการ API และการควบคุมความเสี่ยง
+        </h2>
+        <p style="font-size: 12px; color: #94a3b8; margin-bottom: 18px;">
+          การจัดเก็บดัชนี Telemetry บน Elasticsearch และการให้บริการ API พร้อมเกราะป้องกัน Trust-Check
+        </p>
+        
+        <div class="grid-2" style="margin-bottom: 16px;">
+          <div class="panel">
+            <h3 style="font-size: 13px; font-weight: 700; color: #60a5fa; margin-bottom: 8px;">Layer 5: Gold Observability Telemetry</h3>
+            <ul style="font-size: 11.5px; color: #cbd5e1; line-height: 1.6; padding-left: 18px;">
+              <li><strong>Elasticsearch 8.10.2:</strong> จัดเก็บดัชนีชี้วัดเพื่อการสืบค้นแบบมิลลิวินาที
+                <ul style="padding-left: 14px; margin-top: 4px; font-size: 11px; color: #94a3b8;">
+                  <li><code>sdoqap_quality_runs</code>: สถิติรอบรัน, อัตรากักกัน, คะแนนคุณภาพ</li>
+                  <li><code>sdoqap_pipeline_runs</code>: เวลาประมวลผล, Latency, สถานะ SLA</li>
+                  <li><code>sdoqap_upstream_remediations</code>: บัตรงานแก้ไขปัญหาต้นทาง</li>
+                  <li><code>sdoqap_schema_proposals</code>: ประวัติข้อเสนอโครงสร้างข้อมูล</li>
+                </ul>
+              </li>
+              <li><strong>Kibana (5601):</strong> ตรวจสอบ Log เชิงลึกและค้นหาเอกสารต้นฉบับ</li>
+              <li><strong>Grafana (3002):</strong> แดชบอร์ด Time-Series ติดตาม Throughput คลัสเตอร์</li>
+            </ul>
+          </div>
+          
+          <div class="panel">
+            <h3 style="font-size: 13px; font-weight: 700; color: #a78bfa; margin-bottom: 8px;">Layer 6: Serving API & Domain Mapping</h3>
+            <ul style="font-size: 11.5px; color: #cbd5e1; line-height: 1.6; padding-left: 18px;">
+              <li><strong>FastAPI Serving:</strong> ให้บริการ REST API ที่พอร์ต <code>8002</code> (ภายนอก) / <code>8000</code> (ภายใน)</li>
+              <li><strong>5-Domain Area Mapping:</strong> โครงสร้าง <code>AREA_TABLE_MAPPING</code> จับคู่ชื่อตารางเข้าสู่ 5 สายธุรกิจ: <code>sales</code>, <code>customer</code>, <code>operations</code>, <code>reporting</code>, และ <code>finance</code></li>
+              <li><strong>Trust-Check Gate API:</strong> <code>GET /api/v1/lineage/{table_name}/trust-check</code>
+                <ul style="padding-left: 14px; margin-top: 4px; font-size: 11px; color: #94a3b8;">
+                  <li>ประเมิน 3 ปัจจัย: คะแนนผ่านเกณฑ์, ไร้ Proposal ค้าง และตรวจสำเร็จ</li>
+                  <li>ตอบกลับ <code>is_safe_to_consume</code> เป็นที่ปรึกษาเชิงคุณภาพให้ระบบปลายทาง</li>
+                </ul>
+              </li>
+            </ul>
+          </div>
+        </div>
+        
+        <div class="diagram-box">
+Spark Telemetry ──► Elasticsearch ──┬──► Kibana :5601 & Grafana :3002
+                                    └──► FastAPI :8002 ──► 5-Domain Filtering & Trust-Check API
+        </div>
+      </div>
+
+      <!-- ── SLIDE 8: COPDQ Financial Loss ── -->
+      <div class="slide-card" id="slide-8">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-amber">Slide 08 · Financial</span>
+          <span class="badge badge-rose">3D COPDQ Model</span>
+        </div>
+        <h2 style="font-size: 22px; font-weight: 800; color: #fff; margin-bottom: 6px;">
+          เอนจินประเมินความเสียหายทางการเงินจากข้อมูลด้อยคุณภาพ (COPDQ)
+        </h2>
+        <p style="font-size: 12px; color: #94a3b8; margin-bottom: 18px;">
+          แปลงข้อผิดพลาดทางเทคนิคให้เป็นมูลค่าความเสียหายทางการเงินและต้นทุนการจัดการที่ฝ่ายบริหารเข้าใจได้ทันที
+        </p>
+        
+        <div class="grid-3" style="margin-bottom: 16px;">
+          <div class="panel" style="border-top: 3px solid #60a5fa;">
+            <span class="badge badge-blue" style="margin-bottom: 6px;">1. Cost of Correction</span>
+            <h4 style="font-size: 13px; font-weight: 700; color: #fff; margin-bottom: 4px;">ต้นทุนแรงงานและรันซ้ำ</h4>
+            <div style="font-size: 16px; font-weight: 800; color: #60a5fa; margin-bottom: 6px;">$2.00 / แถวกักกัน</div>
+            <p style="font-size: 11px; color: #94a3b8; line-height: 1.5;">ต้นทุนด้านวิศวกรรมและการคำนวณในการดึงข้อมูลที่ติดกักกันกลับมาล้างและประมวลผลใหม่</p>
+          </div>
+          
+          <div class="panel" style="border-top: 3px solid #34d399;">
+            <span class="badge badge-emerald" style="margin-bottom: 6px;">2. Cost of Lost Opportunity</span>
+            <h4 style="font-size: 13px; font-weight: 700; color: #fff; margin-bottom: 4px;">มูลค่ายอดขายที่ถูกกักกันจริง</h4>
+            <div style="font-size: 16px; font-weight: 800; color: #34d399; margin-bottom: 6px;">Σ Actual Monetary Value</div>
+            <p style="font-size: 11px; color: #94a3b8; line-height: 1.5;">ผลรวมยอดขายจริงจากแถวที่ติดกักกัน (เช่น คอลัมน์ total_sales, price) หากไม่มีใช้โมเดล 5% × $50</p>
+          </div>
+          
+          <div class="panel" style="border-top: 3px solid #fb7185;">
+            <span class="badge badge-rose" style="margin-bottom: 6px;">3. Cost of Risk & Compliance</span>
+            <h4 style="font-size: 13px; font-weight: 700; color: #fff; margin-bottom: 4px;">ความเสี่ยงโครงสร้างตาราง</h4>
+            <div style="font-size: 16px; font-weight: 800; color: #fb7185; margin-bottom: 6px;">Rows × drift_severity</div>
+            <p style="font-size: 11px; color: #94a3b8; line-height: 1.5;">มูลค่าความเสี่ยงจากการละเมิด SLA และการเปลี่ยนแปลงของโครงสร้างข้อมูลในระบบ</p>
+          </div>
+        </div>
+        
+        <div class="grid-2">
+          <div class="panel" style="padding: 12px 16px;">
+            <strong>Gartner TCO Operational Waste:</strong> ในโหมดการกระทบยอดปริมาณข้อมูล หากไม่มีคอลัมน์การเงิน คิดต้นทุนวิศวกรรมจัดการข้อมูลเสียคงที่ที่ <strong>$2.50 ต่อแถว</strong>
+          </div>
+          <div class="panel" style="padding: 12px 16px;">
+            <strong>การแสดงผลค่าเงิน:</strong> คำนวณเป็นดอลลาร์สหรัฐ (USD) เป็นหลัก และแปลงเป็นเงินบาท (THB) ด้วยอัตราแลกเปลี่ยนอ้างอิงคงที่ <strong>36.5 THB/USD</strong>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── SLIDE 9: Layer 7 & 8 ── -->
+      <div class="slide-card" id="slide-9">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-emerald">Slide 09 · Closed-Loop</span>
+          <span class="badge badge-purple">Portal & Auto-Healing</span>
+        </div>
+        <h2 style="font-size: 22px; font-weight: 800; color: #fff; margin-bottom: 6px;">
+          Layer 7 & 8: พอร์ทัลกลางและวงจรปิดแก้ไขปัญหาถึงต้นน้ำ
+        </h2>
+        <p style="font-size: 12px; color: #94a3b8; margin-bottom: 18px;">
+          การแสดงผลที่ตอบสนองสองทางไร้ความหน่วง พร้อมระบบปฏิบัติการแก้ไขปัญหาถึงระบบต้นทางแบบอัตโนมัติ
+        </p>
+        
+        <div class="grid-2" style="margin-bottom: 16px;">
+          <div class="panel">
+            <h3 style="font-size: 13px; font-weight: 700; color: #a78bfa; margin-bottom: 8px;">Layer 7: Central Portal UI & State Sync</h3>
+            <ul style="font-size: 11.5px; color: #cbd5e1; line-height: 1.6; padding-left: 18px;">
+              <li><strong>React 18 & Zustand Store:</strong> สลับ 4 มุมมอง (Executive, Business, Quality, Dashboard Builder)</li>
+              <li><strong>Two-Way State Sync:</strong> เมื่อคลิกการ์ดแผนก ตัวแปร <code>selectedAreaFilter</code> จะซิงก์ดรอปดาวน์และกรองข้อมูลทั้งแดชบอร์ดพร้อมกันทันที</li>
+              <li><strong>Stream Simulation:</strong> <code>DataFlowStreamChart.jsx</code> จำลอง Throughput $1,150 - 1,800$ แถว/วินาที สาธิตพลวัตของข้อมูลสด</li>
+            </ul>
+          </div>
+          
+          <div class="panel">
+            <h3 style="font-size: 13px; font-weight: 700; color: #34d399; margin-bottom: 8px;">Layer 8: Closed-Loop Upstream Healing</h3>
+            <ul style="font-size: 11.5px; color: #cbd5e1; line-height: 1.6; padding-left: 18px;">
+              <li><strong>Ticket Generation:</strong> AI Advisory วิเคราะห์แถวเสีย ออกตั๋วงานระบุ <code>target_system</code> และ <code>remediation_action</code></li>
+              <li><strong>วิศวกรแก้ปัญหาที่ต้นทาง:</strong> ทีมงานปรับปรุงโค้ดหรือชุดข้อมูลต้นน้ำ</li>
+              <li><strong>Auto-Trigger Reprocessing:</strong> เมื่อกดปุ่ม <strong>Resolve</strong> บนหน้าเว็บ ระบบเรียก <code>POST .../resolve</code> แล้วส่งคำสั่งต่อไปยัง <code>POST http://spark-master:8099/retry</code> ทันที</li>
+              <li><strong>Transparent Feedback:</strong> หน้าเว็บได้รับค่า <code>spark_triggered: true</code> ยืนยันการสั่งรันใหม่</li>
+            </ul>
+          </div>
+        </div>
+        
+        <div class="diagram-box">
+[ Spark พบแถวเสีย ] ──► [ AI สร้าง Ticket ] ──► [ วิศวกรแก้ต้นทาง ] ──► [ กด Resolve ] ──► [ POST :8099/retry ] ──► [ Spark รันใหม่ทันที ]
+        </div>
+      </div>
+
+      <!-- ── SLIDE 10: Technical Specs & Governance ── -->
+      <div class="slide-card" id="slide-10">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-purple">Slide 10 · Governance</span>
+          <span class="badge badge-blue">Specs & Code Parity</span>
+        </div>
+        <h2 style="font-size: 22px; font-weight: 800; color: #fff; margin-bottom: 6px;">
+          ข้อมูลจำเพาะทางเทคนิค มาตรการความปลอดภัย และความโปร่งใสทางวิศวกรรม
+        </h2>
+        <p style="font-size: 12px; color: #94a3b8; margin-bottom: 18px;">
+          สถาปัตยกรรมระดับโปรดักชัน 14 เซอร์วิสที่มีมาตรการรักษาความปลอดภัยเชิงลึกและความโปร่งใสของข้อเท็จจริงในโค้ด
+        </p>
+        
+        <div class="grid-3" style="margin-bottom: 16px;">
+          <div class="panel">
+            <span class="badge badge-blue" style="margin-bottom: 6px;">Port Matrix</span>
+            <h4 style="font-size: 12px; font-weight: 700; color: #fff; margin-bottom: 4px;">โครงสร้างพื้นฐานหลัก</h4>
+            <div style="font-size: 11px; color: #94a3b8; line-height: 1.6;">
+              • Nginx Web Gateway: <code>80</code><br/>
+              • FastAPI Backend: <code>8002</code><br/>
+              • Spark Master: <code>7077, 8081, 8099</code><br/>
+              • HDFS NameNode: <code>9870, 9002</code><br/>
+              • HDFS DataNode: <code>9864</code> (ภายใน)<br/>
+              • Elasticsearch: <code>9200</code><br/>
+              • Kibana: <code>5601</code> · Grafana: <code>3002</code>
+            </div>
+          </div>
+          
+          <div class="panel">
+            <span class="badge badge-emerald" style="margin-bottom: 6px;">Security Invariants</span>
+            <h4 style="font-size: 12px; font-weight: 700; color: #fff; margin-bottom: 4px;">เกราะป้องกันเชิงลึก</h4>
+            <div style="font-size: 11px; color: #94a3b8; line-height: 1.6;">
+              • <strong>ACID & Idempotency:</strong> Delta Lake MERGE ไร้แถวเบิ้ล<br/>
+              • <strong>Privacy Guardrails:</strong> ตัด PII ออกจาก Export และแทนค่า <code>&lt;redacted&gt;</code> ก่อนส่ง LLM<br/>
+              • <strong>API Protection:</strong> บังคับ Session Cookie ใน Data Export และคุม Trigger ด้วย <code>X-Trigger-Secret</code>
+            </div>
+          </div>
+          
+          <div class="panel">
+            <span class="badge badge-amber" style="margin-bottom: 6px;">Honest Bounding</span>
+            <h4 style="font-size: 12px; font-weight: 700; color: #fff; margin-bottom: 4px;">ความโปร่งใสในข้อจำกัด</h4>
+            <div style="font-size: 11px; color: #94a3b8; line-height: 1.6;">
+              • <strong>Stream Simulation:</strong> ระบุชัดเจนว่า Throughput หน้าเว็บเป็นการจำลองด้วยสถิติ<br/>
+              • <strong>Alert Channels:</strong> ระบุสถานะจริงของ LINE Notify (ยุติบริการ มี.ค. 2025) และไร้ Teams<br/>
+              • <strong>Code Parity:</strong> ยืนยันผลตรวจเทียบซอร์สโค้ดจริง 100% บน commit <code>936ae76</code>
+            </div>
+          </div>
+        </div>
+        
+        <div class="panel" style="padding: 12px 18px; text-align: center; font-size: 12px; color: #34d399;">
+          DataServe: พร้อมใช้งานจริงในระดับองค์กร ด้วยวิศวกรรมที่โปร่งใส ซื่อตรงต่อข้อเท็จจริง และปลอดภัยสูงสุด
+        </div>
+      </div>
+
+    </div>
+
+    <!-- SCRIPT / TELEPROMPTER SIDEBAR -->
+    <div id="script-sidebar">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1e1e36; padding-bottom: 10px;">
+        <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #818cf8; letter-spacing: 1px;">Speaker Script · บทพูดผู้บรรยาย</span>
+        <span style="font-size: 10px; color: #64748b;" id="script-time-indicator">~60 วินาที</span>
+      </div>
+
+      <!-- Script 1 -->
+      <div class="script-item active" id="script-1">
+        <div class="speech-box">
+          "สวัสดีคณะกรรมการและทุกท่านครับ วันนี้ผมขอพาทุกท่านเจาะลึกสถาปัตยกรรมของ DataServe แพลตฟอร์มปฏิบัติการข้อมูลและการประกันคุณภาพข้อมูลระดับองค์กร<br/><br/>
+          ในระบบ Data Pipeline ทั่วไป เมื่อข้อมูลมีข้อผิดพลาด ข้อมูลเสียมักจะหลุดรอดไปทำลายรายงานผู้บริหาร หรือไม่ก็ทำให้ไปป์ไลน์หยุดชะงักทั้งระบบ DataServe เข้ามาแก้ปัญหานี้ด้วยสถาปัตยกรรม Modern Medallion Lakehouse ที่มีหัวใจสำคัญ 4 ด้าน: หนึ่ง คือการใช้สถาปัตยกรรมเอนจินคู่ ทั้งการโต้ตอบหน้าเว็บที่รวดเร็วและการประมวลผลคลัสเตอร์แบบกระจายศูนย์ สอง คือการแยกข้อมูลระดับแถวเข้าสู่ Active Zone และ Quarantine Zone บน Delta Lake อย่างเด็ดขาด สาม คือการประเมินความเสียหายออกมาเป็นตัวเงิน COPDQ เพื่อให้ฝ่ายบริหารตัดสินใจได้ และสี่ คือวงจรปิด Closed-Loop ที่ผลักดันการแก้ไขกลับไปยังระบบต้นน้ำ พร้อมสั่งรันข้อมูลใหม่อัตโนมัติครับ"
+        </div>
+        <div class="evidence-tag">
+          Code Evidence: spark_quality_engine.py:1718-1737 (Delta MERGE), system.py:480-525 (Trigger)
+        </div>
+      </div>
+
+      <!-- Script 2 -->
+      <div class="script-item" id="script-2">
+        <div class="speech-box">
+          "จากแผนภาพนี้ ทุกท่านจะเห็นวงจรชีวิตข้อมูลที่สมบูรณ์ 8 เลเยอร์ครับ เริ่มต้นจากเลเยอร์ 1 การรับข้อมูลเข้าที่มีเกราะป้องกันความปลอดภัย ส่งต่อไปยังเลเยอร์ 2 ในโซน Bronze บน HDFS ซึ่งมีด่านตรวจ Schema Drift และตั้งธง PII ก่อนเริ่มประมวลผล<br/><br/>
+          จากนั้นในเลเยอร์ 3 ข้อมูลจะถูกประมวลผลผ่านเอนจินคู่ คัดแยกแถวดีแถวเสียส่งต่อไปยังเลเยอร์ 4 บน Silver Delta Lake ซึ่งข้อมูลสะอาดจะถูก Upsert เข้า Active Store ส่วนข้อมูลติดกักกันจะเข้า Quarantine Store โดยมีเลเยอร์ 5 เก็บ Telemetry เข้า Elasticsearch เลเยอร์ 6 ให้บริการ API และคำนวณมูลค่าความเสียหาย เลเยอร์ 7 แสดงผลบนหน้าเว็บแบบซิงก์สถานะสองทาง และจบวงจรที่เลเยอร์ 8 ด้วยการส่งตั๋วงานให้ทีมต้นน้ำแก้ปัญหาและยิงคำสั่งกลับมารันใหม่โดยอัตโนมัติครับ"
+        </div>
+        <div class="evidence-tag">
+          Code Evidence: docker-compose.yml (14 Core Services), SYSTEM_ARCHITECTURE_OVERVIEW_DEEP_DIVE.md
+        </div>
+      </div>
+
+      <!-- Script 3 -->
+      <div class="script-item" id="script-3">
+        <div class="speech-box">
+          "ในเลเยอร์ที่ 1 และ 2 DataServe ให้ความสำคัญกับความปลอดภัยตั้งแต่ก้าวแรกครับ การรับไฟล์ CSV หรือ Excel มีการตรวจ SHA-256 Checksum ป้องกันการนำเข้าซ้ำ และตรวจคีย์หลักก่อนส่งเข้า HDFS ฝั่งฐานข้อมูลเราล็อกคำสั่งให้เป็น SELECT แบบอ่านอย่างเดียว และฝั่ง API เราจำกัดเฉพาะโดเมนปลอดภัยใน Allowlist<br/><br/>
+          เมื่อข้อมูลเข้าสู่โซน Bronze บน HDFS จะต้องผ่านด่านตรวจ Schema Drift ซึ่งมีตรรกะแยกแยะความเสี่ยงอย่างละเอียด หากเป็นเพียงคอลัมน์ใหม่ที่ปลอดภัย ระบบจะทำการ Auto-Evolve โครงสร้างตารางให้อัตโนมัติ แต่หากมีคอลัมน์หลักสูญหาย ระบบจะเยียวยาด้วยการเติมค่า NULL เพื่อให้ไปป์ไลน์เดินหน้าต่อได้ พร้อมยิงแจ้งเตือนระดับวิกฤตไปยัง Slack หรือ Webhook ทันที นอกจากนี้ Semantic Layer ยังตั้งธง PII เพื่อปกป้องข้อมูลส่วนบุคคลไม่ให้หลุดไปยัง LLM ภายนอกครับ"
+        </div>
+        <div class="evidence-tag">
+          Code Evidence: pipeline.py:315-333 (ingest_csv), schema.py:100-208 (drift_severity +1/+5/+5)
+        </div>
+      </div>
+
+      <!-- Script 4 -->
+      <div class="script-item" id="script-4">
+        <div class="speech-box">
+          "หนึ่งในความโดดเด่นทางสถาปัตยกรรมของ DataServe คือสถาปัตยกรรมเอนจินคู่ หรือ Dual-Engine ครับ เราตระหนักดีว่าการให้ผู้ใช้รอกระบวนการ Spark Submit เพียงเพื่อดูสถิติหรือสร้างกฎบนหน้าเว็บ จะทำให้ประสบการณ์การใช้งานช้าเกินไป<br/><br/>
+          เราจึงออกแบบให้มี Interactive Whitebox Engine รันอยู่บน FastAPI ด้วย Pandas ดึงข้อมูลตัวอย่างมาคำนวณสถิติเชิงพรรณนา และสร้างการ์ดแนะนำกฎคุณภาพข้อมูล 3 ด้านทันที ได้แก่ กฎความสมบูรณ์ห้ามเป็นค่าว่าง, กฎตัวเลขต้องไม่ติดลบ, และกฎ Outlier ด้วยวิธี Tukey IQR โดยนำเสนอที่ 3.0 เท่าของ IQR เพื่อดักจับค่าหลุดโลกที่ชัดเจน พร้อมรองรับการตรวจ Foreign Key ข้ามตาราง และเมื่อผู้ใช้กำหนดกฎเรียบร้อย กฎเหล่านั้นจะถูกส่งต่อไปให้ Distributed Spark Engine ทำหน้าที่รันแบตช์ขนาดใหญ่บนคลัสเตอร์แบบกระจายศูนย์ครับ"
+        </div>
+        <div class="evidence-tag">
+          Code Evidence: whitebox.py:515-576 (Completeness, Non-Negative, Tukey 3.0x IQR)
+        </div>
+      </div>
+
+      <!-- Script 5 -->
+      <div class="script-item" id="script-5">
+        <div class="speech-box">
+          "เมื่อข้อมูลเข้าสู่ Spark Cluster กระบวนการทำงานจะถูกควบคุมด้วยแผนการทำงาน 21 Stages อย่างเคร่งครัดตามที่กำหนดไว้ในไฟล์ plan.py ครับ โดยแบ่งออกเป็น 3 ช่วง:<br/><br/>
+          ช่วงแรกคือ Align มี 1 Stage ปรับโครงสร้างพื้นฐาน ช่วงที่สองคือ Transform มี 12 Stages ตั้งแต่การตัดช่องว่าง ลบข้อมูลซ้ำ การปรับมาตรฐานวันที่ พ.ศ. เป็น ค.ศ. ไปจนถึงการตรวจจับค่าผิดปกติด้วยสถิติ ทั้ง Tukey IQR 1.5 เท่า, Z-Score 3 ซิกม่า และกฎที่เรียนรู้จาก Decision Tree ก่อนจะประกอบแถวเสียเข้าสู่ Quarantine Assembly และช่วงสุดท้ายคือ Post-Load มี 8 Stages ทำหน้าที่คำนวณมูลค่าความเสียหายทางการเงิน COPDQ, ประเมินความสดใหม่, คำนวณคะแนนคุณภาพรวม และส่งตัวอย่างแถวเสียให้โมเดล AI วิเคราะห์สาเหตุเพื่อสร้างตั๋วแก้ไขปัญหาต่อไปครับ"
+        </div>
+        <div class="evidence-tag">
+          Code Evidence: services/spark/sdoqap/pipeline/plan.py (1 Align + 12 Transform + 8 Post-Load)
+        </div>
+      </div>
+
+      <!-- Script 6 -->
+      <div class="script-item" id="script-6">
+        <div class="speech-box">
+          "ในเลเยอร์ที่ 4 คือหัวใจของการปกป้องข้อมูลครับ ข้อมูลที่ผ่านการตรวจสอบจะถูกแยกทางเดินอย่างเด็ดขาด แถวที่สะอาดสมบูรณ์จะเข้าสู่ Active Store บน Delta Lake โดยใช้คำสั่ง MERGE INTO ตาม Primary Key ซึ่งการันตี ACID Transactions และความเป็น Idempotent อย่างแท้จริง รันซ้ำกี่ครั้งข้อมูลก็ไม่เบิ้ลซ้ำ<br/><br/>
+          ส่วนแถวที่มีข้อผิดพลาด ไม่ว่าจะผิดช่วงค่า มีค่าว่าง หรือเป็น Outlier จะถูกส่งเข้า Quarantine Store ซึ่งจัดเก็บบน Delta Lake เช่นกัน โดยระบบจะลบข้อมูลเก่าของรอบนั้นออกก่อนเขียนใหม่ เพื่อป้องกันการสะสมข้อมูลกักกันซ้ำซ้อน แถวเสียทุกแถวจะคงค่าดั้งเดิมไว้ครบถ้วน พร้อมระบุสาเหตุในฟิลด์ reject_reason ทำให้ทีมงานสามารถตรวจสอบย้อนกลับและกระทบยอดปริมาณข้อมูลเข้าและออกได้อย่างโปร่งใสทุกประการครับ"
+        </div>
+        <div class="evidence-tag">
+          Code Evidence: spark_quality_engine.py:1718-1730 (MERGE INTO), :1705-1712 (Delete-before-append)
+        </div>
+      </div>
+
+      <!-- Script 7 -->
+      <div class="script-item" id="script-7">
+        <div class="speech-box">
+          "ในเลเยอร์ที่ 5 และ 6 คือส่วนของการนำสถิติมาสร้างการมองเห็นและการให้บริการครับ เมทาดาต้าและตัวชี้วัดทั้งหมดจะถูกจัดเก็บเข้า Elasticsearch 8.10.2 แบบเรียลไทม์ ทำให้วิศวกรสามารถค้นหา Log บน Kibana หรือดู Throughput บน Grafana ได้ทันที<br/><br/>
+          ฝั่งหลังบ้านพัฒนาด้วย FastAPI มีการจัดกลุ่มตารางเข้ากับ 5 สายงานธุรกิจหลัก เพื่อให้แดชบอร์ดสามารถกรองดูตามแผนกได้ และเรายังมี Trust-Check API ให้บริการที่ /api/v1/lineage/{table_name}/trust-check ทำหน้าที่เป็นเกราะป้องกันเชิงคุณภาพให้ระบบปลายทาง ไม่ว่าจะเป็นระบบ BI หรือบริการ AI ภายนอก โดยระบบจะตรวจทั้งคะแนนคุณภาพและสถานะการปรับโครงสร้างตาราง เพื่อยืนยันว่าตารางนั้นปลอดภัยและพร้อมให้นำไปใช้งานต่อหรือไม่ครับ"
+        </div>
+        <div class="evidence-tag">
+          Code Evidence: analytics.py:32-38 (AREA_TABLE_MAPPING), lineage.py:340-395 (trust-check)
+        </div>
+      </div>
+
+      <!-- Script 8 -->
+      <div class="script-item" id="script-8">
+        <div class="speech-box">
+          "หนึ่งในความท้าทายของงาน Data Quality คือ ฝ่ายบริหารมักไม่เห็นภาพว่า 'คะแนนตกเหลือ 70%' ส่งผลกระทบอย่างไร DataServe จึงพัฒนาเอนจินประเมินความเสียหายทางการเงิน หรือ COPDQ เข้ามาตอบโจทย์นี้ครับ<br/><br/>
+          ระบบแจกแจงความเสียหายออกเป็น 3 มิติ: มิติแรกคือต้นทุนการแก้ไข คิดที่ 2 ดอลลาร์ต่อแถว มิติที่สองคือโอกาสทางธุรกิจที่สูญเสียไป โดย Spark จะไปดึงผลรวมยอดขายจริงจากแถวที่ติดกักกันขึ้นมาคำนวณ เช่น หากออเดอร์มูลค่า 10,000 ดอลลาร์ติดกักกัน ยอดนี้จะถูกนับเป็นความเสี่ยงทางรายได้ทันที และมิติที่สามคือความเสี่ยงของโครงสร้างข้อมูล โดยนำแถวเสียไปคูณกับระดับความรุนแรงของ Schema Drift ทำให้ผู้บริหารและทีมธุรกิจเข้าใจตรงกันว่าความล่าช้าหรือข้อผิดพลาดนี้ คิดเป็นมูลค่าความเสียหายเท่าใดในเชิงธุรกิจครับ"
+        </div>
+        <div class="evidence-tag">
+          Code Evidence: analytics.py:704-726 (Correction + Opportunity + Risk), currency.js:14 (36.5 THB/USD)
+        </div>
+      </div>
+
+      <!-- Script 9 -->
+      <div class="script-item" id="script-9">
+        <div class="speech-box">
+          "ในเลเยอร์ที่ 7 และ 8 คือจุดสิ้นสุดและจุดเริ่มต้นใหม่ของวงจรข้อมูลครับ หน้าเว็บพอร์ทัลของเราใช้ React 18 และ Zustand Store ทำให้เมื่อผู้ใช้คลิกเลือกแผนกใด ข้อมูลทั้งหน้าจอจะกรองตามแผนกนั้นทันทีโดยไม่ต้องโหลดหน้าเว็บใหม่<br/><br/>
+          และที่สำคัญที่สุดคือเลเยอร์ที่ 8 วงจรปิด Closed-Loop ครับ เมื่อ Spark พบแถวเสีย ระบบจะไม่เพียงแค่เก็บไว้ แต่จะวิเคราะห์และสร้างตั๋วงานระบุระบบต้นทางและวิธีแก้ให้วิศวกรเข้าไปจัดการ เมื่อวิศวกรแก้เสร็จแล้วกลับมากดปุ่ม Resolve บนพอร์ทัล ระบบหลังบ้านจะยิงคำขอตรงไปยัง Spark Trigger Daemon ที่พอร์ต 8099 ทันที เพื่อสั่งให้คลัสเตอร์ดึงข้อมูลมาประมวลผลใหม่โดยอัตโนมัติ ทำให้วงจรการแก้ไขปัญหาข้อมูลจบลงได้อย่างสมบูรณ์แบบโดยไม่ต้องสั่งรันมือครับ"
+        </div>
+        <div class="evidence-tag">
+          Code Evidence: useDashboardStore.js (selectedAreaFilter), system.py:480-525 (Trigger Daemon :8099)
+        </div>
+      </div>
+
+      <!-- Script 10 -->
+      <div class="script-item" id="script-10">
+        <div class="speech-box">
+          "สุดท้ายนี้ DataServe ดำเนินงานบนโครงสร้างพื้นฐานระดับโปรดักชันที่มีมาตรการความปลอดภัยเข้มงวดครับ ทุกจุดเชื่อมต่อมีระบบรักษาความปลอดภัยแบบหลายชั้น ทั้งการใช้ Session Cookie ควบคุมการดาวน์โหลดข้อมูลดิบ, การใช้ Secret Key ควบคุม Trigger Daemon, และการปิดบังค่า PII ด้วยคำว่า redacted เสมอก่อนส่งให้ AI<br/><br/>
+          และที่สำคัญที่สุด ทีมวิศวกรของเรายึดมั่นในความโปร่งใสทางวิศวกรรม เอกสารและสไลด์ชุดนี้เขียนขึ้นจากข้อเท็จจริงในซอร์สโค้ดจริง 100% ส่วนใดที่เป็นการจำลองหน้าจอ หรือส่วนใดที่มีข้อจำกัดทางเทคนิค เราได้ระบุไว้อย่างตรงไปตรงมา เพื่อให้มั่นใจว่า DataServe เป็นแพลตฟอร์มที่พร้อมใช้งานจริง และสามารถเป็นรากฐานที่น่าเชื่อถือที่สุดสำหรับสถาปัตยกรรมข้อมูลขององค์กรครับ ขอบคุณครับ"
+        </div>
+        <div class="evidence-tag">
+          Code Evidence: docker-compose.yml (14 Services), ai_rule_advisor.py (<redacted> LLM Guard)
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- FOOTER -->
+  <div id="footer">
+    <div style="display: flex; gap: 8px;">
+      <button class="btn" onclick="prevSlide()">◀ Previous</button>
+      <button class="btn btn-primary" onclick="nextSlide()">Next ▶</button>
+    </div>
+    <div style="font-size: 11px; color: #64748b;">
+      Keyboard Shortcuts: [◀ / ▶] เลื่อนสไลด์ · [Space] ถัดไป · [F] สลับโหมดจอเต็ม
+    </div>
+    <div style="font-size: 11px; color: #475569;">
+      DataServe Engine Parity Verified · Commit 936ae76
+    </div>
+  </div>
+
+</div>
+
+<script>
+  let currentSlide = 1;
+  const totalSlides = 10;
+  let isSlideOnlyView = false;
+
+  const titles = [
+    "สถาปัตยกรรมระบบเชิงลึก: Deep-Dive System Architecture Overview",
+    "แผนผังภาพรวม 8 เลเยอร์: 8-Layer Architectural Blueprint",
+    "เลเยอร์ 1 & 2: Multi-Source Ingestion & Pre-Flight Governance",
+    "เลเยอร์ 3: Dual-Engine Architecture (Whitebox vs. Spark)",
+    "เลเยอร์ 3: Distributed Spark Compute: 21-Stage Plan",
+    "เลเยอร์ 4: Silver Medallion Dual-Zone Storage on Delta Lake",
+    "เลเยอร์ 5 & 6: Gold Observability Telemetry & Serving API",
+    "เลเยอร์ 6: Dynamic COPDQ 3D Financial Impact Engine",
+    "เลเยอร์ 7 & 8: Central Portal UI & Closed-Loop Healing",
+    "สรุป: Technical Specifications, Security & Engineering Parity"
+  ];
+
+  function initDots() {
+    const dotsContainer = document.getElementById("dots-container");
+    dotsContainer.innerHTML = "";
+    for (let i = 1; i <= totalSlides; i++) {
+      const dot = document.createElement("div");
+      dot.className = `dot ${i === 1 ? 'active' : ''}`;
+      dot.onclick = () => goToSlide(i);
+      dotsContainer.appendChild(dot);
+    }
+  }
+
+  function updateSlide() {
+    // Hide all
+    document.querySelectorAll(".slide-card").forEach(s => s.classList.remove("active"));
+    document.querySelectorAll(".script-item").forEach(s => s.classList.remove("active"));
+    document.querySelectorAll(".dot").forEach(d => d.classList.remove("active"));
+
+    // Show current
+    const activeSlide = document.getElementById(`slide-${currentSlide}`);
+    const activeScript = document.getElementById(`script-${currentSlide}`);
+    const dots = document.querySelectorAll(".dot");
+
+    if (activeSlide) activeSlide.classList.add("active");
+    if (activeScript) activeScript.classList.add("active");
+    if (dots[currentSlide - 1]) dots[currentSlide - 1].classList.add("active");
+
+    // Header & Counter
+    document.getElementById("slide-counter").innerText = `${currentSlide} / ${totalSlides}`;
+    document.getElementById("slide-title-header").innerText = titles[currentSlide - 1];
+    
+    // Progress
+    const pct = (currentSlide / totalSlides) * 100;
+    document.getElementById("progress-bar").style.width = `${pct}%`;
+  }
+
+  function nextSlide() {
+    if (currentSlide < totalSlides) {
+      currentSlide++;
+      updateSlide();
+    }
+  }
+
+  function prevSlide() {
+    if (currentSlide > 1) {
+      currentSlide--;
+      updateSlide();
+    }
+  }
+
+  function goToSlide(n) {
+    if (n >= 1 && n <= totalSlides) {
+      currentSlide = n;
+      updateSlide();
+    }
+  }
+
+  function toggleViewMode() {
+    isSlideOnlyView = !isSlideOnlyView;
+    const container = document.getElementById("main-container");
+    const label = document.getElementById("view-mode-label");
+    if (isSlideOnlyView) {
+      container.classList.add("fullscreen-slides");
+      label.innerText = "Show Speaker Script";
+    } else {
+      container.classList.remove("fullscreen-slides");
+      label.innerText = "Slide Only View";
+    }
+  }
+
+  // Keyboard Navigation
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") {
+      e.preventDefault();
+      nextSlide();
+    } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+      e.preventDefault();
+      prevSlide();
+    } else if (e.key.toLowerCase() === "f") {
+      e.preventDefault();
+      toggleViewMode();
+    }
+  });
+
+  // Init
+  initDots();
+  updateSlide();
+</script>
+
+</body>
+</html>

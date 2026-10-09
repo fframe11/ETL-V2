@@ -1228,11 +1228,78 @@
   "olist_products_dataset": {
     "null_primary_key": {
       "enabled": true,
+      "column": "product_id",
+      "severity": "critical",
+      "mode": "strict"
+    },
+    "null_checks": {
+      "mode": "strict",
+      "default_tolerance": 0.0,
+      "columns": [
+        "product_category_name",
+        "product_name_lenght",
+        "product_description_lenght",
+        "product_photos_qty",
+        "product_weight_g",
+        "product_length_cm",
+        "product_height_cm",
+        "product_width_cm"
+      ]
+    },
+    "value_range": {
+      "mode": "non_negative",
+      "min_value": 0.0,
+      "columns": [
+        "product_name_lenght",
+        "product_description_lenght",
+        "product_photos_qty",
+        "product_weight_g",
+        "product_length_cm",
+        "product_height_cm",
+        "product_width_cm"
+      ]
+    },
+    "outlier_detection": {
+      "method": "iqr",
+      "multiplier": 3.0,
+      "action": "review",
+      "columns": [
+        "product_name_lenght",
+        "product_description_lenght",
+        "product_photos_qty",
+        "product_weight_g",
+        "product_length_cm",
+        "product_height_cm",
+        "product_width_cm"
+      ]
+    },
+    "freshness_threshold_hours": {
+      "mode": "strict",
+      "base_value": null,
+      "learn_from_history": false
+    },
+    "quality_score_threshold": {
+      "mode": "adaptive",
+      "base_value": 90.0,
+      "min_value": 70.0,
+      "adjustment_window_runs": 15
+    },
+    "ai_advisor": {
+      "enabled": true,
+      "trigger": "on_anomaly",
+      "model": "openai/gpt-oss-120b",
+      "max_rows_to_analyze": 50,
+      "confidence_threshold": 0.7
+    }
+  },
+  "ecommerce_retail_transactions_raw": {
+    "null_primary_key": {
+      "enabled": true,
       "severity": "critical",
       "mode": "strict"
     },
     "null_date_column": {
-      "enabled": false,
+      "enabled": true,
       "severity": "warning",
       "mode": "strict"
     },
@@ -1254,9 +1321,9 @@
       "column_overrides": {}
     },
     "freshness_threshold_hours": {
-      "mode": "strict",
-      "base_value": null,
-      "learn_from_history": false
+      "mode": "adaptive",
+      "base_value": 48,
+      "learn_from_history": true
     },
     "quality_score_threshold": {
       "mode": "adaptive",

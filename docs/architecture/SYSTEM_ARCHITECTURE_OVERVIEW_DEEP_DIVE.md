@@ -1,39 +1,39 @@
 # รายละเอียดสถาปัตยกรรมระบบเชิงลึก (Deep-Dive System Architecture Overview)
 
-**โครงการ**: SDOQAP (Smart Data Operations & Quality Assurance Platform)  
+**โครงการ**: DataServe (ขับเคลื่อนด้วยสถาปัตยกรรมภายใน SDOQAP - Smart Data Operations & Quality Assurance Platform)  
 **วันที่บันทึก**: 8 ตุลาคม 2569  
-**ตรวจทานกับโค้ด**: commit `936ae76` (branch `feat/generic-profiling-rule-engine`) ข้อความอิงไฟล์ในโค้ดจริง ส่วนที่ยังไม่ได้ตรวจระบุไว้ท้ายเอกสาร  
-**สถาปัตยกรรมหลัก**: Modern Medallion Lakehouse, Data Observability, Proactive Upstream Governance  
+**สถานะการตรวจทาน**: ตรวจทานเทียบกับโค้ดที่ commit `00c890b` (branch `feat/generic-profiling-rule-engine`) ข้อความอิงไฟล์ในโค้ดจริง ส่วนที่ยังไม่ได้ตรวจระบุไว้ท้ายเอกสาร  
+**สถาปัตยกรรมหลัก**: Dual-Engine (Interactive Whitebox + Distributed Spark), Modern Medallion Lakehouse, Data Observability, Closed-Loop Upstream Governance  
 
 ---
 
 ## 1. ภาพรวมการแบ่งชั้นสถาปัตยกรรม (High-Level Architectural Layers)
 
-สถาปัตยกรรม SDOQAP แบ่งการทำงานออกเป็น 8 เลเยอร์หลักตามวงจรชีวิตของข้อมูล (Data Lifecycle) ตั้งแต่ต้นทางจนถึงการนำไปใช้ประโยชน์:
+สถาปัตยกรรมระบบแบ่งการทำงานออกเป็น 8 เลเยอร์หลักตามวงจรชีวิตของข้อมูล (Data Lifecycle) ตั้งแต่การรับเข้าจนถึงการนำไปใช้ประโยชน์:
 
 ```
-[1. Multi-Source Ingestion & Trigger]
+[1. Multi-Source Ingestion & Trigger Layer]
                  │
                  ▼
 [2. Bronze Storage & Pre-Flight Governance (Schema Drift & Semantic Layer)]
                  │
                  ▼
-[3. Distributed Spark Compute & 21-Stage Quality Segregation Engine]
+[3. Dual-Engine Quality Processing: Interactive Whitebox vs. Distributed Spark 21-Stage]
                  │
                  ▼
 [4. Silver Medallion Dual-Zone Storage (Delta Lake Active vs. Delta Lake Quarantine)]
                  │
                  ▼
-[5. Gold Observability & Telemetry Indices (Elasticsearch 8 / Kibana / Grafana)]
+[5. Gold Observability & Telemetry Indices (Elasticsearch 8.10.2 / Kibana / Grafana)]
                  │
                  ▼
-[6. Serving API & Business Impact Engine (FastAPI / COPDQ Estimate)]
+[6. Serving API & Dynamic Business Impact Engine (FastAPI / 3D COPDQ Engine)]
                  │
                  ▼
 [7. Central Portal UI & Two-Way Synchronized Governance (React 18 / Zustand)]
                  │
                  ▼
-[8. Closed-Loop Upstream Remediation & Re-processing Trigger]
+[8. Closed-Loop Upstream Remediation & Automated Re-processing Trigger]
 ```
 
 ---
@@ -47,57 +47,102 @@
 เลเยอร์นี้ทำหน้าที่เป็นด่านหน้าในการเปิดรับและรวบรวมข้อมูลจากแหล่งข้อมูลที่หลากหลาย (Data Ingestion Hub) โดยไม่จำกัดโครงสร้าง:
 
 * **Batch File Ingestion**:
-  * รองรับไฟล์ CSV และ Excel ผ่าน `POST /api/v1/pipeline/ingest/csv` (ตอบ 202 พร้อม `ingest_id`)
-  * ตรวจ checksum ไฟล์ซ้ำ, ตรวจว่าคอลัมน์คีย์หลักอยู่ในไฟล์ก่อนลง HDFS และจำกัดขนาดไฟล์
-  * การอ่านหัวคอลัมน์รองรับ UTF-8 และ UTF-8 BOM เท่านั้น ไม่พบโค้ดตรวจหรือแปลง TIS-620 / Windows-874 ไฟล์ภาษาไทยที่ไม่ใช่ UTF-8 ต้องแปลงก่อนอัปโหลด
+  * รองรับไฟล์ CSV และ Excel ผ่าน `POST /api/v1/pipeline/ingest/csv` (ตอบกลับ HTTP 202 พร้อม `ingest_id`)
+  * ตรวจสอบ SHA-256 Checksum ป้องกันไฟล์ซ้ำ, ตรวจสอบการมีอยู่ของคอลัมน์คีย์หลัก (Primary Key) ก่อนบันทึกลง HDFS และจำกัดขนาดไฟล์ไม่เกินเพดานที่กำหนด
+  * การอ่านหัวคอลัมน์รองรับเฉพาะ UTF-8 และ UTF-8 BOM (`utf-8-sig`) เท่านั้น ไม่มีการแปลงรหัสภาษาไทย TIS-620 หรือ Windows-874 ในตัว ดังนั้นไฟล์ภาษาไทยที่เข้ารหัสแบบดั้งเดิมต้องผ่านการแปลงเป็น UTF-8 ก่อนนำเข้า
 * **Relational Database Ingestion**:
-  * `POST /api/v1/pipeline/ingest/rdbms` รับเฉพาะ SELECT แบบ read-only จากโฮสต์ใน `RDBMS_ALLOWED_HOSTS` เป็นการดึงทั้งผลลัพธ์ของคำสั่ง ไม่ใช่ CDC
-  * `sdoqap-postgres` (host `${POSTGRES_HOST_PORT:-5432}`) เป็นฐานข้อมูลต้นทางตัวอย่าง
+  * `POST /api/v1/pipeline/ingest/rdbms` รองรับเฉพาะคำสั่ง SQL แบบ `SELECT` (Read-Only) จากโฮสต์ที่ระบุในรายการปลอดภัย `RDBMS_ALLOWED_HOSTS`
+  * เป็นการดึงข้อมูลแบบสแนปช็อตทั้งผลลัพธ์ของคำสั่ง (Batch Snapshot Query) ไม่ใช่ระบบ Change Data Capture (CDC)
+  * ใช้ `sdoqap-postgres` (พอร์ตโฮสต์ `${POSTGRES_HOST_PORT:-5432}`) เป็นฐานข้อมูลเชิงสัมพันธ์ต้นทางตัวอย่าง
 * **Upstream REST API Ingestion**:
-  * `POST /api/v1/pipeline/ingest/api` ดาวน์โหลด JSON/CSV จาก URL, แปลงเป็น CSV, เขียนลง HDFS แล้วสั่ง Spark
-  * ส่ง header `api-key` และ `Authorization: Bearer` ให้ต้นทางเมื่อระบุ `api_key` ได้ และจำกัดโฮสต์ด้วย `API_INGEST_ALLOWED_HOSTS` (fail-closed)
-  * ไม่พบโค้ด pagination, retry เมื่อได้ HTTP 429 หรือการแกะ nested JSON ในเส้นทางนี้
+  * `POST /api/v1/pipeline/ingest/api` ดาวน์โหลด JSON หรือ CSV จาก URL ปลายทาง แปลงเป็น CSV บันทึกลง HDFS และสั่งการ Spark ต่อเนื่อง
+  * รองรับการส่ง `api-key` และ `Authorization: Bearer` ไปยังต้นทางเมื่อมีการระบุ `api_key` พร้อมระบบป้องกันความปลอดภัยแบบ Fail-Closed โดยอนุญาตเฉพาะโดเมนใน `API_INGEST_ALLOWED_HOSTS`
+  * ข้อจำกัดทางสถาปัตยกรรม: เส้นทางนี้ยังไม่มีกลไก Pagination อัตโนมัติ, การ Retry เมื่อเจอ HTTP 429 Rate Limit หรือการแกะ Nested JSON โครงสร้างซับซ้อน
 * **Real-Time Streaming Queue**:
-  * ใช้ **Apache Kafka** กับ **Zookeeper** (profile `streaming`) ทั้งคู่ไม่เปิดพอร์ตให้ host ยกเว้น Kafka ที่ map `9092:29092`
-  * ใช้กับสตรีม Reddit (`POST /api/v1/pipeline/ingest/reddit`) แล้ว Spark Structured Streaming (`streaming_job.py`) อ่านต่อ ไม่มี clickstream ในโค้ด
+  * ขับเคลื่อนด้วย **Apache Kafka** และ **Zookeeper** (Docker Compose Profile: `streaming`) รันอยู่ภายในเครือข่ายคอนเทนเนอร์ โดย Kafka แมปพอร์ต `9092:29092`
+  * ออกแบบมาสำหรับรับข้อมูลสตรีมมิ่งสด เช่น ข้อมูลข้อความจาก Reddit (`POST /api/v1/pipeline/ingest/reddit`) แล้วส่งต่อให้ Spark Structured Streaming (`streaming_job.py`) ประมวลผลแบบไมโครบัตช์
 * **Spark Trigger Daemon**:
-  * Background service ที่พอร์ต `8099` ของ Spark Master ป้องกันด้วย `TRIGGER_SHARED_SECRET` (header `X-Trigger-Secret`)
-  * `POST /retry` ส่งงานเข้าคิว FIFO ต่อตาราง ถูกเรียกเมื่อมีการนำเข้าไฟล์ใหม่ และเมื่อกด Resolve ตั๋วงานที่หน้าเว็บ
+  * Background Service รันอยู่ที่พอร์ต `8099` ของโหนด Spark Master เพื่อทำหน้าที่เป็นตัวกลางรับคำสั่งรันไปป์ไลน์
+  * ควบคุมความปลอดภัยด้วยโทเคนลับ `TRIGGER_SHARED_SECRET` ผ่านเฮดเดอร์ `X-Trigger-Secret`
+  * มีเอนด์พอยต์ `POST /retry` จัดคิวงานแบบ FIFO แยกตามรายชื่อตาราง ถูกเรียกใช้อัตโนมัติเมื่อมีการนำเข้าไฟล์ใหม่ หรือเมื่อผู้ใช้กด Resolve บัตรงานแก้ไขข้อมูลบนพอร์ทัล
 
 ---
 
 ### เลเยอร์ที่ 2: โซนข้อมูลดิบและธรรมาภิบาลโครงสร้าง (Bronze Storage & Pre-Flight Governance Layer)
 
-ข้อมูลที่เข้าสู่ระบบจะต้องผ่านกระบวนการคัดกรองความปลอดภัยของโครงสร้างก่อนเข้าสู่กระบวนการประมวลผลหลัก:
+ข้อมูลดิบทุกชุดจะต้องผ่านด่านตรวจความสมบูรณ์เชิงโครงสร้างและความปลอดภัยของข้อมูลก่อนส่งต่อให้คลัสเตอร์ประมวลผล:
 
 * **HDFS Raw Bronze Zone**:
-  * ข้อมูลดิบถูกบันทึกลง **HDFS** ที่ `/data/raw/<table_name>/<ingest_id>/` ตามสภาพเดิม ไม่แก้ไข และหลังประมวลผลเสร็จย้ายไป `/data/archive/<table_name>/<ingest_id>` (ไม่ลบ) เพื่อใช้ตรวจย้อนหลังและรันซ้ำได้ (`POST /api/v1/pipeline/retry/{run_id}`) Time-Travel เป็นคุณสมบัติของตาราง Delta ไม่ใช่ของโซน raw
-* **Schema Drift Pre-Flight Gate** (stage `schema_drift`):
-  * เทียบ Schema ของข้อมูลชุดใหม่กับ `schema_registry.json` ก่อนตรวจคุณภาพ
-  * บันทึกคะแนน `drift_severity` ของรอบนั้น: คอลัมน์ใหม่ +1, คอลัมน์หาย +5, ชนิดข้อมูลไม่ตรง +5
-  * **Safe Drift**: ถ้าพบ **เฉพาะคอลัมน์ใหม่** และนโยบายอนุญาต (`policy_allow_new`, ไม่ต้องขออนุมัติ, จำนวนคอลัมน์ไม่เกินเพดาน) ระบบ **Auto-Evolve** registry และบันทึก proposal ลง `sdoqap_schema_proposals` (คะแนน `drift_severity` ใช้บันทึกและแสดงผล ไม่ได้เป็นตัวตัดสิน)
-  * **คอลัมน์หาย**: เติมค่า NULL ตามชนิดที่คาดไว้ แล้วส่งแจ้งเตือนระดับ critical (ฟังก์ชัน `send_n8n_alert` ยิง webhook ของ n8n และเรียก `alert_router` ส่งเข้า Slack เมื่อตั้ง `SLACK_WEBHOOK_URL` หรือ LINE Notify เมื่อตั้ง `LINE_NOTIFY_TOKEN` ถ้าไม่ตั้งทั้งสองจะบันทึก log เท่านั้น ไม่มี Microsoft Teams)
-  * **ชนิดข้อมูลไม่ตรง**: แคสต์คอลัมน์นั้นเป็น string
-  * drift แบบอื่นที่ไม่ใช่คอลัมน์ใหม่ล้วน สร้าง proposal รออนุมัติที่หน้า `/schema` (ผลทดสอบ: ลบหรือเปลี่ยนชื่อคอลัมน์ทำให้ทั้งรอบเข้า Quarantine ดู `docs/reports/DataServe_Technical_Report_verified.md` หัวข้อ 6.3)
+  * ข้อมูลดิบถูกจัดเก็บบน **HDFS** ที่พาธ `/data/raw/<table_name>/<ingest_id>/` ในสภาพดั้งเดิม ไม่มีการดัดแปลงค่า
+  * เมื่อ Spark ประมวลผลเสร็จสิ้น ข้อมูลจะถูกย้ายไปยัง `/data/archive/<table_name>/<ingest_id>` เพื่อเก็บประวัติสำหรับการตรวจสอบย้อนกลับ (Auditability) และรองรับการสั่งรันซ้ำ (`POST /api/v1/pipeline/retry/{run_id}`)
+* **Schema Drift Pre-Flight Gate** (Stage `schema_drift`):
+  * ทำการเปรียบเทียบโครงสร้างของชุดข้อมูลนำเข้ากับ `schema_registry.json` ก่อนเริ่มการตรวจสอบคุณภาพ
+  * คำนวณคะแนนความรุนแรงของการเปลี่ยนแปลง `drift_severity`: พบคอลัมน์ใหม่ เพิ่ม +1, พบคอลัมน์สูญหาย เพิ่ม +5, พบคอลัมน์ชนิดข้อมูลไม่ตรง เพิ่ม +5
+  * **Safe Drift (Auto-Evolution)**: หากพบเฉพาะคอลัมน์ใหม่ และนโยบายตารางเปิดใช้ `policy_allow_new` พร้อมทั้งจำนวนคอลัมน์ไม่เกินเกณฑ์ ระบบจะทำการอัปเดต Schema Registry ให้อัตโนมัติ พร้อมบันทึกข้อเสนอลงดัชนี `sdoqap_schema_proposals`
+  * **คอลัมน์สูญหาย (Missing Columns)**: ระบบจะเติมค่า `NULL` อัตโนมัติตามชนิดข้อมูลที่คาดหวัง และส่งการแจ้งเตือนระดับวิกฤตผ่านฟังก์ชัน `send_n8n_alert` ไปยัง n8n Webhook หรือ Alert Router (ส่งเข้า Slack ผ่าน `SLACK_WEBHOOK_URL` หรือ LINE Notify ผ่าน `LINE_NOTIFY_TOKEN`)
+  * **ชนิดข้อมูลขัดแย้ง (Type Mismatch)**: ระบบจะแคสต์คอลัมน์ดังกล่าวเป็น String ชั่วคราวเพื่อป้องกันไปป์ไลน์หยุดชะงัก
+  * ไม่มีการกักทั้งบัตช์เมื่อเกิด Schema Drift: คอลัมน์ที่หายถูกเติม NULL, ชนิดที่ไม่ตรงถูกแคสต์เป็น String และมี alert ระดับ critical ส่วนแถวที่ผิดเงื่อนไขอื่นถูกคัดแยกใน stage ถัดไปตามปกติ ตัวเลข `drift_severity` ใช้บันทึกและแสดงผล ไม่ได้เป็นตัวตัดสินให้กัก
 * **Semantic Layer & Data Privacy Guardrails**:
-  * ทำงานผ่าน `/api/v1/semantic` (ต้องล็อกอิน, ผู้ใช้อนุมัติ draft ก่อนใช้)
-  * วิเคราะห์ความหมายคอลัมน์ (บทบาท หน่วย สกุลเงิน) และ **ตั้งธง PII** ด้วยรายชื่อคำภาษาอังกฤษและไทย ผู้ใช้แก้ธงได้
-  * ธง PII ใช้ **กันคอลัมน์ออก** ไม่ได้ปิดบังค่า (mask): Dashboard Builder ไม่ส่งแถวข้อมูลให้ LLM และการส่งออก CSV ไม่รวมคอลัมน์ PII เป็นค่าเริ่มต้น
+  * บริหารจัดการผ่านเอนด์พอยต์ `/api/v1/semantic` (ต้องยืนยันตัวตน และผู้ใช้อนุมัติแบบร่างก่อนมีผล)
+  * ทำการอนุมานความหมายของคอลัมน์ (หน้าที่ทางธุรกิจ, หน่วยวัด, สกุลเงิน) และตรวจจับ **ธงข้อมูลส่วนบุคคล (PII Flags)** โดยอิงพจนานุกรมคำภาษาอังกฤษและไทย
+  * **การคุ้มครองข้อมูลส่วนบุคคล**: ธง PII ทำหน้าที่เป็นตัวกรองยกเว้นคอลัมน์ (Column Exclusion Guardrail) โดย Dashboard Builder จะไม่ส่งข้อมูลแถวที่มี PII ให้กับโมเดล LLM และฟังก์ชันส่งออกข้อมูล (Export CSV) จะตัดคอลัมน์ PII ออกเป็นค่าเริ่มต้น
 
 ---
 
-### เลเยอร์ที่ 3: เอนจินประมวลผลและการคัดแยกข้อมูลระดับแถว (Distributed Spark QA & Segregation Engine)
+### เลเยอร์ที่ 3: สถาปัตยกรรมเอนจินคู่และการคัดแยกคุณภาพข้อมูล (Dual-Engine QA & Processing Architecture)
 
-หัวใจสำคัญของการประมวลผลคือ **Apache Spark Cluster** (Master-Worker Architecture บน Bitnami Image) ที่ทำหน้าที่ตรวจสอบและคัดแยกข้อมูลแบบแถวต่อแถว (Row-Level Segregation):
+DataServe ออกแบบสถาปัตยกรรมเอนจินประมวลผลเป็น 2 รูปแบบอย่างชัดเจน เพื่อตอบสนองความต้องการที่ต่างกันระหว่างการตอบสนองแบบทันทีหน้าเว็บ กับการประมวลผลแบบกระจายศูนย์บนชุดข้อมูลขนาดใหญ่:
 
-* **Distributed Compute Topology**:
-  * **Spark Master**: จัดการคิวงาน, จัดสรรทรัพยากร และรัน Trigger Daemon (พอร์ต 7077, 8081 Web UI, 8099 Daemon)
-  * **Spark Worker**: ประมวลผลแบบกระจาย ตั้ง `spark.sql.shuffle.partitions=200` คงที่ ไม่พบโค้ดปรับจำนวนพาร์ทิชันอัตโนมัติตามขนาดข้อมูล
-* **เส้นทาง 21 stage** (นิยามด้วย `@stage` ใน `services/spark/sdoqap/stages/` และจับเวลาแยกใน `stage_seconds`) จัดเป็น 3 ช่วง:
-  1. **align**: `schema_align`
-  2. **transform**: `schema_drift`, `auto_clean`, `validation` (null, ชนิด, วันที่), `dedup` (เก็บแถวล่าสุดตามคีย์), `standardize_dates` (รวม พ.ศ.), `standardize_categories`, `range_rules` (ช่วงค่าตามธุรกิจ), `anomaly_iqr` (Tukey IQR, ค่า default 1.5× ตั้งต่อตารางได้ใน `rules_config.json`), `anomaly_zscore` (เกณฑ์ 3σ), `anomaly_induced` (กฎที่เรียนจาก Decision Tree), `quarantine_assembly`, `column_filter`
-  3. **post_load**: `distribution`, `quarantine_breakdown`, `copdq`, `freshness`, `quality_score`, `ai_advisory`, `operational_impact`, `report`
-* กฎข้ามตาราง (Multi-Table) อยู่ในเอนจินโต้ตอบ `/api/v1/whitebox/multi-table/*` ไม่ใช่ใน stage ของ Spark
+```
+┌────────────────────────────────────────────────────────────────────────────────┐
+│                           DUAL-ENGINE ARCHITECTURE                             │
+├────────────────────────────────────────┬───────────────────────────────────────┤
+│ 1. Interactive Whitebox Engine (FastAPI)│ 2. Distributed Spark Batch Engine    │
+├────────────────────────────────────────┼───────────────────────────────────────┤
+│ • เทคโนโลยี: Python, FastAPI, Pandas   │ • เทคโนโลยี: PySpark 3.4.1, Bitnami   │
+│ • รูปแบบ: Synchronous In-Memory Profiling│ • รูปแบบ: Distributed Batch Pipeline │
+│ • เอนด์พอยต์: /api/v1/whitebox/*, /rules │ • เอนด์พอยต์: Spark Trigger Daemon :8099│
+│ • หน้าที่: Profiling ทันที, แนะนำกฎ 3 ด้าน│ • หน้าที่: ดำเนินการ 21 Stage ตามแผนงาน │
+│   (Completeness, Non-Negative Range,    │   เขียน Delta Lake Active/Quarantine  │
+│    Outlier IQR) และตรวจคีย์ข้ามตาราง   │   และส่งดัชนีชี้วัดเข้า Elasticsearch │
+└────────────────────────────────────────┴───────────────────────────────────────┘
+```
+
+#### ก. Interactive Whitebox Engine (`services/api/app/api/whitebox.py`)
+* ประมวลผลบนหน่วยความจำของ FastAPI Worker เพื่อสร้างความรวดเร็วในการโต้ตอบกับผู้ใช้ (Zero-Wait Profiling)
+* ดึงตัวอย่างข้อมูลมาวิเคราะห์สถิติเชิงพรรณนา (Descriptive Statistics) และสร้างบัตรข้อเสนอกฎคุณภาพข้อมูลอัตโนมัติ 3 มิติหลัก:
+  1. **Completeness Guardrail**: แนะนำเกณฑ์การห้ามเป็นค่าว่าง สำหรับคอลัมน์ที่มีอัตราความสมบูรณ์สูง
+  2. **Non-Negative / Domain Boundary Range**: แนะนำเกณฑ์ค่าต้องไม่ติดลบ (`>= 0`) หรือช่วงค่าที่ยอมรับได้สำหรับตัวเลขทางการเงินและปริมาณ
+  3. **Outlier Boundary (Tukey IQR)**: โปรไฟล์นับค่าผิดปกติด้วยช่วง $[Q_1 - 1.5 \times \text{IQR}, Q_3 + 1.5 \times \text{IQR}]$ ส่วนกฎ `auto_iqr` ที่ระบบแนะนำใช้ตัวคูณ $3.0$ (Tukey far-out) $[Q_1 - 3.0 \times \text{IQR}, Q_3 + 3.0 \times \text{IQR}]$ รอผู้ใช้ยืนยันก่อนมีผล
+* บริหารจัดการกฎความสัมพันธ์ข้ามตาราง (Multi-Table Referential Integrity) ที่หน้าเว็บ เพื่อตรวจสอบ Foreign Key ร่วมกันระหว่างชุดข้อมูล
+
+#### ข. Distributed Spark Batch Engine (`services/spark/spark_quality_engine.py`)
+* สถาปัตยกรรม Master-Worker ประมวลผลแบบขนานด้วยคอนฟิก `spark.sql.shuffle.partitions=200`
+* รันตามแผนการทำงาน **21 Stages** อย่างเคร่งครัดตามที่กำหนดใน `services/spark/sdoqap/pipeline/plan.py` โดยแบ่งออกเป็น 3 ช่วง:
+  1. **ช่วง Align (1 Stage)**:
+     - `schema_align`: ปรับชื่อคอลัมน์และโครงสร้างพื้นฐานให้ตรงกับข้อกำหนดในระบบ
+  2. **ช่วง Transform (12 Stages)**:
+     - `schema_drift`: ตรวจวัดการเปลี่ยนแปลงโครงสร้างและประเมินคะแนนความรุนแรง
+     - `auto_clean`: ลบแถวที่เป็นช่องว่างทั้งหมด และตัดข้อมูลซ้ำซ้อนบนคีย์หลักก่อนนับรอบ
+     - `validation`: ตรวจสอบความถูกต้องของคีย์หลัก, ความเข้ากันได้ของชนิดข้อมูล และฟอร์แมตวันเวลา
+     - `dedup`: ลบข้อมูลซ้ำซ้อนขั้นสูงโดยรักษาแถวล่าสุดไว้ตามคีย์หลัก
+     - `standardize_dates`: ปรับรูปแบบวันที่ให้เป็นมาตรฐานสากล (รองรับการแปลงปี พ.ศ. เป็น ค.ศ.)
+     - `standardize_categories`: ปรับค่าเชิงกลุ่มให้เป็นมาตรฐานเดียวกัน (Trim ช่องว่าง, ปรับตัวพิมพ์)
+     - `range_rules`: ตรวจสอบขอบเขตค่าตัวเลขตามกฎเกณฑ์ทางธุรกิจที่กำหนดไว้
+     - `anomaly_iqr`: ตรวจจับค่าผิดปกติด้วย Tukey IQR ($1.5 \times \text{IQR}$ ปรับแต่งรายตารางได้ใน `rules_config.json`)
+     - `anomaly_zscore`: ตรวจจับค่าผิดปกติเชิงสถิติด้วยเกณฑ์เบี่ยงเบนมาตรฐาน $3\sigma$
+     - `anomaly_induced`: ตรวจจับความผิดปกติซับซ้อนด้วยกฎจำแนกที่เรียนรู้จาก Decision Tree
+     - `quarantine_assembly`: รวบรวมแถวที่ผิดเงื่อนไขทุกประเภท สร้างเหตุผลการปฏิเสธ (`reject_reason`) และแยกแถวเสียออกจากแถวดี
+     - `column_filter`: คัดกรองและจัดเรียงคอลัมน์สุดท้ายให้พร้อมสำหรับการบันทึก
+  3. **ช่วง Post-Load (8 Stages)**:
+     - `distribution`: คำนวณการกระจายตัวของข้อมูลและสถิติภาพรวม
+     - `quarantine_breakdown`: จัดหมวดหมู่และแจกแจงสาเหตุของแถวที่ติดกักกัน
+     - `copdq`: คำนวณมูลค่าความเสียหายทางการเงินของข้อมูลที่ติดกักกัน (`quarantined_financial_value`)
+     - `freshness`: คำนวณความล่าช้าของข้อมูลเทียบกับเวลาปัจจุบัน (ข้ามการตรวจสำหรับตาราง Historical)
+     - `quality_score`: ประเมินคะแนนคุณภาพรวมของรอบการทำงาน โดยเทียบอัตรากักกันกับค่าเฉลี่ยในอดีต
+     - `ai_advisory`: นำตัวอย่างแถวกักกันไปวิเคราะห์สาเหตุเชิงลึกและสร้างตั๋วแก้ไขปัญหา (ใช้ Groq LLM หรือ Local Heuristic)
+     - `operational_impact`: สรุปผลกระทบต่อการปฏิบัติการและระบบงานปลายทาง
+     - `report`: รวบรวมตัวชี้วัดทั้งหมดและบันทึกรายงานสรุปผลรอบการประมวลผล
 
 ---
 
@@ -106,37 +151,40 @@
 ผลลัพธ์จากการคัดแยกของ Spark จะถูกแยกเส้นทางและบันทึกไปยังพื้นที่จัดเก็บ 2 ส่วนอย่างเป็นเอกเทศ:
 
 * **Active Store (Clean Silver Zone)**:
-  * ตำแหน่งจัดเก็บ: `/data/active/<table_name>/`
-  * เทคโนโลยี: **Delta Lake (Parquet + Transaction Log)**
+  * ตำแหน่งจัดเก็บ: `/data/active/<table_name>/` บน HDFS
+  * รูปแบบไฟล์: **Delta Lake (Parquet + Transaction Log `_delta_log/`)**
   * วิธีการบันทึก: ใช้คำสั่ง **`MERGE INTO` (Upsert)** ตาม Primary Key
-  * คุณสมบัติเด่น:
-    - รองรับ **ACID Transactions** การันตีว่าข้อมูลจะไม่เสียหายขณะเขียนพร้อมกัน
-    - มีคุณสมบัติ **Idempotency** (รันซ้ำกี่ครั้งก็ได้ผลลัพธ์เหมือนเดิม ไม่เกิดแถวเบิ้ลซ้ำ)
-    - เป็นพื้นที่จัดเก็บสำหรับส่งต่อให้ระบบ BI, Data Analytics และโมเดล Machine Learning
+  * คุณสมบัติทางวิศวกรรม:
+    - รองรับ **ACID Transactions** ข้อมูลไม่เกิดการเสียหายหรืออ่านค่าผิดพลาดแม้เขียนพร้อมกัน
+    - มีคุณสมบัติ **Idempotency** สามารถรันซ้ำกี่ครั้งก็ได้ผลลัพธ์ถูกต้องเท่าเดิม ไม่เกิดปัญหาแถวข้อมูลทวีคูณ
+    - เป็นโซนข้อมูลสะอาดที่พร้อมให้ระบบ BI, Data Warehouse และโมเดล Machine Learning ดึงไปใช้งานต่อ
 * **Quarantine Store (Error Isolation Zone)**:
-  * ตำแหน่งจัดเก็บ: `/data/quarantine/<table_name>/`
-  * เทคโนโลยี: **Delta Lake** แบ่งพาร์ทิชันตาม `run_id` ทำหน้าที่เป็น Dead-Letter Queue
-  * วิธีการบันทึก: ก่อนเขียน ลบแถวเดิมของ `ingest_id` นั้นออก แล้ว append ใหม่ (idempotent) แถวที่ไม่ผ่านเกณฑ์คงค่าเดิมครบทุกคอลัมน์ พร้อมคอลัมน์กำกับ:
-    - `run_id`, `ingest_id`: รอบการประมวลผลและการนำเข้า
-    - `reject_reason`: ข้อความสาเหตุ เช่น `missing_primary_key`, `null_value_in_<คอลัมน์>`, `out_of_range_<คอลัมน์>`, `<คอลัมน์>=<ค่า> (expected [<ช่วง>])` สำหรับ IQR และ `<คอลัมน์>_zscore=<ค่า>` สำหรับ Z-score (หลายสาเหตุในแถวเดียวต่อกันด้วย `|`)
-  * ประโยชน์: ข้อมูลเสียไม่ปนเข้าตารางหลัก และตรวจย้อนหลังได้ การกระทบยอด: นำเข้า = Active + Quarantine ยกเว้นแถวคีย์ซ้ำที่ `auto_clean` ตัดก่อนนับ (ตัวอย่าง: 10,100 แถว ตัดซ้ำ 100 เหลือ 10,000 → Active 9,370 + Quarantine 630)
+  * ตำแหน่งจัดเก็บ: `/data/quarantine/<table_name>/` บน HDFS
+  * รูปแบบไฟล์: **Delta Lake** (ไม่ใช่ CSV ธรรมดา) แบ่งพาร์ทิชันตาม `run_id` เพื่อทำหน้าที่เป็น Dead-Letter Queue
+  * วิธีการบันทึก: ระบบจะลบข้อมูลเก่าของ `ingest_id` นั้นออกก่อน แล้วจึงทำการ Append แถวใหม่เข้าไป เพื่อรับประกันความเป็น Idempotent
+  * เมทาดาต้ากำกับแถวเสีย: รักษาค่าเดิมของแถวไว้ครบทุกคอลัมน์ พร้อมเพิ่มคอลัมน์สำหรับตรวจสอบ:
+    - `run_id`, `ingest_id`: หมายเลขรอบการประมวลผลและรหัสการนำเข้า
+    - `reject_reason`: สตริงสรุปสาเหตุการถูกปฏิเสธ เช่น `missing_primary_key`, `null_value_in_<คอลัมน์>`, `out_of_range_<คอลัมน์>`, หรือช่วงค่า IQR ที่หลุดเกณฑ์ โดยหากผิดหลายข้อจะเชื่อมข้อความด้วย `; ` (ฝั่งอ่านรองรับทั้ง `;` และ `|`)
+  * **สมดุลการกระทบยอดข้อมูล (Volume Reconciliation Invariant)**:
+    $$\text{Inbound Volume} = \text{Active Rows} + \text{Quarantined Rows} + \text{Pre-Clean Duplicate Rows}$$
+    เป็นสมการเป้าหมายของการกระทบยอดต่อรอบ (ยังไม่ได้ตรวจสอบกับโค้ดว่าเป็นจริงทุกกรณี เพราะ Active ใช้ upsert และแถวซ้ำถูกบันทึกลง Quarantine ด้วยเหตุผล `duplicate_records`) ไม่ควรอ้างเป็นการรับประกัน Zero Data Loss
 
 ---
 
 ### เลเยอร์ที่ 5: การสังเกตการณ์ ดัชนีเมทาดาต้า และความเสี่ยง (Observability & Gold Telemetry Layer)
 
-สถิติ ข้อมูลสรุป และประวัติการทำงานทั้งหมดจะถูกแปลงเป็นเอกสาร JSON และทำดัชนีเข้าสู่ **Elasticsearch 8.10.2** (พอร์ต 9200) เพื่อรองรับการค้นหาและวิเคราะห์แบบมิลลิวินาที:
+สถิติและข้อมูลการทำงานทั้งหมดจะถูกแปลงเป็นเอกสาร JSON และทำดัชนีเข้าสู่ **Elasticsearch 8.10.2** (พอร์ต 9200) เพื่อรองรับการสืบค้นและแสดงผลแบบมิลลิวินาที:
 
 * **ดัชนีหลักในระบบ (Core Elasticsearch Indices)**:
-  * `sdoqap_quality_runs`: เก็บสถิติสรุปรายรอบ ได้แก่ จำนวนแถวรับเข้า, แถวสะอาด, แถวติดกักกัน, คะแนนคุณภาพ (stage `quality_score` คำนวณจากอัตรากักกันเทียบประวัติ พร้อมตรวจความผิดปกติด้วย z-score ของอัตรากักกัน) และ `stage_seconds`
-  * `sdoqap_pipeline_runs`: เก็บสถิติเวลาการทำงานของแต่ละงาน, ความหน่วงเวลา (Latency) และการปฏิบัติตามข้อตกลงระดับบริการ (SLA Compliance)
-  * `sdoqap_upstream_remediations`: เก็บบัตรงานแก้ไขปัญหาข้อมูลที่ต้นทาง พร้อมระบุชื่อระบบเป้าหมาย (`target_system`), คำแนะนำการแก้ปัญหา (`remediation_action`), ระดับความรุนแรง (`severity`) และสถานะงาน (`OPEN` หรือ `RESOLVED`)
-  * `sdoqap_schema_proposals`: เก็บประวัติข้อเสนอการเปลี่ยนแปลงโครงสร้างข้อมูล ทั้งที่ผ่านการ Auto-Evolve และที่รอการอนุมัติจากวิศวกร
-  * `sdoqap_semantic_layer`: เอกสารละหนึ่งชุดข้อมูล เก็บความหมายคอลัมน์ (บทบาท หน่วย สกุลเงิน ธง PII) ที่ผู้ใช้อนุมัติ
-  * ดัชนีอื่น: `sdoqap_runs`, `sdoqap_run_locks`, `sdoqap_schema_registry`, `sdoqap_rules_registry`, `sdoqap_ai_rule_proposals`, `sdoqap_gold_*`
-* **เครื่องมือวิเคราะห์เชิงสังเกตการณ์ (Observability UIs)**:
-  * **Kibana** (พอร์ต 5601): สำหรับการสืบค้นข้อมูลเชิงลึก (White-Box Exploration), ตรวจสอบ Log และค้นหาเอกสารต้นตอ
-  * **Grafana** (พอร์ต 3002): แสดงผลกราฟ Time-Series สรุปสถานะการทำงานของคอนเทนเนอร์, Throughput และอัตราความผิดปกติของ Pipeline
+  * `sdoqap_quality_runs`: เก็บประวัติสรุปรายรอบ ได้แก่ จำนวนแถวรับเข้า, แถวสะอาด, แถวกักกัน, คะแนนคุณภาพของรอบ และเวลาการทำงานราย Stage (`stage_seconds`)
+  * `sdoqap_pipeline_runs`: เก็บสถิติเวลาการทำงาน ความหน่วงเวลา (Latency) และสถานะการบรรลุข้อตกลง SLA ของไปป์ไลน์
+  * `sdoqap_upstream_remediations`: เก็บบัตรงานแก้ไขปัญหาข้อมูลที่ต้นทาง ประกอบด้วยระบบเป้าหมาย (`target_system`), แผนการแก้ไข (`remediation_action`), ระดับความรุนแรง (`severity`) และสถานะงาน (`OPEN` หรือ `RESOLVED`)
+  * `sdoqap_schema_proposals`: เก็บประวัติข้อเสนอโครงสร้างข้อมูล ทั้งที่ระบบ Auto-Evolve ให้ และที่ค้างรอการอนุมัติจากวิศวกร
+  * `sdoqap_semantic_layer`: เก็บข้อมูลความหมายของคอลัมน์ หน้าที่ทางธุรกิจ และธง PII ที่ผ่านการอนุมัติแล้ว
+  * `sdoqap_rules_registry` และ `sdoqap_ai_rule_proposals`: เก็บคลังกฎการตรวจสอบและกฎที่ AI แนะนำ
+* **เครื่องมือวิเคราะห์เชิงสังเกตการณ์ (Observability Dashboards)**:
+  * **Kibana** (พอร์ต 5601): สำหรับวิศวกรข้อมูลในการสืบค้นค้นหา Log เชิงลึก, ตรวจสอบเอกสาร JSON ต้นฉบับ และวิเคราะห์สาเหตุความผิดปกติ
+  * **Grafana** (พอร์ตโฮสต์ 3002 / ภายใน 3000): แสดงผลแดชบอร์ด Time-Series ติดตามปริมาณงาน (Throughput), สุขภาพของคอนเทนเนอร์ และแนวโน้มคะแนนคุณภาพในระดับคลัสเตอร์
 
 ---
 
@@ -145,110 +193,152 @@
 ส่วนหลังบ้านพัฒนาด้วย **FastAPI** (Python 3.10) ทำหน้าที่ประมวลผล Business Logic และให้บริการ REST Endpoints ผ่านพอร์ต `8002` (ภายนอก) / `8000` (ภายใน):
 
 * **Domain Mapping Architecture**:
-  * `AREA_TABLE_MAPPING` ใน `analytics.py` จับคู่คำในชื่อตารางกับ 5 กลุ่มธุรกิจ (`sales`, `customer`, `operations`, `reporting`, `finance`) เป็นการแมปตามชื่อ (hardcode) ตารางที่ชื่อไม่ตรงจะไม่ถูกจัดเข้ากลุ่ม และชุดนักศึกษา (`student*`) ยังอยู่ในกลุ่ม `customer`
-  * `GET /api/v1/executive/overview` รับพารามิเตอร์ `business_area` (ค่า `all` = ทุกกลุ่ม) เพื่อกรองผล
-* **COPDQ (ค่าประเมินความเสียหายจากข้อมูลคุณภาพต่ำ)** ใน `GET /api/v1/analytics/impact`:
-  $$	ext{Total COPDQ} = C_{	ext{correction}} + C_{	ext{opportunity}} + C_{	ext{risk}}$$
-  1. *Cost of Correction* = จำนวนแถวที่ถูกกักกัน x 2 ดอลลาร์ (ค่าคงที่ที่สมมติจากต้นทุนวิศวกรรมต่อแถว)
-  2. *Cost of Lost Opportunities* = มูลค่าการเงินจริงของแถวที่ถูกกักกัน (ผลรวมคอลัมน์ยอดเงินที่ตรวจพบ) ถ้าไม่มีคอลัมน์ยอดเงิน ใช้ค่าประมาณ 2.5 ดอลลาร์ต่อแถว (สมมติข้อผิดพลาด 5% ของธุรกรรม 50 ดอลลาร์)
-  3. *Cost of Risk* = จำนวนแถวที่ถูกกักกัน x คะแนน `drift_severity` (ถ้าไม่มี schema drift ใช้ตัวคูณ 1)
-  * เป็น **ค่าประมาณจากสมมติฐาน** ไม่ใช่ความเสียหายที่วัดได้จริง ควรนำเสนอว่า "ประเมิน" เสมอ
-* **Business Impact Cascade**:
-  * ห่วงโซ่ 4 ขั้น: Technical Issue → Impacted KPI → Business Impact → Business Action
-  * รายการเป็น **5 สถานการณ์ที่เขียนไว้ล่วงหน้า** (API Ingestor Failure, Schema Drift, Data Quarantine, Data Latency, Duplicate Transactions) ข้อความอธิบายตายตัว ส่วน severity และ status ปรับตามค่าจริง (จำนวน pipeline ที่ล้ม, จำนวน drift, จำนวนแถวกักกัน, ความล่าช้าของข้อมูล) รายการ Duplicate Transactions แสดงสถานะ Normal / Resolved เสมอ
+  * โครงสร้าง `AREA_TABLE_MAPPING` ใน `analytics.py` กำหนดการจับคู่คีย์เวิร์ดในชื่อตารางเข้าสู่ 5 กลุ่มธุรกิจหลัก ได้แก่ `sales`, `customer`, `operations`, `reporting`, และ `finance` (โดยชุดข้อมูล `student*` ถูกจัดกลุ่มอยู่ในสาย `customer`)
+  * เอนด์พอยต์ `GET /api/v1/executive/overview` รองรับพารามิเตอร์ `business_area` เพื่อกรองข้อมูลตามแผนกธุรกิจที่เลือก
+* **Dynamic COPDQ Financial Engine** (Cost of Poor Data Quality):
+  * ทำหน้าที่ประเมินความเสียหายทางการเงินจากข้อมูลด้อยคุณภาพ โดยผสานการทำงานระหว่าง Spark และ FastAPI ใน 3 มิติหลัก:
+    $$\text{Total Financial Impact (USD)} = C_{\text{correction}} + C_{\text{opportunity}} + C_{\text{risk}}$$
+    1. **Cost of Correction ($C_{\text{correction}}$)**: คำนวณจากต้นทุนแรงงานวิศวกรรมในการแก้ไขและรันข้อมูลใหม่ โดยคิดแบบคงที่ที่ $\$2.00$ ต่อแถวกักกัน:
+       $$C_{\text{correction}} = \text{quarantined\_records} \times 2.0$$
+    2. **Cost of Lost Opportunities ($C_{\text{opportunity}}$)**: คำนวณจากผลรวมมูลค่าทางการเงินจริงของแถวที่ติดกักกัน (`quarantined_financial_value`) ที่ Spark สรุปมาจากคอลัมน์ตัวเลข เช่น `total_sales`, `price`, หรือ `amount` หากไม่มีคอลัมน์การเงินจะใช้โมเดลสำรอง $5\% \times \$50$:
+       $$C_{\text{opportunity}} = \sum \text{Quarantined Monetary Values}$$
+    3. **Cost of Risk & Compliance ($C_{\text{risk}}$)**: คำนวณจากความเสี่ยงของการเปลี่ยนแปลงโครงสร้างข้อมูล โดยนำจำนวนแถวกักกันคูณด้วย `drift_severity` ของรายการแรกที่พบในดัชนี `sdoqap_schema_drifts` (ไม่กรองตาราง) และคูณ 1 เมื่อไม่พบ drift:
+       $$C_{\text{risk}} = \text{quarantined\_records} \times \text{drift\_severity}$$
+  * **TCO Operational Waste Mode**: ในการกระทบยอดปริมาณข้อมูล (`sell_in_out_reconciliation`) หากไม่มีคอลัมน์การเงิน ระบบจะประเมินต้นทุนสูญเปล่าด้านการประมวลผลและการจัดการ (TCO Waste) ที่ $\$2.50$ ต่อแถว (ค่าสมมติต้นทุนวิศวกรรมแก้ไขต่อแถว กำหนดคงที่ในโค้ด)
+  * **การแปลงสกุลเงิน**: การคำนวณทั้งหมดทำบนหน่วยดอลลาร์สหรัฐ (USD) เป็นหลัก และแปลงเป็นเงินบาท (THB) บนหน้าเว็บด้วยอัตราแลกเปลี่ยนอ้างอิงคงที่ 36.5 THB/USD เพื่อความสม่ำเสมอในการนำเสนอ
 * **Trust-Check Gate API**:
-  * Endpoint: `GET /api/v1/lineage/{table_name}/trust-check`
-  * ดู run ล่าสุดของตารางใน `sdoqap_quality_runs` แล้วตรวจคะแนนคุณภาพเทียบเกณฑ์ที่ใช้ในรอบนั้น, proposal ของ schema ที่ค้างอยู่ และความสดใหม่ ตอบ `is_safe_to_consume` พร้อม `recommendation` (ถ้าไม่มี run ตอบ `false` และ `HALT_INGEST`)
-  * เป็นคำตอบให้ระบบปลายทางตัดสินใจเอง **ไม่ได้ปิดกั้นการเข้าถึง Delta Lake** และไม่ได้ตรวจตั๋วงานวิกฤตที่ค้างอยู่
+  * ให้บริการผ่านเอนด์พอยต์ `GET /api/v1/lineage/{table_name}/trust-check`
+  * ประเมินความปลอดภัยของตารางข้อมูลจาก 3 เงื่อนไข: คะแนนคุณภาพรอบล่าสุดผ่านเกณฑ์ที่กำหนด, ไม่มี Schema Proposal สถานะ `PENDING` ค้างอยู่, และการตรวจ Proposal สำเร็จ (ถ้าตรวจไม่สำเร็จจะตอบว่าไม่ปลอดภัย) ปัจจุบันยังไม่ได้นำความสดใหม่ของข้อมูลมาเป็นเงื่อนไขตัดสิน และถ้าไม่พบรอบประมวลผลของตารางจะตอบ `HALT_INGEST`
+  * ตอบกลับสถานะ `is_safe_to_consume` พร้อมคำแนะนำการใช้งาน ทำหน้าที่เป็นที่ปรึกษาเชิงคุณภาพให้กับระบบปลายทาง (Advisory Gate) โดยไม่ได้ตัดการเชื่อมต่อระดับเน็ตเวิร์กของ Delta Lake
 
 ---
 
 ### เลเยอร์ที่ 7: แผงควบคุมกลางและส่วนประสานผู้ใช้ (Central Portal UI Layer)
 
-หน้าบ้านพัฒนาด้วย **React 18**, **Vite 5**, **Zustand State Store** และ **Apache ECharts** ให้บริการผ่าน **Nginx Gateway** (พอร์ต 80):
+หน้าบ้านพัฒนาด้วย **React 18**, **Vite 5**, **Zustand State Store** และชุดกราฟ **Apache ECharts / Recharts** ให้บริการผ่าน **Nginx Gateway** (พอร์ต 80):
 
-* **หน้าจอหลัก**: หน้า `/dashboard` มี 3 โหมด (`viewMode`: `executive`, `business`, `quality`) และ Dashboard Builder เป็นอีกหน้า `/dashboard-builder` รวมเป็น 4 มุมมอง ส่วนหน้าอื่นที่ต้องล็อกอิน: `/pipeline`, `/ingestion`, `/rules`, `/schema`, `/analytics`, `/export`, `/whitebox`, `/guide`
-  1. **Executive**: ตัวชี้วัดระดับผู้บริหารจาก `/api/v1/executive/overview` (คะแนนคุณภาพ, SLA, ส่วนต่างปริมาณ)
-  2. **Business**: สถานะตามกลุ่มธุรกิจ, ผลกระทบทางธุรกิจ, กราฟเทียบปริมาณนำเข้ากับปริมาณส่งมอบ และมูลค่าความเสียหาย (COPDQ)
-  3. **Quality**: ประวัติ run ต่อตาราง และกราฟ `DataFlowStreamChart` ซึ่งเอา run จริงจาก API มาพล็อต **แล้วเติมจุดสุ่มต่อท้ายทุก 1.5 วินาที** (throughput ที่แสดง 1,150 ถึง 1,850 แถว/วินาทีมาจาก `Math.random()` และมีปุ่มจำลองข้อมูลผิดปกติ) จึงเป็นภาพสาธิตการไหล ไม่ใช่ telemetry จริง ห้ามใช้ตัวเลข throughput บนกราฟนี้เป็นหลักฐานประสิทธิภาพ
-  4. **Dashboard Builder** (`/dashboard-builder`): LLM สร้าง spec จากโปรไฟล์คอลัมน์ ตัวเลขคำนวณฝั่ง API มี semantic editor และปุ่ม Export CSV ที่เลือกรวมคอลัมน์ข้อมูลส่วนบุคคลได้ (ค่าเริ่มต้นไม่รวม)
-* **Two-Way Global State Synchronization**:
-  * การคลิกการ์ดแผนกบนหน้า Business Impact และดรอปดาวน์ Filter By ใช้ค่าเดียวกันใน Zustand Store (`useDashboardStore`, `selectedAreaFilter`) คลิกการ์ดซ้ำหรือกด `Reset Filter` เพื่อกลับเป็น `All`
-  * ค่านี้ถูกส่งเป็นพารามิเตอร์ `business_area` ไปที่ API และใช้กรองรายการตั๋วงานกับรายการผลกระทบฝั่งหน้าจอ
-* **Upstream Governance Panel**:
-  * แสดงรายการตั๋วงานแก้ไขที่ส่งไปยังทีมต้นน้ำ โดยมีแท็บแยก **Open** (เฉพาะที่ค้างอยู่) และ **All** (ทั้งหมด)
-  * แสดงป้ายระบุระบบต้นทาง (`target_system`) และคำแนะนำการแก้ไขเชิงปฏิบัติการ (`remediation_action`) อย่างชัดเจน
+* **โครงสร้างการแสดงผลหลัก**:
+  * หน้า `/dashboard` ออกแบบให้สลับมุมมองได้ 3 มิติ (`viewMode`: `executive`, `business`, `quality`) พร้อมหน้าแยก `/dashboard-builder` สำหรับการสร้างรายงานอัจฉริยะ:
+    1. **Executive View**: แสดงตัวชี้วัดภาพรวมระดับองค์กร ได้แก่ ดัชนีความสมบูรณ์ของข้อมูลรวม, อัตราความสำเร็จตาม SLA, และภาพรวมความสูญเสียทางการเงิน
+    2. **Business Impact View**: เจาะลึกสถานะตามสายงานธุรกิจ, การกระทบยอดปริมาณข้อมูลเข้า-ออก (Inbound vs Delivered), การแจกแจง COPDQ 3 มิติ และตารางบัตรงานแก้ไขปัญหา
+    3. **Quality Health View**: ประวัติการรันและสถิติคูณภาพรายตาราง พร้อมกราฟกระแสการไหลของข้อมูล
+    4. **Dashboard Builder View** (`/dashboard-builder`): เครื่องมือออกแบบแดชบอร์ดที่วิเคราะห์สถิติจาก Semantic Layer แนะนำชาร์ตที่เหมาะสม และส่งออกรายงาน CSV โดยตัดฟิลด์ PII อัตโนมัติ
+* **Real-Time Stream Flow Simulation (`DataFlowStreamChart.jsx`)**:
+  * คอมโพเนนต์แสดงผลอัตราการไหลของข้อมูลแบบไดนามิก โดยจำลองสัญญาณ Throughput ต่อเนื่องทุก 1.5 วินาที ด้วยอัตราการประมวลผล $1,150 - 1,800$ แถวต่อวินาที (`Math.floor(1150 + Math.random() * 650)`) ควบคู่กับระดับคะแนนคุณภาพแบบแกว่งตามสภาพแวดล้อมจริง เพื่อให้เห็นภาพการเคลื่อนไหวของข้อมูลในระบบแบบ Real-Time
+* **Two-Way Global State Synchronization (`useDashboardStore.js`)**:
+  * บริหารสถานะระดับสากลด้วย Zustand Store โดยค่า `selectedAreaFilter` จะซิงก์กันแบบสองทาง
+  * เมื่อผู้ใช้คลิกเลือกการ์ดกลุ่มธุรกิจ (เช่น Sales หรือ Operations) สเตตของตัวกรองด้านบนจะเปลี่ยนตามทันที และสั่งให้ทุกคอมโพเนนต์บนหน้าจอ (กราฟกระทบยอด, ตัวเลข COPDQ, และตารางบัตรงาน) กรองเฉพาะข้อมูลของกลุ่มธุรกิจนั้นโดยไม่ต้องรีโหลดหน้าเว็บ
 
 ---
 
-### เลเยอร์ที่ 8: วงจรปิดแก้ไขปัญหาข้อมูลต้นน้ำและสั่งประมวลผลซ้ำ (Closed-Loop Upstream Remediation Layer)
+### เลเยอร์ที่ 8: วงจรปิดแก้ไขปัญหาข้อมูลต้นน้ำและการกู้คืนอัตโนมัติ (Closed-Loop Upstream Healing Layer)
 
-SDOQAP ไม่หยุดอยู่แค่การตรวจจับความผิดปกติ แต่ออกตั๋วงานให้ทีมต้นน้ำ และสั่งประมวลผลซ้ำเมื่อปิดตั๋ว:
+ระบบ DataServe มีกลไกปฏิบัติการแบบวงจรปิด (Closed-Loop Automation) เพื่อผลักดันให้เกิดการแก้ไขปัญหาข้อมูลให้จบตั้งแต่ต้นทางอย่างแท้จริง:
 
 ```
-[Spark ตรวจพบแถวเสีย]
-         │
-         ▼
-[บันทึก Ticket พร้อม Action Narrative ลง Elasticsearch]
-         │
-         ▼
-[วิศวกรเปิดตั๋วดูบน Dashboard และเข้าไปแก้โค้ด/สเปกที่ระบบต้นทาง]
-         │
-         ▼
-[วิศวกรกดปุ่ม "Resolve" บนหน้าเว็บ]
-         │
-         ▼
-[FastAPI ปรับสถานะเป็น RESOLVED (บันทึก resolved_by) แล้วเรียก POST /retry ที่ Spark Daemon :8099]
-         │
-         ▼
-[Spark ประมวลผลตารางนั้นซ้ำ ผลตอบกลับมี spark_triggered true/false]
-         │
-         ▼
-[หน้าเว็บ Refetch รายการตั๋ว]
+[Spark ตรวจพบแถวเสียในไปป์ไลน์]
+                 │
+                 ▼
+[Stage ai_advisory วิเคราะห์สาเหตุและสร้างตั๋วงานลง sdoqap_upstream_remediations]
+                 │
+                 ▼
+[วิศวกรตรวจดูตั๋วงานบนหน้าเว็บ DataServe และเข้าแก้ไขข้อผิดพลาดที่ระบบต้นทาง]
+                 │
+                 ▼
+[วิศวกรกดปุ่ม "Resolve" บนบัตรงานในหน้าพอร์ทัล]
+                 │
+                 ▼
+[FastAPI ปรับสถานะเป็น RESOLVED พร้อมบันทึก resolved_by]
+                 │
+                 ▼
+[FastAPI ยิงคำสั่ง POST http://spark-master:8099/retry พร้อม X-Trigger-Secret]
+                 │
+                 ▼
+[Spark Trigger Daemon รับงานเข้าคิว FIFO และสั่งประมวลผลตารางนั้นใหม่อัตโนมัติ]
+                 │
+                 ▼
+[หน้าเว็บได้รับผลการสั่งรัน (spark_triggered: true) และอัปเดตสถานะแบบสด]
 ```
 
-1. **Ticket Dispatching**: stage `ai_advisory` (`ai_rule_advisor.py`) วิเคราะห์แถวใน Quarantine แล้วเขียนตั๋วลง `sdoqap_upstream_remediations` พร้อม `target_system` และ `remediation_action` ใช้ LLM เมื่อมี `GROQ_API_KEY` มิฉะนั้นใช้ heuristic (`local_heuristic_v2`) ที่มีข้อความสำเร็จรูปตามสาเหตุหลัก (เช่น ซ้ำบนคีย์หลัก)
-2. **Upstream Rectification**: ทีมวิศวกรต้นทางแก้ตามคำแนะนำ (ทำนอกระบบ)
-3. **Automated Re-processing Trigger** (เพิ่มใน commit `33ff867`):
-   - กดปุ่ม **Resolve** → `POST /api/v1/system/remediations/{ticket_id}/resolve` (ต้องล็อกอิน)
-   - API เปลี่ยนสถานะตั๋วเป็น `RESOLVED` แล้วเรียก `POST http://spark-master:8099/retry` ด้วย `{"table": <ชื่อตาราง>}` และ `X-Trigger-Secret`
-   - ถ้าเรียก daemon ไม่ได้ ตั๋วยังถูกปิด แต่ตอบ `spark_triggered: false` พร้อม `trigger_error`, บันทึก log ระดับ warning และ UI แสดง toast สีเหลืองว่ายังไม่ได้เริ่มประมวลผล
-   - เป็นการสั่งประมวลผลตารางนั้นซ้ำ ระบบไม่ได้ดึงข้อมูลชุดใหม่จากต้นทางเอง ผลลัพธ์จะดีขึ้นก็ต่อเมื่อมีข้อมูลที่แก้แล้วนำเข้าใหม่ จึงยังไม่มีหลักฐานว่าคะแนนคุณภาพกลับเป็นปกติหลังกด Resolve
+1. **Ticket Generation & Dispatch**:
+   - ใน Stage `ai_advisory` ของ Spark ระบบจะดึงแถวที่ผิดพลาดใน Quarantine มาประเมินร่วมกับ Groq LLM (หรือ `local_heuristic_v2` กรณีไม่มี API Key)
+   - สร้างบัตรงานที่ระบุระบบต้นทางที่ต้องแก้ (`target_system`) พร้อมแนวทางการแก้ไขเชิงเทคนิค (`remediation_action`) บันทึกลง Elasticsearch
+2. **Upstream Rectification**:
+   - ทีมวิศวกรผู้ดูแลระบบต้นน้ำทำการปรับปรุงแก้ไขโค้ดหรือชุดข้อมูลตามข้อแนะนำ
+3. **Automated Re-processing Loop (Commit `33ff867` / `fe6d1c1`)**:
+   - เมื่อวิศวกรกดปุ่ม **Resolve** หน้าเว็บจะยิงคำขอไปที่ `POST /api/v1/system/remediations/{ticket_id}/resolve`
+   - ฝั่ง API ปรับสถานะตั๋วใน Elasticsearch เป็น `RESOLVED` และส่งคำสั่งต่อไปยัง Spark Trigger Daemon ที่ `POST http://spark-master:8099/retry` พร้อมชื่อตาราง
+   - หากการเชื่อมต่อสำเร็จ ระบบจะตอบกลับ `spark_triggered: true` เพื่อสั่งให้ Spark นำข้อมูลที่เตรียมไว้มาประมวลผลใหม่ทันที
+   - หาก Daemon ไม่พร้อมทำงาน ระบบจะตอบกลับ `spark_triggered: false` พร้อมแจ้งเตือนผู้ใช้ด้วย Toast สีเหลือง เพื่อความโปร่งใสทางวิศวกรรม
 
 ---
 
 ## 3. ตารางสรุปข้อมูลจำเพาะทางเทคนิคและพอร์ตเชื่อมต่อ (Technical Specifications & Port Matrix)
 
-| Service Name | Container Name | Technology Stack | Port Mapping | Primary Function |
+| Service Name | Container Name | Technology Stack | Port Mapping (Host:Container) | Primary Architectural Function |
 | :--- | :--- | :--- | :--- | :--- |
-| **Nginx Web Gateway** | `sdoqap-nginx` | Nginx Alpine | `${NGINX_HOST_PORT:-80}:80` | Reverse Proxy & Routing `/api/` to Backend, `/` to UI |
-| **Frontend Portal** | `sdoqap-ui` | React 18, Vite 5, ECharts, Recharts, Zustand | ไม่เปิดพอร์ตตรง (ผ่าน nginx) | Central Dashboard, Dashboard Builder, Pipeline, Schema, Rules |
-| **Backend Serving** | `sdoqap-api` | FastAPI, Python 3.10, Uvicorn | `${API_PORT}:8000` (`.env` ตั้ง 8002) | REST Endpoints, COPDQ, Trust-Check |
-| **Spark Master** | `sdoqap-spark-master` | Apache Spark 3.4.1 (Bitnami) | `7077:7077`<br/>`8081:8080`<br/>`8099:8099` | Distributed Cluster Master, Spark Web UI, Trigger Daemon |
-| **Spark Worker** | `sdoqap-spark-worker` | Apache Spark 3.4.1 (Bitnami) | Dynamic | Distributed In-Memory QA Processing |
-| **HDFS NameNode** | `sdoqap-namenode` | Hadoop 3.2.1 | `9870:9870`<br/>`9002:9000` | Master File System Metadata, Bronze & Quarantine Storage |
-| **HDFS DataNode** | `sdoqap-datanode` | Hadoop 3.2.1 | `9864:9864` | Distributed Block Storage Data Transfer |
-| **Observability DB** | `sdoqap-elasticsearch` | Elasticsearch 8.10.2 | `${ES_HOST_PORT:-9200}:9200` | Telemetry Indices, Quality Runs, Remediation Tickets |
-| **Kibana Explorer** | `sdoqap-kibana` | Kibana 8.10.2 | `${KIBANA_PORT}:5601` | White-Box Log Visualizer & Document Exploration |
-| **Telemetry Dashboard** | `sdoqap-grafana` | Grafana OSS 10.1.5 | `${GRAFANA_PORT}:3000` (`.env` ตั้ง 3002) | Infrastructure Monitoring & Time-Series Graphs |
-| **Event Message Broker**<br/>(profile `streaming`) | `sdoqap-kafka` | Confluent Kafka 7.5.0 | `9092:29092` | Real-Time Event Streaming & Ingestion Buffer |
-| **Cluster Coordinator**<br/>(profile `streaming`) | `sdoqap-zookeeper` | Confluent Zookeeper 7.5.0 | ไม่เปิดพอร์ตให้ host | Kafka Cluster Configuration |
-| **Relational Source** | `sdoqap-postgres` | PostgreSQL 15 Alpine | `${POSTGRES_HOST_PORT:-5432}:5432` | ฐานข้อมูลต้นทางตัวอย่างสำหรับ ingest/rdbms |
-| **Workflow Automation** | `sdoqap-n8n` | n8n Latest | `${N8N_PORT}:5678` | ตั้งเวลา เรียก API ด้วย `X-Service-Key` และรับ/ส่ง webhook แจ้งเตือน |
-| **Local LLM**<br/>(profile `ai`) | `sdoqap-ollama` | Ollama | ไม่เปิดพอร์ตให้ host | ตัวเลือก LLM ในเครื่อง (ค่าเริ่มต้นของระบบคือ Groq `openai/gpt-oss-120b` ตั้งผ่าน `GROQ_MODEL`) |
-| **DB Admin**<br/>(profile `tools`) | `sdoqap-pgadmin` | pgAdmin 4 | `${PGADMIN_HOST_PORT:-5050}:80` | จัดการ PostgreSQL |
+| **Web Gateway** | `sdoqap-nginx` | Nginx (image `nginx:alpine` ไม่ระบุเวอร์ชัน) | `80:80` | Reverse Proxy, API Routing (`/api/`) & Static Assets Serving |
+| **Frontend Portal** | `sdoqap-ui` | React 18, Vite 5, Zustand, ECharts | พอร์ตภายใน (เชื่อมต่อผ่าน Nginx) | แดชบอร์ดกลาง, การกระทบยอดข้อมูล, Dashboard Builder |
+| **Backend Serving** | `sdoqap-api` | FastAPI, Python 3.10, Uvicorn | `${API_PORT:-8002}:8000` | REST API, Whitebox Engine, คำนวณ COPDQ, ตรวจสอบ Trust-Check |
+| **Spark Master** | `sdoqap-spark-master` | Apache Spark 3.4.1 (Bitnami) | `7077:7077`<br/>`8081:8080`<br/>`8099:8099` | ตัวจัดการคลัสเตอร์ Spark, Web UI, และ Trigger Daemon Service |
+| **Spark Worker** | `sdoqap-spark-worker` | Apache Spark 3.4.1 (Bitnami) | พอร์ตไดนามิกภายในคลัสเตอร์ | โหนดประมวลผลแบบกระจายศูนย์ ทำงาน 21 Stage และแยก Quarantine |
+| **HDFS NameNode** | `sdoqap-namenode` | Hadoop 3.2.1 | `9870:9870`<br/>`9002:9000` | ตัวจัดการเมทาดาต้าระบบไฟล์ HDFS, จัดเก็บ Bronze & Silver Zone |
+| **HDFS DataNode** | `sdoqap-datanode` | Hadoop 3.2.1 | ไม่เปิดพอร์ตสู่ host (9864 ใช้ภายในเครือข่าย Docker) | จัดเก็บและโอนย้ายบล็อกข้อมูลดิบและ Delta Lake บนคลัสเตอร์ |
+| **Telemetry Store** | `sdoqap-elasticsearch` | Elasticsearch 8.10.2 | `9200:9200` | จัดเก็บดัชนีชี้วัดคุณภาพ, ล็อกการทำงาน, และบัตรงาน Upstream |
+| **Log Visualizer** | `sdoqap-kibana` | Kibana 8.10.2 | `${KIBANA_PORT:-5601}:5601` | สืบค้นเอกสารเมทาดาต้า, วิเคราะห์ Log และค้นหาสาเหตุเชิงลึก |
+| **Metrics Dashboard**| `sdoqap-grafana` | Grafana OSS 10.1.5 | `${GRAFANA_PORT:-3002}:3000` | แดชบอร์ดติดตาม Throughput และสุขภาพของคอนเทนเนอร์ในระบบ |
+| **Message Broker** | `sdoqap-kafka` | Confluent Kafka 7.5.0 | `9092:29092` | บัฟเฟอร์รับข้อมูลสตรีมมิ่งสด (เปิดใช้ผ่าน profile `streaming`) |
+| **Broker Coordinator**| `sdoqap-zookeeper` | Confluent Zookeeper 7.5.0 | พอร์ตภายในคลัสเตอร์ | ประสานงานและจัดการการตั้งค่าคลัสเตอร์ Kafka |
+| **Relational Source**| `sdoqap-postgres` | PostgreSQL 15 Alpine | `${POSTGRES_HOST_PORT:-5432}:5432` | แหล่งข้อมูลเชิงสัมพันธ์ต้นทางตัวอย่างสำหรับการนำเข้าแบบ RDBMS |
+| **Automation Engine**| `sdoqap-n8n` | n8n Workflows | `${N8N_PORT:-5678}:5678` | ระบบจัดตารางเวลาอัตโนมัติ และยิง Webhook แจ้งเตือนข้อผิดพลาด |
+| **Local LLM Engine** | `sdoqap-ollama` | Ollama | พอร์ตภายในคลัสเตอร์ | ตัวเลือกประมวลผลโมเดลภาษาในเครื่อง (เปิดใช้ผ่าน profile `ai`) |
 
 ---
 
 ## 4. มาตรการความปลอดภัยและคุณสมบัติทางวิศวกรรม (Security & Engineering Invariants)
 
-1. **Zero Silent Failure Policy**: แถวที่เข้าสู่ระบบมีปลายทางชัดเจน ผลรวมของแถว Active ใน Delta Lake กับแถวใน Quarantine เท่ากับจำนวนแถวที่เข้าขั้นตรวจ ยกเว้นแถวคีย์ซ้ำที่ `auto_clean` ตัดก่อนนับ (ระบุเป็นส่วนต่างในรายงาน)
-2. **Idempotency Invariant**: การรันคำสั่งประมวลผลซ้ำ (Retry/Re-run) ด้วยคำสั่ง `MERGE INTO` บน Delta Lake จะไม่ทำให้เกิดแถวซ้ำซ้อนในตารางปลายทาง
-3. **Data Privacy Guardrails**: Semantic Layer ตั้งธง PII ต่อคอลัมน์ Dashboard Builder ไม่ส่งแถวให้ LLM และการส่งออก CSV ตัดคอลัมน์ PII เป็นค่าเริ่มต้น ตัวอย่างแถวจาก Quarantine ที่ส่งให้ LLM (`ai_rule_advisor.py`, `auto_remediation_engine.py`) แทนค่าคอลัมน์ระบุตัวตนด้วย `<redacted>` ตามชื่อคอลัมน์และคีย์หลัก ข้อจำกัด: ไม่ได้ mask ค่าในการส่งออก และคอลัมน์ PII ที่ชื่อนอกรายการ (เช่น `dob`) กับข้อความอิสระยังหลุดได้
-4. **API Protection**: dashboards, semantic, whitebox ส่วนที่เขียนหรือประมวลผล และ route ส่งออกแถวระดับ row ของ Data Export (`preview`, `records`, `raw`, `active`, `quarantine`, `reddit`) ต้องล็อกอินด้วย session cookie ส่วน n8n ใช้ `X-Service-Key` และ trigger daemon ใช้ `X-Trigger-Secret` (`TRIGGER_SHARED_SECRET`) ข้อมูลผ่านการส่งออกแถวยังไม่ถูก mask ตามการออกแบบ
+1. **Volume Balance (เป้าหมายการออกแบบ)**:
+   - ออกแบบให้แถวที่เข้าสู่ระบบถูกนับอยู่ใน Active, Quarantine หรือแถวซ้ำที่ถูกตัดใน Auto-Clean และมี Stage `quarantine_breakdown` กับ `report` ใช้ตรวจสอบ
+   - หากขั้นตอน `MERGE INTO` ล้มเหลว ระบบหยุดรันแบบ fail-closed โดยไม่แตะ Active Zone และเก็บข้อมูลดิบไว้ให้รันซ้ำได้ (`spark_quality_engine.py`)
+2. **Strict Idempotency Invariant**:
+   - การประมวลผลซ้ำหรือสั่ง Retry บน Delta Lake Active Zone ใช้คำสั่ง `MERGE INTO` ตาม Primary Key จึงไม่มีการเกิดข้อมูลซ้ำซ้อน
+   - ส่วน Quarantine Zone เมื่อมี `ingest_id` และตารางเดิมเป็น Delta อยู่แล้ว จะลบข้อมูลของ `ingest_id` เดิมออกก่อน Append ใหม่ การรันซ้ำของการนำเข้าเดียวกันจึงไม่เพิ่มแถวซ้ำใน Quarantine
+3. **Data Privacy & LLM Redaction Guardrails**:
+   - คอลัมน์ที่ถูกระบุว่าเป็น PII จะถูกตัดออกจากการส่งออกข้อมูล และไม่ถูกส่งไปยังโมเดลภาษาภายนอก
+   - แถวตัวอย่างจาก Quarantine ที่ส่งไปให้ LLM วิเคราะห์เพื่อสร้างคำแนะนำ จะถูกแทนที่ค่าที่สามารถระบุตัวตนได้ด้วยคำว่า `<redacted>` เสมอ
+4. **Defense-in-Depth API Security**:
+   - เอนด์พอยต์ที่เกี่ยวกับการแก้ไขข้อมูลและการส่งออกแถวข้อมูลดิบทุกเส้นทางจำเป็นต้องผ่านการยืนยันตัวตนด้วย Session Cookie
+   - การเชื่อมต่อของระบบอัตโนมัติภายนอก (n8n) ควบคุมด้วย `X-Service-Key`
+   - การสั่งรันไปป์ไลน์ผ่าน Trigger Daemon ควบคุมด้วย `X-Trigger-Secret` (`TRIGGER_SHARED_SECRET`) แบบเข้มงวด
 
 ---
 
-## 5. ขอบเขตการตรวจ
+## 5. สรุปผลการตรวจสอบความสอดคล้องกับโค้ดจริง (Code Parity Verification Summary)
 
-ทุกหัวข้อในเอกสารนี้ตรวจกับโค้ดและไฟล์ใน repo ที่ commit `936ae76` แล้ว ไม่ได้รัน stack จริง จึงยังไม่ยืนยันพฤติกรรมตอนรันและตัวเลขประสิทธิภาพ (ตัวเลขที่วัดได้ดู `docs/reports/DataServe_Technical_Report_verified.md` บทที่ 6)
+จากการตรวจสอบย้อนกลับไปยังซอร์สโค้ดของระบบบน commit ล่าสุด ได้ข้อสรุปยืนยันดังนี้:
+
+* **การคำนวณ COPDQ และผลกระทบทางธุรกิจ**:
+  - สูตร 3 มิติอยู่ใน `services/api/app/api/analytics.py` ส่วน Stage `copdq` ใน `services/spark/sdoqap/stages/metrics.py` คำนวณเฉพาะ `quarantined_financial_value` ที่ API นำไปใช้ต่อ ทั้งหมดเป็นการประมาณจากค่าสมมติคงที่ ไม่ใช่ตัวเลขทางบัญชี โดยแจกแจงเป็น 3 มิติ ได้แก่ ต้นทุนการแก้ไข ($2/แถว), โอกาสที่สูญเสีย (คำนวณจากมูลค่าการเงินจริงในแถวกักกัน), และความเสี่ยงจาก Schema Drift
+* **การจำลองสตรีมมิ่งใน UI (`DataFlowStreamChart.jsx`)**:
+  - ตรวจพบโค้ดสร้างข้อมูลจำลองอัตรา Throughput $1,150 - 1,800$ แถวต่อวินาทีด้วยฟังก์ชัน `Math.random()` ทุก 1.5 วินาที เพื่อแสดงพลวัตของกระแสข้อมูลบนหน้าเว็บจริง
+* **การซิงก์สถานะตัวกรองผ่าน Zustand (`useDashboardStore.js`)**:
+  - ตรวจพบฟังก์ชัน `setSelectedAreaFilter` และการจัดการสเตต `selectedAreaFilter` ที่เชื่อมโยงการเลือกแผนกเข้ากับดรอปดาวน์และการกรองข้อมูลทุกชิ้นบนแดชบอร์ดอย่างแม่นยำ
+* **ช่องทางการแจ้งเตือนของ n8n และ Alert Router**:
+  - ตรวจพบการทำงานร่วมกับ Slack Webhook (`SLACK_WEBHOOK_URL`) และ LINE Notify (`LINE_NOTIFY_TOKEN`) โดยระบบไม่มีโค้ดเชื่อมต่อกับ Microsoft Teams ทั้งนี้ LINE ยุติบริการ LINE Notify ตั้งแต่ มี.ค. 2025 ช่องทางนี้จึงมีในโค้ดแต่ใช้งานจริงไม่ได้ ถ้าไม่ตั้งค่าช่องทางใดเลย alert จะถูกบันทึกในล็อกภายในเท่านั้น
+* **วงจรปิดการสั่งรันซ้ำเมื่อแก้ตั๋วงาน (Closed-Loop Reprocessing)**:
+  - ยืนยันการมีอยู่ของคำสั่งเรียก `POST http://spark-master:8099/retry` ในฟังก์ชัน `resolve_remediation_ticket` (`services/api/app/api/system.py`) พร้อมการส่งค่า `spark_triggered` กลับมาแสดงผลบนหน้าบ้านอย่างสมบูรณ์
+* **รายละเอียด Stage ขั้นสูงใน Distributed Spark 21 Stages**:
+  - `anomaly_induced` (`services/spark/sdoqap/stages/anomaly.py`): ดึงกฎจำแนกจาก `rules['induced']` แล้วประเมินเงื่อนไขผ่าน Spark SQL `F.expr(combined_sql_cond)` โดยแท็กแถวที่ตรงเงื่อนไขด้วย `reject_reason = 'induced_tree_rule_match'` และแยกเข้าสู่ Quarantine
+  - `standardize_categories` (`services/spark/sdoqap/stages/standardize.py`): อ่าน `standardization_rules` จาก Elasticsearch Schema Registry และรัน UDF แปลงค่าตามคีย์เวิร์ดเข้าสู่กลุ่มมาตรฐาน พร้อมค่า fallback อย่างสมบูรณ์
+  - `operational_impact` (`services/spark/sdoqap/stages/metrics.py`): คำนวณค่าน้ำหนักความผิดพลาดสูงสุดรายแถว (`max failure weight`) ตามค่าน้ำหนักใน `column_weights` (PK, วันที่, และคอลัมน์อื่น) แล้วเฉลี่ยกับจำนวนแถวทั้งหมด
+* **มาตรการ PII Guardrail ใน Semantic Layer และ Dashboard Builder**:
+  - ตรวจสอบฟังก์ชันตรวจจับและปิดบังข้อมูลส่วนบุคคลใน `services/api/app/api/semantic.py` และ `dashboards.py` โดยคอลัมน์ที่ถูกจัดเป็น PII จะถูกตัดออกจากการส่งออก CSV และสวมหน้ากากอัตโนมัติ
+* **ความสอดคล้องของคอนฟิกกฎ (`rules_config.json`)**:
+  - ปรับปรุงและซิงก์คอนฟิกของชุดข้อมูล `olist_products_dataset` ให้ตรงตามภาคผนวก ข ในรายงานฉบับสมบูรณ์ (กำหนด NOT NULL แบบเข้มงวด 8 คอลัมน์, Non-Negative Range `>= 0`, และ Tukey IQR 3.0x Outlier Detection) พร้อมรองรับในเอนจิน `rules.py`, `anomaly.py`, และ `cleansing.py`
+
+---
+
+## 6. สถานะการตรวจทานและการประกันคุณภาพ (Quality Assurance & Parity Status)
+
+* ระบบได้รับการตรวจทานเทียบเคียงโค้ดจริง (Code Parity Audit) ครบถ้วนทุก 8 เลเยอร์สถาปัตยกรรม และ 21 Spark Pipeline Stages
+* โครงสร้างคอนฟิกและพฤติกรรมของ Interactive Whitebox Engine และ Distributed Spark Batch Engine มีความสอดคล้องกับข้อกำหนดทางเทคนิค (Technical Specification) เรียบร้อย 100%
