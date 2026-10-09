@@ -80,3 +80,7 @@ certs/
 *.pem
 *.key
 *.crt
+
+# Cloudflare and executable binaries
+infra/cloudflare/bin/
+*.exe
