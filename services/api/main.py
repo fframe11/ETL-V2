@@ -1,4 +1,10 @@
 import os
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
+    load_dotenv()
+except Exception:
+    pass
 import requests
 import socket
 from fastapi import FastAPI, HTTPException
@@ -25,13 +31,24 @@ app = FastAPI(
     version="1.0.0"
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+cors_origins_env = os.getenv("CORS_ALLOWED_ORIGINS", "*")
+if cors_origins_env.strip() == "*":
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    allowed_origins = [orig.strip() for orig in cors_origins_env.split(",") if orig.strip()]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # Logging configuration – level can be set via LOG_LEVEL env var
 import logging
