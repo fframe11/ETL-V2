@@ -6,7 +6,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://strap-edt-cosmetics-novel.trycloudflare.com/api/:path*"
+      "destination": "https://indices-cornell-burlington-physician.trycloudflare.com/api/:path*"
     },
     {
       "source": "/(.*)",

@@ -4,6 +4,9 @@ services:
   elasticsearch:
     image: elasticsearch:8.10.2
     container_name: sdoqap-elasticsearch
+    hostname: elasticsearch
+    extra_hosts:
+      - "elasticsearch:127.0.0.1"
     restart: always
     environment:
       - discovery.type=single-node

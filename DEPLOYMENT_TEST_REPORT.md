@@ -2,7 +2,7 @@
 
 **Execution Timestamp**: 2026-10-10T06:36:34+07:00  
 **Testing Environment**: Live Public Internet via Cloudflare Tunnel (`trycloudflare.com`) + Vercel Edge Proxy  
-**API Serving Target**: `https://strap-edt-cosmetics-novel.trycloudflare.com`  
+**API Serving Target**: `https://indices-cornell-burlington-physician.trycloudflare.com`  
 **Overall Result**: **100% PASS (Zero Mock Data, Real White-Box Engine Verified)**  
 
 ---
@@ -12,10 +12,10 @@
 | Service / Interface | Public URL / Target | HTTP Status | Response Verification |
 | :--- | :--- | :---: | :--- |
 | **Frontend Web App** | `https://fframe11-etl-v2.vercel.app` (or Vercel Dashboard) | **200 OK** | React 18 SPA delivered from Vercel Edge Network |
-| **Backend API Ingress** | `https://strap-edt-cosmetics-novel.trycloudflare.com` | **200 OK** | FastAPI / SDOQAP Serving Layer |
-| **API Health Endpoint** | `https://strap-edt-cosmetics-novel.trycloudflare.com/` | **200 OK** | `{"status":"healthy","service":"SDOQAP API Serving Layer"}` |
-| **API Documentation** | `https://strap-edt-cosmetics-novel.trycloudflare.com/docs` | **200 OK** | Interactive OpenAPI / Swagger UI |
-| **Cluster Status API** | `https://strap-edt-cosmetics-novel.trycloudflare.com/api/v1/services/status` | **200 OK** | Live subsystem telemetry reporting |
+| **Backend API Ingress** | `https://indices-cornell-burlington-physician.trycloudflare.com` | **200 OK** | FastAPI / SDOQAP Serving Layer |
+| **API Health Endpoint** | `https://indices-cornell-burlington-physician.trycloudflare.com/` | **200 OK** | `{"status":"healthy","service":"SDOQAP API Serving Layer"}` |
+| **API Documentation** | `https://indices-cornell-burlington-physician.trycloudflare.com/docs` | **200 OK** | Interactive OpenAPI / Swagger UI |
+| **Cluster Status API** | `https://indices-cornell-burlington-physician.trycloudflare.com/api/v1/services/status` | **200 OK** | Live subsystem telemetry reporting |
 
 ---
 

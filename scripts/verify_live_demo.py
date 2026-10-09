@@ -12,7 +12,7 @@ import requests
 import pandas as pd
 import numpy as np
 
-PUBLIC_BASE = os.getenv("TEST_API_URL", "https://strap-edt-cosmetics-novel.trycloudflare.com").rstrip("/")
+PUBLIC_BASE = os.getenv("TEST_API_URL", "https://indices-cornell-burlington-physician.trycloudflare.com").rstrip("/")
 print(f"[*] Targeting Live Public API: {PUBLIC_BASE}")
 
 session = requests.Session()

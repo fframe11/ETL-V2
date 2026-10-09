@@ -27,7 +27,7 @@ flowchart TB
         end
 
         subgraph Ingress_Security["Encrypted Ingress & Tunnel Layer"]
-            CFTunnel["Cloudflare Edge Network & Tunnel<br/>TryCloudflare / Quick Tunnel<br/>Endpoint: https://strap-edt-cosmetics-novel.trycloudflare.com<br/>• Outbound-only TLS 1.3 QUIC<br/>• Zero Open Firewall Ports<br/>• DDoS & Bot Protection"]
+            CFTunnel["Cloudflare Edge Network & Tunnel<br/>TryCloudflare / Quick Tunnel<br/>Endpoint: https://indices-cornell-burlington-physician.trycloudflare.com<br/>• Outbound-only TLS 1.3 / HTTP2<br/>• Zero Open Firewall Ports<br/>• DDoS & Bot Protection"]
         end
     end
 
