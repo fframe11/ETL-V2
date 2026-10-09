@@ -13,6 +13,7 @@ env/
 
 # Docker/Database
 postgres_data/
+backups/
 infra/n8n/credentials.json
 infra/n8n/database.sqlite
 secrets/
