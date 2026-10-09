@@ -1,4 +1,11 @@
 import os
+import sys
+
+# Ensure api directory is always on sys.path for consistent imports across runtimes
+api_dir = os.path.dirname(os.path.abspath(__file__))
+if api_dir not in sys.path:
+    sys.path.insert(0, api_dir)
+
 try:
     from dotenv import load_dotenv
     load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))

@@ -23,7 +23,7 @@ export default {
 
     // Route 1: Backend API Gateway (/api/* and /healthz)
     if (url.pathname.startsWith('/api/') || url.pathname === '/healthz' || url.pathname === '/health') {
-      const backendBase = (env.BACKEND_URL || 'https://api.dataserve.internal').replace(/\/+$/, '');
+      const backendBase = (env.BACKEND_URL || 'https://strap-edt-cosmetics-novel.trycloudflare.com').replace(/\/+$/, '');
       const targetUrl = new URL(url.pathname + url.search, backendBase);
 
       const modifiedHeaders = new Headers(request.headers);
