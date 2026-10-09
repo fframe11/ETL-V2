@@ -1,0 +1,11 @@
+{
+  "name": "dataserve-root",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SDOQAP Data Serve Monorepo Root",
+  "scripts": {
+    "build": "npm --prefix services/ui run build",
+    "install": "npm --prefix services/ui install",
+    "test": "npm --prefix services/ui test"
+  }
+}
