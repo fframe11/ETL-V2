@@ -86,3 +86,5 @@ certs/
 # Cloudflare and executable binaries
 infra/cloudflare/bin/
 *.exe
+.vercel
+.env*
