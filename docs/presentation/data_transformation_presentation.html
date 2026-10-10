@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Transformation Deep Dive - 6 Clean Slides</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #090d16;
+      color: #f1f5f9;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      overflow: hidden;
+      height: 100vh;
+    }
+    
+    #app { display: flex; flex-direction: column; height: 100vh; }
+    
+    /* Topbar */
+    #topbar {
+      background: #0f172a;
+      border-bottom: 1px solid #1e293b;
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+    .brand-badge {
+      background: linear-gradient(135deg, #0ea5e9, #6366f1);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 4px 10px;
+      border-radius: 6px;
+      letter-spacing: 0.5px;
+    }
+    .title-text { font-size: 13px; font-weight: 600; color: #94a3b8; }
+    
+    /* Progress bar */
+    #progress-container { width: 100%; height: 3px; background: #1e293b; }
+    #progress-bar { height: 100%; width: 16.66%; background: linear-gradient(90deg, #0ea5e9, #10b981); transition: width 0.3s ease; }
+    
+    /* Main Layout */
+    #main-container {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 390px;
+      overflow: hidden;
+      transition: grid-template-columns 0.3s ease;
+    }
+    #main-container.fullscreen-slides {
+      grid-template-columns: 1fr 0px;
+    }
+    
+    /* Slide Canvas */
+    #slide-viewport {
+      overflow-y: auto;
+      padding: 36px 48px;
+      background: #090d16;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+    }
+    
+    .slide-card {
+      display: none;
+      animation: slideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      max-width: 1080px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    .slide-card.active { display: block; }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    /* Script / Teleprompter Area */
+    #script-sidebar {
+      background: #0d121f;
+      border-left: 1px solid #1e293b;
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .script-item { display: none; }
+    .script-item.active { display: block; }
+    
+    /* Footer */
+    #footer {
+      background: #0f172a;
+      border-top: 1px solid #1e293b;
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    
+    /* Components */
+    .btn {
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #cbd5e1;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .btn:hover { background: #334155; color: #fff; }
+    .btn-primary { background: #0284c7; border-color: #0ea5e9; color: #fff; }
+    .btn-primary:hover { background: #0369a1; }
+    
+    .badge {
+      display: inline-block;
+      padding: 3px 9px;
+      border-radius: 4px;
+      font-size: 10.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .badge-purple { background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3); }
+    .badge-cyan { background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.3); }
+    .badge-emerald { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .badge-amber { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+    .badge-rose { background: rgba(244, 63, 94, 0.15); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.3); }
+    
+    .panel {
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 10px;
+      padding: 18px 22px;
+    }
+    
+    .diagram-box {
+      font-family: 'Fira Code', 'Courier New', monospace;
+      font-size: 11px;
+      line-height: 1.5;
+      background: #090d16;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 14px 18px;
+      color: #94a3b8;
+      overflow-x: auto;
+      white-space: pre;
+    }
+    
+    .speech-box {
+      background: rgba(14, 165, 233, 0.05);
+      border-left: 3px solid #0ea5e9;
+      padding: 14px 16px;
+      border-radius: 0 8px 8px 0;
+      font-size: 13px;
+      line-height: 1.75;
+      color: #cbd5e1;
+    }
+    
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #1e293b;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .dot.active { background: #38bdf8; width: 22px; border-radius: 4px; }
+    
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    table.data-table th {
+      background: #1e293b;
+      color: #94a3b8;
+      font-weight: 700;
+      padding: 9px 12px;
+      text-align: left;
+      border-bottom: 1px solid #334155;
+    }
+    table.data-table td {
+      padding: 9px 12px;
+      border-bottom: 1px solid #1e293b;
+      vertical-align: top;
+      color: #cbd5e1;
+    }
+    table.data-table tr:hover td { background: #131b2e; }
+    
+    .target-active {
+      display: inline-block;
+      padding: 2px 7px;
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .target-quarantine {
+      display: inline-block;
+      padding: 2px 7px;
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .stat-card {
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 8px;
+      padding: 14px;
+      text-align: center;
+    }
+    .stat-val { font-size: 24px; font-weight: 800; margin-bottom: 4px; }
+    .stat-label { font-size: 11px; color: #94a3b8; text-transform: uppercase; font-weight: 600; }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <!-- TOP BAR -->
+  <div id="topbar">
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <span class="brand-badge">DataServe</span>
+      <span class="title-text" id="slide-title-header">Data Transformation: Sequential Deterministic DAG Architecture</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 16px;">
+      <div id="dots-container" style="display: flex; gap: 6px; align-items: center;"></div>
+      <button class="btn" id="btn-toggle-view" onclick="toggleViewMode()">
+        <span id="view-mode-label">Slide Only View</span>
+      </button>
+      <span style="font-size: 12px; font-weight: 700; color: #64748b; font-family: monospace;" id="slide-counter">1 / 6</span>
+    </div>
+  </div>
+  
+  <div id="progress-container"><div id="progress-bar"></div></div>
+
+  <!-- MAIN CONTAINER -->
+  <div id="main-container">
+    
+    <!-- SLIDE VIEWPORT -->
+    <div id="slide-viewport">
+      
+      <!-- ── SLIDE 1: ภาพรวมสถาปัตยกรรม 13 ขั้นตอน 5 ภารกิจหลัก ── -->
+      <div class="slide-card active" id="slide-1">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-purple">Slide 01 · Overview</span>
+          <span class="badge badge-cyan">Sequential Deterministic DAG</span>
+          <span class="badge badge-emerald">Zero Silent Drop</span>
+        </div>
+        <h1 style="font-size: 24px; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
+          Data Transformation Pipeline: Sequential Deterministic DAG
+        </h1>
+        <p style="color: #94a3b8; font-size: 13.5px; margin-bottom: 20px;">
+          กระบวนการแปลงสภาพและตรวจคุณภาพข้อมูลระดับแถวบน Apache Spark & Delta Lake
+        </p>
+
+        <div class="grid-2" style="margin-bottom: 16px;">
+          <div class="panel">
+            <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 6px;">กลไกการประมวลผล (Engine Execution)</div>
+            <ul style="font-size: 12px; color: #cbd5e1; line-height: 1.7; padding-left: 18px;">
+              <li>ทำงานเป็น <strong>Sequential Deterministic DAG</strong> จำนวน 13 Stages ต่อเนื่องในโหมด ALIGN และ TRANSFORM</li>
+              <li>ควบคุมด้วย <code>RunContext</code> บน Apache Spark ประมวลผลแบบ In-Memory ใน RAM ทั้งหมด โดยไม่มีการเขียนดิสก์ซ้ำซ้อน</li>
+              <li>ยึดหลักการ <strong>Zero Silent Drop</strong>: ข้อมูลทุกแถวต้องมีที่ไป แถวสะอาดเข้า Silver Active แถวมีปัญหาเข้า Silver Quarantine</li>
+            </ul>
+          </div>
+
+          <div class="panel">
+            <div style="font-size: 12px; font-weight: 700; color: #34d399; margin-bottom: 6px;">5 ภารกิจหลักในการเปลี่ยนรูปข้อมูล</div>
+            <ol style="font-size: 12px; color: #cbd5e1; line-height: 1.7; padding-left: 18px;">
+              <li><strong>จัดโครงสร้างและป้องกันข้อมูลสูญหาย (Align & Smart Promotion)</strong></li>
+              <li><strong>รับมือความเปลี่ยนแปลงโครงสร้าง (Schema Drift Governance)</strong></li>
+              <li><strong>ล้างข้อมูลและตัดแถวซ้ำ (Safe Cleaning & Deduplication)</strong></li>
+              <li><strong>ปรับข้อมูลสู่มาตรฐานสากล (Standardization)</strong></li>
+              <li><strong>บังคับกฎธุรกิจและตรวจจับสถิติขั้นสูง (Validation & Outlier Detection)</strong></li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="diagram-box">
+[ ข้อมูลดิบนำเข้า (Inbound Raw) ] ──► [ 1. schema_align ] ──► [ 2. schema_drift ] ──► [ 3. auto_clean & dedup ]
+                                                                                               │
+  [ Silver Active Store ] ◄── [ 5. validation, range & anomaly ] ◄── [ 4. standardize ] ◄─────┘
+            │                                     │
+            ▼                                     ▼
+ (ข้อมูลสะอาด 100% พร้อมใช้งาน)         [ Silver Quarantine Store ] (ข้อมูลกักกันตรวจสอบ พร้อม reject_reason)
+        </div>
+      </div>
+
+      <!-- ── SLIDE 2: ภารกิจที่ 1 & 2 ── -->
+      <div class="slide-card" id="slide-2">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-purple">Slide 02 · Missions 1 & 2</span>
+          <span class="badge badge-cyan">Smart Type Promotion</span>
+          <span class="badge badge-amber">Schema Drift Governance</span>
+        </div>
+        <h1 style="font-size: 24px; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
+          Missions 1 & 2: Structural Alignment & Schema Drift Governance
+        </h1>
+        <p style="color: #94a3b8; font-size: 13.5px; margin-bottom: 20px;">
+          จัดระเบียบโครงสร้าง นวัตกรรม Smart Type Promotion และภูมิคุ้มกันท่อข้อมูล
+        </p>
+
+        <div class="grid-2" style="margin-bottom: 16px;">
+          <div class="panel">
+            <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 8px;">ภารกิจที่ 1: จัดโครงสร้าง & ป้องกันข้อมูลสูญหาย</div>
+            <ul style="font-size: 12px; color: #cbd5e1; line-height: 1.7; padding-left: 18px;">
+              <li><strong>Column Sanitization</strong>: ตัดช่องว่าง ลบอักขระพิเศษ และจับคู่ชื่อให้ตรง Schema มาตรฐาน</li>
+              <li><strong>Dynamic row_hash</strong>: รวมค่าทุกคอลัมน์แล้วแฮช MD5 เป็น Primary Key สำหรับตารางที่ไม่มีคีย์หลัก</li>
+              <li><strong>Smart Type Promotion (ป้องกัน Data Loss)</strong>:
+                <br>• ในระบบทั่วไป หาก Schema เป็น Integer แต่ข้อมูลส่งทศนิยมมา ข้อมูลจะกลายเป็น Null ทันที
+                <br>• DataServe สแกนหาทศนิยมอัตโนมัติ หากพบเศษทศนิยม จะเลื่อนเป็น <code>Double</code> ทันทีเพื่อรักษาข้อมูลไว้ได้ 100%
+              </li>
+            </ul>
+          </div>
+
+          <div class="panel">
+            <div style="font-size: 12px; font-weight: 700; color: #fbbf24; margin-bottom: 8px;">ภารกิจที่ 2: รับมือความเปลี่ยนแปลงโครงสร้าง</div>
+            <ul style="font-size: 12px; color: #cbd5e1; line-height: 1.7; padding-left: 18px;">
+              <li><strong>จำแนกความรุนแรง (Severity Scoring)</strong>:
+                <br>• <em>พบคอลัมน์ใหม่ (ความเสี่ยงต่ำ)</em>: ระบบอนุมัติให้อัปเดตโครงสร้างลง Delta Lake อัตโนมัติ (Auto-Evolution)
+                <br>• <em>คอลัมน์สำคัญหาย หรือชนิดข้อมูลเพี้ยน (ความเสี่ยงวิกฤต)</em>: เติมค่าว่างชั่วคราวเพื่อกันระบบล่ม กักกันข้อมูลรอบนั้น และส่ง Webhook แจ้งเตือนทีมงานทันที
+              </li>
+            </ul>
+            <div class="diagram-box" style="font-size: 10px; margin-top: 10px; padding: 10px;">
+Input: Column "Total Price" value "1500.75" (Defined as: Integer)
+Action: Auto-promotes Integer ──► Double (รักษาค่า 1500.75 ไว้ได้ครบถ้วน)
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── SLIDE 3: ภารกิจที่ 3 & 4 ── -->
+      <div class="slide-card" id="slide-3">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-purple">Slide 03 · Missions 3 & 4</span>
+          <span class="badge badge-cyan">Deduplication</span>
+          <span class="badge badge-emerald">Buddhist Era Normalization</span>
+        </div>
+        <h1 style="font-size: 24px; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
+          Missions 3 & 4: Data Cleansing, Deduplication & Normalization
+        </h1>
+        <p style="color: #94a3b8; font-size: 13.5px; margin-bottom: 20px;">
+          เยียวยาข้อมูลด้วย DSL Sandbox, ตัดแถวซ้ำ 2 ชั้น และแปลง พ.ศ. เป็น ค.ศ. อัตโนมัติ
+        </p>
+
+        <div class="grid-2" style="margin-bottom: 16px;">
+          <div class="panel">
+            <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 8px;">ภารกิจที่ 3: ล้างข้อมูลและตัดแถวซ้ำ</div>
+            <ul style="font-size: 12px; color: #cbd5e1; line-height: 1.7; padding-left: 18px;">
+              <li><strong>DSL Remediation Sandbox</strong>: รองรับคำสั่ง 4 แบบ (<code>fillna</code>, <code>calculate</code>, <code>cast</code>, <code>filter</code>) โดยจำกัดเฉพาะตัวเลขและคณิตศาสตร์เพื่อป้องกัน Code Injection</li>
+              <li><strong>ตัดแถวซ้ำ 2 ชั้น (Deduplication)</strong>:
+                <br>• <em>ชั้นที่ 1 (Auto-Clean)</em>: ตัดแถวซ้ำที่มี Primary Key สมบูรณ์ล่วงหน้า
+                <br>• <em>ชั้นที่ 2 (Anti-Join)</em>: เปรียบเทียบตามคีย์ธุรกิจและเวลา คงเฉพาะแถวล่าสุดไว้ ส่วนแถวซ้ำส่งเข้า Quarantine
+              </li>
+            </ul>
+          </div>
+
+          <div class="panel">
+            <div style="font-size: 12px; font-weight: 700; color: #34d399; margin-bottom: 8px;">ภารกิจที่ 4: ปรับข้อมูลสู่มาตรฐานสากล</div>
+            <ul style="font-size: 12px; color: #cbd5e1; line-height: 1.7; padding-left: 18px;">
+              <li><strong>Auto Buddhist Era Normalization (พ.ศ. เป็น ค.ศ.)</strong>:
+                <br>• ระบบตรวจจับปี พ.ศ. หากพบปี > 2500 จะหักลบด้วย 543 และปรับให้อยู่ในมาตรฐาน ISO <code>YYYY-MM-DD</code> อัตโนมัติ
+              </li>
+              <li><strong>Generic Categorization</strong>:
+                <br>• ดึงพจนานุกรมคำสำคัญจาก Elasticsearch มาจัดกลุ่มสินค้าหรือข้อความเข้าหมวดหมู่มาตรฐาน โดยไม่ต้องแก้ไขโค้ดโปรแกรม
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="diagram-box">
+Input: "21 ก.ค. 2569" ──► ตรวจพบปี 2569 (> 2500) ──► [ ปี - 543 ] ──► "2026-07-21" (ISO-8601)
+Input: รหัสนักศึกษาซ้ำ 2 แถว ──► ตรวจสอบคีย์หลัก ──► เก็บแถวล่าสุดใน Active, ส่งแถวซ้ำไป Quarantine
+        </div>
+      </div>
+
+      <!-- ── SLIDE 4: ภารกิจที่ 5 ── -->
+      <div class="slide-card" id="slide-4">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-purple">Slide 04 · Mission 5</span>
+          <span class="badge badge-cyan">Business Range Rules</span>
+          <span class="badge badge-amber">Tukey IQR Fences</span>
+        </div>
+        <h1 style="font-size: 24px; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
+          Mission 5: Business Rules & Advanced Statistical Anomaly Detection
+        </h1>
+        <p style="color: #94a3b8; font-size: 13.5px; margin-bottom: 20px;">
+          ผสานกฎขอบเขตธุรกิจเข้ากับแบบจำลองสถิติขั้นสูง เพื่อดักจับข้อมูลผิดธรรมชาติ
+        </p>
+
+        <div class="grid-3" style="margin-bottom: 16px;">
+          <div class="panel">
+            <div style="font-size: 11px; font-weight: 700; color: #38bdf8; margin-bottom: 4px;">EXPLICIT BOUNDS</div>
+            <div style="font-size: 13px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">กฎขอบเขตธุรกิจ</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              บังคับช่วงค่าคงที่ เช่น คะแนนสอบต้องอยู่ในช่วง [0, 100] แถวที่หลุดช่วงจะถูกระบุ <code>out_of_range_score</code>
+            </p>
+          </div>
+          <div class="panel">
+            <div style="font-size: 11px; font-weight: 700; color: #34d399; margin-bottom: 4px;">STATISTICAL FENCE</div>
+            <div style="font-size: 13px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">Tukey IQR Fences</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              คำนวณควอร์ไทล์หาช่วงปกติแบบ \(O(N)\) ดักจับค่าผิดธรรมชาติ เช่น ชั่วโมงเรียน 48 ชม./สัปดาห์ แม้ไม่ติดลบแต่เป็นไปไม่ได้จริง
+            </p>
+          </div>
+          <div class="panel">
+            <div style="font-size: 11px; font-weight: 700; color: #fbbf24; margin-bottom: 4px;">UNSUPERVISED</div>
+            <div style="font-size: 13px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">Gaussian 3-Sigma</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              ตรวจจับค่าที่เบี่ยงเบนเกิน 3 เท่าของส่วนเบี่ยงเบนมาตรฐาน สำหรับข้อมูลการแจกแจงปกติ เพื่อความปลอดภัยสูงสุด
+            </p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div style="font-size: 12px; font-weight: 700; color: #cbd5e1; margin-bottom: 6px;">การประกอบชุดกักกัน (Quarantine Assembly)</div>
+          <p style="font-size: 12px; color: #94a3b8; line-height: 1.6;">
+            รวบรวมทุกแถวที่พบข้อผิดพลาดเข้าด้วยกัน ผูกรหัส <code>run_id</code> และเหตุผล <code>reject_reason</code> แล้วสั่งแคชใน RAM ส่งเข้า Silver Quarantine Delta Table ส่วนแถวที่สะอาดถูกส่งเข้า Silver Active Delta Table
+          </p>
+        </div>
+      </div>
+
+      <!-- ── SLIDE 5: ตาราง Before → After Matrix ── -->
+      <div class="slide-card" id="slide-5">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-purple">Slide 05 · Matrix</span>
+          <span class="badge badge-cyan">Before & After Examples</span>
+        </div>
+        <h1 style="font-size: 24px; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
+          Concrete Transformation Examples
+        </h1>
+        <p style="color: #94a3b8; font-size: 13.5px; margin-bottom: 20px;">
+          ตัวอย่างเปรียบเทียบข้อมูลก่อนแปลง สภาพผลลัพธ์ และการคัดแยกปลายทาง
+        </p>
+
+        <div class="panel" style="padding: 0; overflow: hidden; margin-bottom: 16px;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 5%;">#</th>
+                <th style="width: 25%;">ข้อมูลดิบต้นทาง (Before)</th>
+                <th style="width: 35%;">กลไกการแปลงสภาพ (Transformation Logic)</th>
+                <th style="width: 15%;">ข้อมูลผลลัพธ์</th>
+                <th style="width: 20%;">ปลายทางที่จัดเก็บ</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1</td>
+                <td><strong>"1,234.50"</strong> (ข้อความมีจุลภาค)</td>
+                <td>ตัดเครื่องหมาย <code>,</code> ออก และแปลงชนิดเป็นตัวเลขทศนิยม</td>
+                <td><code>1234.50</code></td>
+                <td><span class="target-active">Silver Active</span></td>
+              </tr>
+              <tr>
+                <td>2</td>
+                <td><strong>"22-07-2569"</strong> (วันที่ปี พ.ศ.)</td>
+                <td>ตรวจพบปี > 2500 หักออก 543 แปลงเป็นสากล ISO</td>
+                <td><code>"2026-07-22"</code></td>
+                <td><span class="target-active">Silver Active</span></td>
+              </tr>
+              <tr>
+                <td>3</td>
+                <td><strong>รหัสนักศึกษาซ้ำกัน 2 แถว</strong></td>
+                <td>ตรวจคีย์หลัก เรียงตามเวลาล่าสุด ตัดแถวซ้ำออก</td>
+                <td>แถวล่าสุด</td>
+                <td><span class="target-active">Active</span> / <span class="target-quarantine">Quarantine</span></td>
+              </tr>
+              <tr>
+                <td>4</td>
+                <td><strong>คะแนนสอบเป็นค่าว่าง (NULL)</strong></td>
+                <td>ตรวจพบคอลัมน์บังคับมีค่าว่าง</td>
+                <td>-</td>
+                <td><span class="target-quarantine">Quarantine: missing_score</span></td>
+              </tr>
+              <tr>
+                <td>5</td>
+                <td><strong>คะแนนสอบติดลบ -10 หรือ 145</strong></td>
+                <td>ตรวจพบค่าหลุดจากช่วงกฎธุรกิจ [0, 100]</td>
+                <td>-</td>
+                <td><span class="target-quarantine">Quarantine: out_of_range</span></td>
+              </tr>
+              <tr>
+                <td>6</td>
+                <td><strong>ชั่วโมงเรียน 48.0 ชม./สัปดาห์</strong></td>
+                <td>สถิติ Tukey IQR ตรวจพบค่าเกินรั้วปกติ (> 12 ชม.)</td>
+                <td>-</td>
+                <td><span class="target-quarantine">Quarantine: outlier_details</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── SLIDE 6: ผลการพิสูจน์เชิงประจักษ์ ── -->
+      <div class="slide-card" id="slide-6">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-purple">Slide 06 · Verification</span>
+          <span class="badge badge-emerald">Recall: 100%</span>
+          <span class="badge badge-cyan">Precision: 95.89%</span>
+          <span class="badge badge-amber">Reconciliation: 100%</span>
+        </div>
+        <h1 style="font-size: 24px; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
+          Empirical Verification & 100% Volume Reconciliation
+        </h1>
+        <p style="color: #94a3b8; font-size: 13.5px; margin-bottom: 20px;">
+          การพิสูจน์ความถูกต้องทางวิศวกรรมข้อมูลด้วยชุดทดสอบจริงที่มี Ground Truth (10,100 แถว)
+        </p>
+
+        <div class="grid-4" style="margin-bottom: 18px;">
+          <div class="stat-card">
+            <div class="stat-val" style="color: #34d399;">100%</div>
+            <div class="stat-label">Detection Recall</div>
+            <div style="font-size: 11px; color: #64748b; margin-top: 4px;">ตรวจจับครบ 700/700 แถว</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val" style="color: #38bdf8;">95.89%</div>
+            <div class="stat-label">Precision</div>
+            <div style="font-size: 11px; color: #64748b; margin-top: 4px;">มี Safety Margin 30 แถว</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val" style="color: #818cf8;">99.70%</div>
+            <div class="stat-label">Overall Accuracy</div>
+            <div style="font-size: 11px; color: #64748b; margin-top: 4px;">ความถูกต้องระดับแถว</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val" style="color: #fbbf24;">0 แถว</div>
+            <div class="stat-label">Unaccounted Delta</div>
+            <div style="font-size: 11px; color: #64748b; margin-top: 4px;">ไม่มีข้อมูลสูญหาย</div>
+          </div>
+        </div>
+
+        <div class="panel" style="border: 1px solid #0284c7; background: rgba(2, 132, 199, 0.05); margin-bottom: 14px;">
+          <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 6px;">สมการกระทบยอดปริมาณข้อมูล 100% (Data Volume Reconciliation)</div>
+          <div style="font-family: monospace; font-size: 14px; color: #f8fafc; font-weight: 700;">
+            ข้อมูลนำเข้า (10,100 แถว) = ข้อมูลสะอาด Active (9,370) + ข้อมูลกักกัน Quarantine (630) + แถวซ้ำที่ตัดออก (100)
+          </div>
+          <div style="font-size: 11.5px; color: #94a3b8; margin-top: 6px;">
+            ผลต่าง = 0 แถว: พิสูจน์ทางคณิตศาสตร์ว่าไม่มีข้อมูลสูญหายแม้แต่แถวเดียว ทุกแถวมีที่ไปชัดเจนและตรวจสอบได้ 100%
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- SCRIPT / TELEPROMPTER SIDEBAR -->
+    <div id="script-sidebar">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1e293b; padding-bottom: 12px;">
+        <span style="font-size: 12px; font-weight: 700; color: #cbd5e1; text-transform: uppercase; letter-spacing: 0.5px;">Speaker Script & Teleprompter</span>
+        <span class="badge badge-cyan" id="script-slide-badge">Slide 1 of 6</span>
+      </div>
+
+      <!-- Script 1 -->
+      <div class="script-item active" id="script-1">
+        <div class="speech-box">
+          "สวัสดีครับ ในส่วนของกระบวนการ Data Transformation ของ DataServe เราออกแบบสถาปัตยกรรมให้ทำงานเป็น Sequential Deterministic DAG จำนวน 13 ขั้นตอนต่อเนื่องบน Apache Spark ครับ โดยควบคุมผ่าน RunContext ทำงานบน RAM ทั้งหมดโดยไม่มีการเขียนดิสก์ซ้ำซ้อน ทั้ง 13 ขั้นตอนนี้ถูกจัดหมวดหมู่เป็น 5 ภารกิจหลัก ตั้งแต่การจัดโครงสร้าง ป้องกันข้อมูลสูญหาย รับมือกับ Schema ที่เปลี่ยนไป ล้างข้อมูล ตัดแถวซ้ำ ปรับมาตรฐานเวลา และตรวจจับความผิดปกติด้วยสถิติขั้นสูง โดยยึดหลักการ Zero Silent Drop คือไม่ลบข้อมูลทิ้ง แต่แยกแถวสะอาดและแถวกักกันออกจากกันอย่างชัดเจนครับ"
+        </div>
+      </div>
+
+      <!-- Script 2 -->
+      <div class="script-item" id="script-2">
+        <div class="speech-box">
+          "ในภารกิจที่ 1 เราเริ่มต้นด้วยการจัดโครงสร้างและทำความสะอาดชื่อคอลัมน์ พร้อมสร้าง row_hash ด้วย MD5 สิ่งสำคัญคือฟีเจอร์ Smart Type Promotion ครับ ในระบบทั่วไปถ้าสคีมาเป็น Integer แต่ข้อมูลส่งทศนิยมมา ข้อมูลมักจะกลายเป็น Null ทันที แต่ระบบของเราจะสแกนหาเศษทศนิยมก่อน ถ้าพบจะเลื่อนชนิดเป็น Double ให้อัตโนมัติ ช่วยป้องกันข้อมูลสูญหายได้ 100% และในภารกิจที่ 2 หากต้นทางเปลี่ยนโครงสร้างข้อมูล เช่น คอลัมน์สำคัญหายไป ระบบจะไม่ล่ม แต่จะเติมค่าว่างชั่วคราว กักกันข้อมูลรอบนั้น และส่งแจ้งเตือนให้ทีม Data เข้ามาตรวจสอบทันทีครับ"
+        </div>
+      </div>
+
+      <!-- Script 3 -->
+      <div class="script-item" id="script-3">
+        <div class="speech-box">
+          "ถัดมาเป็นภารกิจที่ 3 และ 4 ครับ ในการทำความสะอาด เรามีเอนจิน DSL ที่ปลอดภัย รองรับการเติมค่าว่างและการคำนวณสูตรพื้นฐาน และมีการตัดแถวซ้ำโดยเปรียบเทียบตามเวลา ซึ่งจะเก็บเฉพาะเวอร์ชันล่าสุดไว้ใช้งาน ส่วนแถวซ้ำจะถูกส่งไปกักกัน และในภารกิจที่ 4 เราแก้ปัญหาคลาสสิกของข้อมูลไทย คือการบันทึกปีเป็น พ.ศ. ระบบจะตรวจจับและแปลงเป็นปี ค.ศ. สากลให้อัตโนมัติ พร้อมทั้งจัดหมวดหมู่ข้อมูลตามพจนานุกรมกลาง ทำให้ข้อมูลเป็นระเบียบและพร้อมใช้งานร่วมกับระบบสากลครับ"
+        </div>
+      </div>
+
+      <!-- Script 4 -->
+      <div class="script-item" id="script-4">
+        <div class="speech-box">
+          "ในภารกิจที่ 5 คือการตรวจคุณภาพเชิงลึกครับ เราผสาน 2 กลไกเข้าด้วยกัน: หนึ่งคือกฎธุรกิจที่กำหนดไว้ชัดเจน เช่น คะแนนสอบต้องอยู่ระหว่าง 0 ถึง 100 แถวที่ได้คะแนนติดลบหรือเกิน 100 จะถูกคัดออกทันที และสองคือการใช้แบบจำลองสถิติขั้นสูงอย่าง Tukey IQR Fences เข้ามาช่วยดักจับค่าที่ผิดธรรมชาติ เช่น ชั่วโมงเรียน 48 ชั่วโมงต่อสัปดาห์ ซึ่งไม่ติดลบแต่เป็นไปไม่ได้ในโลกจริง เมื่อตรวจครบทุกมิติ ระบบจะนำข้อมูลเสียทั้งหมดมารวมกัน ผูกเหตุผลความผิดพลาดกำกับไว้ทุกแถว และบันทึกลงสู่ Silver Quarantine อย่างเป็นระบบครับ"
+        </div>
+      </div>
+
+      <!-- Script 5 -->
+      <div class="script-item" id="script-5">
+        <div class="speech-box">
+          "สไลด์นี้แสดงให้เห็นภาพตัวอย่างการแปลงสภาพข้อมูลจริง 6 กรณีครับ ข้อมูลตัวเลขที่มีคอมม่าจะถูกแปลงเป็นตัวเลขทศนิยม วันที่ พ.ศ. จะถูกเปลี่ยนเป็น ค.ศ. ข้อมูลที่ส่งซ้ำจะถูกตัดเหลือเฉพาะแถวล่าสุด ส่วนแถวที่มีข้อผิดพลาด เช่น คะแนนว่าง คะแนนติดลบ หรือชั่วโมงเรียนเกินจริง จะถูกส่งเข้า Silver Quarantine โดยมีคอลัมน์ระบุเหตุผลกำกับไว้ทุกแถว ทำให้ระบบปลายทางมั่นใจได้ว่าจะได้รับเฉพาะข้อมูลที่สะอาด 100% ไปใช้งานครับ"
+        </div>
+      </div>
+
+      <!-- Script 6 -->
+      <div class="script-item" id="script-6">
+        <div class="speech-box">
+          "สไลด์สุดท้ายนี้คือหลักฐานยืนยันความถูกต้องทางวิศวกรรมของระบบครับ เรานำชุดข้อมูลทดสอบ 10,100 แถว ซึ่งมีข้อผิดพลาดที่จงใจใส่ไว้ 700 แถวมาประมวลผลจริง ผลลัพธ์คือระบบสามารถตรวจพบข้อผิดพลาดได้ครบทั้ง 700 แถว บรรลุค่า Recall เต็ม 100% โดยตรวจจับคะแนนว่างได้ 300 แถว, คะแนนหลุดช่วง 200 แถว, ชั่วโมงเรียนผิดปกติ 100 แถว และแถวซ้ำ 100 แถวครบถ้วน และที่สำคัญที่สุดคือสมการกระทบยอดครับ ข้อมูลนำเข้า 10,100 แถว แยกเป็นข้อมูลสะอาด 9,370 แถว ข้อมูลกักกัน 630 แถว และแถวซ้ำ 100 แถว รวมกันได้ 10,100 แถวลงตัวพอดี ผลต่างเป็น 0 แถว ไม่มีข้อมูลสูญหายแม้แต่แถวเดียว นี่คือข้อพิสูจน์ว่า Data Transformation Engine ของ DataServe ทำงานได้อย่างแม่นยำ โปร่งใส และพร้อมสำหรับงานระดับองค์กรอย่างแท้จริงครับ ขอบคุณครับ"
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- FOOTER -->
+  <div id="footer">
+    <div style="display: flex; gap: 8px;">
+      <button class="btn" onclick="prevSlide()">&#8592; Previous</button>
+      <button class="btn btn-primary" onclick="nextSlide()">Next &#8594;</button>
+    </div>
+    <div style="font-size: 11px; color: #64748b; font-family: monospace;">
+      Use Left / Right arrow keys to navigate · Press 'T' to toggle teleprompter
+    </div>
+    <div style="display: flex; gap: 8px;">
+      <span class="badge badge-emerald">Spark 3.5.0</span>
+      <span class="badge badge-cyan">Delta Lake 3.2.0</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  let currentSlide = 1;
+  const totalSlides = 6;
+  const slideTitles = [
+    "Data Transformation Pipeline: Sequential Deterministic DAG",
+    "Missions 1 & 2: Structural Alignment & Schema Drift Governance",
+    "Missions 3 & 4: Data Cleansing, Deduplication & Normalization",
+    "Mission 5: Business Rules & Advanced Statistical Anomaly Detection",
+    "Concrete Transformation Examples",
+    "Empirical Verification & 100% Volume Reconciliation"
+  ];
+
+  function initDots() {
+    const container = document.getElementById("dots-container");
+    container.innerHTML = "";
+    for (let i = 1; i <= totalSlides; i++) {
+      const dot = document.createElement("div");
+      dot.className = "dot" + (i === 1 ? " active" : "");
+      dot.onclick = () => goToSlide(i);
+      container.appendChild(dot);
+    }
+  }
+
+  function goToSlide(n) {
+    if (n < 1 || n > totalSlides) return;
+    currentSlide = n;
+    
+    // Update slides
+    document.querySelectorAll(".slide-card").forEach(s => s.classList.remove("active"));
+    const activeSlide = document.getElementById("slide-" + n);
+    if (activeSlide) activeSlide.classList.add("active");
+    
+    // Update scripts
+    document.querySelectorAll(".script-item").forEach(s => s.classList.remove("active"));
+    const activeScript = document.getElementById("script-" + n);
+    if (activeScript) activeScript.classList.add("active");
+    
+    // Update header & counter
+    document.getElementById("slide-counter").innerText = n + " / " + totalSlides;
+    document.getElementById("slide-title-header").innerText = slideTitles[n - 1];
+    document.getElementById("script-slide-badge").innerText = "Slide " + n + " of " + totalSlides;
+    
+    // Update progress bar
+    document.getElementById("progress-bar").style.width = ((n / totalSlides) * 100) + "%";
+    
+    // Update dots
+    const dots = document.querySelectorAll(".dot");
+    dots.forEach((dot, idx) => {
+      dot.className = "dot" + (idx + 1 === n ? " active" : "");
+    });
+  }
+
+  function nextSlide() {
+    if (currentSlide < totalSlides) goToSlide(currentSlide + 1);
+  }
+
+  function prevSlide() {
+    if (currentSlide > 1) goToSlide(currentSlide - 1);
+  }
+
+  let isFullscreen = false;
+  function toggleViewMode() {
+    isFullscreen = !isFullscreen;
+    const main = document.getElementById("main-container");
+    const label = document.getElementById("view-mode-label");
+    if (isFullscreen) {
+      main.classList.add("fullscreen-slides");
+      label.innerText = "Show Teleprompter";
+    } else {
+      main.classList.remove("fullscreen-slides");
+      label.innerText = "Slide Only View";
+    }
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight" || e.key === " ") {
+      e.preventDefault();
+      nextSlide();
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      prevSlide();
+    } else if (e.key === "t" || e.key === "T") {
+      toggleViewMode();
+    }
+  });
+
+  initDots();
+  goToSlide(1);
+</script>
+</body>
+</html>
