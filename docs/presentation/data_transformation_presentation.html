@@ -538,11 +538,62 @@ Input: รหัสนักศึกษาซ้ำ 2 แถว ──► ต�
         <h1 style="font-size: 24px; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
           Concrete Transformation Examples
         </h1>
-        <p style="color: #94a3b8; font-size: 13.5px; margin-bottom: 20px;">
+        <p style="color: #94a3b8; font-size: 13.5px; margin-bottom: 16px;">
           ตัวอย่างเปรียบเทียบข้อมูลก่อนแปลง สภาพผลลัพธ์ และการคัดแยกปลายทาง
         </p>
 
-        <div class="panel" style="padding: 0; overflow: hidden; margin-bottom: 16px;">
+        <!-- SLIDE 5 VIEW TABS -->
+        <div style="display: flex; gap: 8px; margin-bottom: 12px; align-items: center;">
+          <span style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">View Mode:</span>
+          <button class="btn btn-primary" id="btn-s5-table" onclick="switchSlide5View('table')">Interactive Table</button>
+          <button class="btn" id="btn-s5-image" onclick="switchSlide5View('image')">Infographic Card</button>
+          <button class="btn" id="btn-s5-mermaid" onclick="switchSlide5View('mermaid')">Mermaid Flow</button>
+        </div>
+
+        <!-- 1. INFOGRAPHIC IMAGE VIEW -->
+        <div id="slide5-view-image" style="display: none; margin-bottom: 16px; text-align: center;">
+          <img src="images/transformation_before_after_matrix.jpg" alt="Before and After Data Transformation Matrix" style="width: 100%; max-height: 380px; object-fit: contain; border-radius: 8px; border: 1px solid #1e293b; background: #090d16;" />
+        </div>
+
+        <!-- 2. MERMAID FLOW VIEW -->
+        <div id="slide5-view-mermaid" style="display: none; background: #090d16; border: 1px solid #1e293b; border-radius: 8px; padding: 14px; text-align: center; overflow-x: auto; margin-bottom: 16px;">
+          <pre class="mermaid" style="background: transparent; border: none; font-size: 11px;">
+flowchart LR
+    classDef before fill:#1e293b,stroke:#64748b,stroke-width:1.5px,color:#f8fafc;
+    classDef logic fill:#0f172a,stroke:#38bdf8,stroke-width:1.5px,color:#38bdf8;
+    classDef active fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ffffff,font-weight:bold;
+    classDef quar fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#ffffff,font-weight:bold;
+
+    subgraph G_CLEAN ["กลุ่มแปลงสำเร็จพร้อมใช้งาน (Silver Active Store)"]
+        direction TB
+        subgraph C1 ["กรณีที่ 1: ตัวเลขมีคอมม่า"]
+            B1["'1,234.50'"]:::before --> L1["ตัดคอมม่า & Cast Double"]:::logic --> A1["1234.50"]:::active
+        end
+        subgraph C2 ["กรณีที่ 2: วันที่ปี พ.ศ."]
+            B2["'22-07-2569'"]:::before --> L2["ปี > 2500 หัก 543"]:::logic --> A2["'2026-07-22'"]:::active
+        end
+        subgraph C3 ["กรณีที่ 3: ข้อมูลซ้ำซ้อน"]
+            B3["รหัส นศ. ซ้ำ 2 แถว"]:::before --> L3["Dedup คีย์หลักล่าสุด"]:::logic --> A3["เก็บแถวล่าสุด (Active)<br/>สกัดแถวซ้ำ (Quarantine)"]:::active
+        end
+    end
+
+    subgraph G_QUAR ["กลุ่มตรวจพบปัญหาและกักกัน (Silver Quarantine Store)"]
+        direction TB
+        subgraph C4 ["กรณีที่ 4: ค่าว่างในคอลัมน์บังคับ"]
+            B4["คะแนน = NULL"]:::before --> L4["ตรวจพบคอลัมน์บังคับว่าง"]:::logic --> Q4["Quarantine:<br/>missing_score"]:::quar
+        end
+        subgraph C5 ["กรณีที่ 5: คะแนนหลุดช่วงกฎธุรกิจ"]
+            B5["คะแนน -10 หรือ 145"]:::before --> L5["หลุดช่วงกฎ [0, 100]"]:::logic --> Q5["Quarantine:<br/>out_of_range"]:::quar
+        end
+        subgraph C6 ["กรณีที่ 6: ค่าสุดโต่งผิดธรรมชาติทางสถิติ"]
+            B6["เรียน 48.0 ชม./สัปดาห์"]:::before --> L6["Tukey IQR เกินรั้วปกติ"]:::logic --> Q6["Quarantine:<br/>outlier_details"]:::quar
+        end
+    end
+          </pre>
+        </div>
+
+        <!-- 3. INTERACTIVE TABLE VIEW -->
+        <div id="slide5-view-table" class="panel" style="padding: 0; overflow: hidden; margin-bottom: 16px;">
           <table class="data-table">
             <thead>
               <tr>
@@ -804,6 +855,16 @@ Input: รหัสนักศึกษาซ้ำ 2 แถว ──► ต�
     document.getElementById("btn-tab-mermaid").className = 'btn' + (mode === 'mermaid' ? ' btn-primary' : '');
     document.getElementById("btn-tab-image").className = 'btn' + (mode === 'image' ? ' btn-primary' : '');
     document.getElementById("btn-tab-ascii").className = 'btn' + (mode === 'ascii' ? ' btn-primary' : '');
+  }
+
+  function switchSlide5View(mode) {
+    document.getElementById("slide5-view-table").style.display = mode === 'table' ? 'block' : 'none';
+    document.getElementById("slide5-view-image").style.display = mode === 'image' ? 'block' : 'none';
+    document.getElementById("slide5-view-mermaid").style.display = mode === 'mermaid' ? 'block' : 'none';
+    
+    document.getElementById("btn-s5-table").className = 'btn' + (mode === 'table' ? ' btn-primary' : '');
+    document.getElementById("btn-s5-image").className = 'btn' + (mode === 'image' ? ' btn-primary' : '');
+    document.getElementById("btn-s5-mermaid").className = 'btn' + (mode === 'mermaid' ? ' btn-primary' : '');
   }
 
   document.addEventListener("keydown", (e) => {

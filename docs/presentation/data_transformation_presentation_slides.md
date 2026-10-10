@@ -157,6 +157,44 @@ flowchart TD
 * **หัวข้อหลัก (Title)**: Concrete Transformation Examples
 * **หัวข้อย่อย (Subtitle)**: ตัวอย่างเปรียบเทียบข้อมูลก่อนแปลง สภาพผลลัพธ์ และการคัดแยกปลายทาง
 
+### ภาพผังเปรียบเทียบข้อมูลจริง (Transformation Matrix Infographic)
+![Before and After Data Transformation Matrix](images/transformation_before_after_matrix.jpg)
+
+### แผนภาพโฟลว์การแปลงสภาพข้อมูล 6 กรณี (Mermaid Transformation Flow)
+```mermaid
+flowchart LR
+    classDef before fill:#1e293b,stroke:#64748b,stroke-width:1.5px,color:#f8fafc;
+    classDef logic fill:#0f172a,stroke:#38bdf8,stroke-width:1.5px,color:#38bdf8;
+    classDef active fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ffffff,font-weight:bold;
+    classDef quar fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#ffffff,font-weight:bold;
+
+    subgraph G_CLEAN ["กลุ่มแปลงสำเร็จพร้อมใช้งาน (Silver Active Store)"]
+        direction TB
+        subgraph C1 ["กรณีที่ 1: ตัวเลขมีคอมม่า"]
+            B1["'1,234.50'"]:::before --> L1["ตัดคอมม่า & Cast Double"]:::logic --> A1["1234.50"]:::active
+        end
+        subgraph C2 ["กรณีที่ 2: วันที่ปี พ.ศ."]
+            B2["'22-07-2569'"]:::before --> L2["ปี > 2500 หัก 543"]:::logic --> A2["'2026-07-22'"]:::active
+        end
+        subgraph C3 ["กรณีที่ 3: ข้อมูลซ้ำซ้อน"]
+            B3["รหัส นศ. ซ้ำ 2 แถว"]:::before --> L3["Dedup คีย์หลักล่าสุด"]:::logic --> A3["เก็บแถวล่าสุด (Active)<br/>สกัดแถวซ้ำ (Quarantine)"]:::active
+        end
+    end
+
+    subgraph G_QUAR ["กลุ่มตรวจพบปัญหาและกักกัน (Silver Quarantine Store)"]
+        direction TB
+        subgraph C4 ["กรณีที่ 4: ค่าว่างในคอลัมน์บังคับ"]
+            B4["คะแนน = NULL"]:::before --> L4["ตรวจพบคอลัมน์บังคับว่าง"]:::logic --> Q4["Quarantine:<br/>missing_score"]:::quar
+        end
+        subgraph C5 ["กรณีที่ 5: คะแนนหลุดช่วงกฎธุรกิจ"]
+            B5["คะแนน -10 หรือ 145"]:::before --> L5["หลุดช่วงกฎ [0, 100]"]:::logic --> Q5["Quarantine:<br/>out_of_range"]:::quar
+        end
+        subgraph C6 ["กรณีที่ 6: ค่าสุดโต่งผิดธรรมชาติทางสถิติ"]
+            B6["เรียน 48.0 ชม./สัปดาห์"]:::before --> L6["Tukey IQR เกินรั้วปกติ"]:::logic --> Q6["Quarantine:<br/>outlier_details"]:::quar
+        end
+    end
+```
+
 ### ตารางเปรียบเทียบข้อมูลจริงบนสไลด์
 
 | ลำดับ | ข้อมูลดิบต้นทาง (Before) | กลไกการแปลงสภาพ (Transformation Logic) | ข้อมูลผลลัพธ์ (After) | ปลายทางที่จัดเก็บ |
