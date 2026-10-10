@@ -11,8 +11,9 @@
 * **Title**: Data Transformation Pipeline: Sequential Deterministic DAG
 * **Subtitle**: กระบวนการแปลงสภาพและประกันคุณภาพข้อมูลระดับแถวบน Apache Spark & Delta Lake
 
-### ภาพประกอบระบบจริง (System Architecture Diagram)
-![Data Transformation Pipeline Architecture](images/transformation_pipeline_diagram.jpg)
+### ภาพประกอบระบบจริง (Apache Spark Master Web UI)
+![Apache Spark Cluster UI](images/real_system_slide1_spark_dag.png)
+*(ภาพแผนผังระบบ: `images/transformation_pipeline_diagram.jpg`)*
 
 ### สรุปสาระสำคัญ (Key Takeaways)
 * **In-Memory DAG Execution**: ประมวลผล 13 Stages ต่อเนื่องบน RAM ผ่าน Apache Spark `RunContext` โดยไม่มี Disk I/O ซ้ำซ้อน
@@ -29,8 +30,9 @@
 * **Title**: Missions 1 & 2: Structural Alignment & Schema Drift Governance
 * **Subtitle**: จัดระเบียบโครงสร้าง นวัตกรรม Smart Type Promotion และเกราะป้องกัน Schema เปลี่ยนแปลง
 
-### ภาพประกอบระบบจริง (Missions 1 & 2 Infographic)
-![Missions 1 & 2: Alignment & Schema Drift Governance](images/mission1_2_schema_alignment_drift.jpg)
+### ภาพประกอบระบบจริง (SDOQAP Schema Catalog & Drift Governance UI)
+![Schema Drift Governance UI](images/real_system_slide2_schema_drift.png)
+*(ภาพแผนผังระบบ: `images/mission1_2_schema_alignment_drift.jpg`)*
 
 ### สรุปสาระสำคัญ (Key Takeaways)
 * **Mission 1: Alignment & Smart Promotion**:
@@ -50,8 +52,9 @@
 * **Title**: Missions 3 & 4: Cleansing, Deduplication & Standardization
 * **Subtitle**: เยียวยาข้อมูลด้วย Secure DSL Sandbox, ตัดแถวซ้ำ 2 ชั้น และแปลง พ.ศ. เป็น ค.ศ. สากล
 
-### ภาพประกอบระบบจริง (Missions 3 & 4 Infographic)
-![Missions 3 & 4: Cleansing, Deduplication & Normalization](images/mission3_4_cleansing_normalization.jpg)
+### ภาพประกอบระบบจริง (SDOQAP Expectations & Rules Config UI)
+![Rules and Cleansing UI](images/real_system_slide3_rules_cleansing.png)
+*(ภาพแผนผังระบบ: `images/mission3_4_cleansing_normalization.jpg`)*
 
 ### สรุปสาระสำคัญ (Key Takeaways)
 * **Mission 3: Safe Cleansing & 2-Layer Dedup**:
@@ -71,8 +74,9 @@
 * **Title**: Mission 5: Business Rules & Advanced Statistical Anomaly Detection
 * **Subtitle**: ผสานกฎขอบเขตธุรกิจเข้ากับแบบจำลองสถิติขั้นสูง เพื่อดักจับข้อมูลผิดธรรมชาติ
 
-### ภาพประกอบระบบจริง (Mission 5 Infographic)
-![Mission 5: Business Rules & Statistical Anomaly Detection](images/mission5_validation_outliers.jpg)
+### ภาพประกอบระบบจริง (SDOQAP Whitebox Audit Trail Stage 4: 3-Way Segregation)
+![3-Way Segregation and Outlier Audit](images/real_system_slide4_segregation_audit.png)
+*(ภาพแผนผังระบบ: `images/mission5_validation_outliers.jpg`)*
 
 ### สรุปสาระสำคัญ (Key Takeaways)
 * **Deterministic Business Rules**: บังคับกฎช่วงค่า เช่น คะแนนสอบต้องอยู่ในช่วง [0, 100] แถวที่ได้คะแนนติดลบ (-10) หรือเกิน (145) ถูกกักกันทันที
@@ -91,8 +95,9 @@
 * **Title**: Concrete Transformation Examples: Before → After Matrix
 * **Subtitle**: ตัวอย่างเปรียบเทียบข้อมูลก่อนแปลง สภาพผลลัพธ์ และการคัดแยกปลายทาง Lakehouse
 
-### ภาพประกอบระบบจริง (Transformation Matrix Infographic)
-![Before and After Data Transformation Matrix](images/transformation_before_after_matrix.jpg)
+### ภาพประกอบระบบจริง (SDOQAP Whitebox Audit Trail Stage 5: Results Inspection)
+![Results Inspection UI](images/real_system_slide5_results_audit.png)
+*(ภาพแผนผังระบบ: `images/transformation_before_after_matrix.jpg`)*
 
 ### สรุปตัวอย่าง 6 กรณีหลัก (Concrete Transformation Summary)
 | ลำดับ | ข้อมูลดิบต้นทาง (Before) | กลไกการแปลงสภาพ (Logic) | ข้อมูลผลลัพธ์ (After) | ปลายทางที่จัดเก็บ |
@@ -114,8 +119,9 @@
 * **Title**: Empirical Verification & 100% Volume Reconciliation
 * **Subtitle**: การพิสูจน์ความถูกต้องทางวิศวกรรมข้อมูลด้วยชุดทดสอบจริงที่มี Ground Truth (10,100 แถว)
 
-### ภาพประกอบระบบจริง (Terminal Output & Reconciliation Flow)
-![Empirical Verification & 100% Volume Reconciliation](images/slide6_empirical_reconciliation.jpg)
+### ภาพประกอบระบบจริง (SDOQAP Quality Observability & Metrics Dashboard)
+![Observability Dashboard UI](images/real_system_slide6_metrics_dashboard.png)
+*(ภาพแผนผังระบบ: `images/slide6_empirical_reconciliation.jpg`)*
 
 ### สรุปตัวเลขพิสูจน์เชิงประจักษ์ (Key Verification Metrics)
 * **Detection Recall: 1.0 (100%)**: ตรวจพบข้อผิดพลาดครบ 700 / 700 แถว (Zero False Negative)
