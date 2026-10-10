@@ -35,7 +35,7 @@ export default function Login() {
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
           </svg>
-          <span className="gs-login-brand-text">SDOQAP Platform</span>
+          <span className="gs-login-brand-text">DataServe Platform</span>
         </div>
 
         <div className="gs-login-form-header">
@@ -97,7 +97,7 @@ export default function Login() {
         </form>
 
         <div className="gs-login-bottom-info">
-          <span>Protected by SDOQAP Security Agent • Session Cookie v2.0</span>
+          <span>Protected by DataServe Security Agent • Session Cookie v2.0</span>
         </div>
       </div>
     </div>

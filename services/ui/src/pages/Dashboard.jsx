@@ -419,7 +419,7 @@ export default function Dashboard() {
   // CSV Export for Executive Summary (Synchronized with 4 Hero KPI Cards & Active Filters)
   const handleExportExecutiveCSV = () => {
     const csvRows = [
-      ["SDOQAP Executive Overview Report"],
+      ["DataServe Executive Overview Report"],
       ["Generated At", new Date().toISOString()],
       ["Time Filter", timeRange],
       ["Business Area Filter", selectedAreaFilter],
@@ -445,7 +445,7 @@ export default function Dashboard() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `SDOQAP_Executive_Overview_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `DataServe_Executive_Overview_${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

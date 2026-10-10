@@ -33,8 +33,8 @@ from app.api.dashboards import router as dashboards_router
 from app.api.semantic import router as semantic_router
 
 app = FastAPI(
-    title="SDOQAP Serving API",
-    description="Serving Layer API for Scalable Data Observability and Quality Assurance Platform",
+    title="DataServe Serving API",
+    description="Serving Layer API for DataServe Enterprise Data Operations & Quality Assurance Platform",
     version="1.0.0"
 )
 

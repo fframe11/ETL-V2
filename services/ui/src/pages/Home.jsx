@@ -62,7 +62,7 @@ export default function Home() {
       {/* Centered Hero Section */}
       <section className="gs-hero">
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-          <span className="gs-hero-badge">SDOQAP Observability Platform</span>
+          <span className="gs-hero-badge">DataServe Observability Platform</span>
           <h1 className="gs-hero-title">
             More than observability.<br />
             <span className="gs-hero-accent">Complete Data Quality</span> Management.

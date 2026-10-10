@@ -238,7 +238,7 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
                 </svg>
               </div>
               <div className="gs-nav-logo-text">
-                <span className="gs-nav-logo-name">SDOQAP</span>
+                <span className="gs-nav-logo-name">DataServe</span>
                 <span className="gs-nav-logo-sub">Lakehouse Engine</span>
               </div>
             </Link>

@@ -76,7 +76,7 @@ export default function EchartsDataLineage({
         x: 850,
         y: 120,
         fixed: true,
-        tooltip: 'Executive Dashboards, SDOQAP Metrics & Analytics Feeds'
+        tooltip: 'Executive Dashboards, DataServe Metrics & Analytics Feeds'
       },
       {
         id: '5',
