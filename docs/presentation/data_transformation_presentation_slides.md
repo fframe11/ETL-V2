@@ -26,23 +26,61 @@
 ### ภาพผังสถาปัตยกรรม (Architecture Flowchart)
 ![Data Transformation Pipeline Architecture](images/transformation_pipeline_diagram.jpg)
 
-### แผนผังจำลองบนสไลด์
-```
-[ ข้อมูลดิบนำเข้า (Inbound Raw) ]
-               │
-               ▼ (ALIGN Phase)
- ภารกิจที่ 1: schema_align (จัดชื่อคอลัมน์, Dynamic row_hash, Smart Type Promotion)
-               │
-               ▼ (TRANSFORM Phase)
- ภารกิจที่ 2: schema_drift (ตรวจสอบโครงสร้างเปลี่ยน, จำแนกความรุนแรง)
- ภารกิจที่ 3: auto_clean & dedup (DSL Sandbox ล้างข้อมูล, ตัดแถวซ้ำ 2 ชั้น)
- ภารกิจที่ 4: standardize_dates & categories (แปลง พ.ศ. เป็น ค.ศ., แมปหมวดหมู่)
- ภารกิจที่ 5: range_rules, anomaly_iqr & zscore (ตรวจกฎธุรกิจ, Tukey IQR, 3-Sigma)
-               │
-       ┌───────┴───────────────────────────────┐
-       ▼                                       ▼
-[ Silver Active Store ]             [ Silver Quarantine Store ]
-(ข้อมูลสะอาด 100% พร้อมใช้งาน)       (ข้อมูลกักกันตรวจสอบ พร้อม reject_reason)
+### แผนผังจำลองบนสไลด์ (Mermaid Flowchart)
+```mermaid
+flowchart TD
+    %% Styling Classes
+    classDef raw fill:#1e293b,stroke:#64748b,stroke-width:2px,color:#f8fafc;
+    classDef m1 fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef m2 fill:#0f172a,stroke:#f59e0b,stroke-width:2px,color:#f8fafc;
+    classDef m3 fill:#0f172a,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
+    classDef m4 fill:#0f172a,stroke:#a855f7,stroke-width:2px,color:#f8fafc;
+    classDef m5 fill:#0f172a,stroke:#ec4899,stroke-width:2px,color:#f8fafc;
+    classDef active fill:#064e3b,stroke:#10b981,stroke-width:2.5px,color:#ffffff,font-weight:bold;
+    classDef quarantine fill:#7f1d1d,stroke:#ef4444,stroke-width:2.5px,color:#ffffff,font-weight:bold;
+    classDef telemetry fill:#1e1b4b,stroke:#6366f1,stroke-width:1.5px,stroke-dasharray:4 4,color:#c7d2fe;
+
+    subgraph INBOUND ["1. แหล่งข้อมูลนำเข้า (Inbound Ingestion)"]
+        RawData["ข้อมูลดิบนำเข้า (Inbound Raw Data)<br/>CSV, Parquet, JSON, CDC Stream"]:::raw
+    end
+
+    subgraph ENGINE ["2. กระบวนการแปลงสภาพข้อมูล 5 ภารกิจหลัก (Data Transformation DAG)"]
+        direction TB
+
+        M1["ภารกิจที่ 1: schema_align<br/><b>Align & Smart Promotion</b><br/>• ตัดช่องว่าง ลบอักขระพิเศษ จับคู่ชื่อมาตรฐาน<br/>• สร้าง MD5 Dynamic row_hash คีย์หลักอัตโนมัติ<br/>• Smart Type Promotion: ปรับ Integer เป็น Double เมื่อพบทศนิยม"]:::m1
+
+        M2{"ภารกิจที่ 2: schema_drift<br/><b>Schema Drift Governance</b><br/>ประเมินระดับความรุนแรง"}:::m2
+
+        M3["ภารกิจที่ 3: auto_clean & dedup<br/><b>Safe Cleaning & Deduplication</b><br/>• DSL Remediation Sandbox (fillna, calc, cast, filter)<br/>• ตัดแถวซ้ำ 2 ชั้น: Exact Row Hash & Business Key"]:::m3
+
+        M4["ภารกิจที่ 4: standardize<br/><b>Standardization & Normalization</b><br/>• แปลงศักราชไทย พ.ศ. เป็นสากล ค.ศ. อัตโนมัติ<br/>• ปรับรูปแบบวันที่ ISO-8601 (YYYY-MM-DD)<br/>• จัดกลุ่มหมวดหมู่ตาม Business Taxonomy"]:::m4
+
+        M5{"ภารกิจที่ 5: validation, range & anomaly<br/><b>Validation & Outlier Detection</b><br/>• ตรวจสอบกฎช่วงค่า (Range Bounds)<br/>• สถิติขั้นสูง: Tukey IQR (k=1.5) & 3-Sigma Z-Score"}:::m5
+
+        M1 --> M2
+        M2 -->|"โครงสร้างปกติ / Auto-Evolution ปลอดภัย"| M3
+        M3 --> M4
+        M4 --> M5
+    end
+
+    subgraph STORAGE ["3. ปลายทางคลังข้อมูลสองโซน (Dual-Zone Medallion Lakehouse)"]
+        SilverActive[("Silver Active Store<br/><b>ข้อมูลสะอาด 100% พร้อมใช้งาน</b><br/>• Delta Lake ACID Tables<br/>• พร้อมเชื่อมต่อ Gold & BI Dashboard")]:::active
+        
+        SilverQuarantine[("Silver Quarantine Store<br/><b>ข้อมูลกักกันรอการตรวจสอบ</b><br/>• แนบคอลัมน์ reject_reason ทุกแถว<br/>• ตรวจสอบย้อนกลับได้ ไม่มีการลบทิ้ง")]:::quarantine
+    end
+
+    subgraph HEALING ["4. ระบบเฝ้าระวังและการแจ้งเตือน (Closed-Loop Upstream Healing)"]
+        MetricsTele["RunContext Observability<br/>• บันทึก Recall: 1.0 & Precision: 0.9589<br/>• แจ้งเตือน Webhook/Slack ไปยังระบบต้นน้ำ"]:::telemetry
+    end
+
+    %% Flow Connections
+    RawData --> M1
+    M2 -->|"คอลัมน์วิกฤตสูญหาย / Type ผิดปกติ"| SilverQuarantine
+    M5 -->|"ผ่านเกณฑ์คุณภาพทั้งหมด (Clean Rows)"| SilverActive
+    M5 -->|"ตกเกณฑ์คุณภาพ / ผิดปกติทางสถิติ"| SilverQuarantine
+
+    SilverQuarantine -.->|"ส่งเหตุผลการกักกัน"| MetricsTele
+    MetricsTele -.->|"แจ้งเตือนปรับปรุงแก้ไข"| RawData
 ```
 
 ### บทพูดผู้บรรยาย (~40 วินาที)
