@@ -1,151 +1,85 @@
-# สไลด์นำเสนอเฉพาะส่วน Data Transformation: 13 ขั้นตอน 5 ภารกิจหลัก (6 สไลด์)
+# สไลด์นำเสนอเฉพาะส่วน Data Transformation: 13 ขั้นตอน 5 ภารกิจหลัก (Visual-First 6 Slides)
 
 > **เกณฑ์การประเมิน**: ข้อ 4 · ความครบถ้วนสมบูรณ์ของการเปลี่ยนรูปข้อมูล (Data Transformation) — 10 คะแนน  
-> **แนวทางการนำเสนอ**: กระชับ ได้ใจความสำคัญ มีตารางเปรียบเทียบชัดเจน และมีตัวเลขพิสูจน์การกระทบยอด 100% ปราศจากโค้ดรกตา  
+> **รูปแบบการนำเสนอ**: Visual-First เน้นภาพประกอบระบบจริงทุกสไลด์ ตัวหนังสือน้อย กระชับ ตรงประเด็น ไม่มีกำแพงข้อความ  
 > **เวลาที่ใช้ในการนำเสนอ**: รวมประมาณ 4 นาที (สไลด์ละประมาณ 35–45 วินาที)
 
 ---
 
-## Slide 1: ภาพรวมสถาปัตยกรรม Data Transformation (13 ขั้นตอน 5 ภารกิจหลัก)
+## Slide 1: ภาพรวมสถาปัตยกรรม Data Transformation (Sequential Deterministic DAG)
 
-* **หัวข้อหลัก (Title)**: Data Transformation Pipeline: Sequential Deterministic DAG
-* **หัวข้อย่อย (Subtitle)**: กระบวนการแปลงสภาพและตรวจคุณภาพข้อมูลระดับแถวบน Apache Spark & Delta Lake
+* **Title**: Data Transformation Pipeline: Sequential Deterministic DAG
+* **Subtitle**: กระบวนการแปลงสภาพและประกันคุณภาพข้อมูลระดับแถวบน Apache Spark & Delta Lake
 
-### ข้อความบนสไลด์ (Slide Content)
-* **กลไกการประมวลผล (Engine Execution)**:
-  * ทำงานเป็น **Sequential Deterministic DAG** จำนวน 13 Stages ต่อเนื่องในโหมด ALIGN และ TRANSFORM
-  * ควบคุมด้วย `RunContext` บน Apache Spark ประมวลผลแบบ In-Memory ใน RAM ทั้งหมด โดยไม่มีการเขียนดิสก์ซ้ำซ้อน
-* **5 ภารกิจหลักในการเปลี่ยนรูปข้อมูล**:
-  1. **จัดโครงสร้างและป้องกันข้อมูลสูญหาย (Align & Smart Promotion)**
-  2. **รับมือความเปลี่ยนแปลงโครงสร้าง (Schema Drift Governance)**
-  3. **ล้างข้อมูลและตัดแถวซ้ำ (Safe Cleaning & Deduplication)**
-  4. **ปรับข้อมูลสู่มาตรฐานสากล (Standardization)**
-  5. **บังคับกฎธุรกิจและตรวจจับสถิติขั้นสูง (Validation & Outlier Detection)**
-* **หลักการ Zero Silent Drop**: ข้อมูลทุกแถวต้องมีที่ไป แถวสะอาดเข้า Silver Active แถวที่มีปัญหาเข้า Silver Quarantine พร้อมระบุเหตุผล
-
-### ภาพผังสถาปัตยกรรม (Architecture Flowchart)
+### ภาพประกอบระบบจริง (System Architecture Diagram)
 ![Data Transformation Pipeline Architecture](images/transformation_pipeline_diagram.jpg)
 
-### แผนผังจำลองบนสไลด์ (Mermaid Flowchart)
-```mermaid
-flowchart TD
-    %% Styling Classes
-    classDef raw fill:#1e293b,stroke:#64748b,stroke-width:2px,color:#f8fafc;
-    classDef m1 fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
-    classDef m2 fill:#0f172a,stroke:#f59e0b,stroke-width:2px,color:#f8fafc;
-    classDef m3 fill:#0f172a,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
-    classDef m4 fill:#0f172a,stroke:#a855f7,stroke-width:2px,color:#f8fafc;
-    classDef m5 fill:#0f172a,stroke:#ec4899,stroke-width:2px,color:#f8fafc;
-    classDef active fill:#064e3b,stroke:#10b981,stroke-width:2.5px,color:#ffffff,font-weight:bold;
-    classDef quarantine fill:#7f1d1d,stroke:#ef4444,stroke-width:2.5px,color:#ffffff,font-weight:bold;
-    classDef telemetry fill:#1e1b4b,stroke:#6366f1,stroke-width:1.5px,stroke-dasharray:4 4,color:#c7d2fe;
-
-    subgraph INBOUND ["1. แหล่งข้อมูลนำเข้า (Inbound Ingestion)"]
-        RawData["ข้อมูลดิบนำเข้า (Inbound Raw Data)<br/>CSV, Parquet, JSON, CDC Stream"]:::raw
-    end
-
-    subgraph ENGINE ["2. กระบวนการแปลงสภาพข้อมูล 5 ภารกิจหลัก (Data Transformation DAG)"]
-        direction TB
-
-        M1["ภารกิจที่ 1: schema_align<br/><b>Align & Smart Promotion</b><br/>• ตัดช่องว่าง ลบอักขระพิเศษ จับคู่ชื่อมาตรฐาน<br/>• สร้าง MD5 Dynamic row_hash คีย์หลักอัตโนมัติ<br/>• Smart Type Promotion: ปรับ Integer เป็น Double เมื่อพบทศนิยม"]:::m1
-
-        M2{"ภารกิจที่ 2: schema_drift<br/><b>Schema Drift Governance</b><br/>ประเมินระดับความรุนแรง"}:::m2
-
-        M3["ภารกิจที่ 3: auto_clean & dedup<br/><b>Safe Cleaning & Deduplication</b><br/>• DSL Remediation Sandbox (fillna, calc, cast, filter)<br/>• ตัดแถวซ้ำ 2 ชั้น: Exact Row Hash & Business Key"]:::m3
-
-        M4["ภารกิจที่ 4: standardize<br/><b>Standardization & Normalization</b><br/>• แปลงศักราชไทย พ.ศ. เป็นสากล ค.ศ. อัตโนมัติ<br/>• ปรับรูปแบบวันที่ ISO-8601 (YYYY-MM-DD)<br/>• จัดกลุ่มหมวดหมู่ตาม Business Taxonomy"]:::m4
-
-        M5{"ภารกิจที่ 5: validation, range & anomaly<br/><b>Validation & Outlier Detection</b><br/>• ตรวจสอบกฎช่วงค่า (Range Bounds)<br/>• สถิติขั้นสูง: Tukey IQR (k=1.5) & 3-Sigma Z-Score"}:::m5
-
-        M1 --> M2
-        M2 -->|"โครงสร้างปกติ / Auto-Evolution ปลอดภัย"| M3
-        M3 --> M4
-        M4 --> M5
-    end
-
-    subgraph STORAGE ["3. ปลายทางคลังข้อมูลสองโซน (Dual-Zone Medallion Lakehouse)"]
-        SilverActive[("Silver Active Store<br/><b>ข้อมูลสะอาด 100% พร้อมใช้งาน</b><br/>• Delta Lake ACID Tables<br/>• พร้อมเชื่อมต่อ Gold & BI Dashboard")]:::active
-        
-        SilverQuarantine[("Silver Quarantine Store<br/><b>ข้อมูลกักกันรอการตรวจสอบ</b><br/>• แนบคอลัมน์ reject_reason ทุกแถว<br/>• ตรวจสอบย้อนกลับได้ ไม่มีการลบทิ้ง")]:::quarantine
-    end
-
-    subgraph HEALING ["4. ระบบเฝ้าระวังและการแจ้งเตือน (Closed-Loop Upstream Healing)"]
-        MetricsTele["RunContext Observability<br/>• บันทึก Recall: 1.0 & Precision: 0.9589<br/>• แจ้งเตือน Webhook/Slack ไปยังระบบต้นน้ำ"]:::telemetry
-    end
-
-    %% Flow Connections
-    RawData --> M1
-    M2 -->|"คอลัมน์วิกฤตสูญหาย / Type ผิดปกติ"| SilverQuarantine
-    M5 -->|"ผ่านเกณฑ์คุณภาพทั้งหมด (Clean Rows)"| SilverActive
-    M5 -->|"ตกเกณฑ์คุณภาพ / ผิดปกติทางสถิติ"| SilverQuarantine
-
-    SilverQuarantine -.->|"ส่งเหตุผลการกักกัน"| MetricsTele
-    MetricsTele -.->|"แจ้งเตือนปรับปรุงแก้ไข"| RawData
-```
+### สรุปสาระสำคัญ (Key Takeaways)
+* **In-Memory DAG Execution**: ประมวลผล 13 Stages ต่อเนื่องบน RAM ผ่าน Apache Spark `RunContext` โดยไม่มี Disk I/O ซ้ำซ้อน
+* **5 Core Missions**: แบ่งเป็น 5 ภารกิจหลักครอบคลุมตั้งแต่ Align, Schema Drift, Safe Clean & Dedup, Standardize จนถึง Validation
+* **Zero Silent Drop Invariant**: แถวสะอาดเข้า **Silver Active Store** | แถวมีปัญหาเข้า **Silver Quarantine Store** พร้อม `reject_reason`
 
 ### บทพูดผู้บรรยาย (~40 วินาที)
-"สวัสดีครับ ในส่วนของกระบวนการ Data Transformation ของ DataServe เราออกแบบสถาปัตยกรรมให้ทำงานเป็น Sequential Deterministic DAG จำนวน 13 ขั้นตอนต่อเนื่องบน Apache Spark ครับ โดยควบคุมผ่าน RunContext ทำงานบน RAM ทั้งหมดโดยไม่มีการเขียนดิสก์ซ้ำซ้อน ทั้ง 13 ขั้นตอนนี้ถูกจัดหมวดหมู่เป็น 5 ภารกิจหลัก ตั้งแต่การจัดโครงสร้าง ป้องกันข้อมูลสูญหาย รับมือกับ Schema ที่เปลี่ยนไป ล้างข้อมูล ตัดแถวซ้ำ ปรับมาตรฐานเวลา และตรวจจับความผิดปกติด้วยสถิติขั้นสูง โดยยึดหลักการ Zero Silent Drop คือไม่ลบข้อมูลทิ้ง แต่แยกแถวสะอาดและแถวกักกันออกจากกันอย่างชัดเจนครับ"
+"สวัสดีครับ ในส่วนของกระบวนการ Data Transformation ของ DataServe เราออกแบบสถาปัตยกรรมให้ทำงานเป็น Sequential Deterministic DAG จำนวน 13 ขั้นตอนต่อเนื่องบน Apache Spark ครับ โดยควบคุมผ่าน RunContext ทำงานบน RAM ทั้งหมดโดยไม่มีการเขียนดิสก์ซ้ำซ้อน ทั้ง 13 ขั้นตอนนี้ถูกจัดหมวดหมู่เป็น 5 ภารกิจหลัก ตั้งแต่การจัดโครงสร้าง ป้องกันข้อมูลสูญหาย รับมือกับ Schema ที่เปลี่ยนไป ล้างข้อมูล ตัดแถวซ้ำ ปรับมาตรฐานเวลา และตรวจจับความผิดปกติด้วยสถิติขั้นสูง โดยยึดหลักการ Zero Silent Drop คือไม่ลบข้อมูลทิ้งแม้แต่แถวเดียว แต่แยกแถวสะอาด 100% ส่งต่อ Gold Layer และแยกแถวกักกันไว้พร้อมระบุสาเหตุอย่างชัดเจนครับ"
 
 ---
 
 ## Slide 2: ภารกิจที่ 1 & 2 — จัดโครงสร้าง ป้องกันข้อมูลสูญหาย และรับมือ Schema Drift
 
-* **หัวข้อหลัก (Title)**: Missions 1 & 2: Structural Alignment & Schema Drift Governance
-* **หัวข้อย่อย (Subtitle)**: จัดระเบียบโครงสร้าง นวัตกรรม Smart Type Promotion และภูมิคุ้มกันท่อข้อมูล
+* **Title**: Missions 1 & 2: Structural Alignment & Schema Drift Governance
+* **Subtitle**: จัดระเบียบโครงสร้าง นวัตกรรม Smart Type Promotion และเกราะป้องกัน Schema เปลี่ยนแปลง
 
-### ข้อความบนสไลด์ (Slide Content)
-* **ภารกิจที่ 1: จัดโครงสร้างและป้องกันข้อมูลสูญหาย (Align & Smart Promotion)**:
-  * **Column Sanitization**: ตัดช่องว่าง ลบอักขระพิเศษ และทำ Fuzzy Matching กับ Schema มาตรฐาน
-  * **Dynamic Primary Key (`row_hash`)**: รวมค่าทุกคอลัมน์แล้วสร้างแฮช MD5 เป็นคีย์หลักอัตโนมัติ สำหรับตารางที่ไม่มี Primary Key จากต้นทาง
-  * **Smart Type Promotion (นวัตกรรมป้องกัน Data Loss)**:
-    * ท่อข้อมูลทั่วไป เมื่อ Schema กำหนดเป็นจำนวนเต็ม (Integer) แต่ต้นทางส่งทศนิยมมา ข้อมูลจะกลายเป็นค่าว่าง (Null) ทันที
-    * DataServe สแกนหาทศนิยมอัตโนมัติ หากพบเศษทศนิยมจริง จะปรับชนิดเป็น `Double` ให้อัตโนมัติ จึงรักษาข้อมูลไว้ได้ครบถ้วน
-* **ภารกิจที่ 2: รับมือความเปลี่ยนแปลงโครงสร้าง (Schema Drift Governance)**:
-  * **จำแนกความรุนแรง (Severity Scoring)**:
-    * *พบคอลัมน์ใหม่ (ความเสี่ยงต่ำ)*: อนุมัติให้อัปเดตโครงสร้างลง Delta Lake อัตโนมัติ (Auto-Evolution)
-    * *คอลัมน์สำคัญหาย หรือชนิดข้อมูลเพี้ยน (ความเสี่ยงวิกฤต)*: เติมค่าว่างชั่วคราวเพื่อกันระบบหยุดทำงาน กักกันข้อมูลรอบนั้น และส่ง Webhook แจ้งเตือนทีมงานทันที
+### ภาพประกอบระบบจริง (Missions 1 & 2 Infographic)
+![Missions 1 & 2: Alignment & Schema Drift Governance](images/mission1_2_schema_alignment_drift.jpg)
+
+### สรุปสาระสำคัญ (Key Takeaways)
+* **Mission 1: Alignment & Smart Promotion**:
+  * **Dynamic row_hash**: คำนวณ MD5 จากทุกคอลัมน์เป็น Primary Key อัตโนมัติสำหรับตารางที่ไม่มีคีย์หลัก
+  * **Smart Type Promotion**: สแกนหาทศนิยม หากพบเศษทศนิยมจะปรับจาก `Integer -> Double` ทันที ป้องกันข้อมูลกลายเป็นค่าว่าง (Zero Data Loss)
+* **Mission 2: Schema Drift Governance**:
+  * **Low Risk (คอลัมน์ใหม่)**: อนุมัติ Auto-Evolution บน Delta Lake อัตโนมัติ
+  * **Critical Risk (คอลัมน์สำคัญหาย/ชนิดข้อมูลเพี้ยน)**: เติมค่าว่างชั่วคราวเพื่อกันระบบหยุดทำงาน กักกันข้อมูลรอบนั้น และส่ง Webhook แจ้งเตือนทีมทันที
 
 ### บทพูดผู้บรรยาย (~40 วินาที)
-"ในภารกิจที่ 1 เราเริ่มต้นด้วยการจัดโครงสร้างและทำความสะอาดชื่อคอลัมน์ พร้อมสร้าง row_hash ด้วย MD5 สิ่งสำคัญคือฟีเจอร์ Smart Type Promotion ครับ ในระบบทั่วไปถ้าสคีมาเป็น Integer แต่ข้อมูลส่งทศนิยมมา ข้อมูลมักจะกลายเป็น Null ทันที แต่ระบบของเราจะสแกนหาเศษทศนิยมก่อน ถ้าพบจะเลื่อนชนิดเป็น Double ให้อัตโนมัติ ช่วยป้องกันข้อมูลสูญหายได้ 100% และในภารกิจที่ 2 หากต้นทางเปลี่ยนโครงสร้างข้อมูล เช่น คอลัมน์สำคัญหายไป ระบบจะไม่ล่ม แต่จะเติมค่าว่างชั่วคราว กักกันข้อมูลรอบนั้น และส่งแจ้งเตือนให้ทีม Data เข้ามาตรวจสอบทันทีครับ"
+"ในภารกิจที่ 1 เราเริ่มต้นด้วยการจัดโครงสร้างและสร้าง row_hash ด้วย MD5 สิ่งสำคัญคือนวัตกรรม Smart Type Promotion ครับ ในระบบทั่วไปถ้าสคีมาเป็น Integer แต่ข้อมูลส่งทศนิยมมา ข้อมูลจะกลายเป็น Null ทันที แต่ระบบของเราจะสแกนหาเศษทศนิยมก่อน ถ้าพบจะเลื่อนชนิดเป็น Double ให้อัตโนมัติ ช่วยป้องกันข้อมูลสูญหายได้ 100% และในภารกิจที่ 2 หากต้นทางเปลี่ยนโครงสร้างข้อมูล ถ้าเป็นคอลัมน์ใหม่จะขยายตารางให้อัตโนมัติ แต่ถ้าคอลัมน์สำคัญหายไป ระบบจะไม่หยุดทำงาน แต่จะกักกันข้อมูลรอบนั้นและส่งแจ้งเตือนให้ทีม Data ทันทีครับ"
 
 ---
 
 ## Slide 3: ภารกิจที่ 3 & 4 — ล้างข้อมูล ตัดแถวซ้ำ และปรับมาตรฐานสากล
 
-* **หัวข้อหลัก (Title)**: Missions 3 & 4: Data Cleansing, Deduplication & Normalization
-* **หัวข้อย่อย (Subtitle)**: เยียวยาข้อมูลด้วย DSL Sandbox, ตัดแถวซ้ำ 2 ชั้น และแปลง พ.ศ. เป็น ค.ศ. อัตโนมัติ
+* **Title**: Missions 3 & 4: Cleansing, Deduplication & Standardization
+* **Subtitle**: เยียวยาข้อมูลด้วย Secure DSL Sandbox, ตัดแถวซ้ำ 2 ชั้น และแปลง พ.ศ. เป็น ค.ศ. สากล
 
-### ข้อความบนสไลด์ (Slide Content)
-* **ภารกิจที่ 3: ล้างข้อมูลและตัดแถวซ้ำ (Safe Cleaning & Deduplication)**:
-  * **DSL Remediation Sandbox**: รองรับคำสั่ง 4 รูปแบบ (`fillna`, `calculate`, `cast`, `filter`) โดยจำกัดเฉพาะตัวเลขและเครื่องหมายคณิตศาสตร์ เพื่อป้องกัน Code Injection
-  * **Business Deduplication (ตัดแถวซ้ำ 2 ชั้น)**:
-    * *ชั้นที่ 1 (Auto-Clean)*: ตัดแถวซ้ำที่มีคีย์หลักสมบูรณ์ล่วงหน้า
-    * *ชั้นที่ 2 (Anti-Join)*: เปรียบเทียบตามคีย์ธุรกิจและเวลา คงเฉพาะเวอร์ชันล่าสุดไว้ใช้งาน ส่วนแถวซ้ำใช้ Left Anti-Join สกัดส่งเข้าโซนกักกัน
-* **ภารกิจที่ 4: ปรับข้อมูลสู่มาตรฐานสากล (Standardization)**:
-  * **Auto Buddhist Era Normalization (พ.ศ. เป็น ค.ศ.)**:
-    * ระบบตรวจจับปี พ.ศ. หากพบปีมากกว่า 2500 จะหักลบด้วย 543 และปรับให้อยู่ในมาตรฐาน ISO `YYYY-MM-DD` อัตโนมัติ
-  * **Generic Categorization**: ดึงพจนานุกรมคำสำคัญจาก Elasticsearch มาจัดกลุ่มสินค้าหรือข้อความเข้าหมวดหมู่มาตรฐาน โดยไม่ต้องแก้ไขโค้ดโปรแกรม
+### ภาพประกอบระบบจริง (Missions 3 & 4 Infographic)
+![Missions 3 & 4: Cleansing, Deduplication & Normalization](images/mission3_4_cleansing_normalization.jpg)
+
+### สรุปสาระสำคัญ (Key Takeaways)
+* **Mission 3: Safe Cleansing & 2-Layer Dedup**:
+  * **DSL Remediation Sandbox**: รองรับ 4 คำสั่งปลอดภัย (`fillna`, `calculate`, `cast`, `filter`) ไร้ความเสี่ยง Code Injection
+  * **Business Deduplication**: ตัดแถวซ้ำ 2 ชั้น เก็บเฉพาะแถวล่าสุดไว้ใช้งาน (Active) ส่วนแถวซ้ำสกัดส่งเข้าโซนกักกัน (Quarantine)
+* **Mission 4: Standardization & Normalization**:
+  * **Buddhist Era Normalization**: ตรวจจับปี พ.ศ. (> 2500) หักออก 543 และจัดรูปแบบเป็น ISO `YYYY-MM-DD` อัตโนมัติ
+  * **Category Taxonomy Mapping**: แมปหมวดหมู่ข้อมูลตามพจนานุกรมกลาง Elasticsearch โดยไม่ต้องแก้ไขโค้ดโปรแกรม
 
 ### บทพูดผู้บรรยาย (~40 วินาที)
-"ถัดมาเป็นภารกิจที่ 3 และ 4 ครับ ในการทำความสะอาด เรามีเอนจิน DSL ที่ปลอดภัย รองรับการเติมค่าว่างและการคำนวณสูตรพื้นฐาน และมีการตัดแถวซ้ำโดยเปรียบเทียบตามเวลา ซึ่งจะเก็บเฉพาะเวอร์ชันล่าสุดไว้ใช้งาน ส่วนแถวซ้ำจะถูกส่งไปกักกัน และในภารกิจที่ 4 เราแก้ปัญหาคลาสสิกของข้อมูลไทย คือการบันทึกปีเป็น พ.ศ. ระบบจะตรวจจับและแปลงเป็นปี ค.ศ. สากลให้อัตโนมัติ พร้อมทั้งจัดหมวดหมู่ข้อมูลตามพจนานุกรมกลาง ทำให้ข้อมูลเป็นระเบียบและพร้อมใช้งานร่วมกับระบบสากลครับ"
+"ในภารกิจที่ 3 เรามีเอนจิน DSL Sandbox ที่ปลอดภัย รองรับการเติมค่าว่างและการคำนวณสูตรพื้นฐาน พร้อมกลไกตัดแถวซ้ำ 2 ชั้น โดยเปรียบเทียบตามเวลาเพื่อคงเฉพาะเวอร์ชันล่าสุดไว้ใช้งาน ส่วนแถวซ้ำจะถูกส่งไปกักกัน และในภารกิจที่ 4 เราแก้ปัญหาคลาสสิกของข้อมูลไทย คือการบันทึกปีเป็น พ.ศ. ระบบจะตรวจจับและแปลงเป็นปี ค.ศ. สากลให้อัตโนมัติ พร้อมทั้งจัดหมวดหมู่ข้อมูลตามพจนานุกรมกลาง ทำให้ข้อมูลพร้อมใช้งานร่วมกับระบบสากลได้ทันทีครับ"
 
 ---
 
 ## Slide 4: ภารกิจที่ 5 — กฎธุรกิจและการตรวจจับความผิดปกติทางสถิติ
 
-* **หัวข้อหลัก (Title)**: Mission 5: Business Rules & Advanced Statistical Anomaly Detection
-* **หัวข้อย่อย (Subtitle)**: ผสานกฎขอบเขตธุรกิจเข้ากับแบบจำลองสถิติขั้นสูง เพื่อดักจับข้อมูลผิดธรรมชาติ
+* **Title**: Mission 5: Business Rules & Advanced Statistical Anomaly Detection
+* **Subtitle**: ผสานกฎขอบเขตธุรกิจเข้ากับแบบจำลองสถิติขั้นสูง เพื่อดักจับข้อมูลผิดธรรมชาติ
 
-### ข้อความบนสไลด์ (Slide Content)
-* **การตรวจความถูกต้องพื้นฐาน (Validation & Missing Checks)**:
-  * ตรวจสอบคีย์หลักว่าง (`missing_primary_key`)
-  * ตรวจสอบค่าว่างในคอลัมน์สำคัญที่บังคับต้องมีข้อมูล (`null_value_in_<col>`)
-* **กฎขอบเขตธุรกิจ (Explicit Business Range Rules)**:
-  * บังคับช่วงค่าคงที่ที่ธุรกิจกำหนด เช่น คะแนนสอบต้องอยู่ในช่วง [0, 100] หรือราคาต้องไม่ติดลบ แถวที่หลุดช่วงจะถูกระบุ `out_of_range_<col>`
-* **แบบจำลองสถิติขั้นสูง (Advanced Statistical Anomaly Detection)**:
-  * **Tukey's IQR Fences**: คำนวณควอร์ไทล์หาช่วงการกระจายตัวของข้อมูลจริงแบบ $O(N)$ ดักจับค่าสุดโต่งผิดธรรมชาติ เช่น ชั่วโมงเรียน 48 ชม./สัปดาห์ แม้ค่าไม่ติดลบแต่เป็นไปไม่ได้จริง
-  * **Gaussian 3-Sigma Anomaly**: ตรวจจับค่าที่เบี่ยงเบนเกิน 3 เท่าของส่วนเบี่ยงเบนมาตรฐาน สำหรับข้อมูลการแจกแจงปกติ
-* **การประกอบชุดกักกัน (Quarantine Assembly)**: รวบรวมทุกข้อผิดพลาดเข้าด้วยกัน ผูก `run_id` และเหตุผล แล้ว `.cache()` ใน RAM เพื่อส่งลง Delta Lake
+### ภาพประกอบระบบจริง (Mission 5 Infographic)
+![Mission 5: Business Rules & Statistical Anomaly Detection](images/mission5_validation_outliers.jpg)
+
+### สรุปสาระสำคัญ (Key Takeaways)
+* **Deterministic Business Rules**: บังคับกฎช่วงค่า เช่น คะแนนสอบต้องอยู่ในช่วง [0, 100] แถวที่ได้คะแนนติดลบ (-10) หรือเกิน (145) ถูกกักกันทันที
+* **Statistical Outlier Detection**:
+  * **Tukey's IQR Fences**: คำนวณช่วงการกระจายตัวของข้อมูล ดักจับค่าสุดโต่ง เช่น ชั่วโมงเรียน 48.0 ชม./สัปดาห์ (เกินรั้วปกติ > 12 ชม.)
+  * **Gaussian 3-Sigma Anomaly**: ดักจับค่าที่เบี่ยงเบนเกิน 3 เท่าของส่วนเบี่ยงเบนมาตรฐาน
+* **Quarantine Assembly**: รวบรวมทุกแถวที่ผิดพลาด ผูก `run_id` และ `reject_reason` บันทึกลง Silver Quarantine Store
 
 ### บทพูดผู้บรรยาย (~45 วินาที)
 "ในภารกิจที่ 5 คือการตรวจคุณภาพเชิงลึกครับ เราผสาน 2 กลไกเข้าด้วยกัน: หนึ่งคือกฎธุรกิจที่กำหนดไว้ชัดเจน เช่น คะแนนสอบต้องอยู่ระหว่าง 0 ถึง 100 แถวที่ได้คะแนนติดลบหรือเกิน 100 จะถูกคัดออกทันที และสองคือการใช้แบบจำลองสถิติขั้นสูงอย่าง Tukey IQR Fences เข้ามาช่วยดักจับค่าที่ผิดธรรมชาติ เช่น ชั่วโมงเรียน 48 ชั่วโมงต่อสัปดาห์ ซึ่งไม่ติดลบแต่เป็นไปไม่ได้ในโลกจริง เมื่อตรวจครบทุกมิติ ระบบจะนำข้อมูลเสียทั้งหมดมารวมกัน ผูกเหตุผลความผิดพลาดกำกับไว้ทุกแถว และบันทึกลงสู่ Silver Quarantine อย่างเป็นระบบครับ"
@@ -154,79 +88,42 @@ flowchart TD
 
 ## Slide 5: ตารางตัวอย่างการแปลงสภาพข้อมูลจริง (Before → After Matrix)
 
-* **หัวข้อหลัก (Title)**: Concrete Transformation Examples
-* **หัวข้อย่อย (Subtitle)**: ตัวอย่างเปรียบเทียบข้อมูลก่อนแปลง สภาพผลลัพธ์ และการคัดแยกปลายทาง
+* **Title**: Concrete Transformation Examples: Before → After Matrix
+* **Subtitle**: ตัวอย่างเปรียบเทียบข้อมูลก่อนแปลง สภาพผลลัพธ์ และการคัดแยกปลายทาง Lakehouse
 
-### ภาพผังเปรียบเทียบข้อมูลจริง (Transformation Matrix Infographic)
+### ภาพประกอบระบบจริง (Transformation Matrix Infographic)
 ![Before and After Data Transformation Matrix](images/transformation_before_after_matrix.jpg)
 
-### แผนภาพโฟลว์การแปลงสภาพข้อมูล 6 กรณี (Mermaid Transformation Flow)
-```mermaid
-flowchart LR
-    classDef before fill:#1e293b,stroke:#64748b,stroke-width:1.5px,color:#f8fafc;
-    classDef logic fill:#0f172a,stroke:#38bdf8,stroke-width:1.5px,color:#38bdf8;
-    classDef active fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ffffff,font-weight:bold;
-    classDef quar fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#ffffff,font-weight:bold;
-
-    subgraph G_CLEAN ["กลุ่มแปลงสำเร็จพร้อมใช้งาน (Silver Active Store)"]
-        direction TB
-        subgraph C1 ["กรณีที่ 1: ตัวเลขมีคอมม่า"]
-            B1["'1,234.50'"]:::before --> L1["ตัดคอมม่า & Cast Double"]:::logic --> A1["1234.50"]:::active
-        end
-        subgraph C2 ["กรณีที่ 2: วันที่ปี พ.ศ."]
-            B2["'22-07-2569'"]:::before --> L2["ปี > 2500 หัก 543"]:::logic --> A2["'2026-07-22'"]:::active
-        end
-        subgraph C3 ["กรณีที่ 3: ข้อมูลซ้ำซ้อน"]
-            B3["รหัส นศ. ซ้ำ 2 แถว"]:::before --> L3["Dedup คีย์หลักล่าสุด"]:::logic --> A3["เก็บแถวล่าสุด (Active)<br/>สกัดแถวซ้ำ (Quarantine)"]:::active
-        end
-    end
-
-    subgraph G_QUAR ["กลุ่มตรวจพบปัญหาและกักกัน (Silver Quarantine Store)"]
-        direction TB
-        subgraph C4 ["กรณีที่ 4: ค่าว่างในคอลัมน์บังคับ"]
-            B4["คะแนน = NULL"]:::before --> L4["ตรวจพบคอลัมน์บังคับว่าง"]:::logic --> Q4["Quarantine:<br/>missing_score"]:::quar
-        end
-        subgraph C5 ["กรณีที่ 5: คะแนนหลุดช่วงกฎธุรกิจ"]
-            B5["คะแนน -10 หรือ 145"]:::before --> L5["หลุดช่วงกฎ [0, 100]"]:::logic --> Q5["Quarantine:<br/>out_of_range"]:::quar
-        end
-        subgraph C6 ["กรณีที่ 6: ค่าสุดโต่งผิดธรรมชาติทางสถิติ"]
-            B6["เรียน 48.0 ชม./สัปดาห์"]:::before --> L6["Tukey IQR เกินรั้วปกติ"]:::logic --> Q6["Quarantine:<br/>outlier_details"]:::quar
-        end
-    end
-```
-
-### ตารางเปรียบเทียบข้อมูลจริงบนสไลด์
-
-| ลำดับ | ข้อมูลดิบต้นทาง (Before) | กลไกการแปลงสภาพ (Transformation Logic) | ข้อมูลผลลัพธ์ (After) | ปลายทางที่จัดเก็บ |
+### สรุปตัวอย่าง 6 กรณีหลัก (Concrete Transformation Summary)
+| ลำดับ | ข้อมูลดิบต้นทาง (Before) | กลไกการแปลงสภาพ (Logic) | ข้อมูลผลลัพธ์ (After) | ปลายทางที่จัดเก็บ |
 |:---:|---|---|---|:---:|
-| **1** | `"1,234.50"` (ข้อความมีจุลภาค) | ตัดเครื่องหมาย `,` ออก และแปลงชนิดข้อมูลเป็นตัวเลขทศนิยม | `1234.50` (Double) | **Silver Active** (พร้อมคำนวณ) |
-| **2** | `"22-07-2569"` (วันที่ปี พ.ศ.) | ตรวจพบปี > 2500 หักออก 543 และแปลงเป็นรูปแบบสากล | `"2026-07-22"` (ISO Date) | **Silver Active** (มาตรฐานสากล) |
-| **3** | ข้อมูลรหัส นศ. ซ้ำกัน 2 แถว | ตรวจคีย์หลัก เรียงตามเวลาล่าสุด ตัดแถวซ้ำออก | เก็บเฉพาะแถวล่าสุด แถวซ้ำสกัดส่ง Quarantine | **Active & Quarantine** |
-| **4** | คะแนนสอบเป็นค่าว่าง (`NULL`) | ตรวจพบคอลัมน์บังคับมีค่าว่าง | ผูกเหตุผล `missing_score` | **Silver Quarantine** |
-| **5** | คะแนนสอบติดลบ `-10` หรือ `145` | ตรวจพบค่าหลุดจากช่วงกฎธุรกิจ [0, 100] | ผูกเหตุผล `out_of_range_score` | **Silver Quarantine** |
-| **6** | ชั่วโมงเรียนต่อสัปดาห์ `48.0` ชม. | สถิติ Tukey IQR ตรวจพบค่าเกินรั้วปกติ (> 12 ชม.) | ผูกเหตุผล `outlier_details` | **Silver Quarantine** |
+| **1** | `"1,234.50"` (ข้อความมีจุลภาค) | ตัดเครื่องหมาย `,` ออก และแปลงชนิดเป็นตัวเลข | `1234.50` (Double) | **Silver Active** (พร้อมคำนวณ) |
+| **2** | `"22-07-2569"` (วันที่ปี พ.ศ.) | ตรวจพบปี > 2500 หักออก 543 แปลงเป็น ISO | `"2026-07-22"` | **Silver Active** (มาตรฐานสากล) |
+| **3** | รหัสนักศึกษาซ้ำกัน 2 แถว | ตรวจคีย์หลัก เรียงตามเวลา ตัดแถวซ้ำ | เก็บแถวล่าสุด | **Active & Quarantine** |
+| **4** | คะแนนสอบเป็นค่าว่าง (`NULL`) | ตรวจพบคอลัมน์บังคับมีค่าว่าง | ผูก `missing_score` | **Silver Quarantine** |
+| **5** | คะแนนสอบติดลบ `-10` หรือ `145` | ตรวจพบค่าหลุดจากช่วงกฎธุรกิจ [0, 100] | ผูก `out_of_range_score` | **Silver Quarantine** |
+| **6** | ชั่วโมงเรียนต่อสัปดาห์ `48.0` ชม. | สถิติ Tukey IQR ตรวจพบค่าเกินรั้วปกติ (> 12 ชม.) | ผูก `outlier_details` | **Silver Quarantine** |
 
 ### บทพูดผู้บรรยาย (~35 วินาที)
-"สไลด์นี้แสดงให้เห็นภาพตัวอย่างการแปลงสภาพข้อมูลจริง 6 กรณีครับ ข้อมูลตัวเลขที่มีคอมม่าจะถูกแปลงเป็นตัวเลขทศนิยม วันที่ พ.ศ. จะถูกเปลี่ยนเป็น ค.ศ. ข้อมูลที่ส่งซ้ำจะถูกตัดเหลือเฉพาะแถวล่าสุด ส่วนแถวที่มีข้อผิดพลาด เช่น คะแนนว่าง คะแนนติดลบ หรือชั่วโมงเรียนเกินจริง จะถูกส่งเข้า Silver Quarantine โดยมีคอลัมน์ระบุเหตุผลกำกับไว้ทุกแถว ทำให้ระบบปลายทางมั่นใจได้ว่าจะได้รับเฉพาะข้อมูลที่สะอาด 100% ไปใช้งานครับ"
+"สไลด์นี้แสดงให้เห็นตัวอย่างการแปลงสภาพข้อมูลจริง 6 กรณีครับ ข้อมูลตัวเลขที่มีคอมม่าจะถูกแปลงเป็นตัวเลขทศนิยม วันที่ พ.ศ. จะถูกเปลี่ยนเป็น ค.ศ. ข้อมูลที่ส่งซ้ำจะถูกตัดเหลือเฉพาะแถวล่าสุด ส่วนแถวที่มีข้อผิดพลาด เช่น คะแนนว่าง คะแนนติดลบ หรือชั่วโมงเรียนเกินจริง จะถูกส่งเข้า Silver Quarantine โดยมีคอลัมน์ระบุเหตุผลกำกับไว้ทุกแถว ทำให้ระบบปลายทางมั่นใจได้ว่าจะได้รับเฉพาะข้อมูลที่สะอาด 100% ไปใช้งานครับ"
 
 ---
 
 ## Slide 6: ผลการพิสูจน์เชิงประจักษ์และการกระทบยอดข้อมูล 100% (Empirical Proof)
 
-* **หัวข้อหลัก (Title)**: Empirical Verification & 100% Volume Reconciliation
-* **หัวข้อย่อย (Subtitle)**: การพิสูจน์ความถูกต้องทางวิศวกรรมข้อมูลด้วยชุดทดสอบจริงที่มี Ground Truth (10,100 แถว)
+* **Title**: Empirical Verification & 100% Volume Reconciliation
+* **Subtitle**: การพิสูจน์ความถูกต้องทางวิศวกรรมข้อมูลด้วยชุดทดสอบจริงที่มี Ground Truth (10,100 แถว)
 
-### ข้อความบนสไลด์ (Slide Content)
-* **ความแม่นยำในการตรวจจับข้อผิดพลาด (Detection Accuracy)**:
-  * **Recall = 1.0 (100%)**: ตรวจพบข้อผิดพลาดที่ฉีดไว้ครบ 700 จาก 700 แถว (Zero False Negative)
-    * คะแนนว่าง (Missing Score): ตรวจพบครบ **300 / 300 แถว**
-    * คะแนนหลุดช่วง (Invalid Range): ตรวจพบครบ **200 / 200 แถว**
-    * ชั่วโมงเรียนผิดปกติ (IQR Outlier): ตรวจพบครบ **100 / 100 แถว**
-    * ข้อมูลซ้ำซ้อน (Duplicate): ตรวจพบครบ **100 / 100 แถว**
-  * **Precision = 95.89%** | **Overall Accuracy = 99.70%** (มีแถวติดเกณฑ์สถิติ 3-Sigma เพิ่มเติม 30 แถวเพื่อความปลอดภัย)
-* **สมการกระทบยอดปริมาณข้อมูล 100% (Data Volume Reconciliation)**:
-  $$\text{ข้อมูลนำเข้า (10,100 แถว)} = \text{ข้อมูลสะอาด Active (9,370)} + \text{ข้อมูลกักกัน Quarantine (630)} + \text{แถวซ้ำที่ตัดออก (100)}$$
-  * **ผลต่าง = 0 แถว**: พิสูจน์ทางคณิตศาสตร์ว่าไม่มีข้อมูลสูญหายแม้แต่แถวเดียว ทุกแถวมีที่ไปชัดเจนและตรวจสอบได้ 100%
+### ภาพประกอบระบบจริง (Terminal Output & Reconciliation Flow)
+![Empirical Verification & 100% Volume Reconciliation](images/slide6_empirical_reconciliation.jpg)
+
+### สรุปตัวเลขพิสูจน์เชิงประจักษ์ (Key Verification Metrics)
+* **Detection Recall: 1.0 (100%)**: ตรวจพบข้อผิดพลาดครบ 700 / 700 แถว (Zero False Negative)
+  * Missing Score: 300 แถว | Invalid Range: 200 แถว | IQR Outlier: 100 แถว | Duplicates: 100 แถว
+* **Precision: 95.89% | Overall Accuracy: 99.70%**: มี Safety Margin ทางสถิติ 30 แถว
+* **สมการกระทบยอดข้อมูล 100% (Volume Reconciliation)**:
+  $$\text{Raw Inbound (10,100)} = \text{Active (9,370)} + \text{Quarantine (630)} + \text{Dedup (100)}$$
+  * **Unaccounted Delta = 0 แถว**: พิสูจน์ทางคณิตศาสตร์ว่าไม่มีข้อมูลตกหล่นสูญหายแม้แต่แถวเดียว
 
 ### บทพูดผู้บรรยาย (~45 วินาที)
 "สไลด์สุดท้ายนี้คือหลักฐานยืนยันความถูกต้องทางวิศวกรรมของระบบครับ เรานำชุดข้อมูลทดสอบ 10,100 แถว ซึ่งมีข้อผิดพลาดที่จงใจใส่ไว้ 700 แถวมาประมวลผลจริง ผลลัพธ์คือระบบสามารถตรวจพบข้อผิดพลาดได้ครบทั้ง 700 แถว บรรลุค่า Recall เต็ม 100% โดยตรวจจับคะแนนว่างได้ 300 แถว, คะแนนหลุดช่วง 200 แถว, ชั่วโมงเรียนผิดปกติ 100 แถว และแถวซ้ำ 100 แถวครบถ้วน และที่สำคัญที่สุดคือสมการกระทบยอดครับ ข้อมูลนำเข้า 10,100 แถว แยกเป็นข้อมูลสะอาด 9,370 แถว ข้อมูลกักกัน 630 แถว และแถวซ้ำ 100 แถว รวมกันได้ 10,100 แถวลงตัวพอดี ผลต่างเป็น 0 แถว ไม่มีข้อมูลสูญหายแม้แต่แถวเดียว นี่คือข้อพิสูจน์ว่า Data Transformation Engine ของ DataServe ทำงานได้อย่างแม่นยำ โปร่งใส และพร้อมสำหรับงานระดับองค์กรอย่างแท้จริงครับ ขอบคุณครับ"

@@ -405,35 +405,30 @@ flowchart TD
         <h1 style="font-size: 24px; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
           Missions 1 & 2: Structural Alignment & Schema Drift Governance
         </h1>
-        <p style="color: #94a3b8; font-size: 13.5px; margin-bottom: 20px;">
-          จัดระเบียบโครงสร้าง นวัตกรรม Smart Type Promotion และภูมิคุ้มกันท่อข้อมูล
+        <p style="color: #94a3b8; font-size: 13.5px; margin-bottom: 16px;">
+          จัดระเบียบโครงสร้าง นวัตกรรม Smart Type Promotion และเกราะป้องกัน Schema เปลี่ยนแปลง
         </p>
 
-        <div class="grid-2" style="margin-bottom: 16px;">
+        <!-- SLIDE 2 SYSTEM IMAGE -->
+        <div style="margin-bottom: 16px; text-align: center;">
+          <img src="images/mission1_2_schema_alignment_drift.jpg" alt="Missions 1 & 2: Structural Alignment & Schema Drift Governance" style="width: 100%; max-height: 310px; object-fit: contain; border-radius: 8px; border: 1px solid #1e293b; background: #090d16;" />
+        </div>
+
+        <div class="grid-2" style="margin-bottom: 14px;">
           <div class="panel">
-            <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 8px;">ภารกิจที่ 1: จัดโครงสร้าง & ป้องกันข้อมูลสูญหาย</div>
-            <ul style="font-size: 12px; color: #cbd5e1; line-height: 1.7; padding-left: 18px;">
-              <li><strong>Column Sanitization</strong>: ตัดช่องว่าง ลบอักขระพิเศษ และจับคู่ชื่อให้ตรง Schema มาตรฐาน</li>
-              <li><strong>Dynamic row_hash</strong>: รวมค่าทุกคอลัมน์แล้วแฮช MD5 เป็น Primary Key สำหรับตารางที่ไม่มีคีย์หลัก</li>
-              <li><strong>Smart Type Promotion (ป้องกัน Data Loss)</strong>:
-                <br>• ในระบบทั่วไป หาก Schema เป็น Integer แต่ข้อมูลส่งทศนิยมมา ข้อมูลจะกลายเป็น Null ทันที
-                <br>• DataServe สแกนหาทศนิยมอัตโนมัติ หากพบเศษทศนิยม จะเลื่อนเป็น <code>Double</code> ทันทีเพื่อรักษาข้อมูลไว้ได้ 100%
-              </li>
+            <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 6px;">Mission 1: Alignment & Smart Promotion</div>
+            <ul style="font-size: 12px; color: #cbd5e1; line-height: 1.6; padding-left: 18px;">
+              <li><strong>Dynamic row_hash</strong>: รวมทุกคอลัมน์คำนวณ MD5 เป็น Primary Key อัตโนมัติ</li>
+              <li><strong>Smart Type Promotion</strong>: สแกนพบทศนิยมปรับ <code>Integer -> Double</code> อัตโนมัติ ป้องกันข้อมูลสูญหาย 100%</li>
             </ul>
           </div>
 
           <div class="panel">
-            <div style="font-size: 12px; font-weight: 700; color: #fbbf24; margin-bottom: 8px;">ภารกิจที่ 2: รับมือความเปลี่ยนแปลงโครงสร้าง</div>
-            <ul style="font-size: 12px; color: #cbd5e1; line-height: 1.7; padding-left: 18px;">
-              <li><strong>จำแนกความรุนแรง (Severity Scoring)</strong>:
-                <br>• <em>พบคอลัมน์ใหม่ (ความเสี่ยงต่ำ)</em>: ระบบอนุมัติให้อัปเดตโครงสร้างลง Delta Lake อัตโนมัติ (Auto-Evolution)
-                <br>• <em>คอลัมน์สำคัญหาย หรือชนิดข้อมูลเพี้ยน (ความเสี่ยงวิกฤต)</em>: เติมค่าว่างชั่วคราวเพื่อกันระบบล่ม กักกันข้อมูลรอบนั้น และส่ง Webhook แจ้งเตือนทีมงานทันที
-              </li>
+            <div style="font-size: 12px; font-weight: 700; color: #fbbf24; margin-bottom: 6px;">Mission 2: Schema Drift Governance</div>
+            <ul style="font-size: 12px; color: #cbd5e1; line-height: 1.6; padding-left: 18px;">
+              <li><strong>Low Risk (คอลัมน์ใหม่)</strong>: อนุมัติ Auto-Evolution บน Delta Lake อัตโนมัติ</li>
+              <li><strong>Critical Risk (คอลัมน์สำคัญหาย)</strong>: เติมค่าว่างกันระบบล่ม กักกันข้อมูลรอบนั้น และแจ้งเตือนทีมทันที</li>
             </ul>
-            <div class="diagram-box" style="font-size: 10px; margin-top: 10px; padding: 10px;">
-Input: Column "Total Price" value "1500.75" (Defined as: Integer)
-Action: Auto-promotes Integer ──► Double (รักษาค่า 1500.75 ไว้ได้ครบถ้วน)
-            </div>
           </div>
         </div>
       </div>
@@ -446,40 +441,33 @@ Action: Auto-promotes Integer ──► Double (รักษาค่า 1500.75
           <span class="badge badge-emerald">Buddhist Era Normalization</span>
         </div>
         <h1 style="font-size: 24px; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
-          Missions 3 & 4: Data Cleansing, Deduplication & Normalization
+          Missions 3 & 4: Cleansing, Deduplication & Normalization
         </h1>
-        <p style="color: #94a3b8; font-size: 13.5px; margin-bottom: 20px;">
-          เยียวยาข้อมูลด้วย DSL Sandbox, ตัดแถวซ้ำ 2 ชั้น และแปลง พ.ศ. เป็น ค.ศ. อัตโนมัติ
+        <p style="color: #94a3b8; font-size: 13.5px; margin-bottom: 16px;">
+          เยียวยาข้อมูลด้วย Secure DSL Sandbox, ตัดแถวซ้ำ 2 ชั้น และแปลง พ.ศ. เป็น ค.ศ. สากล
         </p>
 
-        <div class="grid-2" style="margin-bottom: 16px;">
-          <div class="panel">
-            <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 8px;">ภารกิจที่ 3: ล้างข้อมูลและตัดแถวซ้ำ</div>
-            <ul style="font-size: 12px; color: #cbd5e1; line-height: 1.7; padding-left: 18px;">
-              <li><strong>DSL Remediation Sandbox</strong>: รองรับคำสั่ง 4 แบบ (<code>fillna</code>, <code>calculate</code>, <code>cast</code>, <code>filter</code>) โดยจำกัดเฉพาะตัวเลขและคณิตศาสตร์เพื่อป้องกัน Code Injection</li>
-              <li><strong>ตัดแถวซ้ำ 2 ชั้น (Deduplication)</strong>:
-                <br>• <em>ชั้นที่ 1 (Auto-Clean)</em>: ตัดแถวซ้ำที่มี Primary Key สมบูรณ์ล่วงหน้า
-                <br>• <em>ชั้นที่ 2 (Anti-Join)</em>: เปรียบเทียบตามคีย์ธุรกิจและเวลา คงเฉพาะแถวล่าสุดไว้ ส่วนแถวซ้ำส่งเข้า Quarantine
-              </li>
-            </ul>
-          </div>
-
-          <div class="panel">
-            <div style="font-size: 12px; font-weight: 700; color: #34d399; margin-bottom: 8px;">ภารกิจที่ 4: ปรับข้อมูลสู่มาตรฐานสากล</div>
-            <ul style="font-size: 12px; color: #cbd5e1; line-height: 1.7; padding-left: 18px;">
-              <li><strong>Auto Buddhist Era Normalization (พ.ศ. เป็น ค.ศ.)</strong>:
-                <br>• ระบบตรวจจับปี พ.ศ. หากพบปี > 2500 จะหักลบด้วย 543 และปรับให้อยู่ในมาตรฐาน ISO <code>YYYY-MM-DD</code> อัตโนมัติ
-              </li>
-              <li><strong>Generic Categorization</strong>:
-                <br>• ดึงพจนานุกรมคำสำคัญจาก Elasticsearch มาจัดกลุ่มสินค้าหรือข้อความเข้าหมวดหมู่มาตรฐาน โดยไม่ต้องแก้ไขโค้ดโปรแกรม
-              </li>
-            </ul>
-          </div>
+        <!-- SLIDE 3 SYSTEM IMAGE -->
+        <div style="margin-bottom: 16px; text-align: center;">
+          <img src="images/mission3_4_cleansing_normalization.jpg" alt="Missions 3 & 4: Cleansing, Deduplication & Normalization" style="width: 100%; max-height: 310px; object-fit: contain; border-radius: 8px; border: 1px solid #1e293b; background: #090d16;" />
         </div>
 
-        <div class="diagram-box">
-Input: "21 ก.ค. 2569" ──► ตรวจพบปี 2569 (> 2500) ──► [ ปี - 543 ] ──► "2026-07-21" (ISO-8601)
-Input: รหัสนักศึกษาซ้ำ 2 แถว ──► ตรวจสอบคีย์หลัก ──► เก็บแถวล่าสุดใน Active, ส่งแถวซ้ำไป Quarantine
+        <div class="grid-2" style="margin-bottom: 14px;">
+          <div class="panel">
+            <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 6px;">Mission 3: Safe Cleansing & 2-Layer Dedup</div>
+            <ul style="font-size: 12px; color: #cbd5e1; line-height: 1.6; padding-left: 18px;">
+              <li><strong>DSL Sandbox</strong>: 4 คำสั่งปลอดภัย (<code>fillna</code>, <code>calculate</code>, <code>cast</code>, <code>filter</code>) ไร้เสี่ยง Code Injection</li>
+              <li><strong>2-Layer Deduplication</strong>: ตัดซ้ำล่วงหน้า + เปรียบเทียบเวลาเก็บแถวล่าสุด แถวซ้ำส่ง Quarantine</li>
+            </ul>
+          </div>
+
+          <div class="panel">
+            <div style="font-size: 12px; font-weight: 700; color: #34d399; margin-bottom: 6px;">Mission 4: Standardization & Taxonomy</div>
+            <ul style="font-size: 12px; color: #cbd5e1; line-height: 1.6; padding-left: 18px;">
+              <li><strong>Buddhist Era Normalization</strong>: ตรวจจับ พ.ศ. (> 2500) หัก 543 แปลงเป็น ISO <code>YYYY-MM-DD</code></li>
+              <li><strong>Taxonomy Mapping</strong>: แมปหมวดหมู่ตามพจนานุกรม Elasticsearch กลางโดยไม่ต้องแก้โค้ด</li>
+            </ul>
+          </div>
         </div>
       </div>
 
@@ -488,44 +476,36 @@ Input: รหัสนักศึกษาซ้ำ 2 แถว ──► ต�
         <div style="display: flex; gap: 8px; margin-bottom: 8px;">
           <span class="badge badge-purple">Slide 04 · Mission 5</span>
           <span class="badge badge-cyan">Business Range Rules</span>
-          <span class="badge badge-amber">Tukey IQR Fences</span>
+          <span class="badge badge-rose">Tukey IQR & 3-Sigma</span>
         </div>
         <h1 style="font-size: 24px; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
-          Mission 5: Business Rules & Advanced Statistical Anomaly Detection
+          Mission 5: Business Rules & Advanced Statistical Outlier Detection
         </h1>
-        <p style="color: #94a3b8; font-size: 13.5px; margin-bottom: 20px;">
+        <p style="color: #94a3b8; font-size: 13.5px; margin-bottom: 16px;">
           ผสานกฎขอบเขตธุรกิจเข้ากับแบบจำลองสถิติขั้นสูง เพื่อดักจับข้อมูลผิดธรรมชาติ
         </p>
 
-        <div class="grid-3" style="margin-bottom: 16px;">
-          <div class="panel">
-            <div style="font-size: 11px; font-weight: 700; color: #38bdf8; margin-bottom: 4px;">EXPLICIT BOUNDS</div>
-            <div style="font-size: 13px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">กฎขอบเขตธุรกิจ</div>
-            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
-              บังคับช่วงค่าคงที่ เช่น คะแนนสอบต้องอยู่ในช่วง [0, 100] แถวที่หลุดช่วงจะถูกระบุ <code>out_of_range_score</code>
-            </p>
-          </div>
-          <div class="panel">
-            <div style="font-size: 11px; font-weight: 700; color: #34d399; margin-bottom: 4px;">STATISTICAL FENCE</div>
-            <div style="font-size: 13px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">Tukey IQR Fences</div>
-            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
-              คำนวณควอร์ไทล์หาช่วงปกติแบบ \(O(N)\) ดักจับค่าผิดธรรมชาติ เช่น ชั่วโมงเรียน 48 ชม./สัปดาห์ แม้ไม่ติดลบแต่เป็นไปไม่ได้จริง
-            </p>
-          </div>
-          <div class="panel">
-            <div style="font-size: 11px; font-weight: 700; color: #fbbf24; margin-bottom: 4px;">UNSUPERVISED</div>
-            <div style="font-size: 13px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">Gaussian 3-Sigma</div>
-            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
-              ตรวจจับค่าที่เบี่ยงเบนเกิน 3 เท่าของส่วนเบี่ยงเบนมาตรฐาน สำหรับข้อมูลการแจกแจงปกติ เพื่อความปลอดภัยสูงสุด
-            </p>
-          </div>
+        <!-- SLIDE 4 SYSTEM IMAGE -->
+        <div style="margin-bottom: 16px; text-align: center;">
+          <img src="images/mission5_validation_outliers.jpg" alt="Mission 5: Business Rules & Advanced Statistical Outlier Detection" style="width: 100%; max-height: 310px; object-fit: contain; border-radius: 8px; border: 1px solid #1e293b; background: #090d16;" />
         </div>
 
-        <div class="panel">
-          <div style="font-size: 12px; font-weight: 700; color: #cbd5e1; margin-bottom: 6px;">การประกอบชุดกักกัน (Quarantine Assembly)</div>
-          <p style="font-size: 12px; color: #94a3b8; line-height: 1.6;">
-            รวบรวมทุกแถวที่พบข้อผิดพลาดเข้าด้วยกัน ผูกรหัส <code>run_id</code> และเหตุผล <code>reject_reason</code> แล้วสั่งแคชใน RAM ส่งเข้า Silver Quarantine Delta Table ส่วนแถวที่สะอาดถูกส่งเข้า Silver Active Delta Table
-          </p>
+        <div class="grid-2" style="margin-bottom: 14px;">
+          <div class="panel">
+            <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 6px;">Deterministic Business Rules</div>
+            <ul style="font-size: 12px; color: #cbd5e1; line-height: 1.6; padding-left: 18px;">
+              <li><strong>Explicit Range Check</strong>: บังคับช่วงค่า เช่น คะแนน [0, 100] หากติดลบ (-10) หรือเกิน (145) ส่งกักกันทันที</li>
+              <li><strong>Mandatory Null Check</strong>: ตรวจสอบคีย์หลักหรือคอลัมน์สำคัญห้ามเป็นค่าว่าง (<code>missing_primary_key</code>)</li>
+            </ul>
+          </div>
+
+          <div class="panel">
+            <div style="font-size: 12px; font-weight: 700; color: #fb7185; margin-bottom: 6px;">Advanced Statistical Models</div>
+            <ul style="font-size: 12px; color: #cbd5e1; line-height: 1.6; padding-left: 18px;">
+              <li><strong>Tukey IQR Fences</strong>: ดักจับค่าผิดธรรมชาติ เช่น ชั่วโมงเรียน 48.0 ชม./สัปดาห์ (เกินรั้วปกติ > 12 ชม.)</li>
+              <li><strong>Gaussian 3-Sigma & Quarantine</strong>: ตรวจสอบความเบี่ยงเบนและรวมทุกข้อผิดพลาดพร้อม <code>reject_reason</code></li>
+            </ul>
+          </div>
         </div>
       </div>
 
@@ -663,11 +643,16 @@ flowchart LR
         <h1 style="font-size: 24px; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
           Empirical Verification & 100% Volume Reconciliation
         </h1>
-        <p style="color: #94a3b8; font-size: 13.5px; margin-bottom: 20px;">
+        <p style="color: #94a3b8; font-size: 13.5px; margin-bottom: 16px;">
           การพิสูจน์ความถูกต้องทางวิศวกรรมข้อมูลด้วยชุดทดสอบจริงที่มี Ground Truth (10,100 แถว)
         </p>
 
-        <div class="grid-4" style="margin-bottom: 18px;">
+        <!-- SLIDE 6 SYSTEM IMAGE -->
+        <div style="margin-bottom: 16px; text-align: center;">
+          <img src="images/slide6_empirical_reconciliation.jpg" alt="Empirical Verification & 100% Volume Reconciliation" style="width: 100%; max-height: 290px; object-fit: contain; border-radius: 8px; border: 1px solid #1e293b; background: #090d16;" />
+        </div>
+
+        <div class="grid-4" style="margin-bottom: 14px;">
           <div class="stat-card">
             <div class="stat-val" style="color: #34d399;">100%</div>
             <div class="stat-label">Detection Recall</div>
@@ -690,13 +675,10 @@ flowchart LR
           </div>
         </div>
 
-        <div class="panel" style="border: 1px solid #0284c7; background: rgba(2, 132, 199, 0.05); margin-bottom: 14px;">
-          <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 6px;">สมการกระทบยอดปริมาณข้อมูล 100% (Data Volume Reconciliation)</div>
-          <div style="font-family: monospace; font-size: 14px; color: #f8fafc; font-weight: 700;">
-            ข้อมูลนำเข้า (10,100 แถว) = ข้อมูลสะอาด Active (9,370) + ข้อมูลกักกัน Quarantine (630) + แถวซ้ำที่ตัดออก (100)
-          </div>
-          <div style="font-size: 11.5px; color: #94a3b8; margin-top: 6px;">
-            ผลต่าง = 0 แถว: พิสูจน์ทางคณิตศาสตร์ว่าไม่มีข้อมูลสูญหายแม้แต่แถวเดียว ทุกแถวมีที่ไปชัดเจนและตรวจสอบได้ 100%
+        <div class="panel" style="border: 1px solid #0284c7; background: rgba(2, 132, 199, 0.05);">
+          <div style="font-size: 11px; font-weight: 700; color: #38bdf8; margin-bottom: 4px;">สมการกระทบยอดปริมาณข้อมูล 100% (Data Volume Reconciliation)</div>
+          <div style="font-family: monospace; font-size: 13px; color: #f8fafc; font-weight: 700;">
+            Inbound (10,100) = Active (9,370) + Quarantine (630) + Deduplicated (100) | Delta = 0 แถว
           </div>
         </div>
       </div>
