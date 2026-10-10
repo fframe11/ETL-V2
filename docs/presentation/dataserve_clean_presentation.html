@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DataServe Architecture Presentation - 7 Clean Slides</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #090d16;
+      color: #f1f5f9;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      overflow: hidden;
+      height: 100vh;
+    }
+    
+    #app { display: flex; flex-direction: column; height: 100vh; }
+    
+    /* Topbar */
+    #topbar {
+      background: #0f172a;
+      border-bottom: 1px solid #1e293b;
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+    .brand-badge {
+      background: linear-gradient(135deg, #38bdf8, #6366f1);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 4px 10px;
+      border-radius: 6px;
+      letter-spacing: 0.5px;
+    }
+    .title-text { font-size: 13px; font-weight: 600; color: #94a3b8; }
+    
+    /* Progress bar */
+    #progress-container { width: 100%; height: 3px; background: #1e293b; }
+    #progress-bar { height: 100%; width: 14.28%; background: linear-gradient(90deg, #38bdf8, #10b981); transition: width 0.3s ease; }
+    
+    /* Main Layout */
+    #main-container {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 390px;
+      overflow: hidden;
+      transition: grid-template-columns 0.3s ease;
+    }
+    #main-container.fullscreen-slides {
+      grid-template-columns: 1fr 0px;
+    }
+    
+    /* Slide Canvas */
+    #slide-viewport {
+      overflow-y: auto;
+      padding: 36px 48px;
+      background: #090d16;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+    }
+    
+    .slide-card {
+      display: none;
+      animation: slideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      max-width: 1080px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    .slide-card.active { display: block; }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    /* Script / Teleprompter Area */
+    #script-sidebar {
+      background: #0d121f;
+      border-left: 1px solid #1e293b;
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .script-item { display: none; }
+    .script-item.active { display: block; }
+    
+    /* Footer */
+    #footer {
+      background: #0f172a;
+      border-top: 1px solid #1e293b;
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    
+    /* Components */
+    .btn {
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #cbd5e1;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .btn:hover { background: #334155; color: #fff; }
+    .btn-primary { background: #0284c7; border-color: #0ea5e9; color: #fff; }
+    .btn-primary:hover { background: #0369a1; }
+    
+    .badge {
+      display: inline-block;
+      padding: 3px 9px;
+      border-radius: 4px;
+      font-size: 10.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .badge-purple { background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3); }
+    .badge-cyan { background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.3); }
+    .badge-emerald { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .badge-amber { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+    .badge-rose { background: rgba(244, 63, 94, 0.15); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.3); }
+    
+    .panel {
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 10px;
+      padding: 18px 22px;
+    }
+    
+    .diagram-box {
+      font-family: 'Fira Code', 'Courier New', monospace;
+      font-size: 11px;
+      line-height: 1.5;
+      background: #090d16;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 14px 18px;
+      color: #94a3b8;
+      overflow-x: auto;
+      white-space: pre;
+    }
+    
+    .speech-box {
+      background: rgba(14, 165, 233, 0.05);
+      border-left: 3px solid #0ea5e9;
+      padding: 14px 16px;
+      border-radius: 0 8px 8px 0;
+      font-size: 13px;
+      line-height: 1.75;
+      color: #cbd5e1;
+    }
+    
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #1e293b;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .dot.active { background: #38bdf8; width: 22px; border-radius: 4px; }
+    
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    table.data-table th {
+      background: #1e293b;
+      color: #94a3b8;
+      font-weight: 700;
+      padding: 9px 12px;
+      text-align: left;
+      border-bottom: 1px solid #334155;
+    }
+    table.data-table td {
+      padding: 9px 12px;
+      border-bottom: 1px solid #1e293b;
+      vertical-align: top;
+      color: #cbd5e1;
+    }
+    table.data-table tr:hover td { background: #131b2e; }
+    
+    .target-active {
+      display: inline-block;
+      padding: 2px 7px;
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .target-quarantine {
+      display: inline-block;
+      padding: 2px 7px;
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .stat-card {
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 8px;
+      padding: 14px;
+      text-align: center;
+    }
+    .stat-val { font-size: 24px; font-weight: 800; margin-bottom: 4px; }
+    .stat-label { font-size: 11px; color: #94a3b8; text-transform: uppercase; font-weight: 600; }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <!-- TOP BAR -->
+  <div id="topbar">
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <span class="brand-badge">DataServe</span>
+      <span class="title-text" id="slide-title-header">Enterprise Data Operations & Quality Assurance Platform</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 16px;">
+      <div id="dots-container" style="display: flex; gap: 6px; align-items: center;"></div>
+      <button class="btn" id="btn-toggle-view" onclick="toggleViewMode()">
+        <span id="view-mode-label">Slide Only View</span>
+      </button>
+      <span style="font-size: 12px; font-weight: 700; color: #64748b; font-family: monospace;" id="slide-counter">1 / 7</span>
+    </div>
+  </div>
+  
+  <div id="progress-container"><div id="progress-bar"></div></div>
+
+  <!-- MAIN CONTAINER -->
+  <div id="main-container">
+    
+    <!-- SLIDE VIEWPORT -->
+    <div id="slide-viewport">
+      
+      <!-- ── SLIDE 1: ภาพรวมระบบ ── -->
+      <div class="slide-card active" id="slide-1">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-purple">Slide 01 · Overview</span>
+          <span class="badge badge-cyan">Medallion Lakehouse</span>
+          <span class="badge badge-emerald">Zero Silent Drop</span>
+        </div>
+        <h1 style="font-size: 24px; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
+          DataServe: Enterprise Data Operations & Quality Assurance Platform
+        </h1>
+        <p style="color: #94a3b8; font-size: 13.5px; margin-bottom: 22px;">
+          แพลตฟอร์มบริหารจัดการและประกันคุณภาพข้อมูลระดับองค์กรบน Modern Medallion Lakehouse
+        </p>
+
+        <div class="grid-2" style="margin-bottom: 18px;">
+          <div class="panel" style="border-left: 3px solid #f87171;">
+            <div style="font-size: 11px; font-weight: 700; color: #f87171; margin-bottom: 6px; text-transform: uppercase;">ปัญหาของ Data Pipeline ทั่วไป</div>
+            <p style="font-size: 12.5px; color: #cbd5e1; line-height: 1.6;">
+              เมื่อพบข้อมูลผิดพลาด ระบบส่วนใหญ่มักจะลบแถวทิ้งไปอย่างเงียบๆ (Silent Drop) ทำให้ยอดรวมทางธุรกิจไม่ตรง หรือไม่ก็ปล่อยข้อมูลผิดพลาดหลุดรอดไปทำลายรายงานของผู้บริหาร
+            </p>
+          </div>
+          <div class="panel" style="border-left: 3px solid #38bdf8;">
+            <div style="font-size: 11px; font-weight: 700; color: #38bdf8; margin-bottom: 6px; text-transform: uppercase;">หัวใจสำคัญของ DataServe</div>
+            <p style="font-size: 12.5px; color: #cbd5e1; line-height: 1.6;">
+              ทำงานบนหลักการ <strong>Zero Silent Drop</strong> ข้อมูลที่มีปัญหาทุกแถวจะถูกคัดแยกเข้าโซนกักกันอย่างโปร่งใส พร้อมระบุสาเหตุอย่างละเอียด เพื่อให้ยอดรวมกระทบยอดได้ครบ 100%
+            </p>
+          </div>
+        </div>
+
+        <div class="grid-3">
+          <div class="panel">
+            <div style="font-size: 12px; font-weight: 700; color: #34d399; margin-bottom: 4px;">Zero Silent Drop</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              ไม่ลบข้อมูลทิ้งแม้แต่แถวเดียว ทุกข้อผิดพลาดมีที่ไปและสามารถตรวจสอบย้อนกลับได้เสมอ
+            </p>
+          </div>
+          <div class="panel">
+            <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 4px;">Dual-Zone Lakehouse</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              แยกข้อมูลสะอาด 100% (Silver Active) ออกจากข้อมูลกักกัน (Silver Quarantine) บน Delta Lake อย่างเด็ดขาด
+            </p>
+          </div>
+          <div class="panel">
+            <div style="font-size: 12px; font-weight: 700; color: #fbbf24; margin-bottom: 4px;">Closed-Loop Healing</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              ผูกเหตุผล <code>reject_reason</code> แจ้งเตือนผ่าน Webhook กลับไประบบต้นน้ำให้แก้ไขได้ตรงจุด
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── SLIDE 2: แผนผังสถาปัตยกรรม ── -->
+      <div class="slide-card" id="slide-2">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-purple">Slide 02 · Architecture</span>
+          <span class="badge badge-cyan">End-to-End Pipeline</span>
+        </div>
+        <h1 style="font-size: 24px; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
+          End-to-End Data Pipeline Architecture
+        </h1>
+        <p style="color: #94a3b8; font-size: 13.5px; margin-bottom: 20px;">
+          เส้นทางการเดินทางของข้อมูล 5 ช่วงหลัก จากแหล่งกำเนิดสู่การใช้งานจริง
+        </p>
+
+        <div class="panel" style="margin-bottom: 16px;">
+          <div class="grid-2" style="gap: 20px;">
+            <div>
+              <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 6px;">1. Multi-Source Ingestion</div>
+              <p style="font-size: 12px; color: #cbd5e1; line-height: 1.5; margin-bottom: 12px;">
+                รองรับทั้งไฟล์ (CSV, Excel), ฐานข้อมูล (PostgreSQL), REST API, และสตรีมมิง (Kafka)
+              </p>
+              
+              <div style="font-size: 12px; font-weight: 700; color: #34d399; margin-bottom: 6px;">2. Raw Landing (Bronze Layer)</div>
+              <p style="font-size: 12px; color: #cbd5e1; line-height: 1.5; margin-bottom: 12px;">
+                บันทึกข้อมูลดิบดั้งเดิม 100% ลง HDFS เพื่อความโปร่งใสและสอบทานย้อนกลับได้
+              </p>
+
+              <div style="font-size: 12px; font-weight: 700; color: #fbbf24; margin-bottom: 6px;">3. Spark Quality Engine</div>
+              <p style="font-size: 12px; color: #cbd5e1; line-height: 1.5;">
+                ประมวลผลและคัดกรองข้อมูลระดับแถวบน Apache Spark แบบ In-Memory ต่อเนื่อง
+              </p>
+            </div>
+
+            <div>
+              <div style="font-size: 12px; font-weight: 700; color: #818cf8; margin-bottom: 6px;">4. Dual-Zone Storage (Silver Layer)</div>
+              <p style="font-size: 12px; color: #cbd5e1; line-height: 1.5; margin-bottom: 12px;">
+                • <strong>Active Store (Delta Lake)</strong>: ข้อมูลสะอาดที่ผ่านเกณฑ์ 100% พร้อมใช้งาน<br>
+                • <strong>Quarantine Store (Delta Lake)</strong>: ข้อมูลที่มีปัญหา พร้อมคอลัมน์ระบุเหตุผล <code>reject_reason</code>
+              </p>
+
+              <div style="font-size: 12px; font-weight: 700; color: #f472b6; margin-bottom: 6px;">5. Downstream & Closed-Loop</div>
+              <p style="font-size: 12px; color: #cbd5e1; line-height: 1.5;">
+                ส่งต่อข้อมูลสะอาดให้ Create Dashboard และส่ง Webhook แจ้งเตือนระบบต้นน้ำอัตโนมัติ
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="diagram-box">
+[ แหล่งข้อมูลต้นทาง ] ──► [ บันทึกข้อมูลดิบ HDFS ] ──► [ ประมวลผลและคัดกรอง Spark ]
+                                                              │
+                                   ┌──────────────────────────┴──────────────────────────┐
+                                   ▼                                                     ▼
+                     [ ข้อมูลสะอาด Silver Active ]                         [ ข้อมูลกักกัน Silver Quarantine ]
+                                   │                                                     │
+                                   ▼                                                     ▼
+                      [ BI Dashboard & Analytics ]                         [ แจ้งเตือนต้นน้ำ / Reprocess ]
+        </div>
+      </div>
+
+      <!-- ── SLIDE 3: การจัดระเบียบโครงสร้าง ── -->
+      <div class="slide-card" id="slide-3">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-purple">Slide 03 · Normalization</span>
+          <span class="badge badge-cyan">Smart Type Promotion</span>
+        </div>
+        <h1 style="font-size: 24px; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
+          Structural Normalization & Smart Type Promotion
+        </h1>
+        <p style="color: #94a3b8; font-size: 13.5px; margin-bottom: 20px;">
+          ปรับโครงสร้างข้อมูลสู่มาตรฐาน ป้องกันปัญหาข้อมูลสูญหายตั้งแต่ก้าวแรก
+        </p>
+
+        <div class="grid-2" style="margin-bottom: 16px;">
+          <div class="panel">
+            <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 8px;">Column Sanitization & Dynamic PK</div>
+            <ul style="font-size: 12px; color: #cbd5e1; line-height: 1.7; padding-left: 18px;">
+              <li><strong>Column Sanitization</strong>: ตัดช่องว่าง ลบอักขระพิเศษ และจับคู่ชื่อคอลัมน์ให้ตรงตาม Schema กลาง</li>
+              <li><strong>Dynamic row_hash</strong>: สร้างรหัสแถวอัตโนมัติด้วย MD5 สำหรับตารางที่ไม่มีคีย์หลัก เพื่อใช้ในการเชื่อมโยงข้อมูลขนาดใหญ่</li>
+              <li><strong>Schema Drift Governance</strong>: หากต้นทางเปลี่ยนโครงสร้าง คอลัมน์ใหม่จะอัปเดตให้อัตโนมัติ ส่วนคอลัมน์หายจะส่งเข้าโซนตรวจสอบ</li>
+            </ul>
+          </div>
+          <div class="panel">
+            <div style="font-size: 12px; font-weight: 700; color: #34d399; margin-bottom: 8px;">Smart Type Promotion (ป้องกัน Data Loss)</div>
+            <div style="font-size: 12px; color: #cbd5e1; line-height: 1.6; margin-bottom: 10px;">
+              ในระบบทั่วไป หาก Schema กำหนดเป็นจำนวนเต็ม (Integer) แต่มีค่าทศนิยมปนเปื้อน ข้อมูลมักจะกลายเป็นค่าว่าง (Null) หรือถูกปัดทิ้ง
+            </div>
+            <div class="diagram-box" style="font-size: 10.5px; padding: 10px;">
+ตัวอย่าง: คอลัมน์ระบุเป็น Integer แต่ข้อมูลส่งมา "1500.75"
+ระบบสแกนพบทศนิยม ──► ปรับชนิดเป็น Double อัตโนมัติ
+ผลลัพธ์: รักษาค่า 1500.75 ไว้ได้ครบถ้วน ไม่กลายเป็นค่าว่าง!
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── SLIDE 4: การล้างข้อมูลและปรับมาตรฐาน ── -->
+      <div class="slide-card" id="slide-4">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-purple">Slide 04 · Cleansing</span>
+          <span class="badge badge-cyan">Deduplication</span>
+          <span class="badge badge-emerald">Buddhist Era Normalization</span>
+        </div>
+        <h1 style="font-size: 24px; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
+          Data Cleansing, Deduplication & Normalization
+        </h1>
+        <p style="color: #94a3b8; font-size: 13.5px; margin-bottom: 20px;">
+          กำจัดความซ้ำซ้อน แปลงเวลาสู่สากล และจัดหมวดหมู่อย่างเป็นระเบียบ
+        </p>
+
+        <div class="grid-3" style="margin-bottom: 16px;">
+          <div class="panel">
+            <div style="font-size: 11px; font-weight: 700; color: #38bdf8; margin-bottom: 4px;">DEDUPLICATION</div>
+            <div style="font-size: 13.5px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">ตัดแถวซ้ำ 2 ชั้น</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              เปรียบเทียบตามคีย์หลักและเรียงตามเวลา เก็บเฉพาะข้อมูลเวอร์ชันล่าสุด ส่วนแถวซ้ำใช้ Left Anti-Join สกัดส่งเข้า Quarantine
+            </p>
+          </div>
+          <div class="panel">
+            <div style="font-size: 11px; font-weight: 700; color: #34d399; margin-bottom: 4px;">BUDDHIST ERA</div>
+            <div style="font-size: 13.5px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">แปลง พ.ศ. เป็น ค.ศ.</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              ตรวจจับปี พ.ศ. อัตโนมัติ หากพบปีมากกว่า 2500 จะหักลบด้วย 543 และปรับเข้าสู่มาตรฐานสากล ISO <code>YYYY-MM-DD</code>
+            </p>
+          </div>
+          <div class="panel">
+            <div style="font-size: 11px; font-weight: 700; color: #fbbf24; margin-bottom: 4px;">CATEGORIZATION</div>
+            <div style="font-size: 13.5px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">จัดหมวดหมู่ข้อมูล</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              ดึงพจนานุกรมคำสำคัญจาก Elasticsearch มาจัดกลุ่มสินค้าหรือข้อความเข้าหมวดหมู่มาตรฐาน โดยไม่ต้องแก้ไขโค้ดโปรแกรม
+            </p>
+          </div>
+        </div>
+
+        <div class="diagram-box">
+Input: "21 ก.ค. 2569" หรือ "21-07-2569" ──► ตรวจพบปี 2569 (> 2500) ──► หักลบ 543 ──► "2026-07-21" (ISO-8601)
+Input: ข้อมูลส่งซ้ำ 2 แถว ──► ตรวจสอบคีย์หลัก ──► เก็บแถวล่าสุดไว้ใน Active, ส่งแถวซ้ำไป Quarantine
+        </div>
+      </div>
+
+      <!-- ── SLIDE 5: กฎธุรกิจและสถิติ ── -->
+      <div class="slide-card" id="slide-5">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-purple">Slide 05 · Rules & Stats</span>
+          <span class="badge badge-cyan">Tukey IQR Fences</span>
+          <span class="badge badge-amber">Gaussian 3-Sigma</span>
+        </div>
+        <h1 style="font-size: 24px; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
+          Business Rules & Advanced Statistical Anomaly Detection
+        </h1>
+        <p style="color: #94a3b8; font-size: 13.5px; margin-bottom: 20px;">
+          ผสานกฎขอบเขตธุรกิจเข้ากับแบบจำลองสถิติขั้นสูง เพื่อดักจับข้อมูลผิดธรรมชาติ
+        </p>
+
+        <div class="grid-3" style="margin-bottom: 16px;">
+          <div class="panel">
+            <div style="font-size: 11px; font-weight: 700; color: #38bdf8; margin-bottom: 4px;">EXPLICIT BOUNDS</div>
+            <div style="font-size: 13.5px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">กฎขอบเขตธุรกิจ</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              ตรวจสอบขอบเขตค่าที่ธุรกิจกำหนดตายตัว เช่น คะแนนสอบต้องอยู่ในช่วง 0 ถึง 100 แถวที่หลุดช่วงจะถูกระบุ <code>out_of_range_score</code>
+            </p>
+          </div>
+          <div class="panel">
+            <div style="font-size: 11px; font-weight: 700; color: #34d399; margin-bottom: 4px;">STATISTICAL FENCE</div>
+            <div style="font-size: 13.5px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">Tukey IQR Fences</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              คำนวณควอร์ไทล์หาช่วงปกติ ช่วยดักจับค่าสุดโต่งที่ผิดธรรมชาติ เช่น ชั่วโมงเรียน 48 ชม./สัปดาห์ แม้ไม่ติดลบแต่เป็นไปไม่ได้จริง
+            </p>
+          </div>
+          <div class="panel">
+            <div style="font-size: 11px; font-weight: 700; color: #fbbf24; margin-bottom: 4px;">UNSUPERVISED</div>
+            <div style="font-size: 13.5px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">Gaussian 3-Sigma</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              ตรวจจับค่าที่เบี่ยงเบนเกิน 3 เท่าของส่วนเบี่ยงเบนมาตรฐาน สำหรับข้อมูลที่มีการแจกแจงแบบปกติ เพื่อความปลอดภัยสูงสุด
+            </p>
+          </div>
+        </div>
+
+        <div class="diagram-box">
+[ กฎธุรกิจ ] คะแนนสอบหลุดช่วง: score = -10 หรือ 145 ──► กักกันทันที เหตุผล: "out_of_range_score"
+[ กฎสถิติ ] ชั่วโมงเรียนผิดธรรมชาติ: study_hours = 48 ชม. ──► กักกันทันที เหตุผล: "outlier_details"
+        </div>
+      </div>
+
+      <!-- ── SLIDE 6: ตัวอย่างการแปลงข้อมูลจริง ── -->
+      <div class="slide-card" id="slide-6">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-purple">Slide 06 · Examples</span>
+          <span class="badge badge-cyan">Before & After Matrix</span>
+        </div>
+        <h1 style="font-size: 24px; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
+          Concrete Transformation Examples
+        </h1>
+        <p style="color: #94a3b8; font-size: 13.5px; margin-bottom: 20px;">
+          ตัวอย่างเปรียบเทียบข้อมูลก่อนแปลง สภาพผลลัพธ์ และการคัดแยกปลายทาง
+        </p>
+
+        <div class="panel" style="padding: 0; overflow: hidden; margin-bottom: 16px;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 25%;">ข้อมูลต้นทาง (Input)</th>
+                <th style="width: 35%;">ผลลัพธ์การแปลง (Transformation)</th>
+                <th style="width: 40%;">โซนจัดเก็บ (Target Zone) / เหตุผล</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>"1,234.50"</strong> (ข้อความมีจุลภาค)</td>
+                <td>ตัดคอมม่า แปลงเป็นตัวเลขทศนิยม <code>1234.50</code></td>
+                <td><span class="target-active">Silver Active</span> (พร้อมคำนวณ)</td>
+              </tr>
+              <tr>
+                <td><strong>"22-07-2569"</strong> (วันที่ปี พ.ศ.)</td>
+                <td>หักลบ 543 แปลงเป็นสากล <code>"2026-07-22"</code></td>
+                <td><span class="target-active">Silver Active</span> (มาตรฐานสากล)</td>
+              </tr>
+              <tr>
+                <td><strong>รหัสนักศึกษาซ้ำกัน 2 แถว</strong></td>
+                <td>เรียงตามเวลาล่าสุด ตัดแถวซ้ำออก</td>
+                <td><span class="target-active">Active</span> + <span class="target-quarantine">Quarantine</span> (คัดแยกแถวซ้ำ)</td>
+              </tr>
+              <tr>
+                <td><strong>คะแนนสอบเป็นค่าว่าง (NULL)</strong></td>
+                <td>ตรวจพบคอลัมน์บังคับขาดข้อมูล</td>
+                <td><span class="target-quarantine">Silver Quarantine</span> (<code>missing_score</code>)</td>
+              </tr>
+              <tr>
+                <td><strong>คะแนนสอบติดลบ -10 หรือ 145</strong></td>
+                <td>ตรวจพบค่านอกกรอบกฎธุรกิจ [0, 100]</td>
+                <td><span class="target-quarantine">Silver Quarantine</span> (<code>out_of_range_score</code>)</td>
+              </tr>
+              <tr>
+                <td><strong>ชั่วโมงเรียน 48.0 ชม./สัปดาห์</strong></td>
+                <td>สถิติ Tukey IQR ตรวจพบค่าหลุดรั้ว (> 12 ชม.)</td>
+                <td><span class="target-quarantine">Silver Quarantine</span> (<code>outlier_details</code>)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── SLIDE 7: ผลการพิสูจน์เชิงประจักษ์ ── -->
+      <div class="slide-card" id="slide-7">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-purple">Slide 07 · Verification</span>
+          <span class="badge badge-emerald">Recall: 100%</span>
+          <span class="badge badge-cyan">Precision: 95.89%</span>
+          <span class="badge badge-amber">Reconciliation: 100%</span>
+        </div>
+        <h1 style="font-size: 24px; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
+          Empirical Verification & 100% Volume Reconciliation
+        </h1>
+        <p style="color: #94a3b8; font-size: 13.5px; margin-bottom: 20px;">
+          การพิสูจน์ความถูกต้องทางวิศวกรรมข้อมูลด้วยชุดทดสอบจริงที่มี Ground Truth (10,100 แถว)
+        </p>
+
+        <div class="grid-4" style="margin-bottom: 18px;">
+          <div class="stat-card">
+            <div class="stat-val" style="color: #34d399;">100%</div>
+            <div class="stat-label">Detection Recall</div>
+            <div style="font-size: 11px; color: #64748b; margin-top: 4px;">ตรวจจับครบ 700/700 แถว</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val" style="color: #38bdf8;">95.89%</div>
+            <div class="stat-label">Precision</div>
+            <div style="font-size: 11px; color: #64748b; margin-top: 4px;">มี Safety Margin 30 แถว</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val" style="color: #818cf8;">99.70%</div>
+            <div class="stat-label">Overall Accuracy</div>
+            <div style="font-size: 11px; color: #64748b; margin-top: 4px;">ความถูกต้องระดับแถว</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val" style="color: #fbbf24;">0 แถว</div>
+            <div class="stat-label">Unaccounted Delta</div>
+            <div style="font-size: 11px; color: #64748b; margin-top: 4px;">ไม่มีข้อมูลสูญหาย</div>
+          </div>
+        </div>
+
+        <div class="panel" style="border: 1px solid #0284c7; background: rgba(2, 132, 199, 0.05); margin-bottom: 14px;">
+          <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 6px;">สมการกระทบยอดปริมาณข้อมูล 100% (Zero Silent Drop Invariant)</div>
+          <div style="font-family: monospace; font-size: 13.5px; color: #f8fafc; font-weight: 700;">
+            Raw Inbound (10,100) = Active (9,370) + Quarantine (630) + Auto-Clean Dedup (100)
+          </div>
+          <div style="font-size: 11.5px; color: #94a3b8; margin-top: 4px;">
+            ทุกแถวมีที่ไปชัดเจน: 9,370 แถวสะอาดพร้อมใช้งาน, 630 แถวมีปัญหากักกันพร้อมเหตุผล, 100 แถวซ้ำถูกจัดการอย่างถูกต้อง
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- SCRIPT / TELEPROMPTER SIDEBAR -->
+    <div id="script-sidebar">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1e293b; padding-bottom: 12px;">
+        <span style="font-size: 12px; font-weight: 700; color: #cbd5e1; text-transform: uppercase; letter-spacing: 0.5px;">Speaker Script & Teleprompter</span>
+        <span class="badge badge-cyan" id="script-slide-badge">Slide 1 of 7</span>
+      </div>
+
+      <!-- Script 1 -->
+      <div class="script-item active" id="script-1">
+        <div class="speech-box">
+          "สวัสดีครับทุกท่าน วันนี้ผมขอพาทุกท่านเจาะลึกสถาปัตยกรรมของ DataServe แพลตฟอร์มบริหารจัดการและประกันคุณภาพข้อมูลระดับองค์กรครับ ในระบบท่อข้อมูลทั่วไป เมื่อพบข้อมูลเสีย ระบบมักจะลบทิ้งไปอย่างเงียบๆ ทำให้ตัวเลขทางธุรกิจไม่ตรงกับความเป็นจริง DataServe จึงถูกออกแบบมาบนหลักการ Zero Silent Drop คือไม่ทิ้งข้อมูลแม้แต่แถวเดียว แต่จะคัดแยกข้อมูลสะอาดส่งให้ผู้บริหารใช้งานทันที และกักกันข้อมูลที่มีปัญหาไว้พร้อมระบุเหตุผล เพื่อส่งกลับไปแก้ไขที่ระบบต้นน้ำอย่างเป็นระบบครับ"
+        </div>
+      </div>
+
+      <!-- Script 2 -->
+      <div class="script-item" id="script-2">
+        <div class="speech-box">
+          "ในสไลด์นี้คือเส้นทางการไหลของข้อมูลแบบครบวงจรครับ เริ่มจากระบบรับข้อมูลจากหลากหลายแหล่ง เข้ามาเก็บสำเนาดิบไว้ที่ Bronze Layer บน HDFS ก่อน จากนั้น Apache Spark จะนำข้อมูลขึ้นมาประมวลผลบน RAM อย่างต่อเนื่อง และแยกข้อมูลระดับแถวออกเป็น 2 ท่อเอกเทศ: แถวที่สมบูรณ์จะไหลเข้าสู่ Silver Active ให้ผู้บริหารนำไปสร้างแดชบอร์ดได้ทันที ส่วนแถวที่มีปัญหาจะถูกส่งเข้า Silver Quarantine พร้อมเหตุผลกำกับ และส่งสัญญาณแจ้งเตือนกลับไปหาเจ้าของข้อมูลต้นทางครับ"
+        </div>
+      </div>
+
+      <!-- Script 3 -->
+      <div class="script-item" id="script-3">
+        <div class="speech-box">
+          "ด่านแรกของการประมวลผลคือการจัดระเบียบโครงสร้างครับ เราทำความสะอาดชื่อคอลัมน์และสร้างรหัสแถวแบบ MD5 สิ่งที่โดดเด่นมากคือนวัตกรรม Smart Type Promotion ครับ ในระบบทั่วไปถ้าตัวเลขมีทศนิยมแต่สคีมากำหนดเป็นจำนวนเต็ม ข้อมูลจะกลายเป็นค่าว่างทันที แต่ระบบของเราจะสแกนหาเศษทศนิยมก่อน ถ้าพบทศนิยมจริงจะปรับชนิดเป็น Double ให้โดยอัตโนมัติ ช่วยรักษาความถูกต้องของข้อมูลไว้ได้ตั้งแต่ก้าวแรกครับ"
+        </div>
+      </div>
+
+      <!-- Script 4 -->
+      <div class="script-item" id="script-4">
+        <div class="speech-box">
+          "ถัดมาเป็นกระบวนการทำความสะอาดและปรับมาตรฐานครับ ระบบมีกลไกตัดข้อมูลซ้ำซ้อนโดยเปรียบเทียบตามคีย์ธุรกิจและเวลา โดยจะเก็บเฉพาะข้อมูลล่าสุดไว้ใช้งาน ส่วนแถวที่ซ้ำจะถูกส่งไปกักกัน นอกจากนี้เรายังแก้ปัญหาคลาสสิกของข้อมูลไทย คือการบันทึกปีเป็น พ.ศ. ระบบจะตรวจจับและแปลงเป็นปี ค.ศ. สากลให้อัตโนมัติ พร้อมทั้งจัดหมวดหมู่ข้อมูลตามพจนานุกรมกลาง ทำให้ข้อมูลสะอาด เป็นระเบียบ และพร้อมใช้งานทันทีครับ"
+        </div>
+      </div>
+
+      <!-- Script 5 -->
+      <div class="script-item" id="script-5">
+        <div class="speech-box">
+          "ในส่วนของการตรวจคุณภาพเชิงลึก เราผสาน 2 กลไกเข้าด้วยกันครับ หนึ่งคือกฎธุรกิจที่ระบุชัดเจน เช่น คะแนนสอบต้องอยู่ระหว่าง 0 ถึง 100 หากหลุดช่วงจะถูกคัดออกทันที และสองคือการใช้สถิติขั้นสูงอย่าง Tukey IQR Fences เข้ามาช่วยดักจับค่าที่ผิดธรรมชาติ เช่น ชั่วโมงเรียน 48 ชั่วโมงต่อสัปดาห์ ซึ่งไม่ติดลบแต่เป็นไปไม่ได้ในความเป็นจริง ข้อมูลเหล่านี้จะถูกตรวจพบและส่งเข้าสู่โซนกักกันอย่างแม่นยำครับ"
+        </div>
+      </div>
+
+      <!-- Script 6 -->
+      <div class="script-item" id="script-6">
+        <div class="speech-box">
+          "สไลด์นี้แสดงให้เห็นภาพตัวอย่างการแปลงสภาพข้อมูลจริงครับ ข้อมูลตัวเลขที่มีคอมม่าจะถูกแปลงเป็นตัวเลข วันที่ พ.ศ. จะถูกเปลี่ยนเป็น ค.ศ. ข้อมูลที่ส่งซ้ำจะถูกตัดเหลือเฉพาะแถวล่าสุด ส่วนแถวที่มีข้อผิดพลาด เช่น คะแนนว่าง คะแนนติดลบ หรือชั่วโมงเรียนเกินจริง จะถูกส่งเข้า Silver Quarantine โดยมีคอลัมน์ระบุเหตุผลกำกับไว้ทุกแถว ทำให้ปลายทางได้เฉพาะข้อมูลที่สะอาด 100% ไปใช้งานครับ"
+        </div>
+      </div>
+
+      <!-- Script 7 -->
+      <div class="script-item" id="script-7">
+        <div class="speech-box">
+          "สไลด์สุดท้ายนี้คือหลักฐานยืนยันความถูกต้องทางวิศวกรรมของระบบครับ เรานำชุดข้อมูลทดสอบ 10,100 แถว ซึ่งมีข้อผิดพลาดที่จงใจใส่ไว้ 700 แถวมาประมวลผลจริง ผลลัพธ์คือระบบสามารถตรวจพบข้อผิดพลาดได้ครบทั้ง 700 แถว บรรลุค่า Recall เต็ม 100% และได้ Precision สูงถึง 95.89% และที่สำคัญที่สุดคือสมการกระทบยอดครับ ข้อมูลนำเข้า 10,100 แถว แยกเป็นข้อมูลสะอาด 9,370 แถว ข้อมูลกักกัน 630 แถว และแถวซ้ำ 100 แถว รวมกันได้ 10,100 แถวลงตัวพอดี ไม่มีข้อมูลสูญหายแม้แต่แถวเดียว นี่คือข้อพิสูจน์ว่า DataServe เป็นท่อข้อมูลที่โปร่งใส แม่นยำ และเชื่อถือได้ระดับองค์กรครับ ขอบคุณครับ"
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- FOOTER -->
+  <div id="footer">
+    <div style="display: flex; gap: 8px;">
+      <button class="btn" onclick="prevSlide()">&#8592; Previous</button>
+      <button class="btn btn-primary" onclick="nextSlide()">Next &#8594;</button>
+    </div>
+    <div style="font-size: 11px; color: #64748b; font-family: monospace;">
+      Use Left / Right arrow keys to navigate · Press 'T' to toggle teleprompter
+    </div>
+    <div style="display: flex; gap: 8px;">
+      <span class="badge badge-emerald">Spark 3.5.0</span>
+      <span class="badge badge-cyan">Delta Lake 3.2.0</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  let currentSlide = 1;
+  const totalSlides = 7;
+  const slideTitles = [
+    "DataServe: Enterprise Data Operations & Quality Assurance Platform",
+    "End-to-End Data Pipeline Architecture",
+    "Structural Normalization & Smart Type Promotion",
+    "Data Cleansing, Deduplication & Normalization",
+    "Business Rules & Advanced Statistical Anomaly Detection",
+    "Concrete Transformation Examples",
+    "Empirical Verification & 100% Volume Reconciliation"
+  ];
+
+  function initDots() {
+    const container = document.getElementById("dots-container");
+    container.innerHTML = "";
+    for (let i = 1; i <= totalSlides; i++) {
+      const dot = document.createElement("div");
+      dot.className = "dot" + (i === 1 ? " active" : "");
+      dot.onclick = () => goToSlide(i);
+      container.appendChild(dot);
+    }
+  }
+
+  function goToSlide(n) {
+    if (n < 1 || n > totalSlides) return;
+    currentSlide = n;
+    
+    // Update slides
+    document.querySelectorAll(".slide-card").forEach(s => s.classList.remove("active"));
+    const activeSlide = document.getElementById("slide-" + n);
+    if (activeSlide) activeSlide.classList.add("active");
+    
+    // Update scripts
+    document.querySelectorAll(".script-item").forEach(s => s.classList.remove("active"));
+    const activeScript = document.getElementById("script-" + n);
+    if (activeScript) activeScript.classList.add("active");
+    
+    // Update header & counter
+    document.getElementById("slide-counter").innerText = n + " / " + totalSlides;
+    document.getElementById("slide-title-header").innerText = slideTitles[n - 1];
+    document.getElementById("script-slide-badge").innerText = "Slide " + n + " of " + totalSlides;
+    
+    // Update progress bar
+    document.getElementById("progress-bar").style.width = ((n / totalSlides) * 100) + "%";
+    
+    // Update dots
+    const dots = document.querySelectorAll(".dot");
+    dots.forEach((dot, idx) => {
+      dot.className = "dot" + (idx + 1 === n ? " active" : "");
+    });
+  }
+
+  function nextSlide() {
+    if (currentSlide < totalSlides) goToSlide(currentSlide + 1);
+  }
+
+  function prevSlide() {
+    if (currentSlide > 1) goToSlide(currentSlide - 1);
+  }
+
+  let isFullscreen = false;
+  function toggleViewMode() {
+    isFullscreen = !isFullscreen;
+    const main = document.getElementById("main-container");
+    const label = document.getElementById("view-mode-label");
+    if (isFullscreen) {
+      main.classList.add("fullscreen-slides");
+      label.innerText = "Show Teleprompter";
+    } else {
+      main.classList.remove("fullscreen-slides");
+      label.innerText = "Slide Only View";
+    }
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight" || e.key === " ") {
+      e.preventDefault();
+      nextSlide();
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      prevSlide();
+    } else if (e.key === "t" || e.key === "T") {
+      toggleViewMode();
+    }
+  });
+
+  initDots();
+  goToSlide(1);
+</script>
+</body>
+</html>
