@@ -23,6 +23,9 @@
   5. **บังคับกฎธุรกิจและตรวจจับสถิติขั้นสูง (Validation & Outlier Detection)**
 * **หลักการ Zero Silent Drop**: ข้อมูลทุกแถวต้องมีที่ไป แถวสะอาดเข้า Silver Active แถวที่มีปัญหาเข้า Silver Quarantine พร้อมระบุเหตุผล
 
+### ภาพผังสถาปัตยกรรม (Architecture Flowchart)
+![Data Transformation Pipeline Architecture](images/transformation_pipeline_diagram.jpg)
+
 ### แผนผังจำลองบนสไลด์
 ```
 [ ข้อมูลดิบนำเข้า (Inbound Raw) ]
