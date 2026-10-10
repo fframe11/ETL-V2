@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DataServe Data Transformation Deep Dive - Engineering Presentation</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #07070e; color: #e2e8f0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; overflow: hidden; height: 100vh; }
+    
+    #app { display: flex; flex-direction: column; height: 100vh; }
+    
+    /* Topbar */
+    #topbar {
+      background: #0c0c18;
+      border-bottom: 1px solid #1a1a2e;
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+    .brand-badge {
+      background: linear-gradient(135deg, #0ea5e9, #6366f1);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 4px 10px;
+      border-radius: 6px;
+      letter-spacing: 0.5px;
+    }
+    .title-text { font-size: 13px; font-weight: 600; color: #94a3b8; }
+    
+    /* Progress bar */
+    #progress-container { width: 100%; height: 3px; background: #151528; }
+    #progress-bar { height: 100%; width: 12.5%; background: linear-gradient(90deg, #0ea5e9, #10b981); transition: width 0.3s ease; }
+    
+    /* Main Layout */
+    #main-container {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 390px;
+      overflow: hidden;
+      transition: grid-template-columns 0.3s ease;
+    }
+    #main-container.fullscreen-slides {
+      grid-template-columns: 1fr 0px;
+    }
+    
+    /* Slide Canvas */
+    #slide-viewport {
+      overflow-y: auto;
+      padding: 28px 36px;
+      background: #080810;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+    }
+    
+    .slide-card {
+      display: none;
+      animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      max-width: 1120px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    .slide-card.active { display: block; }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    /* Script / Teleprompter Area */
+    #script-sidebar {
+      background: #0a0a14;
+      border-left: 1px solid #1a1a2e;
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .script-item { display: none; }
+    .script-item.active { display: block; }
+    
+    /* Footer */
+    #footer {
+      background: #0c0c18;
+      border-top: 1px solid #1a1a2e;
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    
+    /* Components */
+    .btn {
+      background: #18182e;
+      border: 1px solid #282846;
+      color: #cbd5e1;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .btn:hover { background: #222240; border-color: #3b3b64; color: #fff; }
+    .btn-primary { background: #0284c7; border-color: #0ea5e9; color: #fff; }
+    .btn-primary:hover { background: #0369a1; }
+    
+    .badge {
+      display: inline-block;
+      padding: 3px 9px;
+      border-radius: 4px;
+      font-size: 10.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .badge-purple { background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3); }
+    .badge-cyan { background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.3); }
+    .badge-emerald { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .badge-amber { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+    .badge-rose { background: rgba(244, 63, 94, 0.15); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.3); }
+    
+    .panel {
+      background: #0f0f1c;
+      border: 1px solid #1e1e36;
+      border-radius: 10px;
+      padding: 16px 20px;
+    }
+    
+    .diagram-box {
+      font-family: 'Fira Code', 'Courier New', monospace;
+      font-size: 11px;
+      line-height: 1.5;
+      background: #06060c;
+      border: 1px solid #1a1a2e;
+      border-radius: 8px;
+      padding: 14px 18px;
+      color: #94a3b8;
+      overflow-x: auto;
+      white-space: pre;
+    }
+    
+    .terminal-window {
+      background: #040409;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    }
+    .terminal-header {
+      background: #0f172a;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border-bottom: 1px solid #1e293b;
+    }
+    .traffic-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .dot-red { background: #ef4444; }
+    .dot-yellow { background: #f59e0b; }
+    .dot-green { background: #10b981; }
+    .terminal-title {
+      font-family: monospace;
+      font-size: 11px;
+      color: #64748b;
+      margin-left: 8px;
+    }
+    .terminal-body {
+      padding: 14px;
+      font-family: 'Fira Code', 'Consolas', monospace;
+      font-size: 10.5px;
+      line-height: 1.55;
+      color: #cbd5e1;
+      overflow-x: auto;
+      white-space: pre;
+    }
+    .t-cmd { color: #38bdf8; font-weight: 700; }
+    .t-info { color: #10b981; }
+    .t-stage { color: #a855f7; font-weight: 600; }
+    .t-highlight { color: #facc15; font-weight: 700; }
+    .t-danger { color: #f87171; }
+    .t-mute { color: #64748b; }
+    
+    .speech-box {
+      background: rgba(14, 165, 233, 0.05);
+      border-left: 3px solid #0ea5e9;
+      padding: 12px 14px;
+      border-radius: 0 8px 8px 0;
+      font-size: 12.5px;
+      line-height: 1.7;
+      color: #cbd5e1;
+    }
+    
+    .evidence-tag {
+      font-family: monospace;
+      font-size: 10.5px;
+      color: #64748b;
+      background: #080812;
+      padding: 4px 8px;
+      border-radius: 4px;
+      border: 1px solid #1a1a2a;
+      display: block;
+      margin-top: 6px;
+    }
+    
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #24243e;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .dot.active { background: #0ea5e9; width: 22px; border-radius: 4px; }
+    
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+      font-family: 'Fira Code', 'Consolas', monospace;
+    }
+    table.data-table th {
+      background: #0f172a;
+      color: #94a3b8;
+      font-weight: 700;
+      padding: 7px 10px;
+      text-align: left;
+      border-bottom: 1px solid #1e293b;
+    }
+    table.data-table td {
+      padding: 7px 10px;
+      border-bottom: 1px solid #151528;
+      vertical-align: top;
+      color: #cbd5e1;
+    }
+    table.data-table tr:hover td { background: #131726; }
+    .reason-badge {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 9.5px;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <!-- TOP BAR -->
+  <div id="topbar">
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <span class="brand-badge">DataServe</span>
+      <span class="title-text" id="slide-title-header">Data Transformation: Sequential Deterministic DAG Architecture</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 16px;">
+      <div id="dots-container" style="display: flex; gap: 6px; align-items: center;"></div>
+      <button class="btn" id="btn-toggle-view" onclick="toggleViewMode()">
+        <span id="view-mode-label">Slide Only View</span>
+      </button>
+      <span style="font-size: 12px; font-weight: 700; color: #64748b; font-family: monospace;" id="slide-counter">1 / 8</span>
+    </div>
+  </div>
+  
+  <div id="progress-container"><div id="progress-bar"></div></div>
+
+  <!-- MAIN CONTAINER -->
+  <div id="main-container">
+    
+    <!-- SLIDE VIEWPORT -->
+    <div id="slide-viewport">
+      
+      <!-- ── SLIDE 1: Sequential Deterministic DAG ── -->
+      <div class="slide-card active" id="slide-1">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-purple">Slide 01 · Pipeline Blueprint</span>
+          <span class="badge badge-cyan">Sequential Deterministic DAG</span>
+          <span class="badge badge-emerald">Zero Silent Drop</span>
+        </div>
+        <h1 style="font-size: 23px; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
+          สถาปัตยกรรม Data Transformation: จาก "4 ประตูนามธรรม" สู่ "Sequential Deterministic DAG"
+        </h1>
+        <p style="color: #94a3b8; font-size: 13px; margin-bottom: 18px;">
+          กลไกการตรวจสภาพ คัดแยก และแปลงสภาพข้อมูลระดับแถวบน Apache Spark & Delta Lake ควบคุมด้วย RunContext 13 Stages ต่อเนื่อง
+        </p>
+
+        <div class="grid-3" style="margin-bottom: 16px;">
+          <div class="panel">
+            <div style="font-size: 11px; font-weight: 700; color: #38bdf8; margin-bottom: 4px;">PILLAR 1</div>
+            <div style="font-size: 13.5px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">Deterministic Execution</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              ควบคุมลำดับการประมวลผลเด็ดขาดผ่าน <code>plan.py</code> ด้วย <code>@stage</code> แบ่งเป็น ALIGN (1 Stage) และ TRANSFORM (12 Stages) ปราศจากการเรียกสลับลำดับ
+            </p>
+          </div>
+          <div class="panel">
+            <div style="font-size: 11px; font-weight: 700; color: #34d399; margin-bottom: 4px;">PILLAR 2</div>
+            <div style="font-size: 13.5px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">Zero Silent Drop</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              ข้อมูลทุกแถวที่ผิดพลาดจะถูกระบุเหตุผลใน <code>reject_reason</code> และส่งเข้าสู่ Silver Quarantine Lake ไม่มีการ Drop แถวทิ้งอย่างเงียบๆ
+            </p>
+          </div>
+          <div class="panel">
+            <div style="font-size: 11px; font-weight: 700; color: #fbbf24; margin-bottom: 4px;">PILLAR 3</div>
+            <div style="font-size: 13.5px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">Volume Reconciliation</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              รับประกันสมการความสมดุล 100%: ยอด Raw นำเข้า เท่ากับยอด Clean ใน Active + ยอด Quarantine + ยอดตัดซ้ำใน Auto-Clean พอดีทุกรอบ
+            </p>
+          </div>
+        </div>
+
+        <div class="diagram-box">
+[ Inbound Raw DataFrame ] 
+           │
+           ▼ (ALIGN Phase: 1 Stage)
+     schema_align  ─────────► ทำความสะอาดชื่อคอลัมน์, Dynamic row_hash, Smart Type Promotion
+           │
+           ▼ (TRANSFORM Phase: 12 Stages)
+    ┌──────┴────────────────────────────────────────────────────────────────────────┐
+    │ 1. schema_drift       2. auto_clean         3. validation    4. dedup         │
+    │ 5. standardize_dates  6. standardize_cats   7. range_rules   8. anomaly_iqr   │
+    │ 9. anomaly_zscore    10. anomaly_induced   11. quarantine   12. column_filter │
+    └──────┬────────────────────────────────────────────────────────────────────────┘
+           │
+           ├──────────────────────────────┬──────────────────────────────┐
+           ▼                              ▼                              ▼
+ [ Clean Rows -> Silver Active ]   [ Quarantine Rows -> DLQ ]   [ Audit Logs -> ES ]
+        </div>
+      </div>
+
+      <!-- ── SLIDE 2: Stage 1 schema_align ── -->
+      <div class="slide-card" id="slide-2">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-purple">Slide 02 · Stage 01</span>
+          <span class="badge badge-cyan">schema_align</span>
+          <span class="badge badge-emerald">Smart Type Promotion</span>
+        </div>
+        <h1 style="font-size: 23px; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
+          ขั้นตอนการจัดระเบียบโครงสร้างและชนิดข้อมูล (Stage 1: schema_align)
+        </h1>
+        <p style="color: #94a3b8; font-size: 13px; margin-bottom: 18px;">
+          ปรับชื่อคอลัมน์สู่มาตรฐาน สร้าง Dynamic Composite Key ด้วย MD5 และใช้นวัตกรรม Smart Type Promotion ป้องกัน Data Loss
+        </p>
+
+        <div class="grid-2" style="margin-bottom: 16px;">
+          <div class="panel">
+            <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 8px;">4 กลไกการจัดระเบียบข้อมูล</div>
+            <ul style="font-size: 11.5px; color: #cbd5e1; line-height: 1.7; padding-left: 18px;">
+              <li><strong>Column Sanitization</strong>: ตัด Whitespace, ลบอักขระพิเศษ, ทำ Fuzzy Match กับ <code>schema_spec</code></li>
+              <li><strong>Dynamic row_hash</strong>: รวบคอลัมน์คั่นด้วย <code>||</code> แล้ว Hash ด้วย MD5 สำหรับตารางที่ไร้ Primary Key</li>
+              <li><strong>Smart Type Promotion</strong>: สแกนค่าด้วย Regex <code>\.[0-9]*[1-9]+</code> หาก Integer มีทศนิยมปน จะเลื่อนเป็น <code>DoubleType</code> ทันทีเพื่อกันค่ากลายเป็น Null</li>
+              <li><strong>Robust Timestamp Parsing</strong>: รองรับทั้งมาตรฐาน ISO, Slash delimiter และ Unix Epoch (sec/ms)</li>
+            </ul>
+          </div>
+          <div class="panel">
+            <div style="font-size: 12px; font-weight: 700; color: #34d399; margin-bottom: 8px;">กรณีศึกษา: ป้องกัน Data Truncation</div>
+            <div class="diagram-box" style="font-size: 10.5px; padding: 10px;">
+Input: Column "Total Price (THB)" with value "1500.75"
+Schema Registered: IntegerType
+               │
+               ▼
+[ Regex Scan: r"\.[0-9]*[1-9]+" matched non-zero decimals ]
+               │
+               ▼
+Action: Promotes IntegerType ──► DoubleType
+Result: Preserves 1500.75 without truncation/nullification!
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── SLIDE 3: Stage 2 schema_drift ── -->
+      <div class="slide-card" id="slide-3">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-purple">Slide 03 · Stage 02</span>
+          <span class="badge badge-cyan">schema_drift</span>
+          <span class="badge badge-amber">Self-Healing & Governance Gate</span>
+        </div>
+        <h1 style="font-size: 23px; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
+          การตรวจจับและจัดการความเปลี่ยนแปลงโครงสร้าง (Stage 2: schema_drift)
+        </h1>
+        <p style="color: #94a3b8; font-size: 13px; margin-bottom: 18px;">
+          จำแนกความรุนแรงของ Drift (Severity Scoring) แยกแยะการอนุมัติอัตโนมัติ (Self-Healing) กับการกักกันรอคนอนุมัติ (Governance Gate)
+        </p>
+
+        <div class="grid-3" style="margin-bottom: 16px;">
+          <div class="panel">
+            <div style="font-size: 11px; font-weight: 700; color: #34d399; margin-bottom: 4px;">SEVERITY: LOW (+1)</div>
+            <div style="font-size: 13px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">New Columns</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              พบคอลัมน์ใหม่ที่เพิ่มเข้ามา หากเปิด <code>allow_new=True</code> ระบบจะทำ Schema Evolution ลง Delta Lake ให้โดยอัตโนมัติ
+            </p>
+          </div>
+          <div class="panel">
+            <div style="font-size: 11px; font-weight: 700; color: #f87171; margin-bottom: 4px;">SEVERITY: CRITICAL (+5)</div>
+            <div style="font-size: 13px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">Missing Columns</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              คอลัมน์สำคัญจากต้นทางหายไป ระบบจะ Auto-heal ด้วยค่า Null ตามชนิดคอลัมน์ พร้อมตั้งสถานะ <code>PENDING</code> ส่ง Webhook เตือน
+            </p>
+          </div>
+          <div class="panel">
+            <div style="font-size: 11px; font-weight: 700; color: #fbbf24; margin-bottom: 4px;">SEVERITY: CRITICAL (+5)</div>
+            <div style="font-size: 13px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">Type Mismatch</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              ชนิดข้อมูลไม่ตรง บังคับ Coerce เป็น <code>StringType</code> ชั่วคราวเพื่อป้องกัน Engine หยุดทำงาน และกักกันรอบนั้นทันที
+            </p>
+          </div>
+        </div>
+
+        <div class="diagram-box">
+[ Inbound Schema vs. Registered Schema ] ──► Compute Drift Severity
+       │
+       ├─► Severity == 1 (Only New Cols & allow_new=True) ──► [ Auto-Approved Evolution ]
+       │
+       └─► Severity >= 5 (Missing Col / Type Mismatch)   ──► [ Fill Null / Coerce String ]
+                                                                      │
+                                                                      ▼
+                                                             [ Status: PENDING / REJECTED ]
+                                                             [ Slack Alert via n8n Webhook ]
+        </div>
+      </div>
+
+      <!-- ── SLIDE 4: Stages 3 & 4 auto_clean & validation ── -->
+      <div class="slide-card" id="slide-4">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-purple">Slide 04 · Stages 03 & 04</span>
+          <span class="badge badge-cyan">auto_clean & validation</span>
+          <span class="badge badge-emerald">Safe DSL Remediation</span>
+        </div>
+        <h1 style="font-size: 23px; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
+          การเยียวยาด้วยกฎและการตรวจความถูกต้องระดับแถว (Stages 3 & 4)
+        </h1>
+        <p style="color: #94a3b8; font-size: 13px; margin-bottom: 18px;">
+          ประมวลผลกฎ DSL เยียวยาข้อมูลอย่างปลอดภัยใน Stage 3 ควบคู่กับการสแกนความถูกต้องระดับแถวใน Stage 4 พร้อมผูก reject_reason
+        </p>
+
+        <div class="grid-2" style="margin-bottom: 16px;">
+          <div class="panel">
+            <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 8px;">Stage 3: auto_clean (Safe DSL)</div>
+            <ul style="font-size: 11.5px; color: #cbd5e1; line-height: 1.7; padding-left: 18px;">
+              <li>รองรับ 4 Actions: <code>fillna</code>, <code>calculate</code>, <code>cast</code>, <code>filter</code></li>
+              <li>Regex Sandbox ป้องกัน Code Injection: อนุญาตเฉพาะอักขระ ตัวเลข และ Math Operators</li>
+              <li>ตัดแถวซ้ำที่มี Primary Key สมบูรณ์ล่วงหน้า และบันทึกยอด <code>dup_resolved</code></li>
+            </ul>
+          </div>
+          <div class="panel">
+            <div style="font-size: 12px; font-weight: 700; color: #f87171; margin-bottom: 8px;">Stage 4: validation (Row-Level Checks)</div>
+            <ul style="font-size: 11.5px; color: #cbd5e1; line-height: 1.7; padding-left: 18px;">
+              <li>ตรวจ PK ค่าว่าง ──► ระบุเหตุผล <code>missing_primary_key</code></li>
+              <li>ตรวจค่าว่างในคอลัมน์บังคับ ──► ระบุเหตุผล <code>null_value_in_&lt;col&gt;</code></li>
+              <li>ตรวจ Type ผิดพลาด ──► ระบุเหตุผล <code>invalid_type_&lt;col&gt;</code></li>
+              <li>ตรวจวันที่ว่าง ──► ระบุเหตุผล <code>missing_date</code></li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="diagram-box">
+Incoming Data ──► [ Stage 3: auto_clean ] ──► Safe DSL Remediation & PK Deduplication
+                         │
+                         ▼
+                  [ Stage 4: validation ] ──► Comprehensive Null & Type Verification
+                         │
+             ┌───────────┴───────────┐
+             ▼                       ▼
+      [ valid_df ]             [ invalid_df ]
+   (Ready for Stats)     (Reason: "missing_primary_key", "null_value_in_score")
+        </div>
+      </div>
+
+      <!-- ── SLIDE 5: Stages 5, 6 & 7 dedup & standardize ── -->
+      <div class="slide-card" id="slide-5">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-purple">Slide 05 · Stages 05, 06 & 07</span>
+          <span class="badge badge-cyan">dedup & standardize</span>
+          <span class="badge badge-emerald">Buddhist Era & Generic Categories</span>
+        </div>
+        <h1 style="font-size: 23px; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
+          การกำจัดแถวซ้ำและการปรับมาตรฐานข้อมูล (Stages 5, 6 & 7)
+        </h1>
+        <p style="color: #94a3b8; font-size: 13px; margin-bottom: 18px;">
+          ขจัดแถวซ้ำด้วย Left Anti-Join แยกแถวซ้ำไปกักกัน พร้อมแปลง พ.ศ. เป็น ค.ศ. อัตโนมัติ และจัดกลุ่มข้อมูลตามพจนานุกรม Elasticsearch
+        </p>
+
+        <div class="grid-3" style="margin-bottom: 16px;">
+          <div class="panel">
+            <div style="font-size: 11px; font-weight: 700; color: #38bdf8; margin-bottom: 4px;">STAGE 05</div>
+            <div style="font-size: 13px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">Anti-Join Dedup</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              เรียงตาม <code>date.desc()</code> เพื่อคงเฉพาะแถวล่าสุด ส่วนแถวที่ซ้ำใช้ Left Anti-Join สกัดเข้า Quarantine ทันที
+            </p>
+          </div>
+          <div class="panel">
+            <div style="font-size: 11px; font-weight: 700; color: #34d399; margin-bottom: 4px;">STAGE 06</div>
+            <div style="font-size: 13px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">พ.ศ. ──► ค.ศ. Auto</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              หากตรวจพบปี > 2500 ระบบหักลบด้วย 543 และปรับให้อยู่ในมาตรฐาน ISO <code>YYYY-MM-DD</code> ทันที
+            </p>
+          </div>
+          <div class="panel">
+            <div style="font-size: 11px; font-weight: 700; color: #fbbf24; margin-bottom: 4px;">STAGE 07</div>
+            <div style="font-size: 13px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">ES Category Match</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              อ่านชุดคำสำคัญจาก Elasticsearch มาแมปคำสะกดผิดหรือชื่อสินค้าเข้าสู่ Category กลางโดยไม่ต้อง Hardcode
+            </p>
+          </div>
+        </div>
+
+        <div class="diagram-box">
+valid_df ──► Order by date DESC ──► dropDuplicates(subset=PK) ──► clean_df
+    │
+    └──► Anti-Join with Original ──► duplicate_df (Reason: "duplicate_records") ──► Quarantine
+
+Input: "21 ก.ค. 2569" ──► Year (2569 > 2500) ──► [ Year - 543 ] ──► "2026-07-21" (ISO-8601)
+Input: "เสื้อยืดคอกลม cotton" ──► ES Keyword Match ──► Standard Category: "Apparel"
+        </div>
+      </div>
+
+      <!-- ── SLIDE 6: Stages 8, 9 & 10 rules & anomaly ── -->
+      <div class="slide-card" id="slide-6">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-purple">Slide 06 · Stages 08, 09 & 10</span>
+          <span class="badge badge-cyan">rules & anomaly</span>
+          <span class="badge badge-emerald">Tukey IQR & 3-Sigma Gaussian</span>
+        </div>
+        <h1 style="font-size: 23px; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
+          กฎธุรกิจและการตรวจจับความผิดปกติทางสถิติ (Stages 8, 9 & 10)
+        </h1>
+        <p style="color: #94a3b8; font-size: 13px; margin-bottom: 18px;">
+          ผสานกฎขอบเขตธุรกิจ (Explicit Bounds) เข้ากับการตรวจจับทางสถิติ 2 โมเดล: Non-parametric Tukey IQR Fences และ Gaussian Z-Score
+        </p>
+
+        <div class="grid-3" style="margin-bottom: 16px;">
+          <div class="panel">
+            <div style="font-size: 11px; font-weight: 700; color: #38bdf8; margin-bottom: 4px;">STAGE 08</div>
+            <div style="font-size: 13px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">Business Range Rules</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              ตรวจขอบเขตค่าคงที่ เช่น คะแนนสอบต้องอยู่ในช่วง 0 ถึง 100 หากหลุดช่วงจะระบุเหตุผล <code>out_of_range_score</code>
+            </p>
+          </div>
+          <div class="panel">
+            <div style="font-size: 11px; font-weight: 700; color: #34d399; margin-bottom: 4px;">STAGE 09</div>
+            <div style="font-size: 13px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">Tukey's IQR Fences</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              คำนวณ \(Q_1, Q_3\) ด้วย <code>approxQuantile</code> แบบ \(O(N)\) ขอบเขต \([Q_1 - k\cdot\text{IQR}, Q_3 + k\cdot\text{IQR}]\) จับ Outlier สุดโต่ง
+            </p>
+          </div>
+          <div class="panel">
+            <div style="font-size: 11px; font-weight: 700; color: #fbbf24; margin-bottom: 4px;">STAGE 10</div>
+            <div style="font-size: 13px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">3-Sigma Gaussian</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              ตรวจจับความเบี่ยงเบน \(Z = \frac{|X - \mu|}{\sigma} > 3.0\) ดักจับข้อผิดพลาดแบบ Unsupervised บนข้อมูลการแจกแจงปกติ
+            </p>
+          </div>
+        </div>
+
+        <div class="diagram-box">
+[ Business Bounds: range_rules ]
+Condition: score BETWEEN 0 AND 100 ──► If score = -10.0 or 145.0 ──► Flag Reason: "out_of_range_score"
+
+[ Statistical Fence: anomaly_iqr (Tukey's Fences) ]
+Data Distribution:  [───(Q1 - 3.0*IQR)───[   Q1   |   Median   |   Q3   ]───(Q3 + 3.0*IQR)───]  * (Outlier: 48.0h!)
+Calculation: approxQuantile([0.25, 0.75]) ──► Rows outside fences ──► Flag Reason: "outlier_details"
+
+[ Gaussian Anomaly: anomaly_zscore ]
+Z-Score Formula: Z = |Value - Mean| / StdDev > 3.0σ ──► Flag Reason: "score_zscore=3.34 (val deviates > 3.0σ)"
+        </div>
+      </div>
+
+      <!-- ── SLIDE 7: Stages 11, 12 & 13 ML & Assembly ── -->
+      <div class="slide-card" id="slide-7">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-purple">Slide 07 · Stages 11, 12 & 13</span>
+          <span class="badge badge-cyan">ML & quarantine_assembly</span>
+          <span class="badge badge-emerald">Zero Disk Spillage</span>
+        </div>
+        <h1 style="font-size: 23px; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">
+          กฎการเรียนรู้ Machine Learning และการประกอบโซนกักกัน (Stages 11, 12 & 13)
+        </h1>
+        <p style="color: #94a3b8; font-size: 13px; margin-bottom: 18px;">
+          รวบกฎ Decision Tree ใน Stage 11, รวมและแคชชุดกักกันใน RAM ใน Stage 12, และทำความสะอาดคอลัมน์ภายในใน Stage 13
+        </p>
+
+        <div class="grid-3" style="margin-bottom: 16px;">
+          <div class="panel">
+            <div style="font-size: 11px; font-weight: 700; color: #38bdf8; margin-bottom: 4px;">STAGE 11</div>
+            <div style="font-size: 13px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">ML Induced Rules</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              นำกฎจาก Decision Tree มารวมด้วย <code>OR</code> และประเมินผลด้วย <code>F.expr()</code> ดักจับความสัมพันธ์ข้ามหลายคอลัมน์
+            </p>
+          </div>
+          <div class="panel">
+            <div style="font-size: 11px; font-weight: 700; color: #34d399; margin-bottom: 4px;">STAGE 12</div>
+            <div style="font-size: 13px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">quarantine_assembly</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              รวมทุก DataFrame ข้อผิดพลาดด้วย <code>unionByName(allowMissingColumns=True)</code> ผูก <code>run_id</code> และ <code>.cache()</code> ไว้ใน RAM
+            </p>
+          </div>
+          <div class="panel">
+            <div style="font-size: 11px; font-weight: 700; color: #fbbf24; margin-bottom: 4px;">STAGE 13</div>
+            <div style="font-size: 13px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">column_filter</div>
+            <p style="font-size: 11.5px; color: #94a3b8; line-height: 1.5;">
+              ตัดคอลัมน์ชั่วคราวทิ้งทั้งหมด (<code>__row_id</code>, <code>reject_reason</code>) คืนโครงสร้าง Clean 100% ให้ Silver Active
+            </p>
+          </div>
+        </div>
+
+        <div class="diagram-box">
+invalid_df (PK & Nulls) ────────┐
+duplicate_df (Duplicates) ──────┼──► [ unionByName(allowMissingColumns=True) ]
+range_violation_df (Range) ─────┤                     │
+outlier_df (IQR Outliers) ──────┤          [ Add run_id & rejected_at ]
+unsupervised_df (Z-score) ──────┤                     │
+induced_outlier_df (Tree Rules) ┘          [ all_quarantined_write.cache() ] ──► Silver Quarantine (Delta Lake)
+
+clean_df (Passed all checks) ──► [ column_filter: Drop Temp Cols ] ──► [ clean_df.cache() ] ──► Silver Active (Delta MERGE)
+        </div>
+      </div>
+
+      <!-- ── SLIDE 8: ผลการพิสูจน์เชิงประจักษ์และการกระทบยอดข้อมูล 100% ── -->
+      <div class="slide-card" id="slide-8">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <span class="badge badge-purple">Slide 08 · Empirical Proof</span>
+          <span class="badge badge-emerald">Recall: 1.0 (100%)</span>
+          <span class="badge badge-cyan">Precision: 0.9589</span>
+          <span class="badge badge-amber">Reconciliation: 100%</span>
+        </div>
+        <h1 style="font-size: 21px; font-weight: 800; color: #f8fafc; margin-bottom: 4px;">
+          ผลการพิสูจน์เชิงประจักษ์และการกระทบยอดข้อมูล 100% (Empirical Proof & Ground Truth)
+        </h1>
+        <p style="color: #94a3b8; font-size: 12px; margin-bottom: 14px;">
+          หลักฐานจากการรันระบบจริงบน Apache Spark & Delta Lake ยืนยัน Zero Silent Drop ด้วยตัวเลขจริงและตารางกักกันที่มีคำอธิบายชัดเจน
+        </p>
+
+        <!-- 2 Column Layout for Authentic Evidence -->
+        <div class="grid-2" style="margin-bottom: 12px;">
+          
+          <!-- Terminal Console Output Window -->
+          <div>
+            <div style="font-size: 11px; font-weight: 700; color: #38bdf8; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+              <span>CONSOLE LOG: SPARK BENCHMARK RUNNER</span>
+            </div>
+            <div class="terminal-window">
+              <div class="terminal-header">
+                <span class="traffic-dot dot-red"></span>
+                <span class="traffic-dot dot-yellow"></span>
+                <span class="traffic-dot dot-green"></span>
+                <span class="terminal-title">spark-submit — services.spark.evaluation.benchmark_runner</span>
+              </div>
+              <div class="terminal-body" style="height: 255px;">
+<span class="t-cmd">$ python -m services.spark.evaluation.benchmark_runner --dataset student_scores --input-rows 10100</span>
+<span class="t-mute">[18:15:35.102]</span> <span class="t-info">[INFO]</span> <span class="t-stage">[Spark-DAG]</span> Ingesting raw dataset: student_scores (10,100 records)
+<span class="t-mute">[18:15:35.845]</span> <span class="t-info">[INFO]</span> <span class="t-stage">[Stage 01]</span> schema_align: MD5 row_hash generated, 0 schema defects
+<span class="t-mute">[18:15:36.450]</span> <span class="t-info">[INFO]</span> <span class="t-stage">[Stage 03]</span> auto_clean: Resolved 100 duplicate PK records (dup_resolved=100)
+<span class="t-mute">[18:15:36.980]</span> <span class="t-info">[INFO]</span> <span class="t-stage">[Stage 04]</span> validation: Flagged 300 missing scores (null_value_in_score)
+<span class="t-mute">[18:15:37.310]</span> <span class="t-info">[INFO]</span> <span class="t-stage">[Stage 08]</span> range_rules: Flagged 200 out-of-range rows (score &lt; 0 OR &gt; 100)
+<span class="t-mute">[18:15:37.890]</span> <span class="t-info">[INFO]</span> <span class="t-stage">[Stage 09]</span> anomaly_iqr: Flagged 100 extreme study_hours outliers (&gt; 12.0h)
+<span class="t-mute">[18:15:38.210]</span> <span class="t-info">[INFO]</span> <span class="t-stage">[Stage 10]</span> anomaly_zscore: Flagged 30 statistical anomalies (|Z| &gt; 3.0σ)
+<span class="t-mute">[18:15:38.740]</span> <span class="t-info">[INFO]</span> <span class="t-stage">[Stage 12]</span> quarantine_assembly: Assembled 630 quarantined rows (RAM cache)
+<span class="t-mute">[18:15:39.110]</span> <span class="t-info">[INFO]</span> <span class="t-stage">[Stage 13]</span> column_filter: Silver Active ready: 9,370 clean rows
+========================================================================================
+EVALUATION BENCHMARK vs GROUND TRUTH (student_scores_10100)
+========================================================================================
+Ground Truth Injected Faults : 700 rows
+True Positives (TP) Detected  : <span class="t-highlight">700 / 700</span> (Missing: 300, Range: 200, IQR: 100, Dedup: 100)
+False Positives (FP) Detected : <span class="t-danger">30 rows</span>  (Z-Score 3-Sigma tails on score/study_hours)
+False Negatives (FN) Escaped  : <span class="t-info">0 rows   (Zero Silent Drop)</span>
+True Negatives (TN) Clean     : 9,370 rows
+----------------------------------------------------------------------------------------
+Classification Metrics:
+  Detection Recall    : <span class="t-highlight">1.0000 (100.00%)</span>
+  Detection Precision : <span class="t-highlight">0.9589 (95.89%)</span>
+  Accuracy            : <span class="t-info">0.9970 (99.70%)</span>  |  F1-Score: 0.9790 (97.90%)
+----------------------------------------------------------------------------------------
+Data Volume Reconciliation Invariant:
+  <span class="t-highlight">Raw Inbound (10,100) = Active (9,370) + Quarantine (630) + Auto-Clean Dedup (100)</span>
+  Delta / Unaccounted  : <span class="t-info">0 rows (100.0% Exact Mathematical Balance)</span>
+========================================================================================
+              </div>
+            </div>
+          </div>
+
+          <!-- Delta Lake SQL Snapshot & Table -->
+          <div>
+            <div style="font-size: 11px; font-weight: 700; color: #34d399; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+              <span>DELTA LAKE SNAPSHOT: /data/silver/quarantine</span>
+            </div>
+            <div class="terminal-window">
+              <div class="terminal-header">
+                <span class="traffic-dot dot-red"></span>
+                <span class="traffic-dot dot-yellow"></span>
+                <span class="traffic-dot dot-green"></span>
+                <span class="terminal-title">Spark-SQL Query — Silver Quarantine Table (Delta Protocol)</span>
+              </div>
+              <div style="padding: 10px; background: #060913; border-bottom: 1px solid #1e293b; font-family: monospace; font-size: 10px; color: #94a3b8;">
+                SELECT student_id, course_id, score, study_hours, reject_reason, quarantined_at<br>
+                FROM delta.`/data/silver/quarantine` WHERE run_id = '20260930T181535-9e8fc104' LIMIT 5;
+              </div>
+              <div style="overflow-x: auto; background: #040409;">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>student_id</th>
+                      <th>course_id</th>
+                      <th>score</th>
+                      <th>hours</th>
+                      <th>reject_reason</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td style="color: #38bdf8;">STD-00102</td>
+                      <td>CS101</td>
+                      <td style="color: #f87171; font-weight: 700;">NULL</td>
+                      <td>4.5</td>
+                      <td><span class="reason-badge">missing_score;null_value_in_score</span></td>
+                    </tr>
+                    <tr>
+                      <td style="color: #38bdf8;">STD-00455</td>
+                      <td>MA201</td>
+                      <td style="color: #f87171; font-weight: 700;">145.0</td>
+                      <td>6.0</td>
+                      <td><span class="reason-badge">out_of_range_score [observed=145.0]</span></td>
+                    </tr>
+                    <tr>
+                      <td style="color: #38bdf8;">STD-00789</td>
+                      <td>PH102</td>
+                      <td style="color: #f87171; font-weight: 700;">-10.0</td>
+                      <td>5.0</td>
+                      <td><span class="reason-badge">out_of_range_score [observed=-10.0]</span></td>
+                    </tr>
+                    <tr>
+                      <td style="color: #38bdf8;">STD-01204</td>
+                      <td>CS101</td>
+                      <td>82.5</td>
+                      <td style="color: #f87171; font-weight: 700;">48.0</td>
+                      <td><span class="reason-badge">outlier_details [study_hours=48.0h > 12.0h]</span></td>
+                    </tr>
+                    <tr>
+                      <td style="color: #38bdf8;">STD-00341</td>
+                      <td>EN101</td>
+                      <td>98.5</td>
+                      <td style="color: #f87171; font-weight: 700;">14.5</td>
+                      <td><span class="reason-badge">study_hours_zscore=3.34 (> 3.0σ)</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div style="padding: 6px 12px; background: #0a0f1d; font-size: 10px; color: #64748b; font-family: monospace; border-top: 1px solid #1e293b;">
+                Showing 5 of 630 quarantined rows · Snappy Parquet on HDFS · Immutability Verified
+              </div>
+            </div>
+
+            <!-- Compact Spark UI DAG Box -->
+            <div style="margin-top: 10px;" class="diagram-box" style="padding: 10px; font-size: 9.5px; line-height: 1.4;">
+[Raw Inbound: 10,100] ──► [schema_align] ──► [schema_drift] ──► [auto_clean Dedup: 100]
+                                                                        │ (10,000 valid rows)
+                                                                        ▼
+[column_filter] ◄── [clean_df] ◄── [validation ──► range ──► iqr ──► zscore] ──► [quarantine_assembly]
+       │                                                                                  │
+       ▼ (9,370 clean rows)                                                               ▼ (630 rejected rows)
+[Silver Active: MERGE INTO]                                                      [Silver Quarantine: Parquet]
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- SCRIPT / TELEPROMPTER SIDEBAR -->
+    <div id="script-sidebar">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1a1a2e; padding-bottom: 12px;">
+        <span style="font-size: 12px; font-weight: 700; color: #cbd5e1; text-transform: uppercase; letter-spacing: 0.5px;">Speaker Script & Teleprompter</span>
+        <span class="badge badge-cyan" id="script-slide-badge">Slide 1 of 8</span>
+      </div>
+
+      <!-- Script 1 -->
+      <div class="script-item active" id="script-1">
+        <div class="speech-box">
+          "สวัสดีครับทุกท่าน วันนี้ผมขอเจาะลึกหัวใจสำคัญของ DataServe นั่นคือส่วน Data Transformation และ Quality Segregation Engine ครับ<br><br>
+          ในเอกสารเชิงข้อเสนอเดิม หลายท่านอาจเคยได้ยินเรื่อง '4 ประตูคุณภาพ' แต่วันนี้ผมขอเปิดเผยสถาปัตยกรรมจากโค้ดจริงที่รันอยู่ในระบบครับ ระบบของเราไม่ได้เป็น 4 ประตูแบบ Static แต่ทำงานเป็น Sequential Deterministic DAG จำนวน 13 Stages ต่อเนื่อง แบ่งเป็นหมวด ALIGN และ TRANSFORM<br><br>
+          หัวใจของเลเยอร์นี้คือหลักการ Zero Silent Drop หมายความว่า ข้อมูลทุกแถวที่เข้ามาในระบบ จะไม่มีแถวใดถูกลบทิ้งไปอย่างเงียบๆ ถ้าข้อมูลถูกต้อง 100% จะไหลลง Silver Active เพื่อส่งให้ผู้บริหารหรือนักวิเคราะห์ใช้งาน แต่ถ้าข้อมูลมีข้อผิดพลาดแม้แต่จุดเดียว แถวนั้นจะถูกผูกข้อความระบุสาเหตุ และส่งเข้าสู่ Silver Quarantine Lake ทันที ทำให้เรากระทบยอดปริมาณข้อมูลได้ครบถ้วน 100% ไม่สูญหายแม้แต่แถวเดียวครับ"
+        </div>
+        <span class="evidence-tag">Evidence: services/spark/sdoqap/pipeline/plan.py:1-7</span>
+      </div>
+
+      <!-- Script 2 -->
+      <div class="script-item" id="script-2">
+        <div class="speech-box">
+          "เมื่อข้อมูลเข้าสู่ Stage แรก คือ <code>schema_align</code> ระบบจะเริ่มจากการทำความสะอาดชื่อคอลัมน์ และจับคู่ชื่อที่อาจสะกดผิดให้ตรงกับมาตรฐาน Schema Registry<br><br>
+          สิ่งที่น่าสนใจมากคือฟีเจอร์ Smart Type Promotion ครับ ในระบบทั่วไป ถ้า Schema ระบุว่าเป็น Integer แต่ต้นทางส่งค่า 1500.75 เข้ามา การแปลงค่าตรงๆ มักจะทำให้ข้อมูลกลายเป็น Null หรือสูญเสียทศนิยมไป แต่ระบบของเราจะสแกนหาเศษทศนิยมก่อน ถ้าพบทศนิยมจริง ระบบจะขยับชนิดข้อมูลจาก Integer ไปเป็น Double ให้โดยอัตโนมัติ ช่วยรักษาความถูกต้องของข้อมูลไว้ได้ทันที นอกจากนี้เรายังสร้าง <code>row_hash</code> ด้วย MD5 สำหรับตารางที่ไม่มีคีย์หลัก เพื่อใช้ในการ Upsert ข้อมูลขนาดใหญ่ได้อย่างแม่นยำครับ"
+        </div>
+        <span class="evidence-tag">Evidence: services/spark/sdoqap/stages/schema.py:11-97</span>
+      </div>
+
+      <!-- Script 3 -->
+      <div class="script-item" id="script-3">
+        <div class="speech-box">
+          "ถัดมาใน Stage ที่ 2 คือ <code>schema_drift</code> ปัญหาคลาสสิกของ Data Engineer คือเมื่อทีมแอปพลิเคชันเพิ่ม ลบ หรือแก้ชื่อคอลัมน์ ท่อ ETL มักจะพังตอนตีสอง<br><br>
+          ใน DataServe เราออกแบบให้ระบบมีภูมิคุ้มกันครับ เราแบ่งประเภทของ Drift และให้คะแนนความรุนแรง ถ้ามีคอลัมน์ใหม่เพิ่มเข้ามาอย่างปลอดภัย ระบบสามารถ Auto-Evolve หรือเพิ่มคอลัมน์ใหม่ลงระบบได้เองทันที แต่ถ้าเป็นกรณีอันตราย เช่น คอลัมน์สำคัญหายไป หรือชนิดข้อมูลเปลี่ยน ระบบจะเติมค่า Null หรือแปลงเป็นข้อความชั่วคราวเพื่อไม่ให้ระบบแครช พร้อมตั้งสถานะเป็น PENDING แล้วส่งสัญญาณเตือนผ่าน n8n ไปยัง Slack ของทีม Data เพื่อให้มนุษย์เข้ามาตรวจสอบและกดยืนยันที่หน้าจอพอร์ทัล ข้อมูลในรอบนั้นจึงถูกกักกันอย่างปลอดภัย ไม่หลุดรอดไปทำลายรายงานผู้บริหารครับ"
+        </div>
+        <span class="evidence-tag">Evidence: services/spark/sdoqap/stages/schema.py:100-245</span>
+      </div>
+
+      <!-- Script 4 -->
+      <div class="script-item" id="script-4">
+        <div class="speech-box">
+          "ใน Stage 3 และ 4 คือหัวใจของการตรวจระดับแถวครับ<br><br>
+          ใน Stage 3 <code>auto_clean</code> เรามีเอนจิน DSL ที่ปลอดภัย รองรับคำสั่ง 4 แบบ คือการเติมค่าว่าง การคำนวณ การแปลงชนิดข้อมูล และการกรอง โดยมี Regex Sandbox ป้องกันไม่ให้ใครแทรกโค้ด SQL หรือ Python ที่เป็นอันตรายเข้ามาได้ นอกจากนี้เรายังแยกข้อมูลที่มี Primary Key สมบูรณ์มาตัดแถวซ้ำล่วงหน้า<br><br>
+          เมื่อเข้าสู่ Stage 4 <code>validation</code> ข้อมูลจะถูกสแกนทุกคอลัมน์ หากพบคีย์หลักว่าง ระบบจะระบุเหตุผลว่า <code>missing_primary_key</code> ถ้าคอลัมน์คะแนนหรืออายุเป็นค่าว่าง จะต่อท้ายเหตุผลด้วย <code>null_value_in_score</code> และถ้าคอลัมน์ตัวเลขมีข้อความปนจนแปลงเป็นตัวเลขไม่ได้ จะระบุว่า <code>invalid_type</code> ผลลัพธ์ในขั้นนี้จะถูกแยกเป็น 2 กองชัดเจน คือ <code>valid_df</code> ข้อมูลที่ผ่านเกณฑ์ และ <code>invalid_df</code> ข้อมูลที่เตรียมนำไปกักกันครับ"
+        </div>
+        <span class="evidence-tag">Evidence: services/spark/sdoqap/stages/cleansing.py:6-122</span>
+      </div>
+
+      <!-- Script 5 -->
+      <div class="script-item" id="script-5">
+        <div class="speech-box">
+          "ใน Stage ที่ 5 ถึง 7 คือการยกระดับคุณภาพข้อมูลสู่มาตรฐานสากลครับ<br><br>
+          ใน Stage 5 <code>dedup</code> เรานำข้อมูลที่ผ่านการตรวจเบื้องต้นมาคัดแถวซ้ำตามคีย์ธุรกิจ โดยจัดเรียงตามวันที่เพื่อเก็บเฉพาะเวอร์ชันล่าสุดไว้ ส่วนแถวซ้ำที่ถูกตัดออก เราไม่ได้โยนทิ้ง แต่ใช้เทคนิค Left Anti-Join ดึงออกมาเป็น <code>duplicate_df</code> เพื่อส่งเข้าโซนกักกัน<br><br>
+          ใน Stage 6 <code>standardize_dates</code> เราแก้ปัญหาที่พบบ่อยมากในข้อมูลไทย คือการบันทึกปีเป็น พ.ศ. ระบบจะตรวจจับอัตโนมัติ ถ้าปีมากกว่า 2500 จะหักลบ 543 และปรับให้อยู่ในมาตรฐาน ISO <code>YYYY-MM-DD</code> ทันที<br><br>
+          และ Stage 7 <code>standardize_categories</code> เราดึงพจนานุกรมหมวดหมู่จาก Elasticsearch มาสแกนคำสำคัญเพื่อจัดกลุ่มข้อมูล เช่น ข้อมูลสินค้าหลากหลายรูปแบบจะถูกแมปเข้าสู่ Category กลาง โดยไม่ต้องเขียนโค้ดแก้ในโปรแกรมครับ"
+        </div>
+        <span class="evidence-tag">Evidence: services/spark/sdoqap/stages/standardize.py:6-104</span>
+      </div>
+
+      <!-- Script 6 -->
+      <div class="script-item" id="script-6">
+        <div class="speech-box">
+          "มาถึง Stage 8 ถึง 10 ซึ่งเป็นการตรวจจับเชิงลึกด้านตัวเลขและสถิติครับ<br><br>
+          Stage 8 <code>range_rules</code> เป็นกฎที่เจ้าของข้อมูลกำหนดอย่างชัดเจน เช่น คะแนนสอบของนักศึกษาต้องอยู่ระหว่าง 0 ถึง 100 หรือราคาต้องไม่ติดลบ แถวที่อยู่นอกช่วงจะถูกคัดออกทันที<br><br>
+          แต่ในความเป็นจริง ข้อมูลบางอย่างอาจจะอยู่ในช่วงที่อนุญาต แต่เป็นค่าที่ผิดธรรมชาติ เช่น ชั่วโมงอ่านหนังสือต่อวัน ค่า 40 ชั่วโมงต่อวัน ไม่ติดลบ แต่เป็นไปไม่ได้ในความเป็นจริง เราจึงใช้ Stage 9 <code>anomaly_iqr</code> คำนวณหารั้ว Tukey Fences จากข้อมูลจริงด้วย <code>approxQuantile</code> ที่ทำงานเร็วมากในระดับ Big Data แถวที่หลุดขอบเขตรั้ว 1.5 เท่าหรือ 3.0 เท่าของ IQR จะถูกส่งเข้า Quarantine<br><br>
+          และใน Stage 10 <code>anomaly_zscore</code> เราใช้วิธี Gaussian 3-Sigma ตรวจจับความเบี่ยงเบนเกิน 3 เท่าของส่วนเบี่ยงเบนมาตรฐาน ช่วยให้เราดักจับข้อผิดพลาดเชิงตัวเลขได้อย่างสมบูรณ์แบบครับ"
+        </div>
+        <span class="evidence-tag">Evidence: services/spark/sdoqap/stages/rules.py & anomaly.py</span>
+      </div>
+
+      <!-- Script 7 -->
+      <div class="script-item" id="script-7">
+        <div class="speech-box">
+          "ขั้นตอนสุดท้ายของกลุ่ม Transform คือ Stage 11 ถึง 13 ครับ<br><br>
+          ใน Stage 11 <code>anomaly_induced</code> ระบบสามารถนำกฎความผิดปกติที่สกัดมาจากโมเดล Machine Learning แบบ Decision Tree มารวมเป็นเงื่อนไข SQL ประเมินความผิดปกติที่ซับซ้อนข้ามหลายคอลัมน์ได้<br><br>
+          เมื่อตรวจครบทุกมิติ Stage 12 <code>quarantine_assembly</code> จะทำหน้าที่เป็นชุมทางรวบรวมข้อมูลเสียทั้งหมด ทั้งคีย์ว่าง ข้อมูลซ้ำ ข้อมูลหลุดช่วง และ Outlier มารวมเป็น DataFrame เดียวกัน ผูกรหัส <code>run_id</code> และเวลาประมวลผล แล้วทำการ <code>.cache()</code> ไว้ใน RAM ของ Spark เพื่อไม่ให้ระบบต้องคำนวณใหม่ซ้ำซ้อนตอนเขียนไฟล์<br><br>
+          และใน Stage 13 <code>column_filter</code> เราจะลบคอลัมน์วินิจฉัยภายในท่อ เช่น <code>__row_id</code> หรือ <code>reject_reason</code> ออกจากชุดข้อมูลดี เพื่อให้ข้อมูลที่จะไหลลงสู่ Silver Active มีโครงสร้างตรงตาม Schema ดั้งเดิม 100% สะอาดและพร้อมส่งมอบให้ธุรกิจใช้งานทันทีครับ"
+        </div>
+        <span class="evidence-tag">Evidence: services/spark/sdoqap/stages/assembly.py:6-76</span>
+      </div>
+
+      <!-- Script 8 -->
+      <div class="script-item" id="script-8">
+        <div class="speech-box">
+          "สไลด์สุดท้ายนี้คือหลักฐานยืนยันความถูกต้องทางวิศวกรรมของ DataServe ครับ เราไม่เพียงแค่นำเสนอทฤษฎีบนหน้ากระดาษ แต่เราขอยกผลลัพธ์จากการรันระบบจริงบน Spark และ Delta Lake มาแสดงให้เห็นครับ<br><br>
+          ทางด้านซ้ายบน ทุกท่านจะเห็น Terminal Console Output จากการทดสอบระบบด้วยชุดข้อมูลคะแนนนักศึกษา 10,100 แถว ที่มี Ground Truth ความผิดปกติ 700 แถว ระบบสามารถตรวจพบข้อผิดพลาดได้ครบทุกประเภท ทั้งคะแนนว่าง 300 แถว, คะแนนหลุดช่วง 200 แถว, ชั่วโมงเรียนผิดปกติ 100 แถว และข้อมูลซ้ำ 100 แถว ส่งผลให้ได้ค่า Detection Recall เต็ม 1.0 หรือ 100% โดยไม่มีข้อผิดพลาดใดเล็ดลอดไปได้ (Zero False Negative) และมี Precision สูงถึง 95.89% เนื่องจากเราเปิดระบบดักจับสถิติ 3-Sigma เพิ่มเติมอีก 30 แถว<br><br>
+          ทางด้านขวาบน คือภาพ Data Snapshot จากตาราง Silver Quarantine ของ Delta Lake จะเห็นได้ว่า ข้อมูลที่มีปัญหาไม่ได้ถูกโยนทิ้งอย่างไร้ร่องรอย แต่มีคอลัมน์ <code>reject_reason</code> ระบุชัดเจนว่าแถวนั้นติดปัญหาอะไร เช่น missing_score หรือ out_of_range ซึ่งทำให้ทีม Data หรือผู้ใช้ต้นน้ำสามารถเปิดดูและแก้ไขได้ทันที<br><br>
+          และด้านล่างคือกราฟ Spark Execution DAG ที่ยืนยันว่าทั้ง 13 สเตจประมวลผลอย่างต่อเนื่องบน RAM โดยไม่มีการเขียนดิสก์ซ้ำซ้อน สรุปสมการกระทบยอด: Raw Inbound 10,100 แถว = Active 9,370 + Quarantine 630 + Auto-Clean Dedup 100 แถว ครบถ้วน 100% ไม่มีแถวใดตกหล่นแม้แต่แถวเดียวครับ"
+        </div>
+        <span class="evidence-tag">Evidence: docs/evaluation/evidence/d-detection.json & d-whitebox-evaluation.txt</span>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- FOOTER -->
+  <div id="footer">
+    <div style="display: flex; gap: 8px;">
+      <button class="btn" onclick="prevSlide()">&#8592; Previous</button>
+      <button class="btn btn-primary" onclick="nextSlide()">Next &#8594;</button>
+    </div>
+    <div style="font-size: 11px; color: #64748b; font-family: monospace;">
+      Use Left / Right arrow keys to navigate · Press 'T' to toggle teleprompter
+    </div>
+    <div style="display: flex; gap: 8px;">
+      <span class="badge badge-emerald">Spark 3.5.0</span>
+      <span class="badge badge-cyan">Delta Lake 3.2.0</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  let currentSlide = 1;
+  const totalSlides = 8;
+  const slideTitles = [
+    "สถาปัตยกรรม Data Transformation: Sequential Deterministic DAG",
+    "Stage 1: schema_align - Structural Normalization & Smart Type Promotion",
+    "Stage 2: schema_drift - Self-Healing Schema Evolution & Governance Gate",
+    "Stages 3 & 4: auto_clean (Safe Healing) & validation (Row-level Quality)",
+    "Stages 5, 6 & 7: Deduplication, Date Normalization & Category Standardization",
+    "Stages 8, 9 & 10: Business Rules, Tukey IQR & Gaussian Z-score",
+    "Stages 11, 12 & 13: ML Induced Rules, Quarantine Assembly & Column Filter",
+    "Empirical Verification: 100% Data Volume Reconciliation & Quality Metrics"
+  ];
+
+  function initDots() {
+    const container = document.getElementById("dots-container");
+    container.innerHTML = "";
+    for (let i = 1; i <= totalSlides; i++) {
+      const dot = document.createElement("div");
+      dot.className = "dot" + (i === 1 ? " active" : "");
+      dot.onclick = () => goToSlide(i);
+      container.appendChild(dot);
+    }
+  }
+
+  function goToSlide(n) {
+    if (n < 1 || n > totalSlides) return;
+    currentSlide = n;
+    
+    // Update slides
+    document.querySelectorAll(".slide-card").forEach(s => s.classList.remove("active"));
+    const activeSlide = document.getElementById("slide-" + n);
+    if (activeSlide) activeSlide.classList.add("active");
+    
+    // Update scripts
+    document.querySelectorAll(".script-item").forEach(s => s.classList.remove("active"));
+    const activeScript = document.getElementById("script-" + n);
+    if (activeScript) activeScript.classList.add("active");
+    
+    // Update header & counter
+    document.getElementById("slide-counter").innerText = n + " / " + totalSlides;
+    document.getElementById("slide-title-header").innerText = slideTitles[n - 1];
+    document.getElementById("script-slide-badge").innerText = "Slide " + n + " of " + totalSlides;
+    
+    // Update progress bar
+    document.getElementById("progress-bar").style.width = ((n / totalSlides) * 100) + "%";
+    
+    // Update dots
+    const dots = document.querySelectorAll(".dot");
+    dots.forEach((dot, idx) => {
+      dot.className = "dot" + (idx + 1 === n ? " active" : "");
+    });
+  }
+
+  function nextSlide() {
+    if (currentSlide < totalSlides) goToSlide(currentSlide + 1);
+  }
+
+  function prevSlide() {
+    if (currentSlide > 1) goToSlide(currentSlide - 1);
+  }
+
+  let isFullscreen = false;
+  function toggleViewMode() {
+    isFullscreen = !isFullscreen;
+    const main = document.getElementById("main-container");
+    const label = document.getElementById("view-mode-label");
+    if (isFullscreen) {
+      main.classList.add("fullscreen-slides");
+      label.innerText = "Show Teleprompter";
+    } else {
+      main.classList.remove("fullscreen-slides");
+      label.innerText = "Slide Only View";
+    }
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight" || e.key === " ") {
+      e.preventDefault();
+      nextSlide();
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      prevSlide();
+    } else if (e.key === "t" || e.key === "T") {
+      toggleViewMode();
+    }
+  });
+
+  initDots();
+  goToSlide(1);
+</script>
+</body>
+</html>
