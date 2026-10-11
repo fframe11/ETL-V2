@@ -160,7 +160,7 @@
     }
     .image-caption {
       font-size: 11px;
-      color: #64748b;
+      color: #94a3b8;
       font-family: monospace;
       margin-top: 6px;
     }
@@ -277,9 +277,23 @@
           <h1 class="slide-title">ยกระดับข้อมูลที่สูญเปล่า สู่สถาปัตยกรรมเพื่อการตัดสินใจ</h1>
           <p class="slide-subtitle">Decision-Ready Architecture: ก้าวข้ามหนองข้อมูล (Data Swamp) สู่คุณค่าทางธุรกิจจริง</p>
 
-          <div class="image-container">
+          <!-- VIEW TABS FOR SLIDE 1 -->
+          <div style="display: flex; gap: 8px; margin-bottom: 10px; align-items: center;">
+            <span style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">มุมมองภาพประกอบ:</span>
+            <button class="btn btn-primary" id="btn-s1-reconcile" onclick="switchSlide1View('reconcile')">ผังกระทบยอดชุดคะแนนนักศึกษา (10,100 แถว: Active 9,370 / Quarantine 630)</button>
+            <button class="btn" id="btn-s1-real" onclick="switchSlide1View('real')">ภาพระบบจริง Audit Trail (E-Commerce 12,180 แถว: Quarantine 1,368)</button>
+          </div>
+
+          <!-- 1. RECONCILIATION VIEW (MATCHES 9,370 & 630 ROWS) -->
+          <div id="slide1-view-reconcile" class="image-container">
+            <img src="images/slide6_empirical_reconciliation.jpg" alt="100% Volume Reconciliation Ground Truth 10,100 Rows" />
+            <div class="image-caption">ชุดข้อมูลมาตรฐานวิชาการ (Academic Benchmark): เข้า 10,100 แถว = Active 9,370 + Quarantine 630 + Dedup 100 แถว (Unaccounted Delta = 0)</div>
+          </div>
+
+          <!-- 2. REAL SCREENSHOT VIEW (E-COMMERCE DATASET) -->
+          <div id="slide1-view-real" class="image-container" style="display: none;">
             <img src="images/real_system_slide4_segregation_audit.png" alt="DataServe 3-Way Segregation Audit" />
-            <div class="image-caption">ภาพระบบจริง DataServe: Whitebox 3-Way Segregation &amp; Quality Gate Enforcement (https://localhost/whitebox)</div>
+            <div class="image-caption">ภาพระบบจริงหน้าจอ Whitebox Stage 4 (รอบรันชุดข้อมูล E-Commerce 12,180 แถว: Clean 958 + Review 9,854 + Quarantine 1,368 แถว)</div>
           </div>
 
           <ul class="bullet-list">
@@ -293,11 +307,11 @@
             </li>
             <li class="bullet-item">
               <span class="bullet-icon icon-check">✓</span>
-              <div><strong>Active Data (9,370 แถว):</strong> ข้อมูลสะอาด 100% ส่งตรงถึงมือผู้ใช้งานและระบบวิเคราะห์ผลลัพธ์ทันที</div>
+              <div><strong>Active Data (9,370 แถว):</strong> ข้อมูลสะอาด 100% ส่งตรงถึงมือผู้ใช้งานทันที (จากชุดประเมินผลสัมฤทธิ์ 10,100 แถว)</div>
             </li>
             <li class="bullet-item">
               <span class="bullet-icon icon-warn">!</span>
-              <div><strong>Quarantine Data (630 แถว):</strong> ข้อมูลที่ชำรุด ถูกคัดแยกเข้าสู่กระบวนการจัดการความเสี่ยงทางการเงินและส่งแก้ไขต้นทาง</div>
+              <div><strong>Quarantine Data (630 แถว):</strong> ข้อมูลที่ชำรุด ถูกคัดแยกเข้าสู่กระบวนการจัดการความเสี่ยง (และ 1,368 แถวในรอบรันชุดข้อมูล E-Commerce 12,180 แถว)</div>
             </li>
           </ul>
         </article>
@@ -478,10 +492,10 @@
           <div class="script-box">
             <span class="script-badge">บทพูดผู้นำเสนอ — สไลด์ที่ 1</span>
             <p class="script-text">
-              "ปัญหาใหญ่ของหลายองค์กรคือการเก็บรวบรวมข้อมูลไว้จำนวนมาก แต่กลับนำมาใช้งานจริงไม่ได้ และเสียต้นทุนค่าจัดเก็บไปโดยเปล่าประโยชน์ DataServe จึงถูกสร้างขึ้นมาเพื่อแก้ปัญหานี้ครับ ด้วยสถาปัตยกรรม Decision-Ready ระบบจะทำการคัดกรองอย่างเด็ดขาด ข้อมูลที่สะอาด 100% จะถูกส่งไปสร้างคุณค่าทางธุรกิจทันที ส่วนข้อมูลที่พบข้อบกพร่องจะถูกกักกันไว้เพื่อรอการแก้ไข ทำให้องค์กรได้ใช้ประโยชน์จากข้อมูลอย่างคุ้มค่าสูงสุดครับ"
+              "ปัญหาใหญ่ของหลายองค์กรคือการเก็บรวบรวมข้อมูลไว้จำนวนมาก แต่กลับนำมาใช้งานจริงไม่ได้ และเสียต้นทุนค่าจัดเก็บไปโดยเปล่าประโยชน์ DataServe จึงถูกสร้างขึ้นมาเพื่อแก้ปัญหานี้ครับ ด้วยสถาปัตยกรรม Decision-Ready ระบบจะทำการคัดกรองอย่างเด็ดขาด ตัวอย่างเช่นในชุดข้อมูลผลการเรียน 10,100 แถว ข้อมูลที่สะอาด 100% จำนวน 9,370 แถวจะถูกส่งไปสร้างคุณค่าทางธุรกิจทันที ส่วนข้อมูลที่พบข้อบกพร่อง 630 แถวจะถูกกักกันไว้เพื่อรอการแก้ไข และเมื่อทดสอบกับข้อมูลขนาดใหญ่ เช่น ข้อมูลธุรกรรม E-Commerce 12,180 แถว ระบบก็สามารถคัดแยกข้อมูลชำรุดเข้า Quarantine Lake ได้ถึง 1,368 แถวอย่างแม่นยำ ทำให้องค์กรได้ใช้ประโยชน์จากข้อมูลอย่างคุ้มค่าสูงสุดครับ"
             </p>
             <div class="script-tip">
-              💡 <strong>คำแนะนำการนำเสนอ:</strong> ชี้ให้เห็นตัวเลข Active 9,370 แถว vs Quarantine 630 แถว เพื่อเน้นย้ำว่าระบบไม่ได้ทิ้งข้อมูล แต่แยกไปจัดการความเสี่ยง
+              💡 <strong>คำแนะนำการนำเสนอ:</strong> ชี้ให้เห็นว่าในแท็บแรกแสดงการกระทบยอดของชุดข้อมูลประเมิน 10,100 แถว (Active 9,370 / Quarantine 630) และสามารถคลิกดูแท็บภาพระบบจริงที่รันบนชุดข้อมูล E-Commerce 12,180 แถว (กักกัน 1,368 แถว) เพื่อแสดงความสามารถในการรองรับข้อมูลหลากหลายรูปแบบ
             </div>
           </div>
         </div>
@@ -613,6 +627,25 @@
     function toggleSidebar() {
       const container = document.getElementById('main-container');
       container.classList.toggle('fullscreen-slides');
+    }
+    
+    function switchSlide1View(mode) {
+      const viewReconcile = document.getElementById('slide1-view-reconcile');
+      const viewReal = document.getElementById('slide1-view-real');
+      const btnReconcile = document.getElementById('btn-s1-reconcile');
+      const btnReal = document.getElementById('btn-s1-real');
+      
+      if (mode === 'reconcile') {
+        if (viewReconcile) viewReconcile.style.display = 'block';
+        if (viewReal) viewReal.style.display = 'none';
+        if (btnReconcile) btnReconcile.className = 'btn btn-primary';
+        if (btnReal) btnReal.className = 'btn';
+      } else {
+        if (viewReconcile) viewReconcile.style.display = 'none';
+        if (viewReal) viewReal.style.display = 'block';
+        if (btnReconcile) btnReconcile.className = 'btn';
+        if (btnReal) btnReal.className = 'btn btn-primary';
+      }
     }
     
     // Keyboard navigation
