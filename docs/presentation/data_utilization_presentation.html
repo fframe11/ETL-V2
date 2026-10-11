@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DataServe - ประสิทธิผลของการใช้ประโยชน์จากข้อมูล (6 สไลด์นำเสนอ)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #080c14;
+      color: #f1f5f9;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      overflow: hidden;
+      height: 100vh;
+    }
+    
+    #app { display: flex; flex-direction: column; height: 100vh; }
+    
+    /* Topbar */
+    #topbar {
+      background: #0d131f;
+      border-bottom: 1px solid #1e293b;
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+    .brand-badge {
+      background: linear-gradient(135deg, #0ea5e9, #6366f1);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 4px 10px;
+      border-radius: 6px;
+      letter-spacing: 0.5px;
+    }
+    .title-text { font-size: 13px; font-weight: 600; color: #94a3b8; }
+    
+    /* Progress bar */
+    #progress-container { width: 100%; height: 3px; background: #1e293b; }
+    #progress-bar { height: 100%; width: 16.66%; background: linear-gradient(90deg, #0ea5e9, #10b981); transition: width 0.3s ease; }
+    
+    /* Main Layout */
+    #main-container {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 390px;
+      overflow: hidden;
+      transition: grid-template-columns 0.3s ease;
+    }
+    #main-container.fullscreen-slides {
+      grid-template-columns: 1fr 0px;
+    }
+    
+    /* Slide Canvas */
+    #slide-viewport {
+      overflow-y: auto;
+      padding: 32px 44px;
+      background: #080c14;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+    }
+    
+    .slide-card {
+      display: none;
+      animation: slideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      max-width: 1080px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    .slide-card.active { display: block; }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    /* Script / Teleprompter Area */
+    #script-sidebar {
+      background: #0b101b;
+      border-left: 1px solid #1e293b;
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .script-item { display: none; }
+    .script-item.active { display: block; }
+    
+    /* Footer */
+    #footer {
+      background: #0d131f;
+      border-top: 1px solid #1e293b;
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    
+    /* Badges & Tags */
+    .slide-tag {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .tag-blue { background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); }
+    .tag-green { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.3); }
+    .tag-purple { background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(129, 140, 248, 0.3); }
+    .tag-amber { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.3); }
+    .tag-rose { background: rgba(244, 63, 94, 0.15); color: #fb7185; border: 1px solid rgba(251, 113, 133, 0.3); }
+    .tag-teal { background: rgba(20, 184, 166, 0.15); color: #2dd4bf; border: 1px solid rgba(45, 212, 191, 0.3); }
+    
+    /* Typography */
+    .slide-title { font-size: 24px; font-weight: 800; color: #fff; margin-bottom: 4px; line-height: 1.25; }
+    .slide-subtitle { font-size: 13px; color: #94a3b8; margin-bottom: 18px; }
+    
+    /* Cards & Layout Grid */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .info-card {
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .info-card-highlight {
+      background: rgba(14, 165, 233, 0.05);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+    }
+    
+    /* Image Showcase */
+    .image-container {
+      background: #05080f;
+      border: 1px solid #1e293b;
+      border-radius: 10px;
+      padding: 8px;
+      text-align: center;
+      margin-bottom: 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+    .image-container img {
+      width: 100%;
+      max-height: 380px;
+      object-fit: contain;
+      border-radius: 6px;
+      background: #020408;
+    }
+    .image-caption {
+      font-size: 11px;
+      color: #64748b;
+      font-family: monospace;
+      margin-top: 6px;
+    }
+    
+    /* Interactive Button */
+    .btn {
+      background: #1e293b;
+      color: #cbd5e1;
+      border: 1px solid #334155;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn:hover { background: #334155; color: #fff; }
+    .btn-primary {
+      background: #0284c7;
+      border-color: #38bdf8;
+      color: #fff;
+    }
+    .btn-primary:hover { background: #0369a1; }
+    
+    /* Bullets */
+    .bullet-list { list-style: none; display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
+    .bullet-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 13.5px;
+      color: #e2e8f0;
+      line-height: 1.5;
+    }
+    .bullet-icon {
+      flex-shrink: 0;
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: bold;
+      margin-top: 2px;
+    }
+    .icon-check { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+    .icon-warn { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+    .icon-cross { background: rgba(244, 63, 94, 0.2); color: #fb7185; }
+    .icon-star { background: rgba(99, 102, 241, 0.2); color: #818cf8; }
+
+    /* Script teleprompter styling */
+    .script-box {
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .script-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: #1e293b;
+      color: #94a3b8;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+    .script-text {
+      font-size: 15px;
+      line-height: 1.8;
+      color: #f1f5f9;
+      font-weight: 400;
+    }
+    .script-tip {
+      margin-top: 14px;
+      padding: 10px 12px;
+      background: rgba(14, 165, 233, 0.08);
+      border-left: 3px solid #38bdf8;
+      border-radius: 0 6px 6px 0;
+      font-size: 11.5px;
+      color: #bae6fd;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- Topbar -->
+    <header id="topbar">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <span class="brand-badge">DataServe</span>
+        <span class="title-text">เกณฑ์ที่ 6: ประสิทธิผลของการใช้ประโยชน์จากข้อมูล (Data Utilization)</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 16px;">
+        <span id="slide-indicator" style="font-size: 12px; font-weight: 700; color: #38bdf8; font-family: monospace;">1 / 6</span>
+        <button class="btn" onclick="toggleSidebar()">ซ่อน/แสดงบทพูด</button>
+      </div>
+    </header>
+
+    <!-- Progress bar -->
+    <div id="progress-container">
+      <div id="progress-bar"></div>
+    </div>
+
+    <!-- Main Container -->
+    <main id="main-container">
+      <!-- Slide Viewport -->
+      <section id="slide-viewport">
+
+        <!-- ================= SLIDE 1 ================= -->
+        <article class="slide-card active" id="slide-1">
+          <span class="slide-tag tag-blue">Slide 1 — Decision-Ready Architecture</span>
+          <h1 class="slide-title">ยกระดับข้อมูลที่สูญเปล่า สู่สถาปัตยกรรมเพื่อการตัดสินใจ</h1>
+          <p class="slide-subtitle">Decision-Ready Architecture: ก้าวข้ามหนองข้อมูล (Data Swamp) สู่คุณค่าทางธุรกิจจริง</p>
+
+          <div class="image-container">
+            <img src="images/real_system_slide4_segregation_audit.png" alt="DataServe 3-Way Segregation Audit" />
+            <div class="image-caption">ภาพระบบจริง DataServe: Whitebox 3-Way Segregation &amp; Quality Gate Enforcement (https://localhost/whitebox)</div>
+          </div>
+
+          <ul class="bullet-list">
+            <li class="bullet-item">
+              <span class="bullet-icon icon-cross">✕</span>
+              <div><strong>ปัญหาคลังข้อมูลที่ไร้ระเบียบ (Data Swamp):</strong> องค์กรเสียต้นทุนค่าจัดเก็บมหาศาล แต่ข้อมูลกลับไม่ได้ถูกนำมาใช้งานหรือสร้างคุณค่าทางธุรกิจ</div>
+            </li>
+            <li class="bullet-item">
+              <span class="bullet-icon icon-star">★</span>
+              <div><strong>วิสัยทัศน์ของ DataServe:</strong> สถาปัตยกรรมที่ออกแบบมาเพื่อสนับสนุนการตัดสินใจโดยเฉพาะ (Decision-Ready Architecture)</div>
+            </li>
+            <li class="bullet-item">
+              <span class="bullet-icon icon-check">✓</span>
+              <div><strong>Active Data (9,370 แถว):</strong> ข้อมูลสะอาด 100% ส่งตรงถึงมือผู้ใช้งานและระบบวิเคราะห์ผลลัพธ์ทันที</div>
+            </li>
+            <li class="bullet-item">
+              <span class="bullet-icon icon-warn">!</span>
+              <div><strong>Quarantine Data (630 แถว):</strong> ข้อมูลที่ชำรุด ถูกคัดแยกเข้าสู่กระบวนการจัดการความเสี่ยงทางการเงินและส่งแก้ไขต้นทาง</div>
+            </li>
+          </ul>
+        </article>
+
+        <!-- ================= SLIDE 2 ================= -->
+        <article class="slide-card" id="slide-2">
+          <span class="slide-tag tag-purple">Slide 2 — Data Utilization Prototypes</span>
+          <h1 class="slide-title">3 รูปแบบการนำข้อมูลไปใช้ประโยชน์</h1>
+          <p class="slide-subtitle">Data Utilization Prototypes: ตอบโจทย์ผู้ใช้งานครบทั้ง 3 ระดับในองค์กร</p>
+
+          <div class="card-grid">
+            <div class="info-card info-card-highlight">
+              <div style="font-size: 13px; font-weight: 700; color: #38bdf8; margin-bottom: 6px;">1. ระดับปฏิบัติการและวิชาการ</div>
+              <div style="font-size: 15px; font-weight: 800; color: #fff; margin-bottom: 8px;">Academic Support Prototype</div>
+              <div style="font-size: 12px; color: #cbd5e1; line-height: 1.5;">แดชบอร์ดติดตามผลสัมฤทธิ์ทางการศึกษา 9,370 แถว และระบบ Early Warning เฝ้าระวังผู้เรียนกลุ่มเสี่ยง</div>
+            </div>
+            <div class="info-card info-card-highlight">
+              <div style="font-size: 13px; font-weight: 700; color: #818cf8; margin-bottom: 6px;">2. ระดับบริหารและธรรมาภิบาล</div>
+              <div style="font-size: 15px; font-weight: 800; color: #fff; margin-bottom: 8px;">Executive COPDQ Cockpit</div>
+              <div style="font-size: 12px; color: #cbd5e1; line-height: 1.5;">วิเคราะห์ผลกระทบทางการเงินจากข้อมูลเสีย ($2/แถว) และสั่งการแก้ไขแบบ Closed-Loop จบในจอเดียว</div>
+            </div>
+            <div class="info-card info-card-highlight">
+              <div style="font-size: 13px; font-weight: 700; color: #34d399; margin-bottom: 6px;">3. ระดับผู้ใช้งานทั่วไป</div>
+              <div style="font-size: 15px; font-weight: 800; color: #fff; margin-bottom: 8px;">AI Self-Service BI Builder</div>
+              <div style="font-size: 12px; color: #cbd5e1; line-height: 1.5;">สร้างแดชบอร์ดด้วยภาษาธรรมชาติ คำนวณผ่าน Pandas ในระบบ ปลอดภัย 100% ปราศจาก PII รั่วไหล</div>
+            </div>
+          </div>
+
+          <div class="image-container">
+            <img src="images/real_system_slide6_metrics_dashboard.png" alt="DataServe Executive Dashboard" />
+            <div class="image-caption">ภาพระบบจริง DataServe: Executive Dashboard &amp; Lineage Cockpit (https://localhost/dashboard)</div>
+          </div>
+        </article>
+
+        <!-- ================= SLIDE 3 ================= -->
+        <article class="slide-card" id="slide-3">
+          <span class="slide-tag tag-rose">Slide 3 — Decision Protection</span>
+          <h1 class="slide-title">คุณค่าที่ 1: การปกป้องการตัดสินใจ</h1>
+          <p class="slide-subtitle">Decision Protection: ลดความสูญเสียจากข้อมูลหลอก (False Positive) สูงถึง 95.3%</p>
+
+          <div class="image-container">
+            <img src="images/real_system_slide5_results_audit.png" alt="DataServe Academic Analytics Results" />
+            <div class="image-caption">ภาพระบบจริง DataServe: Whitebox Stage 5 Academic Analytics &amp; Results Audit (https://localhost/whitebox)</div>
+          </div>
+
+          <div class="card-grid" style="grid-template-columns: 1fr 1fr;">
+            <div class="info-card" style="border-color: rgba(244, 63, 94, 0.4); background: rgba(244, 63, 94, 0.04);">
+              <div style="font-size: 12px; font-weight: 700; color: #fb7185; margin-bottom: 4px;">หากไม่มี DataServe (No Quality Gate)</div>
+              <div style="font-size: 26px; font-weight: 900; color: #fff; margin-bottom: 6px;">107 คน</div>
+              <div style="font-size: 12px; color: #94a3b8;">ต้องเสียเวลาติดตามนักศึกษา 107 คน ซึ่ง 102 คนเกิดจากระบบต้นทางบันทึกคะแนนผิดพลาด ไม่ได้สอบตกจริง</div>
+            </div>
+            <div class="info-card" style="border-color: rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.04);">
+              <div style="font-size: 12px; font-weight: 700; color: #34d399; margin-bottom: 4px;">เมื่อใช้ DataServe (Active Clean Layer)</div>
+              <div style="font-size: 26px; font-weight: 900; color: #fff; margin-bottom: 6px;">5 คน</div>
+              <div style="font-size: 12px; color: #94a3b8;">ระบุเป้าหมายได้แม่นยำ 5 คนที่ตกเกณฑ์จริง ช่วยอาจารย์วางแผนสอนเสริมได้ตรงจุด ปราศจากข้อมูลขยะ</div>
+            </div>
+          </div>
+
+          <ul class="bullet-list">
+            <li class="bullet-item">
+              <span class="bullet-icon icon-check">✓</span>
+              <div><strong>ลดการสูญเสียทรัพยากรบุคคล:</strong> คัดแยกคะแนนติดลบ (-10) และค่าหลุดช่วง (145) ออกสู่ Quarantine ไม่ให้ปนเปื้อนในรายงาน</div>
+            </li>
+            <li class="bullet-item">
+              <span class="bullet-icon icon-star">★</span>
+              <div><strong>ปกป้องความถูกต้องของการตัดสินใจ:</strong> มีประสิทธิภาพในการสกัดกั้น False Positive สูงถึง <strong>95.3%</strong></div>
+            </li>
+          </ul>
+        </article>
+
+        <!-- ================= SLIDE 4 ================= -->
+        <article class="slide-card" id="slide-4">
+          <span class="slide-tag tag-amber">Slide 4 — Quality Risk Management</span>
+          <h1 class="slide-title">คุณค่าที่ 2: การบริหารความเสี่ยงจากคุณภาพข้อมูล</h1>
+          <p class="slide-subtitle">Data Quality Risk Management: แปลงข้อบกพร่องทางเทคนิค สู่มูลค่าความสูญเสียทางการเงิน (COPDQ)</p>
+
+          <div class="image-container">
+            <img src="images/real_system_slide6_metrics_dashboard.png" alt="COPDQ Financial Risk Cockpit" />
+            <div class="image-caption">ภาพระบบจริง DataServe: Executive COPDQ Cockpit &amp; Closed-Loop Upstream Remediation Trigger</div>
+          </div>
+
+          <ul class="bullet-list">
+            <li class="bullet-item">
+              <span class="bullet-icon icon-star">★</span>
+              <div><strong>ตอบโจทย์ผู้บริหารด้วยกรอบ 5 มิติ:</strong> เกิดอะไรขึ้น (What), สาเหตุจากไหน (Why), กระทบใคร (Impact), คิดเป็นมูลค่าเท่าไร (How much), และต้องทำอย่างไรต่อ (Action)</div>
+            </li>
+            <li class="bullet-item">
+              <span class="bullet-icon icon-warn">!</span>
+              <div><strong>โมเดลประเมินความเสียหายทางการเงิน (Gartner COPDQ):</strong> แปลงข้อมูลกักกัน 630 แถว เป็นต้นทุนแก้ไข ($2/แถว) + ความเสี่ยงเชิงพาณิชย์</div>
+            </li>
+            <li class="bullet-item">
+              <span class="bullet-icon icon-check">✓</span>
+              <div><strong>การสั่งการแก้ไขแบบครบวงจร (Closed-Loop Remediation):</strong> ออกตั๋วงานส่งกลับระบบต้นน้ำ และกดปุ่มสั่ง Trigger Re-run ได้ทันทีจากหน้าจอแดชบอร์ด</div>
+            </li>
+          </ul>
+        </article>
+
+        <!-- ================= SLIDE 5 ================= -->
+        <article class="slide-card" id="slide-5">
+          <span class="slide-tag tag-teal">Slide 5 — Safe &amp; Deterministic AI</span>
+          <h1 class="slide-title">คุณค่าที่ 3: ระบบ AI วิเคราะห์ข้อมูลที่ปลอดภัยและแม่นยำ</h1>
+          <p class="slide-subtitle">Safe &amp; Deterministic AI Analytics: สถาปัตยกรรม Zero-Hallucination &amp; Zero PII Leakage</p>
+
+          <div class="image-container">
+            <img src="images/real_fastapi_swagger_docs.png" alt="FastAPI Swagger Endpoints" />
+            <div class="image-caption">ภาพระบบจริง DataServe: FastAPI Swagger Endpoints สำหรับบริการ AI Dashboard Builder (/dashboards)</div>
+          </div>
+
+          <div class="card-grid" style="grid-template-columns: 1fr 1fr;">
+            <div class="info-card">
+              <div style="font-size: 13px; font-weight: 700; color: #38bdf8; margin-bottom: 6px;">1. Strict Metadata Isolation</div>
+              <div style="font-size: 12.5px; color: #cbd5e1; line-height: 1.6;">
+                ส่งเฉพาะ <strong>โครงสร้างข้อมูล (Schema &amp; Profile)</strong> ให้ AI โดยไม่ส่งข้อมูลแถวจริงและไม่ส่งข้อมูลส่วนบุคคล (PII) ออกนอกเครื่อง 100%
+              </div>
+            </div>
+            <div class="info-card">
+              <div style="font-size: 13px; font-weight: 700; color: #34d399; margin-bottom: 6px;">2. Zero Numerical Hallucination</div>
+              <div style="font-size: 12.5px; color: #cbd5e1; line-height: 1.6;">
+                AI ทำหน้าที่เพียงเสนอเค้าโครง (Visual Spec JSON) เท่านั้น <strong>การคำนวณตัวเลขสถิติทั้งหมดทำผ่าน Pandas Engine บน Server 100%</strong>
+              </div>
+            </div>
+          </div>
+
+          <ul class="bullet-list">
+            <li class="bullet-item">
+              <span class="bullet-icon icon-check">✓</span>
+              <div><strong>ความรวดเร็วและใช้งานง่าย:</strong> ผู้ใช้ทั่วไปสามารถสร้าง Interactive Dashboard พร้อมชาร์ตและตัวกรองได้ภายในเวลาเพียง 3-5 วินาที</div>
+            </li>
+          </ul>
+        </article>
+
+        <!-- ================= SLIDE 6 ================= -->
+        <article class="slide-card" id="slide-6">
+          <span class="slide-tag tag-green">Slide 6 — Empirical Verification &amp; Standards</span>
+          <h1 class="slide-title">ผลการประเมินเชิงประจักษ์และความสอดคล้องกับมาตรฐานสากล</h1>
+          <p class="slide-subtitle">Empirical Verification &amp; International Standards Alignment: คะแนนเต็ม 5.0 / 5.0</p>
+
+          <div class="image-container">
+            <img src="images/real_system_slide6_metrics_dashboard.png" alt="Empirical Metric Reconciliation" />
+            <div class="image-caption">ภาพระบบจริง DataServe: Empirical Verification &amp; Metrics Dashboard (https://localhost/dashboard)</div>
+          </div>
+
+          <div class="card-grid" style="grid-template-columns: 1.2fr 1fr;">
+            <div class="info-card info-card-highlight">
+              <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 4px;">Metric Calculation Fidelity</div>
+              <div style="font-size: 32px; font-weight: 900; color: #fff; margin-bottom: 4px;">100.0%</div>
+              <div style="font-size: 12px; color: #94a3b8;">ตัวเลขทุกตัวบนแดชบอร์ดตรงกับการคำนวณอิสระด้วย Pandas และ SQL ปราศจากความคลาดเคลื่อน</div>
+            </div>
+            <div class="info-card">
+              <div style="font-size: 12px; font-weight: 700; color: #34d399; margin-bottom: 4px;">ผลการประเมินตามเกณฑ์</div>
+              <div style="font-size: 32px; font-weight: 900; color: #34d399; margin-bottom: 4px;">5.0 / 5.0</div>
+              <div style="font-size: 12px; color: #94a3b8;">บรรลุประสิทธิผลการใช้ประโยชน์จากข้อมูลในระดับยอดเยี่ยมสมบูรณ์</div>
+            </div>
+          </div>
+
+          <ul class="bullet-list">
+            <li class="bullet-item">
+              <span class="bullet-icon icon-star">★</span>
+              <div><strong>ISO/IEC 25012:</strong> ผ่านเกณฑ์คุณภาพข้อมูล 5 มิติสากล (Accuracy, Completeness, Consistency, Timeliness, Credibility)</div>
+            </li>
+            <li class="bullet-item">
+              <span class="bullet-icon icon-star">★</span>
+              <div><strong>Gartner COPDQ Framework:</strong> สามารถบริหารจัดการและประเมินมูลค่าความเสี่ยงของข้อมูลด้อยคุณภาพได้อย่างเป็นรูปธรรม</div>
+            </li>
+            <li class="bullet-item">
+              <span class="bullet-icon icon-star">★</span>
+              <div><strong>Task-Technology Fit (TTF):</strong> เทคโนโลยีตอบสนองการตัดสินใจจริงของบุคลากรทุกระดับในองค์กร</div>
+            </li>
+          </ul>
+        </article>
+
+      </section>
+
+      <!-- Script Sidebar / Teleprompter -->
+      <aside id="script-sidebar">
+        <!-- Script 1 -->
+        <div class="script-item active" id="script-1">
+          <div class="script-box">
+            <span class="script-badge">บทพูดผู้นำเสนอ — สไลด์ที่ 1</span>
+            <p class="script-text">
+              "ปัญหาใหญ่ของหลายองค์กรคือการเก็บรวบรวมข้อมูลไว้จำนวนมาก แต่กลับนำมาใช้งานจริงไม่ได้ และเสียต้นทุนค่าจัดเก็บไปโดยเปล่าประโยชน์ DataServe จึงถูกสร้างขึ้นมาเพื่อแก้ปัญหานี้ครับ ด้วยสถาปัตยกรรม Decision-Ready ระบบจะทำการคัดกรองอย่างเด็ดขาด ข้อมูลที่สะอาด 100% จะถูกส่งไปสร้างคุณค่าทางธุรกิจทันที ส่วนข้อมูลที่พบข้อบกพร่องจะถูกกักกันไว้เพื่อรอการแก้ไข ทำให้องค์กรได้ใช้ประโยชน์จากข้อมูลอย่างคุ้มค่าสูงสุดครับ"
+            </p>
+            <div class="script-tip">
+              💡 <strong>คำแนะนำการนำเสนอ:</strong> ชี้ให้เห็นตัวเลข Active 9,370 แถว vs Quarantine 630 แถว เพื่อเน้นย้ำว่าระบบไม่ได้ทิ้งข้อมูล แต่แยกไปจัดการความเสี่ยง
+            </div>
+          </div>
+        </div>
+
+        <!-- Script 2 -->
+        <div class="script-item" id="script-2">
+          <div class="script-box">
+            <span class="script-badge">บทพูดผู้นำเสนอ — สไลด์ที่ 2</span>
+            <p class="script-text">
+              "เราได้ออกแบบต้นแบบการใช้งานไว้ 3 รูปแบบเพื่อตอบโจทย์บุคลากรทั้งองค์กรครับ ระดับปฏิบัติการและวิชาการสามารถใช้ข้อมูลเพื่อสนับสนุนผู้เรียน ระดับผู้บริหารจะมองเห็นความเสี่ยงทางการเงินที่เกิดจากข้อมูลชำรุด และสำหรับผู้ใช้งานทั่วไป เรามีระบบ AI ที่ช่วยสร้างแดชบอร์ดได้เองด้วยคำสั่งภาษาไทยอย่างถูกต้องและปลอดภัยครับ"
+            </p>
+            <div class="script-tip">
+              💡 <strong>คำแนะนำการนำเสนอ:</strong> เน้นคำว่า "Multi-Audience" ว่าข้อมูลชุดเดียวกันสามารถสร้างคุณค่าให้ทั้งอาจารย์ ผู้บริหาร และนักวิเคราะห์
+            </div>
+          </div>
+        </div>
+
+        <!-- Script 3 -->
+        <div class="script-item" id="script-3">
+          <div class="script-box">
+            <span class="script-badge">บทพูดผู้นำเสนอ — สไลด์ที่ 3</span>
+            <p class="script-text">
+              "นี่คือตัวอย่างที่ชัดเจนของการปกป้องการตัดสินใจครับ หากเรานำข้อมูลดิบมาใช้ อาจารย์จะต้องเสียเวลาไปติดตามนักศึกษาถึง 107 คน ซึ่งร้อยกว่าคนในนั้นเกิดจากระบบต้นทางบันทึกข้อมูลผิดพลาด เมื่อเรามี DataServe ระบบจะคัดกรองข้อมูลเสียออกไป ทำให้เรามุ่งเป้าไปที่นักศึกษา 5 คนที่มีปัญหาจริงๆ ได้ทันที ช่วยลดภาระงานที่สูญเปล่าและปกป้องการตัดสินใจที่ผิดพลาดได้ถึง 95%"
+            </p>
+            <div class="script-tip">
+              💡 <strong>คำแนะนำการนำเสนอ:</strong> ไฮไลต์การลดภาระงานจาก 107 เหลือ 5 คน นี่คือจุดที่กรรมการจะเห็นคุณค่าของวิศวกรรมข้อมูลชัดเจนที่สุด
+            </div>
+          </div>
+        </div>
+
+        <!-- Script 4 -->
+        <div class="script-item" id="script-4">
+          <div class="script-box">
+            <span class="script-badge">บทพูดผู้นำเสนอ — สไลด์ที่ 4</span>
+            <p class="script-text">
+              "ในมุมมองของผู้บริหาร ข้อผิดพลาดทางเทคนิคมักประเมินผลกระทบได้ยาก เราจึงแปลงสิ่งเหล่านั้นเป็นมูลค่าทางการเงินผ่านกรอบความเสี่ยงของ Gartner ครับ ผู้บริหารจะทราบได้ทันทีว่าข้อมูลที่ชำรุด 630 แถว คิดเป็นต้นทุนความเสียหายเท่าไร กระทบกับระบบใดบ้าง และที่สำคัญคือสามารถกดปุ่มสั่งการให้ทีมต้นทางแก้ไขได้ทันทีแบบครบวงจร จบภายในหน้าจอเดียวครับ"
+            </p>
+            <div class="script-tip">
+              💡 <strong>คำแนะนำการนำเสนอ:</strong> พูดถึงกรอบ 5 มิติ (What, Why, Impact, How much, Action) และชี้ไปที่ปุ่มสั่งออกตั๋ว Upstream Remediation
+            </div>
+          </div>
+        </div>
+
+        <!-- Script 5 -->
+        <div class="script-item" id="script-5">
+          <div class="script-box">
+            <span class="script-badge">บทพูดผู้นำเสนอ — สไลด์ที่ 5</span>
+            <p class="script-text">
+              "เพื่อส่งเสริมให้เกิดการใช้ข้อมูลอย่างแพร่หลาย เรามี AI BI Builder ที่ผู้ใช้งานสามารถพิมพ์ขอข้อมูลด้วยภาษาธรรมชาติครับ จุดแข็งของเราคือความปลอดภัยขั้นสูงสุด เราไม่ส่งข้อมูลจริงหรือข้อมูลความลับไปให้ AI ภายนอกเลย เราส่งไปเพียงโครงสร้างเท่านั้น และการคำนวณตัวเลขทั้งหมดจะเกิดขึ้นในเซิร์ฟเวอร์ของเราเอง เพื่อขจัดปัญหา AI คำนวณเลขผิดพลาด ทำให้องค์กรนำ AI มาใช้ได้อย่างมั่นใจร้อยเปอร์เซ็นต์ครับ"
+            </p>
+            <div class="script-tip">
+              💡 <strong>คำแนะนำการนำเสนอ:</strong> ย้ำ 2 จุดขาย: ไม่ส่ง PII สู่ภายนอก (Data Privacy) และคำนวณผ่าน Pandas ในเครื่อง (Zero Hallucination)
+            </div>
+          </div>
+        </div>
+
+        <!-- Script 6 -->
+        <div class="script-item" id="script-6">
+          <div class="script-box">
+            <span class="script-badge">บทพูดผู้นำเสนอ — สไลด์ที่ 6</span>
+            <p class="script-text">
+              "ท้ายที่สุด ประสิทธิผลทั้งหมดได้รับการพิสูจน์แล้วผ่านการทดสอบจริงครับ ความถูกต้องของตัวเลขบนแดชบอร์ดมีความแม่นยำ 100% สถาปัตยกรรมทั้งหมดอ้างอิงตามมาตรฐานสากล ทั้ง ISO 25012 และกรอบของ Gartner ส่งผลให้ระบบ DataServe บรรลุเกณฑ์การประเมินประสิทธิผลการใช้ประโยชน์จากข้อมูลในระดับ 5 คะแนนเต็ม พร้อมเป็นฟันเฟืองสำคัญในการขับเคลื่อนองค์กรด้วยข้อมูลอย่างแท้จริงครับ"
+            </p>
+            <div class="script-tip">
+              💡 <strong>คำแนะนำการนำเสนอ:</strong> ปิดท้ายด้วยความมั่นใจ อ้างอิงคะแนนประเมิน 5.0 เต็ม และแสดงความพร้อมในการนำไปใช้งานจริงในระดับองค์กร
+            </div>
+          </div>
+        </div>
+      </aside>
+    </main>
+
+    <!-- Footer Controls -->
+    <footer id="footer">
+      <div style="display: flex; gap: 8px;">
+        <button class="btn" id="btn-prev" onclick="prevSlide()">◀ สไลด์ก่อนหน้า (Left)</button>
+        <button class="btn btn-primary" id="btn-next" onclick="nextSlide()">สไลด์ถัดไป (Right / Space) ▶</button>
+      </div>
+      <div style="font-size: 11px; color: #64748b; font-family: monospace;">
+        ใช้ปุ่มลูกศรซ้าย-ขวา หรือ Spacebar ในการเปลี่ยนหน้า
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    let currentSlide = 1;
+    const totalSlides = 6;
+    
+    function updateSlide() {
+      // Hide all slides & scripts
+      for (let i = 1; i <= totalSlides; i++) {
+        const slide = document.getElementById('slide-' + i);
+        const script = document.getElementById('script-' + i);
+        if (slide) slide.classList.remove('active');
+        if (script) script.classList.remove('active');
+      }
+      
+      // Show active
+      const activeSlide = document.getElementById('slide-' + currentSlide);
+      const activeScript = document.getElementById('script-' + currentSlide);
+      if (activeSlide) activeSlide.classList.add('active');
+      if (activeScript) activeScript.classList.add('active');
+      
+      // Update indicators
+      document.getElementById('slide-indicator').textContent = currentSlide + ' / ' + totalSlides;
+      document.getElementById('progress-bar').style.width = (currentSlide / totalSlides * 100) + '%';
+      
+      // Update buttons
+      document.getElementById('btn-prev').disabled = (currentSlide === 1);
+      document.getElementById('btn-next').disabled = (currentSlide === totalSlides);
+      
+      // Scroll slide viewport to top
+      document.getElementById('slide-viewport').scrollTop = 0;
+    }
+    
+    function nextSlide() {
+      if (currentSlide < totalSlides) {
+        currentSlide++;
+        updateSlide();
+      }
+    }
+    
+    function prevSlide() {
+      if (currentSlide > 1) {
+        currentSlide--;
+        updateSlide();
+      }
+    }
+    
+    function toggleSidebar() {
+      const container = document.getElementById('main-container');
+      container.classList.toggle('fullscreen-slides');
+    }
+    
+    // Keyboard navigation
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+        e.preventDefault();
+        nextSlide();
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        e.preventDefault();
+        prevSlide();
+      }
+    });
+    
+    updateSlide();
+  </script>
+</body>
+</html>
