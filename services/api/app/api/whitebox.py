@@ -2018,7 +2018,7 @@ def _get_groq_api_key() -> str:
     k = os.getenv("GROQ_API_KEY", "").strip()
     if k:
         return k
-    for candidate in ["/app/.env", os.path.join(os.getcwd(), ".env"), "c:/DataEngProj/.env"]:
+    for candidate in ["/app/.env", os.path.join(os.getcwd(), ".env")]:
         if os.path.isfile(candidate):
             try:
                 with open(candidate, "r", encoding="utf-8") as fh:
