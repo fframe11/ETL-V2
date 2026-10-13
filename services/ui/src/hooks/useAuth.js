@@ -65,35 +65,58 @@ function findLocalAccount(identifier, password) {
   );
 }
 
+function notifyAuthChanged() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("dataserve_auth_changed"));
+  }
+}
+
 /**
  * Enterprise Databricks-grade Authentication Hook.
  * Supports Sign In, Registration (Sign Up), Enterprise SSO, and Instant Demo Mode.
  */
 export function useAuth() {
-  const [isAuthenticated, setIsAuthenticated] = useState(() => (isDemoModeStored() ? true : null));
-  const [username, setUsername] = useState(() => (isDemoModeStored() ? "demo-reviewer" : null));
-  const [userProfile, setUserProfile] = useState(() => (isDemoModeStored() ? {
-    username: "demo-reviewer",
-    email: "reviewer@academic-eval.edu",
-    fullName: "Academic Project Reviewer",
-    organization: "Faculty Examination Board",
-    role: "Lead Reviewer",
-    tier: "Academic Evaluation Tier",
-  } : getStoredUserProfile()));
-  const [isDemoMode, setIsDemoMode] = useState(() => isDemoModeStored());
-  const [authStatusMessage, setAuthStatusMessage] = useState("");
-
-  const check = useCallback(async () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    if (isDemoModeStored()) return true;
+    if (typeof window !== "undefined") {
+      const token = sessionStorage.getItem("sdoqap_token") || localStorage.getItem("sdoqap_token");
+      if (token) return true;
+    }
+    return null;
+  });
+  const [username, setUsername] = useState(() => {
+    if (isDemoModeStored()) return "demo-reviewer";
+    const stored = getStoredUserProfile();
+    return stored ? stored.username : null;
+  });
+  const [userProfile, setUserProfile] = useState(() => {
     if (isDemoModeStored()) {
-      setUsername("demo-reviewer");
-      setUserProfile({
+      return {
         username: "demo-reviewer",
         email: "reviewer@academic-eval.edu",
         fullName: "Academic Project Reviewer",
         organization: "Faculty Examination Board",
         role: "Lead Reviewer",
         tier: "Academic Evaluation Tier",
-      });
+      };
+    }
+    return getStoredUserProfile();
+  });
+  const [isDemoMode, setIsDemoMode] = useState(() => isDemoModeStored());
+  const [authStatusMessage, setAuthStatusMessage] = useState("");
+
+  const check = useCallback(async () => {
+    if (isDemoModeStored()) {
+      const demo = {
+        username: "demo-reviewer",
+        email: "reviewer@academic-eval.edu",
+        fullName: "Academic Project Reviewer",
+        organization: "Faculty Examination Board",
+        role: "Lead Reviewer",
+        tier: "Academic Evaluation Tier",
+      };
+      setUsername("demo-reviewer");
+      setUserProfile(demo);
       setIsAuthenticated(true);
       setIsDemoMode(true);
       setAuthStatusMessage("โหมดสาธิตการใช้งาน");
@@ -101,8 +124,23 @@ export function useAuth() {
       return;
     }
 
+    const token = typeof window !== "undefined" ? (sessionStorage.getItem("sdoqap_token") || localStorage.getItem("sdoqap_token")) : null;
+    const stored = getStoredUserProfile();
+
+    // If local or SSO session is active, prioritize stored profile
+    if (token && (token.startsWith("local_token_") || token.startsWith("sso_token_"))) {
+      if (stored) {
+        setUsername(stored.username);
+        setUserProfile(stored);
+        setIsAuthenticated(true);
+        setIsDemoMode(false);
+        setAuthStatusMessage("");
+        setStaticDemoMode(false);
+        return;
+      }
+    }
+
     try {
-      const token = typeof window !== "undefined" ? (sessionStorage.getItem("sdoqap_token") || localStorage.getItem("sdoqap_token")) : null;
       const headers = {};
       if (token) {
         headers["Authorization"] = `Bearer ${token}`;
@@ -126,19 +164,17 @@ export function useAuth() {
         setIsAuthenticated(true);
         setIsDemoMode(false);
         setAuthStatusMessage("");
+        setStaticDemoMode(false);
         return;
       }
 
       if (res.status === 401) {
-        if (token && token.startsWith("local_token_")) {
-          const stored = getStoredUserProfile();
-          if (stored) {
-            setUsername(stored.username);
-            setUserProfile(stored);
-            setIsAuthenticated(true);
-            setIsDemoMode(false);
-            return;
-          }
+        if (token && (token.startsWith("local_token_") || token.startsWith("sso_token_")) && stored) {
+          setUsername(stored.username);
+          setUserProfile(stored);
+          setIsAuthenticated(true);
+          setIsDemoMode(false);
+          return;
         }
         if (typeof window !== "undefined") {
           sessionStorage.removeItem("sdoqap_token");
@@ -153,7 +189,17 @@ export function useAuth() {
         return;
       }
 
-      if (!getApiBaseUrl()) {
+      // 404 or decoupled preview
+      if (token && stored) {
+        setUsername(stored.username);
+        setUserProfile(stored);
+        setIsAuthenticated(true);
+        setIsDemoMode(false);
+        setAuthStatusMessage("");
+        return;
+      }
+
+      if (isDemoModeStored()) {
         const fallbackProfile = {
           username: "demo-reviewer",
           email: "reviewer@academic-eval.edu",
@@ -172,10 +218,17 @@ export function useAuth() {
         setUserProfile(null);
         setIsAuthenticated(false);
         setIsDemoMode(false);
-        setAuthStatusMessage("เชื่อมต่อระบบตรวจสอบสิทธิ์ไม่ได้ HTTP " + res.status);
+        setAuthStatusMessage("");
       }
     } catch (e) {
-      if (!getApiBaseUrl()) {
+      if (token && stored) {
+        setUsername(stored.username);
+        setUserProfile(stored);
+        setIsAuthenticated(true);
+        setIsDemoMode(false);
+        return;
+      }
+      if (isDemoModeStored()) {
         const fallbackProfile = {
           username: "demo-reviewer",
           email: "reviewer@academic-eval.edu",
@@ -194,13 +247,23 @@ export function useAuth() {
         setUserProfile(null);
         setIsAuthenticated(false);
         setIsDemoMode(false);
-        setAuthStatusMessage("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่");
+        setAuthStatusMessage("");
       }
     }
   }, []);
 
   useEffect(() => {
     check();
+  }, [check]);
+
+  useEffect(() => {
+    const handleAuthChange = () => {
+      check();
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("dataserve_auth_changed", handleAuthChange);
+      return () => window.removeEventListener("dataserve_auth_changed", handleAuthChange);
+    }
   }, [check]);
 
   const login = useCallback(async (loginUsername, password) => {
@@ -245,6 +308,7 @@ export function useAuth() {
         setIsAuthenticated(true);
         setIsDemoMode(false);
         setAuthStatusMessage("");
+        notifyAuthChanged();
         return data;
       }
       if (res.status === 401 || res.status === 403) {
@@ -272,6 +336,7 @@ export function useAuth() {
           setIsAuthenticated(true);
           setIsDemoMode(false);
           setAuthStatusMessage("");
+          notifyAuthChanged();
           return { status: "success", username: localMatch.username, user: profile };
         }
         const err = await res.json().catch(() => ({}));
@@ -301,6 +366,7 @@ export function useAuth() {
         setIsAuthenticated(true);
         setIsDemoMode(false);
         setAuthStatusMessage("");
+        notifyAuthChanged();
         return { status: "success", username: localMatch.username, user: profile };
       }
       throw new Error(`เข้าสู่ระบบไม่สำเร็จ HTTP ${res.status}`);
@@ -330,6 +396,7 @@ export function useAuth() {
         setIsAuthenticated(true);
         setIsDemoMode(false);
         setAuthStatusMessage("");
+        notifyAuthChanged();
         return { status: "success", username: localMatch.username, user: profile };
       }
       throw err;
@@ -394,6 +461,7 @@ export function useAuth() {
         setIsAuthenticated(true);
         setIsDemoMode(false);
         setAuthStatusMessage("");
+        notifyAuthChanged();
         return data;
       }
 
@@ -418,6 +486,7 @@ export function useAuth() {
       setIsAuthenticated(true);
       setIsDemoMode(false);
       setAuthStatusMessage("");
+      notifyAuthChanged();
       return { status: "success", username: uname, user: fallbackProfile };
     } catch (err) {
       if (err.message && (err.message.includes("already exists") || err.message.includes("ต้องมี") || err.message.includes("รหัสผ่าน"))) {
@@ -438,6 +507,7 @@ export function useAuth() {
       setIsAuthenticated(true);
       setIsDemoMode(false);
       setAuthStatusMessage("");
+      notifyAuthChanged();
       return { status: "success", username: uname, user: fallbackProfile };
     }
   }, []);
@@ -476,6 +546,7 @@ export function useAuth() {
         setIsAuthenticated(true);
         setIsDemoMode(false);
         setAuthStatusMessage("");
+        notifyAuthChanged();
         return data;
       }
     } catch {}
@@ -502,6 +573,7 @@ export function useAuth() {
     setIsAuthenticated(true);
     setIsDemoMode(false);
     setAuthStatusMessage("");
+    notifyAuthChanged();
     return { status: "success", username: ssoUser, user: ssoProfile };
   }, []);
 
@@ -526,6 +598,7 @@ export function useAuth() {
     setIsAuthenticated(true);
     setIsDemoMode(true);
     setAuthStatusMessage("โหมดสาธิตการใช้งาน");
+    notifyAuthChanged();
   }, []);
 
   const logout = useCallback(async () => {
@@ -548,6 +621,7 @@ export function useAuth() {
       setIsAuthenticated(false);
       setIsDemoMode(false);
       setAuthStatusMessage("");
+      notifyAuthChanged();
     }
   }, []);
 

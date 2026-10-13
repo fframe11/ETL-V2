@@ -37,7 +37,7 @@ describe("Databricks-grade Login & Registration UI", () => {
     );
 
     expect(screen.getByText("Data Serve")).toBeInTheDocument();
-    expect(screen.getByText("Lakehouse Operations")).toBeInTheDocument();
+    expect(screen.getByText("Lakehouse Platform")).toBeInTheDocument();
     expect(screen.getByText("Sign In")).toBeInTheDocument();
     expect(screen.getByText("Create Account")).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/admin or work email/i)).toBeInTheDocument();
