@@ -81,8 +81,9 @@ export function useAuth() {
     if (typeof window !== "undefined") {
       const token = sessionStorage.getItem("sdoqap_token") || localStorage.getItem("sdoqap_token");
       if (token) return true;
+      return false;
     }
-    return null;
+    return false;
   });
   const [username, setUsername] = useState(() => {
     if (isDemoModeStored()) return "demo-reviewer";

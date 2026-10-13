@@ -99,8 +99,8 @@ function AppContent({ isSidebarOpen, toggleSidebar }) {
         <main className="app-main-content">
           <ErrorBoundary>
             <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/execution-results" element={<ExecutionResults />} />
+              <Route path="/" element={<RequireAuth><Home /></RequireAuth>} />
+              <Route path="/execution-results" element={<RequireAuth><ExecutionResults /></RequireAuth>} />
               <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
               <Route path="/dashboard-builder" element={<RequireAuth><DashboardBuilder /></RequireAuth>} />
               <Route path="/analytics" element={<RequireAuth><Analytics /></RequireAuth>} />
@@ -112,6 +112,7 @@ function AppContent({ isSidebarOpen, toggleSidebar }) {
               <Route path="/ingestion" element={<RequireAuth><Ingestion /></RequireAuth>} />
               <Route path="/export" element={<RequireAuth><DataExport /></RequireAuth>} />
               <Route path="/whitebox" element={<RequireAuth><WhiteBoxPipeline /></RequireAuth>} />
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </ErrorBoundary>
         </main>
