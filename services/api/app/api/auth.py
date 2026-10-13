@@ -324,16 +324,21 @@ def login(payload: LoginPayload, response: Response):
     admin_username = os.getenv("ADMIN_USERNAME", "admin").strip()
     admin_password = os.getenv("ADMIN_PASSWORD", "admin").strip()
 
+    is_attempting_admin = hmac.compare_digest(payload.username, admin_username)
     if is_production_environment():
-        if (
+        if is_attempting_admin and (
             is_insecure_credential(admin_username)
             or is_insecure_credential(admin_password)
-            or is_insecure_credential(payload.username)
             or is_insecure_credential(payload.password)
         ):
             raise HTTPException(
                 status_code=403,
                 detail="Default or insecure credentials (admin/password) are strictly forbidden in production. Please configure secure ADMIN_USERNAME and ADMIN_PASSWORD in environment settings."
+            )
+        if is_insecure_credential(payload.username) or is_insecure_credential(payload.password):
+            raise HTTPException(
+                status_code=403,
+                detail="Default or insecure credentials (admin/password) are strictly forbidden in production. Please configure secure credentials."
             )
 
     # 1. Master admin check

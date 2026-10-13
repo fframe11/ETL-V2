@@ -92,13 +92,17 @@ function notifyAuthChanged() {
  */
 export async function requestBackendSessionToken() {
   try {
-    const res = await fetch(resolveApiUrl("/api/v1/auth/login"), {
+    const res = await fetch(resolveApiUrl("/api/v1/auth/sso"), {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        username: "dataserve_admin_28",
-        password: "dataserve224",
+        provider: "google",
+        email: "guest_engineer@enterprise.io",
+        full_name: "Academic Project Reviewer",
+        organization: "DataServe Cloud Lakehouse",
+        role: "Lead Reviewer",
+        tier: "Enterprise Lakehouse"
       }),
     });
     if (res.ok) {
@@ -510,11 +514,9 @@ export function useAuth() {
   }, []);
 
   const loginWithSSO = useCallback(async (provider = "google") => {
-    // Acquire genuine backend HMAC token so all downstream endpoints (upload-csv, profiling, pipelines) work seamlessly
-    const backendToken = await requestBackendSessionToken();
-
-    const ssoUser = `${provider}_engineer`;
-    const ssoProfile = {
+    let backendToken = null;
+    let ssoUser = `${provider}_engineer`;
+    let ssoProfile = {
       username: ssoUser,
       email: `${ssoUser}@enterprise.io`,
       fullName: `${provider.toUpperCase()} Workspace Engineer`,
@@ -523,11 +525,49 @@ export function useAuth() {
       tier: "Enterprise Lakehouse",
     };
 
-    if (typeof window !== "undefined") {
-      if (!backendToken) {
-        sessionStorage.setItem("sdoqap_token", `sso_token_${provider}`);
-        localStorage.setItem("sdoqap_token", `sso_token_${provider}`);
+    try {
+      const res = await fetch(resolveApiUrl("/api/v1/auth/sso"), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider,
+          email: `${ssoUser}@enterprise.io`,
+          full_name: `${provider.toUpperCase()} Workspace Engineer`,
+          organization: "Enterprise Lakehouse Cloud",
+          role: "Lead Data Engineer",
+          tier: "Enterprise Lakehouse",
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.token) {
+          backendToken = data.token;
+          if (data.user) {
+            ssoUser = data.user.username;
+            ssoProfile = {
+              username: data.user.username,
+              email: data.user.email,
+              fullName: data.user.full_name,
+              organization: data.user.organization,
+              role: data.user.role,
+              tier: data.user.tier,
+            };
+          }
+        }
       }
+    } catch (err) {
+      console.warn("SSO direct login fallback to local token:", err);
+    }
+
+    if (!backendToken) {
+      backendToken = await requestBackendSessionToken();
+    }
+
+    if (typeof window !== "undefined") {
+      const activeToken = backendToken || `sso_token_${provider}`;
+      sessionStorage.setItem("sdoqap_token", activeToken);
+      localStorage.setItem("sdoqap_token", activeToken);
       localStorage.removeItem("sdoqap_demo_mode");
       localStorage.removeItem("dataserve_demo_mode");
       localStorage.removeItem("sdoqap_static_demo");
@@ -543,8 +583,38 @@ export function useAuth() {
     return { status: "success", username: ssoUser, user: ssoProfile, token: backendToken };
   }, []);
 
-  const loginAsDemo = useCallback(() => {
+  const loginAsDemo = useCallback(async () => {
+    let backendToken = null;
+    try {
+      const res = await fetch(resolveApiUrl("/api/v1/auth/sso"), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "demo",
+          email: "reviewer@academic-eval.edu",
+          full_name: "Academic Project Reviewer",
+          organization: "Faculty Examination Board",
+          role: "Lead Reviewer",
+          tier: "Academic Evaluation Tier",
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.token) backendToken = data.token;
+      }
+    } catch (err) {
+      console.warn("Demo backend token acquisition fallback:", err);
+    }
+
+    if (!backendToken) {
+      backendToken = await requestBackendSessionToken();
+    }
+
     if (typeof window !== "undefined") {
+      const activeToken = backendToken || "demo_session_token";
+      sessionStorage.setItem("sdoqap_token", activeToken);
+      localStorage.setItem("sdoqap_token", activeToken);
       localStorage.setItem("sdoqap_demo_mode", "true");
       localStorage.setItem("dataserve_demo_mode", "true");
       localStorage.setItem("sdoqap_static_demo", "true");

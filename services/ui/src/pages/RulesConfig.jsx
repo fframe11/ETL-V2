@@ -282,11 +282,11 @@ export default function RulesConfig() {
         rule3_confirmed: overrides.rule3_confirmed ?? wbRule3Confirmed,
         active_rules: wbGenericRules
       };
-      const res = await fetch("/api/v1/whitebox/state", {
+      const res = await fetchWithTimeout("/api/v1/whitebox/state", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
-      });
+      }, 10000);
       if (res.ok) {
         const d = await res.json();
         if (d.metrics) setWbLiveMetrics(d.metrics);
@@ -345,14 +345,14 @@ export default function RulesConfig() {
     setWbConfirming(true);
     try {
       if (wbGenericRules.length > 0) {
-        const execRes = await fetch("/api/v1/whitebox/execute", {
+        const execRes = await fetchWithTimeout("/api/v1/whitebox/execute", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             dataset_name: wbDatasetName,
             rules: wbGenericRules
           })
-        });
+        }, 30000);
         if (execRes.ok) {
           const resJson = await execRes.json();
           setWbLiveMetrics({
@@ -362,11 +362,11 @@ export default function RulesConfig() {
             quarantine_rows: resJson.quarantine_rows,
             quality_score_pct: resJson.raw_quality_score_pct
           });
-          await fetch("/api/v1/whitebox/state", {
+          await fetchWithTimeout("/api/v1/whitebox/state", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ active_rules: wbGenericRules, confirm_rules: true })
-          });
+          }, 10000);
           setWbConfirmedAt(new Date().toLocaleTimeString());
           setActionResult({
             success: true,
