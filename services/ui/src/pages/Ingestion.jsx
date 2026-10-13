@@ -95,7 +95,10 @@ export default function Ingestion() {
   useEffect(() => {
     const checkStatus = async () => {
       try {
-        const response = await fetch("/api/v1/pipeline/ingest/reddit/status");
+        const response = await fetch("/api/v1/pipeline/ingest/reddit/status", {
+          credentials: "include",
+          headers: getAuthHeaders()
+        });
         if (response.ok) {
           const data = await response.json();
           setStreamInfo(data);
@@ -227,7 +230,23 @@ export default function Ingestion() {
       const fd = new FormData();
       fd.append("table_name", tableName);
       fd.append("file", file);
-      const res = await fetch("/api/v1/pipeline/ingest/csv", { method: "POST", body: fd });
+      let res = await fetch("/api/v1/pipeline/ingest/csv", {
+        method: "POST",
+        credentials: "include",
+        headers: getAuthHeaders(),
+        body: fd
+      });
+      if ((res.status === 401 || res.status === 403) && typeof requestBackendSessionToken === "function") {
+        const refreshed = await requestBackendSessionToken();
+        if (refreshed) {
+          res = await fetch("/api/v1/pipeline/ingest/csv", {
+            method: "POST",
+            credentials: "include",
+            headers: getAuthHeaders(),
+            body: fd
+          });
+        }
+      }
       const body = await res.json().catch(() => null);
       if (!res.ok) {
         setQueueError(`ส่งเข้าคิวตรวจคุณภาพไม่สำเร็จ: ${friendlyApiError(body?.detail, `HTTP ${res.status}`)}`);
@@ -252,9 +271,10 @@ export default function Ingestion() {
     setQueuedRun(null);
     setQueueError("");
     try {
-      const res = await fetch("/api/v1/pipeline/ingest/rdbms", {
+      let res = await fetch("/api/v1/pipeline/ingest/rdbms", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           table_name: target,
           db_type: "postgresql",
@@ -266,6 +286,26 @@ export default function Ingestion() {
           query: sql
         })
       });
+      if ((res.status === 401 || res.status === 403) && typeof requestBackendSessionToken === "function") {
+        const refreshed = await requestBackendSessionToken();
+        if (refreshed) {
+          res = await fetch("/api/v1/pipeline/ingest/rdbms", {
+            method: "POST",
+            credentials: "include",
+            headers: getAuthHeaders({ "Content-Type": "application/json" }),
+            body: JSON.stringify({
+              table_name: target,
+              db_type: "postgresql",
+              host: rdbmsHost.trim(),
+              port: Number(rdbmsPort),
+              username: dbUser.trim(),
+              password: dbPass,
+              database: rdbmsDb.trim(),
+              query: sql
+            })
+          });
+        }
+      }
       const body = await res.json().catch(() => null);
       if (!res.ok) {
         setUploadError(friendlyApiError(body?.detail, `ดึงข้อมูลจากฐานข้อมูลไม่สำเร็จ (HTTP ${res.status})`));
@@ -669,10 +709,23 @@ export default function Ingestion() {
       formData.append("table_name", csvTableName);
       formData.append("file", csvFile);
 
-      const response = await fetch("/api/v1/pipeline/ingest/csv", {
+      let response = await fetch("/api/v1/pipeline/ingest/csv", {
         method: "POST",
+        credentials: "include",
+        headers: getAuthHeaders(),
         body: formData
       });
+      if ((response.status === 401 || response.status === 403) && typeof requestBackendSessionToken === "function") {
+        const refreshed = await requestBackendSessionToken();
+        if (refreshed) {
+          response = await fetch("/api/v1/pipeline/ingest/csv", {
+            method: "POST",
+            credentials: "include",
+            headers: getAuthHeaders(),
+            body: formData
+          });
+        }
+      }
       const res = await response.json();
 
       if (response.ok) {
