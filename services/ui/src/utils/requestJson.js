@@ -262,6 +262,28 @@ export async function requestJson(url, options) {
             const found = stored.find(d => d.id === sId);
             if (found) return found;
           } catch {}
+          if (sId === "dash_sales_vol") {
+            return {
+              id: sId,
+              name: "Sales Volume & Ingestion Trend",
+              table_name: "sales_records",
+              description: "วิเคราะห์แนวโน้มยอดขายและเปรียบเทียบปริมาณข้อมูล Sell-In vs Sell-Out",
+              audience: "business",
+              spec: {
+                title: "Sales Volume & Ingestion Trend",
+                description: "วิเคราะห์ยอดขายรวมและจำแนกตามหมวดหมู่สินค้า",
+                filters: [
+                  { id: "f1", type: "select", column: "product_category", label: "หมวดหมู่สินค้า" }
+                ],
+                widgets: [
+                  { id: "w1", title: "ยอดขายรวม", type: "kpi", metric: { agg: "sum", column: "sales_amount" }, format: "currency", layout: { x: 0, y: 0, w: 4, h: 2 } },
+                  { id: "w2", title: "กำไรรวม", type: "kpi", metric: { agg: "sum", column: "profit" }, format: "currency", layout: { x: 4, y: 0, w: 4, h: 2 } },
+                  { id: "w3", title: "ยอดขายตามหมวดหมู่", type: "bar", x: "product_category", metric: { agg: "sum", column: "sales_amount" }, layout: { x: 0, y: 2, w: 8, h: 4 } }
+                ]
+              },
+              refinements: []
+            };
+          }
           return {
             id: sId,
             name: "Executive Student Quality Cockpit",
@@ -271,9 +293,15 @@ export async function requestJson(url, options) {
             spec: {
               title: "Executive Student Quality Cockpit",
               description: "สรุปคะแนนเฉลี่ยและความสมบูรณ์ของข้อมูล",
+              filters: [
+                { id: "f1", type: "select", column: "course", label: "รายวิชา" },
+                { id: "f2", type: "select", column: "semester", label: "ภาคการศึกษา" }
+              ],
               widgets: [
-                { id: "w1", title: "คะแนนเฉลี่ยรวม", type: "metric", column: "score", value: "74.5" },
-                { id: "w2", title: "คะแนนเฉลี่ยตามรายวิชา", type: "bar", x: "course", y: "score" }
+                { id: "w1", title: "คะแนนเฉลี่ยรวม", type: "kpi", metric: { agg: "avg", column: "score" }, format: "number", layout: { x: 0, y: 0, w: 3, h: 2 } },
+                { id: "w2", title: "จำนวนนักศึกษาทั้งหมด", type: "kpi", metric: { agg: "count_distinct", column: "student_id" }, format: "number", layout: { x: 3, y: 0, w: 3, h: 2 } },
+                { id: "w3", title: "คะแนนเฉลี่ยตามรายวิชา", type: "bar", x: "course", metric: { agg: "avg", column: "score" }, layout: { x: 0, y: 2, w: 6, h: 4 } },
+                { id: "w4", title: "ตัวอย่างข้อมูลนักศึกษา", type: "table", columns: ["student_id", "course", "score", "semester", "study_hours"], layout: { x: 6, y: 2, w: 6, h: 4 } }
               ]
             },
             refinements: []
@@ -316,10 +344,46 @@ export async function requestJson(url, options) {
         };
       }
       if (url.includes("/render")) {
+        const reqBody = options?.body || {};
+        const isSales = (reqBody.table_name === "sales_records") || (reqBody.spec?.title?.includes("Sales"));
+        if (isSales) {
+          return {
+            spec: {
+              title: "Sales Volume & Ingestion Trend",
+              description: "วิเคราะห์ยอดขายรวมและจำแนกตามหมวดหมู่สินค้า",
+              filters: [
+                { id: "f1", type: "select", column: "product_category", label: "หมวดหมู่สินค้า" }
+              ],
+              widgets: [
+                { id: "w1", type: "kpi", title: "ยอดขายรวม", metric: { agg: "sum", column: "sales_amount" }, format: "currency", layout: { x: 0, y: 0, w: 4, h: 2 } },
+                { id: "w2", type: "kpi", title: "กำไรรวม", metric: { agg: "sum", column: "profit" }, format: "currency", layout: { x: 4, y: 0, w: 4, h: 2 } },
+                { id: "w3", type: "bar", title: "ยอดขายตามหมวดหมู่", x: "product_category", metric: { agg: "sum", column: "sales_amount" }, sort: "desc", limit: 10, layout: { x: 0, y: 2, w: 8, h: 4 } }
+              ]
+            },
+            data: {
+              rows_total: 15420,
+              rows_after_filter: 15420,
+              column_labels: {},
+              filter_options: {
+                product_category: ["Electronics", "Appliances", "Furniture", "Office Supplies"]
+              },
+              widgets: {
+                w1: { value: 1245000 },
+                w2: { value: 324500 },
+                w3: { series: [{ x: "Electronics", value: 650000 }, { x: "Appliances", value: 320000 }, { x: "Furniture", value: 175000 }, { x: "Office Supplies", value: 100000 }] }
+              }
+            },
+            warnings: []
+          };
+        }
         return {
           spec: {
             title: "Executive Student Quality Cockpit",
             description: "สรุปคะแนนเฉลี่ยและความสมบูรณ์ของข้อมูล",
+            filters: [
+              { id: "f1", type: "select", column: "course", label: "รายวิชา" },
+              { id: "f2", type: "select", column: "semester", label: "ภาคการศึกษา" }
+            ],
             widgets: [
               { id: "w1", type: "kpi", title: "คะแนนเฉลี่ยรวม", metric: { agg: "avg", column: "score" }, format: "number", layout: { x: 0, y: 0, w: 3, h: 2 } },
               { id: "w2", type: "kpi", title: "จำนวนนักศึกษาทั้งหมด", metric: { agg: "count_distinct", column: "student_id" }, format: "number", layout: { x: 3, y: 0, w: 3, h: 2 } },
