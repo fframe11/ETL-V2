@@ -365,12 +365,12 @@ export async function requestJson(url, options) {
               rows_after_filter: 15420,
               column_labels: {},
               filter_options: {
-                product_category: ["Electronics", "Appliances", "Furniture", "Office Supplies"]
+                product_category: { values: ["Electronics", "Appliances", "Furniture", "Office Supplies"] }
               },
               widgets: {
                 w1: { value: 1245000 },
                 w2: { value: 324500 },
-                w3: { series: [{ x: "Electronics", value: 650000 }, { x: "Appliances", value: 320000 }, { x: "Furniture", value: 175000 }, { x: "Office Supplies", value: 100000 }] }
+                w3: { rows: [{ x: "Electronics", value: 650000 }, { x: "Appliances", value: 320000 }, { x: "Furniture", value: 175000 }, { x: "Office Supplies", value: 100000 }], series: ["value"] }
               }
             },
             warnings: []
@@ -396,18 +396,21 @@ export async function requestJson(url, options) {
             rows_after_filter: 9400,
             column_labels: {},
             filter_options: {
-              course: ["Python Programming", "Data Warehouse", "Database Systems", "Machine Learning"],
-              semester: ["1/2026", "2/2026"]
+              course: { values: ["Python Programming", "Data Warehouse", "Database Systems", "Machine Learning"] },
+              semester: { values: ["1/2026", "2/2026"] }
             },
             widgets: {
               w1: { value: 78.4 },
               w2: { value: 2350 },
-              w3: { series: [{ x: "Data Warehouse", value: 81.4 }, { x: "Python Programming", value: 78.2 }, { x: "Database Systems", value: 75.6 }, { x: "Machine Learning", value: 91.5 }] },
-              w4: { rows: [
-                { student_id: "65001", course: "Python Programming", score: 78.5, semester: "1/2026", study_hours: 4.5 },
-                { student_id: "65002", course: "Data Warehouse", score: 88.0, semester: "1/2026", study_hours: 6.0 },
-                { student_id: "65003", course: "Database Systems", score: 72.0, semester: "1/2026", study_hours: 3.5 }
-              ]}
+              w3: { rows: [{ x: "Data Warehouse", value: 81.4 }, { x: "Python Programming", value: 78.2 }, { x: "Database Systems", value: 75.6 }, { x: "Machine Learning", value: 91.5 }], series: ["value"] },
+              w4: {
+                columns: ["student_id", "course", "score", "semester", "study_hours"],
+                rows: [
+                  { student_id: "65001", course: "Python Programming", score: 78.5, semester: "1/2026", study_hours: 4.5 },
+                  { student_id: "65002", course: "Data Warehouse", score: 88.0, semester: "1/2026", study_hours: 6.0 },
+                  { student_id: "65003", course: "Database Systems", score: 72.0, semester: "1/2026", study_hours: 3.5 }
+                ]
+              }
             }
           },
           warnings: []

@@ -37,14 +37,15 @@ export default function FilterBar({ filters, options, selections, onChange }) {
         // An active value can fall outside the (capped) option list, e.g. after a drill-down.
         const choices = opt.values || [];
         const active = current.values?.[0];
-        const extra = active != null && !choices.includes(active) ? [active] : [];
+        const extra = active != null && Array.isArray(choices) && !choices.includes(active) ? [active] : [];
+        const allChoices = [...(Array.isArray(choices) ? choices : []), ...(Array.isArray(extra) ? extra : [])];
         return (
           <div key={f.id} className="dbb-filter">
             <label htmlFor={id}>{labelText}</label>
             <select id={id} value={current.values?.[0] ?? ""}
               onChange={(e) => set(f.column, e.target.value ? { values: [e.target.value] } : null)}>
               <option value="">ทั้งหมด</option>
-              {[...choices, ...extra].map((v) => <option key={v} value={v}>{v}</option>)}
+              {allChoices.map((v) => <option key={v} value={v}>{v}</option>)}
             </select>
           </div>
         );

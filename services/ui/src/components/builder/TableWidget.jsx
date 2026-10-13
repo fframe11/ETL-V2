@@ -16,7 +16,6 @@ function cell(value) {
 
 export default function TableWidget({ widget, data, labels = {} }) {
   const [sort, setSort] = useState(null);
-  const columns = data?.columns || widget.columns;
   const rows = useMemo(() => {
     const list = [...(data?.rows || [])];
     if (!sort) return list;
@@ -25,6 +24,11 @@ export default function TableWidget({ widget, data, labels = {} }) {
       return a[sort.column] == null || b[sort.column] == null ? order : sort.desc ? -order : order;
     });
   }, [data, sort]);
+  const columns = Array.isArray(data?.columns) && data.columns.length > 0
+    ? data.columns
+    : Array.isArray(widget?.columns) && widget.columns.length > 0
+    ? widget.columns
+    : (rows.length > 0 ? Object.keys(rows[0]) : []);
   const toggle = (column) => setSort((s) => (s?.column === column ? { column, desc: !s.desc } : { column, desc: false }));
 
   return (
