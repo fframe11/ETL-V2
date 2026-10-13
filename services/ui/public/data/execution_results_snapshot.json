@@ -1917,7 +1917,7 @@
       "id": "dash_student_dq",
       "name": "Executive Student Quality Cockpit",
       "table_name": "student_course_scores",
-      "widget_count": 4,
+      "widget_count": 8,
       "updated_at": "2026-10-10T12:00:00Z",
       "description": "รายงานสรุปความสมบูรณ์ของข้อมูลคะแนนนักศึกษาและการประเมินความเสี่ยงเกรดเฉลี่ย"
     },
@@ -1925,7 +1925,7 @@
       "id": "dash_sales_vol",
       "name": "Sales Volume & Ingestion Trend",
       "table_name": "sales_records",
-      "widget_count": 3,
+      "widget_count": 8,
       "updated_at": "2026-10-10T11:30:00Z",
       "description": "วิเคราะห์แนวโน้มยอดขายและเปรียบเทียบปริมาณข้อมูล Sell-In vs Sell-Out"
     }

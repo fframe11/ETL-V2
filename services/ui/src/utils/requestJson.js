@@ -173,27 +173,87 @@ export async function requestJson(url, options) {
           err.status = 422;
           throw err;
         }
+        const isSalesReq = (reqBody.table_name === "sales_records") || /sales|ขาย|ยอดขาย|profit|กำไร/i.test(ctx);
+        if (isSalesReq) {
+          return {
+            engine: "demo",
+            model: "demo-static-engine",
+            warnings: ["รันในโหมดสาธิต (Demo Mode): จำลองการทำงานเพื่อการนำเสนอ"],
+            spec: {
+              title: "Sales Volume & Performance Analytics",
+              description: "วิเคราะห์ยอดขาย ผลกำไร ปริมาณคำสั่งซื้อ และเสถียรภาพคุณภาพข้อมูล",
+              audience: "business",
+              insights: "ภาพรวมยอดขายเติบโตต่อเนื่องในกลุ่ม Electronics (650K ฿) คิดเป็น 52.2% ของพอร์ตโฟลิโอ โดยช่องทาง Online Store สร้างกำไรสูงสุด ขณะที่อัตรากักกันข้อมูล (DQ Quarantine Rate) อยู่ที่ 0.05% ซึ่งต่ำกว่าเกณฑ์ควบคุมคุณภาพอย่างมีนัยสำคัญ",
+              filters: [
+                { id: "f1", type: "select", column: "product_category", label: "หมวดหมู่สินค้า" },
+                { id: "f2", type: "select", column: "sales_channel", label: "ช่องทางจำหน่าย" },
+                { id: "f3", type: "select", column: "region", label: "ภูมิภาค" }
+              ],
+              widgets: [
+                { id: "w1", type: "kpi", title: "ยอดขายรวม (Gross Revenue)", metric: { agg: "sum", column: "sales_amount" }, format: "currency", layout: { x: 0, y: 0, w: 3, h: 2 } },
+                { id: "w2", type: "kpi", title: "กำไรสุทธิ (Net Profit)", metric: { agg: "sum", column: "profit" }, format: "currency", layout: { x: 3, y: 0, w: 3, h: 2 } },
+                { id: "w3", type: "kpi", title: "ปริมาณคำสั่งซื้อ (Order Volume)", metric: { agg: "count", column: null }, format: "number", layout: { x: 6, y: 0, w: 3, h: 2 } },
+                { id: "w4", type: "kpi", title: "อัตราข้อมูลกักกัน (DQ Quarantine Rate)", metric: { agg: "avg", column: "quarantine_rate" }, format: "percent", higher_is_better: false, layout: { x: 9, y: 0, w: 3, h: 2 } },
+                { id: "w5", type: "area", title: "แนวโน้มยอดขายรายเดือน (Monthly Revenue Trend)", x: "order_date", metric: { agg: "sum", column: "sales_amount" }, time_grain: "month", layout: { x: 0, y: 2, w: 6, h: 4 } },
+                { id: "w6", type: "bar", title: "ยอดขายตามหมวดหมู่สินค้า (Revenue by Category)", x: "product_category", metric: { agg: "sum", column: "sales_amount" }, sort: "desc", limit: 10, layout: { x: 6, y: 2, w: 6, h: 4 } },
+                { id: "w7", type: "donut", title: "สัดส่วนยอดขายตามช่องทางจำหน่าย (Sales Channel Share)", x: "sales_channel", metric: { agg: "sum", column: "sales_amount" }, layout: { x: 0, y: 6, w: 4, h: 4 } },
+                { id: "w8", type: "table", title: "รายการธุรกรรมและสถานะตรวจสอบคุณภาพ (Audit Transaction Log)", columns: ["order_id", "order_date", "product_category", "sales_channel", "sales_amount", "profit", "dq_status"], limit: 20, layout: { x: 4, y: 6, w: 8, h: 4 } }
+              ]
+            },
+            data: {
+              rows_total: 15420,
+              rows_after_filter: 15420,
+              column_labels: {},
+              filter_options: {
+                product_category: { values: ["Electronics", "Appliances", "Furniture", "Office Supplies"] },
+                sales_channel: { values: ["Online Store", "Retail", "Wholesale", "Enterprise Direct"] },
+                region: { values: ["Bangkok & Vicinity", "Central", "North", "Northeast", "South"] }
+              },
+              widgets: {
+                w1: { value: 1245000, change_pct: 12.8 },
+                w2: { value: 324500, change_pct: 18.4 },
+                w3: { value: 15420, change_pct: 6.5 },
+                w4: { value: 0.05, change_pct: -0.02 },
+                w5: { rows: [{ x: "2026-01", value: 165000 }, { x: "2026-02", value: 182000 }, { x: "2026-03", value: 210000 }, { x: "2026-04", value: 198000 }, { x: "2026-05", value: 235000 }, { x: "2026-06", value: 255000 }], series: ["value"] },
+                w6: { rows: [{ x: "Electronics", value: 650000 }, { x: "Appliances", value: 320000 }, { x: "Furniture", value: 175000 }, { x: "Office Supplies", value: 100000 }], series: ["value"] },
+                w7: { rows: [{ x: "Online Store", value: 560000 }, { x: "Retail", value: 375000 }, { x: "Wholesale", value: 190000 }, { x: "Enterprise Direct", value: 120000 }], series: ["value"] },
+                w8: {
+                  columns: ["order_id", "order_date", "product_category", "sales_channel", "sales_amount", "profit", "dq_status"],
+                  rows: [
+                    { order_id: "SO-2026-001", order_date: "2026-06-12", product_category: "Electronics", sales_channel: "Online Store", sales_amount: 34500, profit: 9200, dq_status: "PASSED" },
+                    { order_id: "SO-2026-002", order_date: "2026-06-12", product_category: "Appliances", sales_channel: "Retail", sales_amount: 18900, profit: 4700, dq_status: "PASSED" },
+                    { order_id: "SO-2026-003", order_date: "2026-06-11", product_category: "Electronics", sales_channel: "Enterprise Direct", sales_amount: 125000, profit: 38000, dq_status: "PASSED" },
+                    { order_id: "SO-2026-004", order_date: "2026-06-11", product_category: "Furniture", sales_channel: "Wholesale", sales_amount: 42000, profit: 11500, dq_status: "PASSED" },
+                    { order_id: "SO-2026-005", order_date: "2026-06-10", product_category: "Office Supplies", sales_channel: "Online Store", sales_amount: 8600, profit: 2400, dq_status: "PASSED" }
+                  ]
+                }
+              }
+            }
+          };
+        }
         return {
           engine: "demo",
           model: "demo-static-engine",
           warnings: ["รันในโหมดสาธิต (Demo Mode): จำลองการทำงานเพื่อการนำเสนอ"],
           spec: {
             title: "Student Course Evaluation Dashboard",
-            description: "สรุปคะแนนเฉลี่ยและความสมบูรณ์ของข้อมูลการเรียน",
+            description: "สรุปคะแนนเฉลี่ย ความสัมพันธ์ชั่วโมงเรียน และการกระจายตัวของระดับผลการเรียน",
             audience: "business",
-            insights: "ข้อสังเกตจากข้อมูล: คะแนนเฉลี่ยในรายวิชา Data Warehouse สูงที่สุด (81.4) ขณะที่ Database มีการกระจายตัวของคะแนนกว้างที่สุด",
+            insights: "คะแนนเฉลี่ยรวมระดับสถาบันอยู่ที่ 78.4 โดยวิชา Machine Learning มีผลสัมฤทธิ์สูงสุด (91.5) และอัตราผ่านเกณฑ์รวมแตะ 94.2% ทั้งนี้ตรวจพบนักศึกษากลุ่มเฝ้าระวัง 136 คน (ชั่วโมงเรียนเฉลี่ยต่ำกว่า 3.5 ชม./สัปดาห์) ซึ่งมีค่าสัมประสิทธิ์สัมพันธ์โดยตรงกับระดับคะแนน",
             filters: [
               { id: "f1", column: "course", label: "รายวิชา", type: "select" },
-              { id: "f2", column: "semester", label: "ภาคการศึกษา", type: "select" }
+              { id: "f2", column: "semester", label: "ภาคการศึกษา", type: "select" },
+              { id: "f3", column: "faculty", label: "คณะ", type: "select" }
             ],
             widgets: [
-              { id: "w1", type: "kpi", title: "คะแนนเฉลี่ยรวม", metric: { agg: "avg", column: "score" }, format: "number", layout: { x: 0, y: 0, w: 3, h: 2 } },
-              { id: "w2", type: "kpi", title: "จำนวนนักศึกษาทั้งหมด", metric: { agg: "count_distinct", column: "student_id" }, format: "number", layout: { x: 3, y: 0, w: 3, h: 2 } },
-              { id: "w3", type: "kpi", title: "ชั่วโมงเรียนเฉลี่ย", metric: { agg: "avg", column: "study_hours" }, format: "number", layout: { x: 6, y: 0, w: 3, h: 2 } },
-              { id: "w4", type: "kpi", title: "จำนวนระเบียนข้อมูล", metric: { agg: "count", column: null }, format: "number", layout: { x: 9, y: 0, w: 3, h: 2 } },
-              { id: "w5", type: "bar", title: "คะแนนเฉลี่ยแยกตามรายวิชา", x: "course", metric: { agg: "avg", column: "score" }, sort: "desc", limit: 10, layout: { x: 0, y: 2, w: 6, h: 4 } },
-              { id: "w6", type: "bar", title: "ชั่วโมงเรียนแยกตามรายวิชา", x: "course", metric: { agg: "avg", column: "study_hours" }, sort: "desc", limit: 10, layout: { x: 6, y: 2, w: 6, h: 4 } },
-              { id: "w7", type: "table", title: "ตัวอย่างข้อมูลนักศึกษา", columns: ["student_id", "course", "score", "semester", "study_hours"], limit: 20, layout: { x: 0, y: 6, w: 12, h: 5 } }
+              { id: "w1", type: "kpi", title: "คะแนนเฉลี่ยรวม (Overall Score)", metric: { agg: "avg", column: "score" }, format: "number", layout: { x: 0, y: 0, w: 3, h: 2 } },
+              { id: "w2", type: "kpi", title: "จำนวนนักศึกษา (Enrolled Students)", metric: { agg: "count_distinct", column: "student_id" }, format: "number", layout: { x: 3, y: 0, w: 3, h: 2 } },
+              { id: "w3", type: "kpi", title: "อัตราการผ่านเกณฑ์ (Pass Rate)", metric: { agg: "avg", column: "pass_rate" }, format: "percent", layout: { x: 6, y: 0, w: 3, h: 2 } },
+              { id: "w4", type: "kpi", title: "ชั่วโมงเรียนเฉลี่ย (Study Hours/Wk)", metric: { agg: "avg", column: "study_hours" }, format: "number", layout: { x: 9, y: 0, w: 3, h: 2 } },
+              { id: "w5", type: "bar", title: "คะแนนเฉลี่ยจำแนกตามรายวิชา (Mean Score by Course)", x: "course", metric: { agg: "avg", column: "score" }, sort: "desc", limit: 10, layout: { x: 0, y: 2, w: 6, h: 4 } },
+              { id: "w6", type: "line", title: "แนวโน้มชั่วโมงเรียนกับผลสัมฤทธิ์รายสัปดาห์ (Study Hours Trend)", x: "week", metric: { agg: "avg", column: "study_hours" }, time_grain: "week", layout: { x: 6, y: 2, w: 6, h: 4 } },
+              { id: "w7", type: "donut", title: "สัดส่วนระดับผลการเรียน (Grade Distribution)", x: "grade_tier", metric: { agg: "count", column: null }, layout: { x: 0, y: 6, w: 4, h: 4 } },
+              { id: "w8", type: "table", title: "ข้อมูลนักศึกษาและผลการประเมินความเสี่ยง (Student Academic Records)", columns: ["student_id", "course", "score", "study_hours", "semester", "academic_status"], limit: 20, layout: { x: 4, y: 6, w: 8, h: 4 } }
             ]
           },
           data: {
@@ -201,21 +261,28 @@ export async function requestJson(url, options) {
             rows_after_filter: 9400,
             column_labels: {},
             filter_options: {
-              course: { values: ["Python", "Data Warehouse", "Database", "Machine Learning"] },
-              semester: { values: ["1/2026", "2/2026"] }
+              course: { values: ["Python Programming", "Data Warehouse", "Database Systems", "Machine Learning"] },
+              semester: { values: ["1/2026", "2/2026"] },
+              faculty: { values: ["วิศวกรรมศาสตร์", "วิทยาการคอมพิวเตอร์", "เทคโนโลยีสารสนเทศ"] }
             },
             widgets: {
-              w1: { value: 78.4 },
-              w2: { value: 2350 },
-              w3: { value: 4.8 },
-              w4: { value: 9400 },
-              w5: { rows: [{ x: "Data Warehouse", value: 81.4 }, { x: "Python", value: 78.2 }, { x: "Database", value: 75.6 }], series: ["value"] },
-              w6: { rows: [{ x: "Data Warehouse", value: 5.2 }, { x: "Python", value: 4.9 }, { x: "Database", value: 4.3 }], series: ["value"] },
-              w7: { rows: [
-                { student_id: "65001", course: "Python", score: 70, semester: "1/2026", study_hours: 3 },
-                { student_id: "65003", course: "Data Warehouse", score: 100, semester: "1/2026", study_hours: 3 },
-                { student_id: "65006", course: "Database", score: 73, semester: "2/2026", study_hours: 7 }
-              ]}
+              w1: { value: 78.4, change_pct: 3.2 },
+              w2: { value: 2350, change_pct: 5.8 },
+              w3: { value: 94.2, change_pct: 2.1 },
+              w4: { value: 4.8, change_pct: 8.5 },
+              w5: { rows: [{ x: "Machine Learning", value: 91.5 }, { x: "Data Warehouse", value: 81.4 }, { x: "Python Programming", value: 78.2 }, { x: "Database Systems", value: 75.6 }], series: ["value"] },
+              w6: { rows: [{ x: "W1", value: 3.8 }, { x: "W2", value: 4.2 }, { x: "W3", value: 4.5 }, { x: "W4", value: 4.9 }, { x: "W5", value: 5.3 }, { x: "W6", value: 5.6 }], series: ["value"] },
+              w7: { rows: [{ x: "Grade A (80-100)", value: 658 }, { x: "Grade B (70-79)", value: 987 }, { x: "Grade C (60-69)", value: 517 }, { x: "Grade D/F (<60)", value: 188 }], series: ["value"] },
+              w8: {
+                columns: ["student_id", "course", "score", "study_hours", "semester", "academic_status"],
+                rows: [
+                  { student_id: "65001", course: "Machine Learning", score: 94.5, study_hours: 6.5, semester: "1/2026", academic_status: "EXCELLENT" },
+                  { student_id: "65002", course: "Data Warehouse", score: 88.0, study_hours: 6.0, semester: "1/2026", academic_status: "GOOD" },
+                  { student_id: "65003", course: "Python Programming", score: 78.5, study_hours: 4.5, semester: "1/2026", academic_status: "NORMAL" },
+                  { student_id: "65004", course: "Database Systems", score: 72.0, study_hours: 3.5, semester: "1/2026", academic_status: "NORMAL" },
+                  { student_id: "65005", course: "Database Systems", score: 58.0, study_hours: 2.0, semester: "1/2026", academic_status: "AT RISK" }
+                ]
+              }
             }
           }
         };
@@ -267,18 +334,26 @@ export async function requestJson(url, options) {
               id: sId,
               name: "Sales Volume & Ingestion Trend",
               table_name: "sales_records",
-              description: "วิเคราะห์แนวโน้มยอดขายและเปรียบเทียบปริมาณข้อมูล Sell-In vs Sell-Out",
+              description: "วิเคราะห์แนวโน้มยอดขาย ผลกำไร และเสถียรภาพการนำเข้าข้อมูล (Sell-In vs Sell-Out)",
               audience: "business",
               spec: {
                 title: "Sales Volume & Ingestion Trend",
-                description: "วิเคราะห์ยอดขายรวมและจำแนกตามหมวดหมู่สินค้า",
+                description: "วิเคราะห์ยอดขาย ผลกำไร อัตรากักกันข้อมูล และการกระจายตัวตามช่องทางจำหน่าย",
+                insights: "ภาพรวมยอดขายเติบโตต่อเนื่องในกลุ่ม Electronics (650K ฿) คิดเป็น 52.2% ของพอร์ตโฟลิโอ โดยช่องทาง Online Store สร้างกำไรสูงสุด ขณะที่อัตรากักกันข้อมูล (DQ Quarantine Rate) อยู่ที่ 0.05% ซึ่งต่ำกว่าเกณฑ์ควบคุมคุณภาพอย่างมีนัยสำคัญ",
                 filters: [
-                  { id: "f1", type: "select", column: "product_category", label: "หมวดหมู่สินค้า" }
+                  { id: "f1", type: "select", column: "product_category", label: "หมวดหมู่สินค้า" },
+                  { id: "f2", type: "select", column: "sales_channel", label: "ช่องทางจำหน่าย" },
+                  { id: "f3", type: "select", column: "region", label: "ภูมิภาค" }
                 ],
                 widgets: [
-                  { id: "w1", title: "ยอดขายรวม", type: "kpi", metric: { agg: "sum", column: "sales_amount" }, format: "currency", layout: { x: 0, y: 0, w: 4, h: 2 } },
-                  { id: "w2", title: "กำไรรวม", type: "kpi", metric: { agg: "sum", column: "profit" }, format: "currency", layout: { x: 4, y: 0, w: 4, h: 2 } },
-                  { id: "w3", title: "ยอดขายตามหมวดหมู่", type: "bar", x: "product_category", metric: { agg: "sum", column: "sales_amount" }, layout: { x: 0, y: 2, w: 8, h: 4 } }
+                  { id: "w1", title: "ยอดขายรวม (Gross Revenue)", type: "kpi", metric: { agg: "sum", column: "sales_amount" }, format: "currency", layout: { x: 0, y: 0, w: 3, h: 2 } },
+                  { id: "w2", title: "กำไรสุทธิ (Net Profit)", type: "kpi", metric: { agg: "sum", column: "profit" }, format: "currency", layout: { x: 3, y: 0, w: 3, h: 2 } },
+                  { id: "w3", title: "ปริมาณคำสั่งซื้อ (Order Volume)", type: "kpi", metric: { agg: "count", column: null }, format: "number", layout: { x: 6, y: 0, w: 3, h: 2 } },
+                  { id: "w4", title: "อัตราข้อมูลกักกัน (DQ Quarantine Rate)", type: "kpi", metric: { agg: "avg", column: "quarantine_rate" }, format: "percent", higher_is_better: false, layout: { x: 9, y: 0, w: 3, h: 2 } },
+                  { id: "w5", title: "แนวโน้มยอดขายรายเดือน (Monthly Revenue Trend)", type: "area", x: "order_date", metric: { agg: "sum", column: "sales_amount" }, time_grain: "month", layout: { x: 0, y: 2, w: 6, h: 4 } },
+                  { id: "w6", title: "ยอดขายตามหมวดหมู่สินค้า (Revenue by Category)", type: "bar", x: "product_category", metric: { agg: "sum", column: "sales_amount" }, sort: "desc", layout: { x: 6, y: 2, w: 6, h: 4 } },
+                  { id: "w7", title: "สัดส่วนยอดขายตามช่องทางจำหน่าย (Sales Channel Share)", type: "donut", x: "sales_channel", metric: { agg: "sum", column: "sales_amount" }, layout: { x: 0, y: 6, w: 4, h: 4 } },
+                  { id: "w8", title: "รายการธุรกรรมและสถานะตรวจสอบคุณภาพ (Audit Transaction Log)", type: "table", columns: ["order_id", "order_date", "product_category", "sales_channel", "sales_amount", "profit", "dq_status"], layout: { x: 4, y: 6, w: 8, h: 4 } }
                 ]
               },
               refinements: []
@@ -288,20 +363,26 @@ export async function requestJson(url, options) {
             id: sId,
             name: "Executive Student Quality Cockpit",
             table_name: "student_course_scores",
-            description: "รายงานสรุปความสมบูรณ์ของข้อมูลคะแนนนักศึกษาและการประเมินความเสี่ยงเกรดเฉลี่ย",
+            description: "ศูนย์บัญชาการข้อมูลผลสัมฤทธิ์ทางการศึกษา การเฝ้าระวังอัตราผ่านเกณฑ์ และการตรวจประเมินคุณภาพข้อมูลรายวิชา",
             audience: "executive",
             spec: {
               title: "Executive Student Quality Cockpit",
-              description: "สรุปคะแนนเฉลี่ยและความสมบูรณ์ของข้อมูล",
+              description: "สรุปคะแนนเฉลี่ย ความสัมพันธ์ชั่วโมงเรียน และการกระจายตัวของระดับผลการเรียน",
+              insights: "คะแนนเฉลี่ยรวมระดับสถาบันอยู่ที่ 78.4 โดยวิชา Machine Learning มีผลสัมฤทธิ์สูงสุด (91.5) และอัตราผ่านเกณฑ์รวมแตะ 94.2% ทั้งนี้ตรวจพบนักศึกษากลุ่มเฝ้าระวัง 136 คน (ชั่วโมงเรียนเฉลี่ยต่ำกว่า 3.5 ชม./สัปดาห์) ซึ่งมีค่าสัมประสิทธิ์สัมพันธ์โดยตรงกับระดับคะแนน",
               filters: [
                 { id: "f1", type: "select", column: "course", label: "รายวิชา" },
-                { id: "f2", type: "select", column: "semester", label: "ภาคการศึกษา" }
+                { id: "f2", type: "select", column: "semester", label: "ภาคการศึกษา" },
+                { id: "f3", type: "select", column: "faculty", label: "คณะ" }
               ],
               widgets: [
-                { id: "w1", title: "คะแนนเฉลี่ยรวม", type: "kpi", metric: { agg: "avg", column: "score" }, format: "number", layout: { x: 0, y: 0, w: 3, h: 2 } },
-                { id: "w2", title: "จำนวนนักศึกษาทั้งหมด", type: "kpi", metric: { agg: "count_distinct", column: "student_id" }, format: "number", layout: { x: 3, y: 0, w: 3, h: 2 } },
-                { id: "w3", title: "คะแนนเฉลี่ยตามรายวิชา", type: "bar", x: "course", metric: { agg: "avg", column: "score" }, layout: { x: 0, y: 2, w: 6, h: 4 } },
-                { id: "w4", title: "ตัวอย่างข้อมูลนักศึกษา", type: "table", columns: ["student_id", "course", "score", "semester", "study_hours"], layout: { x: 6, y: 2, w: 6, h: 4 } }
+                { id: "w1", title: "คะแนนเฉลี่ยรวม (Overall Score)", type: "kpi", metric: { agg: "avg", column: "score" }, format: "number", layout: { x: 0, y: 0, w: 3, h: 2 } },
+                { id: "w2", title: "จำนวนนักศึกษา (Enrolled Students)", type: "kpi", metric: { agg: "count_distinct", column: "student_id" }, format: "number", layout: { x: 3, y: 0, w: 3, h: 2 } },
+                { id: "w3", title: "อัตราการผ่านเกณฑ์ (Pass Rate)", type: "kpi", metric: { agg: "avg", column: "pass_rate" }, format: "percent", layout: { x: 6, y: 0, w: 3, h: 2 } },
+                { id: "w4", title: "ชั่วโมงเรียนเฉลี่ย (Study Hours/Wk)", type: "kpi", metric: { agg: "avg", column: "study_hours" }, format: "number", layout: { x: 9, y: 0, w: 3, h: 2 } },
+                { id: "w5", title: "คะแนนเฉลี่ยจำแนกตามรายวิชา (Mean Score by Course)", type: "bar", x: "course", metric: { agg: "avg", column: "score" }, sort: "desc", layout: { x: 0, y: 2, w: 6, h: 4 } },
+                { id: "w6", title: "แนวโน้มชั่วโมงเรียนกับผลสัมฤทธิ์รายสัปดาห์ (Study Hours Trend)", type: "line", x: "week", metric: { agg: "avg", column: "study_hours" }, time_grain: "week", layout: { x: 6, y: 2, w: 6, h: 4 } },
+                { id: "w7", title: "สัดส่วนระดับผลการเรียน (Grade Distribution)", type: "donut", x: "grade_tier", metric: { agg: "count", column: null }, layout: { x: 0, y: 6, w: 4, h: 4 } },
+                { id: "w8", title: "ข้อมูลนักศึกษาและผลการประเมินความเสี่ยง (Student Academic Records)", type: "table", columns: ["student_id", "course", "score", "study_hours", "semester", "academic_status"], layout: { x: 4, y: 6, w: 8, h: 4 } }
               ]
             },
             refinements: []
@@ -316,7 +397,7 @@ export async function requestJson(url, options) {
             id: "dash_student_dq",
             name: "Executive Student Quality Cockpit",
             table_name: "student_course_scores",
-            widget_count: 4,
+            widget_count: 8,
             updated_at: "2026-10-10T12:00:00Z",
             description: "รายงานสรุปความสมบูรณ์ของข้อมูลคะแนนนักศึกษาและการประเมินความเสี่ยงเกรดเฉลี่ย"
           },
@@ -324,7 +405,7 @@ export async function requestJson(url, options) {
             id: "dash_sales_vol",
             name: "Sales Volume & Ingestion Trend",
             table_name: "sales_records",
-            widget_count: 3,
+            widget_count: 8,
             updated_at: "2026-10-10T11:30:00Z",
             description: "วิเคราะห์แนวโน้มยอดขายและเปรียบเทียบปริมาณข้อมูล Sell-In vs Sell-Out"
           }
@@ -347,68 +428,107 @@ export async function requestJson(url, options) {
         const reqBody = options?.body || {};
         const isSales = (reqBody.table_name === "sales_records") || (reqBody.spec?.title?.includes("Sales"));
         if (isSales) {
+          const baseSpec = reqBody.spec?.widgets?.length >= 8 ? reqBody.spec : {
+            title: "Sales Volume & Ingestion Trend",
+            description: "วิเคราะห์ยอดขาย ผลกำไร อัตรากักกันข้อมูล และการกระจายตัวตามช่องทางจำหน่าย",
+            insights: "ภาพรวมยอดขายเติบโตต่อเนื่องในกลุ่ม Electronics (650K ฿) คิดเป็น 52.2% ของพอร์ตโฟลิโอ โดยช่องทาง Online Store สร้างกำไรสูงสุด ขณะที่อัตรากักกันข้อมูล (DQ Quarantine Rate) อยู่ที่ 0.05% ซึ่งต่ำกว่าเกณฑ์ควบคุมคุณภาพอย่างมีนัยสำคัญ",
+            filters: [
+              { id: "f1", type: "select", column: "product_category", label: "หมวดหมู่สินค้า" },
+              { id: "f2", type: "select", column: "sales_channel", label: "ช่องทางจำหน่าย" },
+              { id: "f3", type: "select", column: "region", label: "ภูมิภาค" }
+            ],
+            widgets: [
+              { id: "w1", type: "kpi", title: "ยอดขายรวม (Gross Revenue)", metric: { agg: "sum", column: "sales_amount" }, format: "currency", layout: { x: 0, y: 0, w: 3, h: 2 } },
+              { id: "w2", type: "kpi", title: "กำไรสุทธิ (Net Profit)", metric: { agg: "sum", column: "profit" }, format: "currency", layout: { x: 3, y: 0, w: 3, h: 2 } },
+              { id: "w3", type: "kpi", title: "ปริมาณคำสั่งซื้อ (Order Volume)", metric: { agg: "count", column: null }, format: "number", layout: { x: 6, y: 0, w: 3, h: 2 } },
+              { id: "w4", type: "kpi", title: "อัตราข้อมูลกักกัน (DQ Quarantine Rate)", metric: { agg: "avg", column: "quarantine_rate" }, format: "percent", higher_is_better: false, layout: { x: 9, y: 0, w: 3, h: 2 } },
+              { id: "w5", type: "area", title: "แนวโน้มยอดขายรายเดือน (Monthly Revenue Trend)", x: "order_date", metric: { agg: "sum", column: "sales_amount" }, time_grain: "month", layout: { x: 0, y: 2, w: 6, h: 4 } },
+              { id: "w6", type: "bar", title: "ยอดขายตามหมวดหมู่สินค้า (Revenue by Category)", x: "product_category", metric: { agg: "sum", column: "sales_amount" }, sort: "desc", limit: 10, layout: { x: 6, y: 2, w: 6, h: 4 } },
+              { id: "w7", type: "donut", title: "สัดส่วนยอดขายตามช่องทางจำหน่าย (Sales Channel Share)", x: "sales_channel", metric: { agg: "sum", column: "sales_amount" }, layout: { x: 0, y: 6, w: 4, h: 4 } },
+              { id: "w8", type: "table", title: "รายการธุรกรรมและสถานะตรวจสอบคุณภาพ (Audit Transaction Log)", columns: ["order_id", "order_date", "product_category", "sales_channel", "sales_amount", "profit", "dq_status"], limit: 20, layout: { x: 4, y: 6, w: 8, h: 4 } }
+            ]
+          };
           return {
-            spec: {
-              title: "Sales Volume & Ingestion Trend",
-              description: "วิเคราะห์ยอดขายรวมและจำแนกตามหมวดหมู่สินค้า",
-              filters: [
-                { id: "f1", type: "select", column: "product_category", label: "หมวดหมู่สินค้า" }
-              ],
-              widgets: [
-                { id: "w1", type: "kpi", title: "ยอดขายรวม", metric: { agg: "sum", column: "sales_amount" }, format: "currency", layout: { x: 0, y: 0, w: 4, h: 2 } },
-                { id: "w2", type: "kpi", title: "กำไรรวม", metric: { agg: "sum", column: "profit" }, format: "currency", layout: { x: 4, y: 0, w: 4, h: 2 } },
-                { id: "w3", type: "bar", title: "ยอดขายตามหมวดหมู่", x: "product_category", metric: { agg: "sum", column: "sales_amount" }, sort: "desc", limit: 10, layout: { x: 0, y: 2, w: 8, h: 4 } }
-              ]
-            },
+            spec: baseSpec,
             data: {
               rows_total: 15420,
               rows_after_filter: 15420,
               column_labels: {},
               filter_options: {
-                product_category: { values: ["Electronics", "Appliances", "Furniture", "Office Supplies"] }
+                product_category: { values: ["Electronics", "Appliances", "Furniture", "Office Supplies"] },
+                sales_channel: { values: ["Online Store", "Retail", "Wholesale", "Enterprise Direct"] },
+                region: { values: ["Bangkok & Vicinity", "Central", "North", "Northeast", "South"] }
               },
               widgets: {
-                w1: { value: 1245000 },
-                w2: { value: 324500 },
-                w3: { rows: [{ x: "Electronics", value: 650000 }, { x: "Appliances", value: 320000 }, { x: "Furniture", value: 175000 }, { x: "Office Supplies", value: 100000 }], series: ["value"] }
+                w1: { value: 1245000, change_pct: 12.8 },
+                w2: { value: 324500, change_pct: 18.4 },
+                w3: { value: 15420, change_pct: 6.5 },
+                w4: { value: 0.05, change_pct: -0.02 },
+                w5: { rows: [{ x: "2026-01", value: 165000 }, { x: "2026-02", value: 182000 }, { x: "2026-03", value: 210000 }, { x: "2026-04", value: 198000 }, { x: "2026-05", value: 235000 }, { x: "2026-06", value: 255000 }], series: ["value"] },
+                w6: { rows: [{ x: "Electronics", value: 650000 }, { x: "Appliances", value: 320000 }, { x: "Furniture", value: 175000 }, { x: "Office Supplies", value: 100000 }], series: ["value"] },
+                w7: { rows: [{ x: "Online Store", value: 560000 }, { x: "Retail", value: 375000 }, { x: "Wholesale", value: 190000 }, { x: "Enterprise Direct", value: 120000 }], series: ["value"] },
+                w8: {
+                  columns: ["order_id", "order_date", "product_category", "sales_channel", "sales_amount", "profit", "dq_status"],
+                  rows: [
+                    { order_id: "SO-2026-001", order_date: "2026-06-12", product_category: "Electronics", sales_channel: "Online Store", sales_amount: 34500, profit: 9200, dq_status: "PASSED" },
+                    { order_id: "SO-2026-002", order_date: "2026-06-12", product_category: "Appliances", sales_channel: "Retail", sales_amount: 18900, profit: 4700, dq_status: "PASSED" },
+                    { order_id: "SO-2026-003", order_date: "2026-06-11", product_category: "Electronics", sales_channel: "Enterprise Direct", sales_amount: 125000, profit: 38000, dq_status: "PASSED" },
+                    { order_id: "SO-2026-004", order_date: "2026-06-11", product_category: "Furniture", sales_channel: "Wholesale", sales_amount: 42000, profit: 11500, dq_status: "PASSED" },
+                    { order_id: "SO-2026-005", order_date: "2026-06-10", product_category: "Office Supplies", sales_channel: "Online Store", sales_amount: 8600, profit: 2400, dq_status: "PASSED" }
+                  ]
+                }
               }
             },
             warnings: []
           };
         }
+        const baseSpec = reqBody.spec?.widgets?.length >= 8 ? reqBody.spec : {
+          title: "Executive Student Quality Cockpit",
+          description: "สรุปคะแนนเฉลี่ย ความสัมพันธ์ชั่วโมงเรียน และการกระจายตัวของระดับผลการเรียน",
+          insights: "คะแนนเฉลี่ยรวมระดับสถาบันอยู่ที่ 78.4 โดยวิชา Machine Learning มีผลสัมฤทธิ์สูงสุด (91.5) และอัตราผ่านเกณฑ์รวมแตะ 94.2% ทั้งนี้ตรวจพบนักศึกษากลุ่มเฝ้าระวัง 136 คน (ชั่วโมงเรียนเฉลี่ยต่ำกว่า 3.5 ชม./สัปดาห์) ซึ่งมีค่าสัมประสิทธิ์สัมพันธ์โดยตรงกับระดับคะแนน",
+          filters: [
+            { id: "f1", type: "select", column: "course", label: "รายวิชา" },
+            { id: "f2", type: "select", column: "semester", label: "ภาคการศึกษา" },
+            { id: "f3", type: "select", column: "faculty", label: "คณะ" }
+          ],
+          widgets: [
+            { id: "w1", type: "kpi", title: "คะแนนเฉลี่ยรวม (Overall Score)", metric: { agg: "avg", column: "score" }, format: "number", layout: { x: 0, y: 0, w: 3, h: 2 } },
+            { id: "w2", type: "kpi", title: "จำนวนนักศึกษา (Enrolled Students)", metric: { agg: "count_distinct", column: "student_id" }, format: "number", layout: { x: 3, y: 0, w: 3, h: 2 } },
+            { id: "w3", type: "kpi", title: "อัตราการผ่านเกณฑ์ (Pass Rate)", metric: { agg: "avg", column: "pass_rate" }, format: "percent", layout: { x: 6, y: 0, w: 3, h: 2 } },
+            { id: "w4", type: "kpi", title: "ชั่วโมงเรียนเฉลี่ย (Study Hours/Wk)", metric: { agg: "avg", column: "study_hours" }, format: "number", layout: { x: 9, y: 0, w: 3, h: 2 } },
+            { id: "w5", type: "bar", title: "คะแนนเฉลี่ยจำแนกตามรายวิชา (Mean Score by Course)", x: "course", metric: { agg: "avg", column: "score" }, sort: "desc", limit: 10, layout: { x: 0, y: 2, w: 6, h: 4 } },
+            { id: "w6", type: "line", title: "แนวโน้มชั่วโมงเรียนกับผลสัมฤทธิ์รายสัปดาห์ (Study Hours Trend)", x: "week", metric: { agg: "avg", column: "study_hours" }, time_grain: "week", layout: { x: 6, y: 2, w: 6, h: 4 } },
+            { id: "w7", type: "donut", title: "สัดส่วนระดับผลการเรียน (Grade Distribution)", x: "grade_tier", metric: { agg: "count", column: null }, layout: { x: 0, y: 6, w: 4, h: 4 } },
+            { id: "w8", type: "table", title: "ข้อมูลนักศึกษาและผลการประเมินความเสี่ยง (Student Academic Records)", columns: ["student_id", "course", "score", "study_hours", "semester", "academic_status"], limit: 20, layout: { x: 4, y: 6, w: 8, h: 4 } }
+          ]
+        };
         return {
-          spec: {
-            title: "Executive Student Quality Cockpit",
-            description: "สรุปคะแนนเฉลี่ยและความสมบูรณ์ของข้อมูล",
-            filters: [
-              { id: "f1", type: "select", column: "course", label: "รายวิชา" },
-              { id: "f2", type: "select", column: "semester", label: "ภาคการศึกษา" }
-            ],
-            widgets: [
-              { id: "w1", type: "kpi", title: "คะแนนเฉลี่ยรวม", metric: { agg: "avg", column: "score" }, format: "number", layout: { x: 0, y: 0, w: 3, h: 2 } },
-              { id: "w2", type: "kpi", title: "จำนวนนักศึกษาทั้งหมด", metric: { agg: "count_distinct", column: "student_id" }, format: "number", layout: { x: 3, y: 0, w: 3, h: 2 } },
-              { id: "w3", type: "bar", title: "คะแนนเฉลี่ยแยกตามรายวิชา", x: "course", metric: { agg: "avg", column: "score" }, sort: "desc", limit: 10, layout: { x: 0, y: 2, w: 6, h: 4 } },
-              { id: "w4", type: "table", title: "ตัวอย่างข้อมูลนักศึกษา", columns: ["student_id", "course", "score", "semester", "study_hours"], limit: 20, layout: { x: 6, y: 2, w: 6, h: 4 } }
-            ]
-          },
+          spec: baseSpec,
           data: {
             rows_total: 9400,
             rows_after_filter: 9400,
             column_labels: {},
             filter_options: {
               course: { values: ["Python Programming", "Data Warehouse", "Database Systems", "Machine Learning"] },
-              semester: { values: ["1/2026", "2/2026"] }
+              semester: { values: ["1/2026", "2/2026"] },
+              faculty: { values: ["วิศวกรรมศาสตร์", "วิทยาการคอมพิวเตอร์", "เทคโนโลยีสารสนเทศ"] }
             },
             widgets: {
-              w1: { value: 78.4 },
-              w2: { value: 2350 },
-              w3: { rows: [{ x: "Data Warehouse", value: 81.4 }, { x: "Python Programming", value: 78.2 }, { x: "Database Systems", value: 75.6 }, { x: "Machine Learning", value: 91.5 }], series: ["value"] },
-              w4: {
-                columns: ["student_id", "course", "score", "semester", "study_hours"],
+              w1: { value: 78.4, change_pct: 3.2 },
+              w2: { value: 2350, change_pct: 5.8 },
+              w3: { value: 94.2, change_pct: 2.1 },
+              w4: { value: 4.8, change_pct: 8.5 },
+              w5: { rows: [{ x: "Machine Learning", value: 91.5 }, { x: "Data Warehouse", value: 81.4 }, { x: "Python Programming", value: 78.2 }, { x: "Database Systems", value: 75.6 }], series: ["value"] },
+              w6: { rows: [{ x: "W1", value: 3.8 }, { x: "W2", value: 4.2 }, { x: "W3", value: 4.5 }, { x: "W4", value: 4.9 }, { x: "W5", value: 5.3 }, { x: "W6", value: 5.6 }], series: ["value"] },
+              w7: { rows: [{ x: "Grade A (80-100)", value: 658 }, { x: "Grade B (70-79)", value: 987 }, { x: "Grade C (60-69)", value: 517 }, { x: "Grade D/F (<60)", value: 188 }], series: ["value"] },
+              w8: {
+                columns: ["student_id", "course", "score", "study_hours", "semester", "academic_status"],
                 rows: [
-                  { student_id: "65001", course: "Python Programming", score: 78.5, semester: "1/2026", study_hours: 4.5 },
-                  { student_id: "65002", course: "Data Warehouse", score: 88.0, semester: "1/2026", study_hours: 6.0 },
-                  { student_id: "65003", course: "Database Systems", score: 72.0, semester: "1/2026", study_hours: 3.5 }
+                  { student_id: "65001", course: "Machine Learning", score: 94.5, study_hours: 6.5, semester: "1/2026", academic_status: "EXCELLENT" },
+                  { student_id: "65002", course: "Data Warehouse", score: 88.0, study_hours: 6.0, semester: "1/2026", academic_status: "GOOD" },
+                  { student_id: "65003", course: "Python Programming", score: 78.5, study_hours: 4.5, semester: "1/2026", academic_status: "NORMAL" },
+                  { student_id: "65004", course: "Database Systems", score: 72.0, study_hours: 3.5, semester: "1/2026", academic_status: "NORMAL" },
+                  { student_id: "65005", course: "Database Systems", score: 58.0, study_hours: 2.0, semester: "1/2026", academic_status: "AT RISK" }
                 ]
               }
             }
