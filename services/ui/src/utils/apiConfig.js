@@ -23,9 +23,13 @@ export function getApiBaseUrl() {
   if (_runtimeApiBaseUrl !== null) {
     return _runtimeApiBaseUrl;
   }
+  // On Vercel deployments, use relative same-origin routing so requests flow through Vercel's edge proxy to Singapore
+  if (typeof window !== "undefined" && window.location.hostname.includes("vercel.app")) {
+    return "";
+  }
   const envUrl = (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
                  (typeof window !== "undefined" && window.__DATA_SERVE_API_URL__);
-  if (envUrl && typeof envUrl === "string" && envUrl.trim()) {
+  if (envUrl && typeof envUrl === "string" && envUrl.trim() && !envUrl.includes("dataserve-api.onrender.com")) {
     return envUrl.trim().replace(/\/+$/, "");
   }
   return "";
