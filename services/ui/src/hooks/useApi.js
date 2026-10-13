@@ -242,26 +242,8 @@ export function useApi(endpoint, options = {}) {
   const fetchData = useCallback(async () => {
     if (!enabled) return;
 
-    let fallbackData = null;
-    try {
-      const snapshot = await getPrecomputedSnapshot();
-      fallbackData = resolveSnapshotForEndpoint(endpoint, snapshot);
-      if (fallbackData !== null) {
-        setData((current) => current || fallbackData);
-        setIsPrecomputed(true);
-        setSnapshotMeta({
-          run_id: snapshot.run_id,
-          git_commit: snapshot.git_commit,
-          generated_at: snapshot.generated_at,
-          environment: snapshot.environment
-        });
-        setLoading(false);
-        setError(null);
-      }
-    } catch {}
-
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3500);
+    const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s timeout for live database responses
 
     try {
       const fullUrl = resolveApiUrl(`${API_BASE}${endpoint}`);
@@ -279,15 +261,6 @@ export function useApi(endpoint, options = {}) {
       });
       clearTimeout(timeoutId);
 
-      if (res.status === 401 && window.location.pathname !== "/login") {
-        if (fallbackData !== null) {
-          setData(fallbackData);
-          setIsPrecomputed(true);
-          setLoading(false);
-          return fallbackData;
-        }
-      }
-
       const contentType = res.headers?.get("content-type") || "";
       if (res.ok && (!contentType || contentType.includes("application/json"))) {
         const json = await res.json();
@@ -298,23 +271,10 @@ export function useApi(endpoint, options = {}) {
         return json;
       }
 
-      // If backend returned non-200, retain fallback
-      if (fallbackData !== null) {
-        setData(fallbackData);
-        setIsPrecomputed(true);
-        setError(null);
-        return fallbackData;
-      }
       throw new Error(`HTTP ${res.status}`);
     } catch (err) {
       clearTimeout(timeoutId);
-      // Graceful SWR fallback on cold-start timeout or network glitch
-      if (fallbackData !== null) {
-        setData(fallbackData);
-        setIsPrecomputed(true);
-        setError(null);
-        return fallbackData;
-      }
+      console.warn(`[useApi] Live API fetch error on ${endpoint}:`, err);
       setError(err.name === "AbortError" ? "Backend timeout (cold start)" : err.message);
       return null;
     } finally {

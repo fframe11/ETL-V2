@@ -1,7 +1,6 @@
 import { Icon } from '../components/UiIcons';
 import React, { useState, useEffect } from "react";
 import { PageHeader, InfoHint, LearnMore } from "../components/ui";
-import { getPrecomputedSnapshot } from "../hooks/useApi";
 import { fetchWithTimeout } from "../utils/apiConfig";
 import "./WhiteBoxPipeline.css";
 
@@ -61,19 +60,6 @@ export default function WhiteBoxPipeline() {
   }, []);
 
   const loadOverview = async () => {
-    // Instant snapshot hydration
-    getPrecomputedSnapshot().then((snap) => {
-      if (snap?.whitebox_state) {
-        setDatasetName((prev) => prev || snap.whitebox_state.dataset_name || "student_course_scores");
-      }
-      if (snap?.whitebox_profile) {
-        setProfileData((prev) => prev || snap.whitebox_profile);
-      }
-      if (snap?.whitebox_multi_table?.tables) {
-        setJoinTables((prev) => (prev.length ? prev : snap.whitebox_multi_table.tables));
-      }
-    }).catch(() => {});
-
     try {
       const st = await fetchWithTimeout("/api/v1/whitebox/state");
       if (st.ok) {
@@ -123,25 +109,8 @@ export default function WhiteBoxPipeline() {
       const failed = Object.entries(data.stages || {}).filter(([, v]) => v.status === "FAILED").map(([k]) => k);
       if (failed.length) setError(`บางขั้นทำงานไม่สำเร็จ: ${failed.join(", ")}`);
     } catch (err) {
-      // Resilient fallback to precomputed snapshot for academic evaluators / offline test
-      const snap = await getPrecomputedSnapshot();
-      if (snap?.whitebox_profile) setProfileData((prev) => prev || snap.whitebox_profile);
-      if (snap?.ground_truth_benchmark) setBenchmarkResult((prev) => prev || snap.ground_truth_benchmark);
-      if (snap?.pipeline_execution) {
-        setExecutionResult((prev) => prev || {
-          total_rows_ingested: snap.pipeline_execution.total_rows || 10100,
-          clean_rows: snap.pipeline_execution.clean_rows || 9400,
-          review_rows: snap.pipeline_execution.review_rows || 450,
-          quarantine_rows: snap.pipeline_execution.quarantine_rows || 250,
-          raw_quality_score_pct: snap.pipeline_execution.quality_score_pct || 93.07,
-          quarantine_rate_pct: 2.48,
-          rule_impact: [],
-          column_impact: []
-        });
-      }
-      if (!snap || (!snap.whitebox_profile && !snap.pipeline_execution)) {
-        setError(err.message || "รันทุกขั้นไม่สำเร็จ");
-      }
+      console.error("Pipeline run-all failed:", err);
+      setError(err.message || "รันทุกขั้นไม่สำเร็จ");
     } finally {
       setAutoRunning(false);
     }
@@ -211,16 +180,11 @@ export default function WhiteBoxPipeline() {
         const data = await res.json();
         setProfileData(data);
       } else {
-        const snap = await getPrecomputedSnapshot();
-        if (snap?.whitebox_profile) setProfileData((prev) => prev || snap.whitebox_profile);
+        const errJson = await res.json().catch(() => ({}));
+        setError(errJson.detail || "สร้าง Data Profile ไม่สำเร็จ");
       }
     } catch (err) {
-      const snap = await getPrecomputedSnapshot();
-      if (snap?.whitebox_profile) {
-        setProfileData((prev) => prev || snap.whitebox_profile);
-      } else {
-        setError(err.message);
-      }
+      setError(err.message || "ไม่สามารถเชื่อมต่อระบบ Profile ได้");
     } finally {
       setProfileLoading(false);
     }
@@ -242,28 +206,15 @@ export default function WhiteBoxPipeline() {
         })
       }, 20000);
       if (!res.ok) {
-        const snap = await getPrecomputedSnapshot();
-        if (snap?.rules_proposals?.proposals) {
-          setRecommendations(snap.rules_proposals.proposals);
-          setRulesGenerated(true);
-          setActiveStep(3);
-          return;
-        }
-        throw new Error("สร้างกฎที่เสนอไม่สำเร็จ");
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || "สร้างกฎที่เสนอไม่สำเร็จ");
       }
       const data = await res.json();
       setRecommendations(data.recommendations);
       setRulesGenerated(true);
       setActiveStep(3);
     } catch (err) {
-      const snap = await getPrecomputedSnapshot();
-      if (snap?.rules_proposals?.proposals) {
-        setRecommendations(snap.rules_proposals.proposals);
-        setRulesGenerated(true);
-        setActiveStep(3);
-      } else {
-        setError(err.message);
-      }
+      setError(err.message);
     } finally {
       setRecsLoading(false);
     }
@@ -399,25 +350,14 @@ export default function WhiteBoxPipeline() {
     try {
       const res = await fetchWithTimeout("/api/v1/whitebox/benchmark", {}, 10000);
       if (!res.ok) {
-        const snap = await getPrecomputedSnapshot();
-        if (snap?.ground_truth_benchmark) {
-          setBenchmarkResult(snap.ground_truth_benchmark);
-          setActiveStep(5);
-          return;
-        }
-        throw new Error("โหลดผล Benchmark ไม่สำเร็จ");
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || "โหลดผล Benchmark ไม่สำเร็จ");
       }
       const data = await res.json();
       setBenchmarkResult(data);
       setActiveStep(5);
     } catch (err) {
-      const snap = await getPrecomputedSnapshot();
-      if (snap?.ground_truth_benchmark) {
-        setBenchmarkResult(snap.ground_truth_benchmark);
-        setActiveStep(5);
-      } else {
-        setError(err.message);
-      }
+      setError(err.message);
     } finally {
       setBenchmarkLoading(false);
     }

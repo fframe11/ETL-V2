@@ -1,6 +1,6 @@
 import { Icon } from '../components/UiIcons';
 import React, { useState, useEffect } from 'react';
-import { useApi, postApi, getPrecomputedSnapshot } from '../hooks/useApi';
+import { useApi, postApi } from '../hooks/useApi';
 import { fetchWithTimeout } from '../utils/apiConfig';
 import TileCard from "../components/ui/TileCard";
 import { PageHeader, InfoHint, NextStepLink } from "../components/ui";
@@ -167,23 +167,7 @@ export default function Pipeline() {
   const activeOutlierCol = wbState?.active_rules?.find(r => r.rule_type === "auto_iqr")?.field || "";
 
   useEffect(() => {
-    // Instant hydration from precomputed snapshot (0s delay)
-    getPrecomputedSnapshot().then((snap) => {
-      if (snap?.ground_truth_benchmark) {
-        setBenchmarkData((prev) => prev || snap.ground_truth_benchmark);
-      }
-      if (snap?.whitebox_state) {
-        setWbState((prev) => {
-          if (prev) return prev;
-          if (snap.whitebox_state.review_action) setReviewAction(snap.whitebox_state.review_action);
-          if (snap.whitebox_state.upstream_ticket_sent !== undefined) setUpstreamTicketSent(snap.whitebox_state.upstream_ticket_sent);
-          if (snap.whitebox_state.row_decisions) setRowDecisions(snap.whitebox_state.row_decisions);
-          return snap.whitebox_state;
-        });
-      }
-    }).catch(() => {});
-
-    // Asynchronous background live sync (3.5s timeout)
+    // Pure live sync from backend API
     fetchWithTimeout('/api/v1/whitebox/benchmark')
       .then(r => (r.ok ? r.json() : null))
       .then((d) => {
@@ -208,12 +192,6 @@ export default function Pipeline() {
   useEffect(() => {
     const zoneParam = selectedZone.toLowerCase();
     setZoneLoading(true);
-
-    // Instant snapshot hydration for zone table
-    getPrecomputedSnapshot().then((snap) => {
-      const zd = snap?.whitebox_preview_zones?.[zoneParam] || snap?.whitebox_preview_zones?.all;
-      if (zd) setZoneData((prev) => prev || zd);
-    }).catch(() => {});
 
     const handle = setTimeout(() => {
       const params = new URLSearchParams({ limit: "15" });

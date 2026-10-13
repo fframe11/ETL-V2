@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { InfoHint } from "./ui";
+import { resolveApiUrl } from "../utils/apiConfig";
 
 const PAGE_SIZE = 50;
 
@@ -9,7 +10,7 @@ const LAYERS = [
 ];
 
 const formatCell = (v) => {
-  if (v === null || v === undefined) return "—";
+  if (v === null || v === undefined) return "-";
   if (typeof v === "object") return JSON.stringify(v);
   return String(v);
 };
@@ -37,13 +38,17 @@ export default function RunRecordsPanel({ tableName, runId, initialLayer = "acti
       const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
       if (search.trim()) params.set("search", search.trim());
       if (onlyThisRun && runId) params.set("run_id", runId);
-      fetch(`/api/v1/export/records/${layer}/${encodeURIComponent(tableName)}?${params.toString()}`, { credentials: "same-origin" })
+      const recordUrl = resolveApiUrl(`/api/v1/export/records/${layer}/${encodeURIComponent(tableName)}?${params.toString()}`);
+      fetch(recordUrl, { credentials: "include" })
         .then(async (r) => {
           if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
           return r.json();
         })
         .then(setData)
-        .catch((e) => { setData(null); setError(e.message); })
+        .catch((e) => {
+          setData(null);
+          setError(e.message);
+        })
         .finally(() => setLoading(false));
     }, 300);
     return () => clearTimeout(handle);
@@ -137,7 +142,7 @@ export default function RunRecordsPanel({ tableName, runId, initialLayer = "acti
       {data && matched > PAGE_SIZE && (
         <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "8px", marginTop: "10px", fontSize: "12px" }}>
           <button type="button" className="ui-btn ui-btn-secondary" disabled={offset === 0 || loading} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>ก่อนหน้า</button>
-          <span>แถว {(offset + 1).toLocaleString()}–{Math.min(offset + PAGE_SIZE, matched).toLocaleString()}</span>
+          <span>แถว {(offset + 1).toLocaleString()}-{Math.min(offset + PAGE_SIZE, matched).toLocaleString()}</span>
           <button type="button" className="ui-btn ui-btn-secondary" disabled={offset + PAGE_SIZE >= matched || loading} onClick={() => setOffset(offset + PAGE_SIZE)}>ถัดไป</button>
         </div>
       )}

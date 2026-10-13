@@ -1,7 +1,7 @@
 import { Icon } from '../components/UiIcons';
 import React, { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useApi, postApi, getPrecomputedSnapshot } from "../hooks/useApi";
+import { useApi, postApi } from "../hooks/useApi";
 import { fetchWithTimeout, getAuthHeaders } from "../utils/apiConfig";
 import ConfirmationModal from "../components/ConfirmationModal";
 import TileCard from "../components/ui/TileCard";
