@@ -10,7 +10,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { login } = useAuth();
+  const { login, loginAsDemo } = useAuth();
 
   const from = location.state?.from?.pathname || "/dashboard";
 
@@ -22,7 +22,7 @@ export default function Login() {
       await login(username, password);
       navigate(from, { replace: true });
     } catch (err) {
-      setError(err.message || "Invalid credentials. Verify your access details.");
+      setError(err.message || "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
     } finally {
       setLoading(false);
     }
@@ -32,15 +32,17 @@ export default function Login() {
     <div className="gs-login-layout">
       <div className="gs-login-form-card">
         <div className="gs-login-logo">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-          </svg>
-          <span className="gs-login-brand-text">DataServe Platform</span>
+          <div className="gs-login-logo-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+          </div>
+          <span className="gs-login-brand-text">Data Serve</span>
         </div>
 
         <div className="gs-login-form-header">
-          <h2>Admin Login</h2>
-          <p>Access the governance & observability control plane</p>
+          <h2>Sign In</h2>
+          <p>Data Serve Platform & Quality Management</p>
         </div>
 
         {error && (
@@ -60,7 +62,7 @@ export default function Login() {
               <input
                 id="username"
                 type="text"
-                placeholder="Enter username"
+                placeholder="Username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
@@ -77,7 +79,7 @@ export default function Login() {
               <input
                 id="password"
                 type="password"
-                placeholder="Enter secure password"
+                placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -89,16 +91,25 @@ export default function Login() {
 
           <button type="submit" className="gs-login-submit-btn" disabled={loading}>
             {loading ? (
-              <span className="gs-login-loading">Authenticating...</span>
+              <span className="gs-login-loading">Signing in...</span>
             ) : (
-              <span>Login</span>
+              <span>Sign In</span>
             )}
           </button>
-        </form>
 
-        <div className="gs-login-bottom-info">
-          <span>Protected by DataServe Security Agent • Session Cookie v2.0</span>
-        </div>
+          <div className="gs-login-demo-action">
+            <button
+              type="button"
+              onClick={() => {
+                loginAsDemo();
+                navigate(from, { replace: true });
+              }}
+              className="gs-login-demo-btn"
+            >
+              เข้าชมโหมด Demo
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

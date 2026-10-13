@@ -2,7 +2,9 @@ import { Icon } from '../components/UiIcons';
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
+import { resolveApiUrl } from '../utils/apiConfig';
 import { WORKFLOW_STEPS, getPage } from '../config/pages';
+import AuditProvenanceNotice from '../components/AuditProvenanceNotice';
 import "./Home.css";
 
 export default function Home() {
@@ -16,7 +18,7 @@ export default function Home() {
   React.useEffect(() => {
     const fetchCounts = async () => {
       try {
-        const schemaRes = await fetch("/api/v1/schema/proposals");
+        const schemaRes = await fetch(resolveApiUrl("/api/v1/schema/proposals"), { credentials: "include" });
         if (schemaRes.ok) {
           const schemaData = await schemaRes.json();
           const pendingSchema = schemaData.proposals ? schemaData.proposals.filter(p => p.status === "PENDING") : [];
@@ -27,7 +29,7 @@ export default function Home() {
       }
 
       try {
-        const aiRes = await fetch("/api/v1/rules/ai-proposals");
+        const aiRes = await fetch(resolveApiUrl("/api/v1/rules/ai-proposals"), { credentials: "include" });
         if (aiRes.ok) {
           const aiData = await aiRes.json();
           setAiRulesCount(aiData.count || 0);
@@ -42,16 +44,23 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
-  const kafkaOnline = services?.['Kafka Broker']?.status === 'online';
+  const kafkaStatus = services?.['Kafka Broker']?.status;
+  const kafkaOnline = kafkaStatus === 'online';
+  const kafkaNotConfigured = kafkaStatus === 'not_configured' || kafkaStatus === 'not_deployed';
   const postgresOnline = services?.['Postgres DB']?.status === 'online';
   const restOnline = services?.['REST Ingestion API']?.status === 'online';
 
   let overallStatus = "OFFLINE";
   let statusClass = "offline";
 
-  if (kafkaOnline && postgresOnline && restOnline) {
-    overallStatus = "ACTIVE";
-    statusClass = "online";
+  if (postgresOnline && restOnline) {
+    if (kafkaOnline) {
+      overallStatus = "ACTIVE";
+      statusClass = "online";
+    } else {
+      overallStatus = "ACTIVE (CLOUD)";
+      statusClass = "online";
+    }
   } else if (kafkaOnline || postgresOnline || restOnline) {
     overallStatus = "PARTIAL";
     statusClass = "warning";
@@ -59,23 +68,35 @@ export default function Home() {
 
   return (
     <div className="gs-home">
+      {kpis.isPrecomputed && (
+        <div style={{ padding: "0 48px", paddingTop: "20px" }}>
+          <AuditProvenanceNotice
+            commit={kpis.snapshotMeta?.git_commit?.slice(0, 7) || "6c7fe8b"}
+            environment={kpis.snapshotMeta?.environment}
+          />
+        </div>
+      )}
       {/* Centered Hero Section */}
       <section className="gs-hero">
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-          <span className="gs-hero-badge">DataServe Observability Platform</span>
+          <span className="gs-hero-badge">Data Serve Platform</span>
           <h1 className="gs-hero-title">
             More than observability.<br />
             <span className="gs-hero-accent">Complete Data Quality</span> Management.
           </h1>
           <p className="gs-hero-desc">
-            ตรวจ คัดแยก และติดตามคุณภาพข้อมูลในที่เดียว
+            ตรวจ คัดแยก และติดตาม Data Quality ครบวงจรในที่เดียว
           </p>
           <div className="gs-hero-actions">
-            <Link to="/ingestion" className="gs-btn-primary gs-btn-lg" style={{ background: "#2563EB", display: "inline-flex", alignItems: "center", gap: "8px", color: "#FFFFFF", fontWeight: 700 }}>
-              <span><Icon name="bolt" /> เริ่มนำเข้าข้อมูล</span>
+            <Link to="/execution-results" className="gs-btn-primary gs-btn-lg" style={{ background: "#0F172A", display: "inline-flex", alignItems: "center", gap: "8px", color: "#FFFFFF", fontWeight: 700 }}>
+              <span><Icon name="shield" /> ผลการทดสอบระบบ</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginLeft: '4px' }}><polyline points="9 18 15 12 9 6"/></svg>
+            </Link>
+            <Link to="/ingestion" className="gs-btn-ghost" style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+              <span><Icon name="bolt" /> เริ่มต้น Ingest Data</span>
             </Link>
             <Link to="/guide" className="gs-btn-ghost">
-              <span>อ่านคู่มือ</span>
+              <span>คู่มือการใช้งาน</span>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginLeft: '6px' }}><polyline points="9 18 15 12 9 6"/></svg>
             </Link>
           </div>
@@ -88,24 +109,24 @@ export default function Home() {
               <span className={`gs-panel-status ${statusClass}`}>{overallStatus}</span>
             </div>
             <div className="gs-panel-row">
-              <span className={`gs-panel-dot ${services?.['Kafka Broker']?.status === 'online' ? 'online' : 'offline'}`}></span>
+              <span className={`gs-panel-dot ${kafkaOnline ? 'online' : (kafkaNotConfigured ? 'neutral' : 'offline')}`}></span>
               <span className="gs-panel-name">Kafka reddit_streaming</span>
-              <span className={`gs-panel-badge ${services?.['Kafka Broker']?.status === 'online' ? 'online' : 'offline'}`}>
-                {services?.['Kafka Broker']?.status === 'online' ? 'Ingesting' : 'Offline'}
+              <span className={`gs-panel-badge ${kafkaOnline ? 'online' : (kafkaNotConfigured ? 'neutral' : 'offline')}`}>
+                {kafkaOnline ? 'Ingesting' : (kafkaNotConfigured ? 'Not Configured (On-Prem)' : 'Offline')}
               </span>
             </div>
             <div className="gs-panel-row">
-              <span className={`gs-panel-dot ${services?.['Postgres DB']?.status === 'online' ? 'online' : 'offline'}`}></span>
+              <span className={`gs-panel-dot ${postgresOnline ? 'online' : 'offline'}`}></span>
               <span className="gs-panel-name">Postgres JDBC Ingest</span>
-              <span className={`gs-panel-badge ${services?.['Postgres DB']?.status === 'online' ? 'online' : 'offline'}`}>
-                {services?.['Postgres DB']?.status === 'online' ? 'Idle' : 'Offline'}
+              <span className={`gs-panel-badge ${postgresOnline ? 'online' : 'offline'}`}>
+                {postgresOnline ? 'Active' : 'Offline'}
               </span>
             </div>
             <div className="gs-panel-row">
-              <span className={`gs-panel-dot ${services?.['REST Ingestion API']?.status === 'online' ? 'online' : 'offline'}`}></span>
+              <span className={`gs-panel-dot ${restOnline ? 'online' : 'offline'}`}></span>
               <span className="gs-panel-name">REST telemetry_api</span>
-              <span className={`gs-panel-badge ${services?.['REST Ingestion API']?.status === 'online' ? 'online' : 'offline'}`}>
-                {services?.['REST Ingestion API']?.status === 'online' ? 'Active' : 'Offline'}
+              <span className={`gs-panel-badge ${restOnline ? 'online' : 'offline'}`}>
+                {restOnline ? 'Active' : 'Offline'}
               </span>
             </div>
           </div>
@@ -153,21 +174,30 @@ export default function Home() {
               Failed to connect to health check API service.
             </div>
           ) : services ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px' }}>
-              {Object.entries(services).map(([name, info]) => (
-                <div key={name} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
-                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: info.status === 'online' ? 'var(--accent-green)' : 'var(--accent-red)' }} />
-                  <strong style={{ fontSize: '12.5px', textTransform: 'capitalize', color: 'var(--text-main)' }}>{name}</strong>
-                  <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginLeft: 'auto', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>{info.status}</span>
-                </div>
-              ))}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: '12px' }}>
+              {Object.entries(services).map(([name, info]) => {
+                const isOnline = info.status === 'online';
+                const isNotConfig = info.status === 'not_configured' || info.status === 'not_deployed';
+                const dotColor = isOnline ? 'var(--accent-green)' : (isNotConfig ? '#94A3B8' : 'var(--accent-red)');
+                const statusLabel = isOnline ? 'Online' : (isNotConfig ? 'Not Configured (On-Prem)' : 'Offline');
+                const statusColor = isOnline ? 'var(--accent-green)' : (isNotConfig ? 'var(--text-muted)' : 'var(--accent-red)');
+                return (
+                  <div key={name} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
+                    <strong style={{ fontSize: '12.5px', textTransform: 'capitalize', color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</strong>
+                    <span style={{ fontSize: '10px', color: statusColor, marginLeft: 'auto', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                      {statusLabel}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           ) : null}
         </div>
       </div>
 
       <section className="home-block">
-        <h2 className="home-block-title">4 ขั้นตอน</h2>
+        <h2 className="home-block-title">ETL Pipeline Workflow 4 ขั้นตอน</h2>
         <div className="home-steps">
           {WORKFLOW_STEPS.map((p) => (
             <Link key={p.key} to={p.path} className="home-step">
@@ -180,12 +210,12 @@ export default function Home() {
       </section>
 
       <section className="home-block">
-        <h2 className="home-block-title">เริ่มจากบทบาทของคุณ</h2>
+        <h2 className="home-block-title">เลือกใช้งานตาม Role</h2>
         <div className="home-roles">
           {[
             { role: "Data Engineer", page: "ingestion" },
             { role: "Data Steward / Compliance", page: "schema" },
-            { role: "ผู้บริหาร", page: "dashboard" },
+            { role: "Business & Management", page: "dashboard" },
             { role: "Analyst / ML", page: "export" }
           ].map(({ role, page }) => {
             const p = getPage(page);

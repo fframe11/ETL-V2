@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════
-   GRIDGEIST LOGIN — SDOQAP Clerk White/Purple Centered
+   GRIDGEIST LOGIN — Data Serve Clerk White/Purple Centered
    ═══════════════════════════════════════════════════ */
 
 .gs-login-layout {
@@ -52,8 +52,20 @@
 .gs-login-logo {
   display: flex;
   align-items: center;
-  gap: 8px;
-  color: var(--accent-purple);
+  gap: 10px;
+}
+
+.gs-login-logo-icon {
+  width: 32px;
+  height: 32px;
+  background: #FF3621;
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgba(255, 54, 33, 0.35);
 }
 
 .gs-login-brand-text {
@@ -183,6 +195,34 @@
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.gs-login-demo-action {
+  display: flex;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.gs-login-demo-btn {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gs-login-demo-btn:hover {
+  background: var(--bg-primary);
+  color: var(--text-main);
+  border-color: var(--text-muted);
 }
 
 .gs-login-bottom-info {

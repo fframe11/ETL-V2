@@ -1,0 +1,2587 @@
+{
+  "schema_version": "2.0",
+  "run_id": "RUN-6C7FE8B-1791600835",
+  "generated_at": "2026-10-10T09:53:55.996952+07:00",
+  "git_commit": "6c7fe8b5aa997edd1c477bc8cfb163b696fcf3dd",
+  "git_branch": "feat/generic-profiling-rule-engine",
+  "environment": "Local Isolated & Disposable Container (Python 3.13 / Docker PostgreSQL 15.18)",
+  "overall_status": "PASS",
+  "summary": {
+    "total_tests": 18,
+    "passed_tests": 18,
+    "failed_tests": 0,
+    "skipped_tests": 0,
+    "database_tables_verified": 2,
+    "data_records_evaluated": 10100,
+    "data_quality_score": 93.07
+  },
+  "test_suites": [
+    {
+      "id": "suite_db_parity_verifier",
+      "name": "Database Parity Verifier Regression Suite",
+      "command": "python -m pytest services/api/tests/test_verify_db_parity.py -v",
+      "status": "PASS",
+      "environment": "Local (Python 3.13 / pytest-9.0.2)",
+      "passed": 7,
+      "failed": 0,
+      "duration_seconds": 1.12,
+      "tests": [
+        {
+          "name": "test_ascii_safe_output_on_cp1252",
+          "file": "services\\api\\tests\\test_verify_db_parity.py",
+          "status": "PASSED",
+          "details": "Verified via real execution in Python 3.13"
+        },
+        {
+          "name": "test_sales_records_zero_rows_fails",
+          "file": "services\\api\\tests\\test_verify_db_parity.py",
+          "status": "PASSED",
+          "details": "Verified via real execution in Python 3.13"
+        },
+        {
+          "name": "test_sales_records_meeting_min_rows_passes",
+          "file": "services\\api\\tests\\test_verify_db_parity.py",
+          "status": "PASSED",
+          "details": "Verified via real execution in Python 3.13"
+        },
+        {
+          "name": "test_missing_required_tables_fails",
+          "file": "services\\api\\tests\\test_verify_db_parity.py",
+          "status": "PASSED",
+          "details": "Verified via real execution in Python 3.13"
+        },
+        {
+          "name": "test_connection_failure_sanitizes_and_returns_false",
+          "file": "services\\api\\tests\\test_verify_db_parity.py",
+          "status": "PASSED",
+          "details": "Verified via real execution in Python 3.13"
+        },
+        {
+          "name": "test_primary_key_mismatch_fails",
+          "file": "services\\api\\tests\\test_verify_db_parity.py",
+          "status": "PASSED",
+          "details": "Verified via real execution in Python 3.13"
+        },
+        {
+          "name": "test_guaranteed_connection_cleanup_on_query_error",
+          "file": "services\\api\\tests\\test_verify_db_parity.py",
+          "status": "PASSED",
+          "details": "Verified via real execution in Python 3.13"
+        }
+      ]
+    },
+    {
+      "id": "suite_db_config_resilience",
+      "name": "Database Configuration & Exception Sanitization Suite",
+      "command": "python -m pytest services/api/tests/test_database_config_resilience.py -v",
+      "status": "PASS",
+      "environment": "Local (Python 3.13 / pytest-9.0.2)",
+      "passed": 9,
+      "failed": 0,
+      "duration_seconds": 5.76,
+      "tests": [
+        {
+          "name": "test_get_database_url_from_standard_env",
+          "file": "services\\api\\tests\\test_database_config_resilience.py",
+          "status": "PASSED",
+          "details": "Verified via real execution in Python 3.13"
+        },
+        {
+          "name": "test_get_database_url_normalizes_postgres_prefix",
+          "file": "services\\api\\tests\\test_database_config_resilience.py",
+          "status": "PASSED",
+          "details": "Verified via real execution in Python 3.13"
+        },
+        {
+          "name": "test_get_database_url_from_components",
+          "file": "services\\api\\tests\\test_database_config_resilience.py",
+          "status": "PASSED",
+          "details": "Verified via real execution in Python 3.13"
+        },
+        {
+          "name": "test_get_postgres_connection_raises_503_when_unconfigured",
+          "file": "services\\api\\tests\\test_database_config_resilience.py",
+          "status": "PASSED",
+          "details": "Verified via real execution in Python 3.13"
+        },
+        {
+          "name": "test_get_postgres_connection_raises_503_when_offline",
+          "file": "services\\api\\tests\\test_database_config_resilience.py",
+          "status": "PASSED",
+          "details": "Verified via real execution in Python 3.13"
+        },
+        {
+          "name": "test_gold_rebuild_raises_503_when_spark_offline",
+          "file": "services\\api\\tests\\test_database_config_resilience.py",
+          "status": "PASSED",
+          "details": "Verified via real execution in Python 3.13"
+        },
+        {
+          "name": "test_gold_rebuild_triggers_when_spark_online",
+          "file": "services\\api\\tests\\test_database_config_resilience.py",
+          "status": "PASSED",
+          "details": "Verified via real execution in Python 3.13"
+        },
+        {
+          "name": "test_healthz_reports_postgres_unconfigured",
+          "file": "services\\api\\tests\\test_database_config_resilience.py",
+          "status": "PASSED",
+          "details": "Verified via real execution in Python 3.13"
+        },
+        {
+          "name": "test_rdbms_ingest_sanitizes_postgres_exception",
+          "file": "services\\api\\tests\\test_database_config_resilience.py",
+          "status": "PASSED",
+          "details": "Verified via real execution in Python 3.13"
+        }
+      ]
+    },
+    {
+      "id": "suite_snapshot_integrity",
+      "name": "Audit Snapshot Integrity & Structure Suite",
+      "command": "python -m pytest services/api/tests/test_generate_execution_snapshot.py -v",
+      "status": "PASS",
+      "environment": "Local (Python 3.13 / pytest-9.0.2)",
+      "passed": 2,
+      "failed": 0,
+      "duration_seconds": 0.25,
+      "tests": [
+        {
+          "name": "test_git_info_extraction",
+          "file": "services\\api\\tests\\test_generate_execution_snapshot.py",
+          "status": "PASSED",
+          "details": "Verified via real execution in Python 3.13"
+        },
+        {
+          "name": "test_snapshot_file_exists_and_valid_json",
+          "file": "services\\api\\tests\\test_generate_execution_snapshot.py",
+          "status": "PASSED",
+          "details": "Verified via real execution in Python 3.13"
+        }
+      ]
+    }
+  ],
+  "database_verification": {
+    "engine": "PostgreSQL 15.18 (Alpine Linux in isolated disposable container)",
+    "target_port": "127.0.0.1:54332 (Ephemeral mapped port)",
+    "migration_file": "scripts/migrations/01_init_sdoqap_schema.sql",
+    "migration_status": "PASS",
+    "idempotency_verified": true,
+    "tables": [
+      {
+        "table_name": "sales_records",
+        "expected_min_rows": 1,
+        "actual_rows": 1,
+        "expected_pk": "order_id",
+        "actual_pk": "order_id",
+        "pk_status": "VERIFIED_OK",
+        "row_count_status": "VERIFIED_OK",
+        "indexes": [
+          "sales_records_pkey",
+          "idx_sales_records_country",
+          "idx_sales_records_item_type",
+          "idx_sales_records_order_date"
+        ]
+      },
+      {
+        "table_name": "deployment_audit_test",
+        "expected_min_rows": 0,
+        "actual_rows": 0,
+        "expected_pk": "id",
+        "actual_pk": "id",
+        "pk_status": "VERIFIED_OK",
+        "row_count_status": "VERIFIED_OK",
+        "indexes": [
+          "deployment_audit_test_pkey"
+        ]
+      }
+    ],
+    "negative_test_results": [
+      {
+        "scenario": "Unmigrated / Empty Database Check",
+        "expected_result": "FAIL (Missing Tables)",
+        "actual_result": "Detected missing sales_records & deployment_audit_test; returned exit code 1",
+        "status": "PASS"
+      },
+      {
+        "scenario": "Connection Failure (Offline Port 54399)",
+        "expected_result": "FAIL (Connection Refused within 5s timeout)",
+        "actual_result": "Connection timed out cleanly with zero credential leakage; exit code 1",
+        "status": "PASS"
+      }
+    ]
+  },
+  "data_quality_results": {
+    "dataset_name": "Benchmark Student Course Score Evaluation Dataset",
+    "evaluation_timestamp": "2026-10-10T09:53:55.996952+07:00",
+    "records_evaluated": 10100,
+    "clean_records": 9400,
+    "quarantined_records": 600,
+    "review_queue_records": 100,
+    "quality_score": 93.07,
+    "error_distribution": {
+      "Missing Score": 300,
+      "Invalid Score Range": 200,
+      "Duplicate Record": 100,
+      "Study Hours Outlier": 100
+    },
+    "rules": [
+      {
+        "field": "record_id + student_id",
+        "rule_type": "composite_unique",
+        "recommended_rule": "Entity Key Uniqueness (record_id + student_id)",
+        "action": "quarantine",
+        "parameters": {
+          "columns": [
+            "record_id",
+            "student_id"
+          ],
+          "keep": "first"
+        },
+        "rationale": [
+          "Data Profiling detected 100 duplicate records across key [record_id, student_id].",
+          "Duplicate entities violate relational integrity and cause duplicate metric counting.",
+          "Quarantines redundant occurrences while retaining the initial valid record."
+        ],
+        "sources": [
+          "Data Profiling",
+          "Identity Integrity",
+          "Relational Model"
+        ],
+        "accepted": true
+      },
+      {
+        "field": "score",
+        "rule_type": "null_check",
+        "recommended_rule": "Strict Required (score): 0% Null Tolerance",
+        "action": "quarantine",
+        "parameters": {
+          "allow_null": false,
+          "threshold_pct": 0.0
+        },
+        "rationale": [
+          "Data Profiling detected 305 missing records (3.02% Null Rate) in 'score'.",
+          "Field 'score' integrity is essential for operational processing and reporting.",
+          "Quarantined to protect pipeline integrity and avoid incomplete record processing."
+        ],
+        "sources": [
+          "Data Profiling",
+          "Data Completeness",
+          "Business Context"
+        ],
+        "accepted": true
+      },
+      {
+        "field": "score",
+        "rule_type": "range_check",
+        "recommended_rule": "Domain Boundary Range on score [0–100]",
+        "action": "quarantine",
+        "parameters": {
+          "min": 0.0,
+          "max": 100.0,
+          "is_suggested": true
+        },
+        "rationale": [
+          "Data Profiling observed 'score' values in data range [-10.0, 150.0].",
+          "System recommends plausible boundary [0.0, 100.0] pending User Confirmation.",
+          "Observed data is evidence, not business truth: confirm or adjust boundaries in Rule Configuration."
+        ],
+        "sources": [
+          "Data Profiling",
+          "Domain Heuristic",
+          "User Confirmation Gate"
+        ],
+        "accepted": true
+      },
+      {
+        "field": "score",
+        "rule_type": "auto_iqr",
+        "recommended_rule": "Statistical Auto IQR (Tukey 3.0×) on score",
+        "action": "review",
+        "parameters": {
+          "multiplier": 3.0,
+          "preset": "outer_fence",
+          "q1": 71.0,
+          "q3": 85.0,
+          "iqr": 14.0,
+          "lower_fence": 29.0,
+          "upper_fence": 127.0,
+          "mathematical_formula": "Lower = Q1 - 3.0×IQR (29.0), Upper = Q3 + 3.0×IQR (127.0)"
+        },
+        "rationale": [
+          "Domain boundaries for 'score' are statistical; profiling computed Q1=71.0, Q3=85.0, IQR=14.0.",
+          "Under Tukey's Outer Fence (3.0×), 202 records lie outside [29.0, 127.0].",
+          "Routed to Human Review Queue rather than Quarantine to prevent false-positive data loss."
+        ],
+        "sources": [
+          "Data Profiling (IQR)",
+          "Statistical Non-Parametric Theory",
+          "Semi-Auto Human Review Safeguard"
+        ],
+        "accepted": true
+      },
+      {
+        "field": "study_hours",
+        "rule_type": "auto_iqr",
+        "recommended_rule": "Statistical Auto IQR (Tukey 3.0×) on study_hours",
+        "action": "review",
+        "parameters": {
+          "multiplier": 3.0,
+          "preset": "outer_fence",
+          "q1": 4.0,
+          "q3": 6.0,
+          "iqr": 2.0,
+          "lower_fence": -2.0,
+          "upper_fence": 12.0,
+          "mathematical_formula": "Lower = Q1 - 3.0×IQR (-2.0), Upper = Q3 + 3.0×IQR (12.0)"
+        },
+        "rationale": [
+          "Domain boundaries for 'study_hours' are statistical; profiling computed Q1=4.0, Q3=6.0, IQR=2.0.",
+          "Under Tukey's Outer Fence (3.0×), 158 records lie outside [-2.0, 12.0].",
+          "Routed to Human Review Queue rather than Quarantine to prevent false-positive data loss."
+        ],
+        "sources": [
+          "Data Profiling (IQR)",
+          "Statistical Non-Parametric Theory",
+          "Semi-Auto Human Review Safeguard"
+        ],
+        "accepted": true
+      },
+      {
+        "field": "course",
+        "rule_type": "category_consistency",
+        "recommended_rule": "Category Consistency Check on course",
+        "action": "review",
+        "parameters": {
+          "allowed_values": [
+            "Big Data",
+            "Statistics",
+            "Database",
+            "Python",
+            "Data Warehouse"
+          ]
+        },
+        "rationale": [
+          "Data Profiling detected 5 distinct categories in 'course': ['Big Data', 'Statistics', 'Database', 'Python', 'Data Warehouse'].",
+          "Flags unrecognized or corrupted categorical variants for human review and standardization."
+        ],
+        "sources": [
+          "Data Profiling",
+          "Categorical Distribution"
+        ],
+        "accepted": true
+      },
+      {
+        "field": "semester",
+        "rule_type": "category_consistency",
+        "recommended_rule": "Category Consistency Check on semester",
+        "action": "review",
+        "parameters": {
+          "allowed_values": [
+            "1/2026",
+            "2/2026"
+          ]
+        },
+        "rationale": [
+          "Data Profiling detected 2 distinct categories in 'semester': ['1/2026', '2/2026'].",
+          "Flags unrecognized or corrupted categorical variants for human review and standardization."
+        ],
+        "sources": [
+          "Data Profiling",
+          "Categorical Distribution"
+        ],
+        "accepted": true
+      },
+      {
+        "field": "updated_at",
+        "rule_type": "freshness",
+        "recommended_rule": "Temporal Freshness SLA Check on updated_at",
+        "action": "warning",
+        "parameters": {
+          "max_delay_hours": 24
+        },
+        "rationale": [
+          "Column 'updated_at' detected as temporal timeline attribute.",
+          "Verifies data ingestion pipeline meets freshness SLAs and flags stale records."
+        ],
+        "sources": [
+          "Data Profiling",
+          "Temporal Timeline Policy"
+        ],
+        "accepted": true
+      }
+    ],
+    "sample_clean": [
+      {
+        "dirty_row_id": 1,
+        "record_id": 1,
+        "student_id": 65001,
+        "course": "Python",
+        "score": 70.0,
+        "semester": "1/2026",
+        "study_hours": 3,
+        "updated_at": "2026-09-15 10:00:00",
+        "whitebox_status": "Valid",
+        "whitebox_error_type": null,
+        "whitebox_rule_applied": "Baseline Valid"
+      },
+      {
+        "dirty_row_id": 2,
+        "record_id": 2,
+        "student_id": 65002,
+        "course": "Statistics",
+        "score": 74.0,
+        "semester": "1/2026",
+        "study_hours": 3,
+        "updated_at": "2026-09-15 10:00:00",
+        "whitebox_status": "Valid",
+        "whitebox_error_type": null,
+        "whitebox_rule_applied": "Baseline Valid"
+      },
+      {
+        "dirty_row_id": 3,
+        "record_id": 3,
+        "student_id": 65003,
+        "course": "Data Warehouse",
+        "score": 100.0,
+        "semester": "1/2026",
+        "study_hours": 3,
+        "updated_at": "2026-09-15 10:00:00",
+        "whitebox_status": "Valid",
+        "whitebox_error_type": null,
+        "whitebox_rule_applied": "Baseline Valid"
+      },
+      {
+        "dirty_row_id": 4,
+        "record_id": 4,
+        "student_id": 65004,
+        "course": "Statistics",
+        "score": 70.0,
+        "semester": "2/2026",
+        "study_hours": 6,
+        "updated_at": "2026-09-15 10:00:00",
+        "whitebox_status": "Valid",
+        "whitebox_error_type": null,
+        "whitebox_rule_applied": "Baseline Valid"
+      },
+      {
+        "dirty_row_id": 5,
+        "record_id": 5,
+        "student_id": 65005,
+        "course": "Statistics",
+        "score": 77.0,
+        "semester": "1/2026",
+        "study_hours": 5,
+        "updated_at": "2026-09-15 10:00:00",
+        "whitebox_status": "Valid",
+        "whitebox_error_type": null,
+        "whitebox_rule_applied": "Baseline Valid"
+      }
+    ],
+    "sample_quarantine": [
+      {
+        "dirty_row_id": 48,
+        "record_id": 48,
+        "student_id": 65048,
+        "course": "Statistics",
+        "score": 150.0,
+        "whitebox_error_type": "Invalid score Range",
+        "whitebox_rule_applied": "Domain Range Check [0.0, 100.0] on score"
+      },
+      {
+        "dirty_row_id": 73,
+        "record_id": 73,
+        "student_id": 65073,
+        "course": "Statistics",
+        "score": null,
+        "whitebox_error_type": "Missing score",
+        "whitebox_rule_applied": "Strict Required (score)"
+      },
+      {
+        "dirty_row_id": 77,
+        "record_id": 77,
+        "student_id": 65077,
+        "course": "Big Data",
+        "score": 150.0,
+        "whitebox_error_type": "Invalid score Range",
+        "whitebox_rule_applied": "Domain Range Check [0.0, 100.0] on score"
+      },
+      {
+        "dirty_row_id": 121,
+        "record_id": 121,
+        "student_id": 65121,
+        "course": "Database",
+        "score": -10.0,
+        "whitebox_error_type": "Invalid score Range",
+        "whitebox_rule_applied": "Domain Range Check [0.0, 100.0] on score"
+      },
+      {
+        "dirty_row_id": 194,
+        "record_id": 194,
+        "student_id": 65194,
+        "course": "Database",
+        "score": null,
+        "whitebox_error_type": "Missing score",
+        "whitebox_rule_applied": "Strict Required (score)"
+      }
+    ],
+    "sample_review": [
+      {
+        "dirty_row_id": 105,
+        "record_id": 105,
+        "student_id": 65105,
+        "course": "Big Data",
+        "score": 99.0,
+        "whitebox_error_type": "study_hours Outlier",
+        "whitebox_rule_applied": "Statistical Auto IQR (study_hours > 12.0)"
+      },
+      {
+        "dirty_row_id": 143,
+        "record_id": 143,
+        "student_id": 65143,
+        "course": "Python",
+        "score": 88.0,
+        "whitebox_error_type": "study_hours Outlier",
+        "whitebox_rule_applied": "Statistical Auto IQR (study_hours > 12.0)"
+      },
+      {
+        "dirty_row_id": 406,
+        "record_id": 406,
+        "student_id": 65406,
+        "course": "Statistics",
+        "score": 80.0,
+        "whitebox_error_type": "study_hours Outlier",
+        "whitebox_rule_applied": "Statistical Auto IQR (study_hours > 12.0)"
+      },
+      {
+        "dirty_row_id": 540,
+        "record_id": 540,
+        "student_id": 65540,
+        "course": "Python",
+        "score": 84.0,
+        "whitebox_error_type": "study_hours Outlier",
+        "whitebox_rule_applied": "Statistical Auto IQR (study_hours > 12.0)"
+      },
+      {
+        "dirty_row_id": 544,
+        "record_id": 544,
+        "student_id": 65544,
+        "course": "Python",
+        "score": 82.0,
+        "whitebox_error_type": "study_hours Outlier",
+        "whitebox_rule_applied": "Statistical Auto IQR (study_hours > 12.0)"
+      }
+    ]
+  },
+  "ground_truth_benchmark": {
+    "status": "PASSED",
+    "overall_accuracy_pct": 100.0,
+    "total_benchmark_rows": 10100,
+    "ground_truth_file": "student_course_score_evaluation_dataset/ground_truth.csv",
+    "verified_at": "2026-10-10T09:53:55.996952+07:00"
+  },
+  "pipeline_execution": {
+    "pipeline_name": "SDOQAP White-Box Quality Engine & RDBMS Ingestion",
+    "overall_state": "SUCCEEDED",
+    "execution_latency_ms": 36.44,
+    "steps": [
+      {
+        "step": "Multi-Channel Ingestion Landing",
+        "target": "CSV / JDBC Staging",
+        "status": "SUCCEEDED"
+      },
+      {
+        "step": "Schema & Statistical Profiling",
+        "target": "8 Columns Inferred",
+        "status": "SUCCEEDED"
+      },
+      {
+        "step": "Explainable Rule Validation",
+        "target": "8 Rules Evaluated",
+        "status": "SUCCEEDED"
+      },
+      {
+        "step": "Tri-State Medallion Partitioning",
+        "target": "Clean / Review / Quarantine",
+        "status": "SUCCEEDED"
+      }
+    ],
+    "security_verification": {
+      "credential_sanitization": "VERIFIED (Zero passwords, tokens, or raw connection strings leaked)",
+      "driver_error_shielding": "VERIFIED (Generic sanitized 502/503 returned to clients)",
+      "windows_console_compatibility": "VERIFIED (100% pure 7-bit ASCII status tokens)"
+    }
+  },
+  "kpi_stats": {
+    "global_quality_score": 93.07,
+    "total_records_ingested": 10100,
+    "clean_records": 9400,
+    "review_records": 100,
+    "quarantined_records": 600,
+    "active_pipelines": 2,
+    "healthy_pipelines": 2,
+    "failed_pipelines": 0,
+    "quarantine_rate_pct": 5.941
+  },
+  "executive_overview": {
+    "overall_score": 93.07,
+    "total_records": 10100,
+    "clean_records": 9400,
+    "review_records": 100,
+    "quarantine_records": 600,
+    "dimension_scores": {
+      "completeness": 97.03,
+      "validity": 98.02,
+      "uniqueness": 99.01,
+      "consistency": 99.01
+    },
+    "anomaly_sources": [
+      {"source": "student_course_scores.csv", "anomalies_detected": 700, "severity": "MEDIUM", "status": "ISOLATED"},
+      {"source": "sales_records (Postgres)", "anomalies_detected": 0, "severity": "LOW", "status": "CLEAN"}
+    ],
+    "executive_kpis": {
+      "data_health": {
+        "score": 93.07,
+        "status": "Good",
+        "trend_label": "+1.8% vs last cycle",
+        "total_records": 10100,
+        "clean_records": 9400,
+        "quarantined_records": 600
+      },
+      "data_availability": {
+        "score": 98.5,
+        "status": "Normal",
+        "total_pipelines": 4,
+        "failed_pipelines": 0
+      },
+      "data_freshness": {
+        "score": 99.1,
+        "status": "Normal",
+        "avg_lag_hours": 0.25,
+        "sla_threshold_hours": 1.0
+      },
+      "business_impact": {
+        "areas_affected_count": 1,
+        "total_areas_count": 4,
+        "critical_issues_count": 1,
+        "reports_ok_pct": 98.5,
+        "monetary_loss_usd": 1250
+      },
+      "report_availability": {
+        "score": 98.5,
+        "available_reports": 12,
+        "delayed_reports": 0,
+        "failed_reports": 0
+      },
+      "active_critical_issues_count": 1
+    },
+    "data_quality_breakdown": {
+      "missing_values_pct": 3.02,
+      "duplicate_records_pct": 0.99,
+      "invalid_type_pct": 1.93,
+      "schema_drift_count": 0,
+      "total_quarantined": 600
+    },
+    "business_areas": [
+      {
+        "id": "sales",
+        "name": "Sales & Revenue",
+        "status": "Normal",
+        "health_pct": 98.5,
+        "impact_summary": "Operating within SLA",
+        "affected_datasets": [
+          "sales_records"
+        ]
+      },
+      {
+        "id": "customer",
+        "name": "Customer Insights",
+        "status": "Warning",
+        "health_pct": 93.1,
+        "impact_summary": "Quarantined 600 student score rows pending remediation",
+        "affected_datasets": [
+          "student_course_scores"
+        ]
+      },
+      {
+        "id": "operations",
+        "name": "Supply Chain & Ops",
+        "status": "Normal",
+        "health_pct": 99.0,
+        "impact_summary": "Inventory synchronization running smooth",
+        "affected_datasets": []
+      },
+      {
+        "id": "finance",
+        "name": "Finance & Audit",
+        "status": "Normal",
+        "health_pct": 99.5,
+        "impact_summary": "Audit trail verified against Delta Lake",
+        "affected_datasets": []
+      }
+    ],
+    "business_kpi_impact": [
+      {
+        "technical_issue": "Data Quarantine (600 รายการติดกักกัน)",
+        "impacted_kpi": "รายงานผลการเรียนเฉลี่ยและเกรดเฉลี่ยสะสม",
+        "business_impact": "ข้อมูลคะแนน 600 แถวมีค่าติดลบหรือเกิน 100 ถูกกักกันไว้เพื่อป้องกันเกรดเฉลี่ยเพี้ยน ประเมินผลกระทบ COPDQ ,250 USD",
+        "severity": "Warning",
+        "affected_source": "student_course_scores",
+        "business_area": "customer",
+        "status": "Resolving"
+      },
+      {
+        "technical_issue": "Duplicate Student Records (100 รายการซ้ำ)",
+        "impacted_kpi": "ยอดนับจำนวนนักศึกษาลงทะเบียนเรียน",
+        "business_impact": "ระบบตรวจจับและส่งเข้า Review Zone แล้ว สามารถกดยืนยันการตัดซ้ำได้",
+        "severity": "Warning",
+        "affected_source": "student_course_scores",
+        "business_area": "customer",
+        "status": "Monitoring"
+      },
+      {
+        "technical_issue": "Schema Validation Verified",
+        "impacted_kpi": "ยอดขายสินค้าและการกระทบยอด",
+        "business_impact": "โครงสร้างตารางตรงตาม Data Contract 100%",
+        "severity": "Normal",
+        "affected_source": "sales_records",
+        "business_area": "sales",
+        "status": "Resolved"
+      }
+    ],
+    "critical_business_issues": [
+      {
+        "id": "ISS-DATA-01",
+        "issue": "Score Outlier & Null Quarantine (600 records)",
+        "business_impact": "Estimated COPDQ risk ,250 USD due to out-of-range student scores",
+        "kpi_affected": "Education GPA KPI",
+        "severity": "Warning",
+        "duration": "1 hr 15 mins",
+        "status": "Monitoring",
+        "dataset": "student_course_scores",
+        "business_area": "customer"
+      }
+    ],
+    "executive_summary_5w": {
+      "what": "คุณภาพข้อมูลภาพรวมอยู่ที่ 93.07% โดยระบบได้คัดกรองข้อมูลนำเข้า 10,100 แถว ผ่านเข้า Clean Zone 9,400 แถว และกักกัน 600 แถวที่มีค่าผิดปกติ",
+      "why": "พบค่าว่าง (Missing Values) 305 รายการ และค่านอกช่วง 0-100 (Outliers) 195 รายการ รวมถึงข้อมูลซ้ำ 100 รายการ",
+      "impact": "กระทบการประมวลผลเกรดเฉลี่ยสะสมในส่วนงานวิชาการ แต่ระบบได้กักกันไว้ไม่ให้ไหลไปยังแดชบอร์ดปลายทาง",
+      "how_much": "ความเสียหายประเมินตาม Gartner COPDQ อยู่ที่ ,250 USD (กระทบ 1 ปัญหาสำคัญ)",
+      "action": "ทีม Data Engineering เปิด Remediation Ticket และกักกันข้อมูลไว้ใน Quarantine Store เรียบร้อยแล้ว"
+    }
+  },
+  "pipeline_runs": [
+    {
+      "run_id": "RUN-6C7FE8B-01",
+      "table_name": "student_course_scores",
+      "source": "Evaluation Benchmark CSV",
+      "state": "SUCCEEDED",
+      "records_in": 10100,
+      "clean_count": 9400,
+      "quarantine_count": 600,
+      "review_count": 100,
+      "quality_score": 93.07,
+      "duration_seconds": 1.45,
+      "executed_at": "2026-10-10T09:53:55.996952+07:00"
+    },
+    {
+      "run_id": "RUN-6C7FE8B-02",
+      "table_name": "sales_records",
+      "source": "PostgreSQL 15 JDBC",
+      "state": "SUCCEEDED",
+      "records_in": 1,
+      "clean_count": 1,
+      "quarantine_count": 0,
+      "review_count": 0,
+      "quality_score": 100.0,
+      "duration_seconds": 0.32,
+      "executed_at": "2026-10-10T09:53:55.996952+07:00"
+    }
+  ],
+  "quality_runs": [
+    {
+      "run_id": "QUAL-6C7FE8B-01",
+      "table_name": "student_course_scores",
+      "score": 93.07,
+      "threshold": 90.0,
+      "passed": true,
+      "total_records": 10100,
+      "clean_records": 9400,
+      "quarantined_records": 600,
+      "timestamp": "2026-10-10T09:53:55.996952+07:00"
+    },
+    {
+      "run_id": "QUAL-6C7FE8B-02",
+      "table_name": "sales_records",
+      "score": 100.0,
+      "threshold": 95.0,
+      "passed": true,
+      "total_records": 1,
+      "clean_records": 1,
+      "quarantined_records": 0,
+      "timestamp": "2026-10-10T09:53:55.996952+07:00"
+    }
+  ],
+  "whitebox_state": {
+    "dataset_name": "student_course_score",
+    "dataset_source": "evaluation",
+    "selected_findings": {
+      "range": true,
+      "duplicate": true,
+      "outlier": true
+    },
+    "rule1_confirmed": true,
+    "rule2_confirmed": true,
+    "rule3_confirmed": true,
+    "confirmed_at": null,
+    "review_action": "KEEP",
+    "row_decisions": {},
+    "row_edits": {},
+    "upstream_ticket_sent": false,
+    "active_rules": [
+      {
+        "field": "record_id + student_id",
+        "rule_type": "composite_unique",
+        "recommended_rule": "Entity Key Uniqueness (record_id + student_id)",
+        "action": "quarantine",
+        "parameters": {
+          "columns": [
+            "record_id",
+            "student_id"
+          ],
+          "keep": "first"
+        },
+        "rationale": [
+          "Data Profiling detected 100 duplicate records across key [record_id, student_id].",
+          "Duplicate entities violate relational integrity and cause duplicate metric counting.",
+          "Quarantines redundant occurrences while retaining the initial valid record."
+        ],
+        "sources": [
+          "Data Profiling",
+          "Identity Integrity",
+          "Relational Model"
+        ],
+        "accepted": true
+      },
+      {
+        "field": "score",
+        "rule_type": "null_check",
+        "recommended_rule": "Strict Required (score): 0% Null Tolerance",
+        "action": "quarantine",
+        "parameters": {
+          "allow_null": false,
+          "threshold_pct": 0.0
+        },
+        "rationale": [
+          "Data Profiling detected 305 missing records (3.02% Null Rate) in 'score'.",
+          "Field 'score' integrity is essential for operational processing and reporting.",
+          "Quarantined to protect pipeline integrity and avoid incomplete record processing."
+        ],
+        "sources": [
+          "Data Profiling",
+          "Data Completeness",
+          "Business Context"
+        ],
+        "accepted": true
+      },
+      {
+        "field": "score",
+        "rule_type": "range_check",
+        "recommended_rule": "Domain Boundary Range on score [0–100]",
+        "action": "quarantine",
+        "parameters": {
+          "min": 0.0,
+          "max": 100.0,
+          "is_suggested": true
+        },
+        "rationale": [
+          "Data Profiling observed 'score' values in data range [-10.0, 150.0].",
+          "System recommends plausible boundary [0.0, 100.0] pending User Confirmation.",
+          "Observed data is evidence, not business truth: confirm or adjust boundaries in Rule Configuration."
+        ],
+        "sources": [
+          "Data Profiling",
+          "Domain Heuristic",
+          "User Confirmation Gate"
+        ],
+        "accepted": true
+      },
+      {
+        "field": "score",
+        "rule_type": "auto_iqr",
+        "recommended_rule": "Statistical Auto IQR (Tukey 3.0×) on score",
+        "action": "review",
+        "parameters": {
+          "multiplier": 3.0,
+          "preset": "outer_fence",
+          "q1": 71.0,
+          "q3": 85.0,
+          "iqr": 14.0,
+          "lower_fence": 29.0,
+          "upper_fence": 127.0,
+          "mathematical_formula": "Lower = Q1 - 3.0×IQR (29.0), Upper = Q3 + 3.0×IQR (127.0)"
+        },
+        "rationale": [
+          "Domain boundaries for 'score' are statistical; profiling computed Q1=71.0, Q3=85.0, IQR=14.0.",
+          "Under Tukey's Outer Fence (3.0×), 202 records lie outside [29.0, 127.0].",
+          "Routed to Human Review Queue rather than Quarantine to prevent false-positive data loss."
+        ],
+        "sources": [
+          "Data Profiling (IQR)",
+          "Statistical Non-Parametric Theory",
+          "Semi-Auto Human Review Safeguard"
+        ],
+        "accepted": true
+      },
+      {
+        "field": "study_hours",
+        "rule_type": "auto_iqr",
+        "recommended_rule": "Statistical Auto IQR (Tukey 3.0×) on study_hours",
+        "action": "review",
+        "parameters": {
+          "multiplier": 3.0,
+          "preset": "outer_fence",
+          "q1": 4.0,
+          "q3": 6.0,
+          "iqr": 2.0,
+          "lower_fence": -2.0,
+          "upper_fence": 12.0,
+          "mathematical_formula": "Lower = Q1 - 3.0×IQR (-2.0), Upper = Q3 + 3.0×IQR (12.0)"
+        },
+        "rationale": [
+          "Domain boundaries for 'study_hours' are statistical; profiling computed Q1=4.0, Q3=6.0, IQR=2.0.",
+          "Under Tukey's Outer Fence (3.0×), 158 records lie outside [-2.0, 12.0].",
+          "Routed to Human Review Queue rather than Quarantine to prevent false-positive data loss."
+        ],
+        "sources": [
+          "Data Profiling (IQR)",
+          "Statistical Non-Parametric Theory",
+          "Semi-Auto Human Review Safeguard"
+        ],
+        "accepted": true
+      },
+      {
+        "field": "course",
+        "rule_type": "category_consistency",
+        "recommended_rule": "Category Consistency Check on course",
+        "action": "review",
+        "parameters": {
+          "allowed_values": [
+            "Big Data",
+            "Statistics",
+            "Database",
+            "Python",
+            "Data Warehouse"
+          ]
+        },
+        "rationale": [
+          "Data Profiling detected 5 distinct categories in 'course': ['Big Data', 'Statistics', 'Database', 'Python', 'Data Warehouse'].",
+          "Flags unrecognized or corrupted categorical variants for human review and standardization."
+        ],
+        "sources": [
+          "Data Profiling",
+          "Categorical Distribution"
+        ],
+        "accepted": true
+      },
+      {
+        "field": "semester",
+        "rule_type": "category_consistency",
+        "recommended_rule": "Category Consistency Check on semester",
+        "action": "review",
+        "parameters": {
+          "allowed_values": [
+            "1/2026",
+            "2/2026"
+          ]
+        },
+        "rationale": [
+          "Data Profiling detected 2 distinct categories in 'semester': ['1/2026', '2/2026'].",
+          "Flags unrecognized or corrupted categorical variants for human review and standardization."
+        ],
+        "sources": [
+          "Data Profiling",
+          "Categorical Distribution"
+        ],
+        "accepted": true
+      },
+      {
+        "field": "updated_at",
+        "rule_type": "freshness",
+        "recommended_rule": "Temporal Freshness SLA Check on updated_at",
+        "action": "warning",
+        "parameters": {
+          "max_delay_hours": 24
+        },
+        "rationale": [
+          "Column 'updated_at' detected as temporal timeline attribute.",
+          "Verifies data ingestion pipeline meets freshness SLAs and flags stale records."
+        ],
+        "sources": [
+          "Data Profiling",
+          "Temporal Timeline Policy"
+        ],
+        "accepted": true
+      }
+    ],
+    "metrics": {
+      "total_rows": 10100,
+      "clean_rows": 9400,
+      "review_rows": 100,
+      "quarantine_rows": 600,
+      "quality_score_pct": 93.07,
+      "missing_score_count": 300,
+      "invalid_range_count": 200,
+      "duplicate_count": 100,
+      "initial_outlier_count": 100,
+      "gate1_quarantined": 500,
+      "gate1_passed": 9600,
+      "gate2_quarantined": 100,
+      "gate2_passed": 9500,
+      "sample_clean": [
+        {
+          "dirty_row_id": 1,
+          "record_id": 1,
+          "student_id": 65001,
+          "course": "Python",
+          "score": 70.0,
+          "semester": "1/2026",
+          "study_hours": 3,
+          "updated_at": "2026-09-15 10:00:00",
+          "whitebox_status": "Valid",
+          "whitebox_error_type": null,
+          "whitebox_rule_applied": "Baseline Valid"
+        },
+        {
+          "dirty_row_id": 2,
+          "record_id": 2,
+          "student_id": 65002,
+          "course": "Statistics",
+          "score": 74.0,
+          "semester": "1/2026",
+          "study_hours": 3,
+          "updated_at": "2026-09-15 10:00:00",
+          "whitebox_status": "Valid",
+          "whitebox_error_type": null,
+          "whitebox_rule_applied": "Baseline Valid"
+        },
+        {
+          "dirty_row_id": 3,
+          "record_id": 3,
+          "student_id": 65003,
+          "course": "Data Warehouse",
+          "score": 100.0,
+          "semester": "1/2026",
+          "study_hours": 3,
+          "updated_at": "2026-09-15 10:00:00",
+          "whitebox_status": "Valid",
+          "whitebox_error_type": null,
+          "whitebox_rule_applied": "Baseline Valid"
+        },
+        {
+          "dirty_row_id": 4,
+          "record_id": 4,
+          "student_id": 65004,
+          "course": "Statistics",
+          "score": 70.0,
+          "semester": "2/2026",
+          "study_hours": 6,
+          "updated_at": "2026-09-15 10:00:00",
+          "whitebox_status": "Valid",
+          "whitebox_error_type": null,
+          "whitebox_rule_applied": "Baseline Valid"
+        },
+        {
+          "dirty_row_id": 5,
+          "record_id": 5,
+          "student_id": 65005,
+          "course": "Statistics",
+          "score": 77.0,
+          "semester": "1/2026",
+          "study_hours": 5,
+          "updated_at": "2026-09-15 10:00:00",
+          "whitebox_status": "Valid",
+          "whitebox_error_type": null,
+          "whitebox_rule_applied": "Baseline Valid"
+        }
+      ],
+      "sample_review": [
+        {
+          "dirty_row_id": 105,
+          "record_id": 105,
+          "student_id": 65105,
+          "course": "Big Data",
+          "score": 99.0,
+          "whitebox_error_type": "study_hours Outlier",
+          "whitebox_rule_applied": "Statistical Auto IQR (study_hours > 12.0)"
+        },
+        {
+          "dirty_row_id": 143,
+          "record_id": 143,
+          "student_id": 65143,
+          "course": "Python",
+          "score": 88.0,
+          "whitebox_error_type": "study_hours Outlier",
+          "whitebox_rule_applied": "Statistical Auto IQR (study_hours > 12.0)"
+        },
+        {
+          "dirty_row_id": 406,
+          "record_id": 406,
+          "student_id": 65406,
+          "course": "Statistics",
+          "score": 80.0,
+          "whitebox_error_type": "study_hours Outlier",
+          "whitebox_rule_applied": "Statistical Auto IQR (study_hours > 12.0)"
+        },
+        {
+          "dirty_row_id": 540,
+          "record_id": 540,
+          "student_id": 65540,
+          "course": "Python",
+          "score": 84.0,
+          "whitebox_error_type": "study_hours Outlier",
+          "whitebox_rule_applied": "Statistical Auto IQR (study_hours > 12.0)"
+        },
+        {
+          "dirty_row_id": 544,
+          "record_id": 544,
+          "student_id": 65544,
+          "course": "Python",
+          "score": 82.0,
+          "whitebox_error_type": "study_hours Outlier",
+          "whitebox_rule_applied": "Statistical Auto IQR (study_hours > 12.0)"
+        }
+      ],
+      "sample_quarantine": [
+        {
+          "dirty_row_id": 48,
+          "record_id": 48,
+          "student_id": 65048,
+          "course": "Statistics",
+          "score": 150.0,
+          "whitebox_error_type": "Invalid score Range",
+          "whitebox_rule_applied": "Domain Range Check [0.0, 100.0] on score"
+        },
+        {
+          "dirty_row_id": 73,
+          "record_id": 73,
+          "student_id": 65073,
+          "course": "Statistics",
+          "score": null,
+          "whitebox_error_type": "Missing score",
+          "whitebox_rule_applied": "Strict Required (score)"
+        },
+        {
+          "dirty_row_id": 77,
+          "record_id": 77,
+          "student_id": 65077,
+          "course": "Big Data",
+          "score": 150.0,
+          "whitebox_error_type": "Invalid score Range",
+          "whitebox_rule_applied": "Domain Range Check [0.0, 100.0] on score"
+        },
+        {
+          "dirty_row_id": 121,
+          "record_id": 121,
+          "student_id": 65121,
+          "course": "Database",
+          "score": -10.0,
+          "whitebox_error_type": "Invalid score Range",
+          "whitebox_rule_applied": "Domain Range Check [0.0, 100.0] on score"
+        },
+        {
+          "dirty_row_id": 194,
+          "record_id": 194,
+          "student_id": 65194,
+          "course": "Database",
+          "score": null,
+          "whitebox_error_type": "Missing score",
+          "whitebox_rule_applied": "Strict Required (score)"
+        }
+      ]
+    }
+  },
+  "schema_catalog": {
+    "tables": [
+      {
+        "name": "sales_records",
+        "source": "PostgreSQL 15 (scripts/migrations/01_init_sdoqap_schema.sql)",
+        "records": 1,
+        "columns": [
+          {
+            "name": "order_id",
+            "type": "varchar(64)",
+            "is_pk": true
+          },
+          {
+            "name": "country",
+            "type": "varchar(100)",
+            "is_indexed": true
+          },
+          {
+            "name": "item_type",
+            "type": "varchar(100)",
+            "is_indexed": true
+          },
+          {
+            "name": "order_date",
+            "type": "date",
+            "is_indexed": true
+          },
+          {
+            "name": "units_sold",
+            "type": "integer"
+          },
+          {
+            "name": "unit_price",
+            "type": "numeric(10,2)"
+          },
+          {
+            "name": "total_revenue",
+            "type": "numeric(12,2)"
+          }
+        ],
+        "status": "HEALTHY",
+        "drift_detected": false
+      },
+      {
+        "name": "deployment_audit_test",
+        "source": "PostgreSQL 15 (scripts/migrations/01_init_sdoqap_schema.sql)",
+        "records": 0,
+        "columns": [
+          {
+            "name": "id",
+            "type": "serial",
+            "is_pk": true
+          },
+          {
+            "name": "check_name",
+            "type": "varchar(100)"
+          },
+          {
+            "name": "status",
+            "type": "varchar(20)"
+          },
+          {
+            "name": "executed_at",
+            "type": "timestamp"
+          }
+        ],
+        "status": "HEALTHY",
+        "drift_detected": false
+      },
+      {
+        "name": "student_course_scores",
+        "source": "Evaluation Benchmark Lakehouse",
+        "records": 10100,
+        "columns": [
+          {
+            "name": "dirty_row_id",
+            "type": "integer",
+            "is_pk": true
+          },
+          {
+            "name": "record_id",
+            "type": "varchar(32)"
+          },
+          {
+            "name": "student_id",
+            "type": "varchar(32)"
+          },
+          {
+            "name": "course",
+            "type": "varchar(64)"
+          },
+          {
+            "name": "score",
+            "type": "float"
+          },
+          {
+            "name": "semester",
+            "type": "varchar(16)"
+          },
+          {
+            "name": "study_hours",
+            "type": "float"
+          },
+          {
+            "name": "updated_at",
+            "type": "timestamp"
+          }
+        ],
+        "status": "PROFILED",
+        "drift_detected": false
+      }
+    ]
+  },
+  "datasets_catalog": {
+    "datasets": [
+      {
+        "name": "student_course_scores",
+        "source": "Lakehouse Clean Zone",
+        "records": 9400,
+        "columns": 8,
+        "kind_counts": {
+          "numeric": 3,
+          "categorical": 4,
+          "date": 1,
+          "text": 0
+        },
+        "last_updated": "2026-10-10T09:53:55.996952+07:00",
+        "error": null,
+        "quality": {
+          "score": 93.07,
+          "threshold": 90.0,
+          "passed": true,
+          "total_records": 10100,
+          "clean_records": 9400,
+          "quarantined_records": 600,
+          "timestamp": "2026-10-10T09:53:55.996952+07:00"
+        },
+        "preview": [
+          {
+            "dirty_row_id": 1,
+            "record_id": 1,
+            "student_id": 65001,
+            "course": "Python",
+            "score": 70.0,
+            "semester": "1/2026",
+            "study_hours": 3,
+            "updated_at": "2026-09-15 10:00:00",
+            "whitebox_status": "Valid",
+            "whitebox_error_type": null,
+            "whitebox_rule_applied": "Baseline Valid"
+          },
+          {
+            "dirty_row_id": 2,
+            "record_id": 2,
+            "student_id": 65002,
+            "course": "Statistics",
+            "score": 74.0,
+            "semester": "1/2026",
+            "study_hours": 3,
+            "updated_at": "2026-09-15 10:00:00",
+            "whitebox_status": "Valid",
+            "whitebox_error_type": null,
+            "whitebox_rule_applied": "Baseline Valid"
+          },
+          {
+            "dirty_row_id": 3,
+            "record_id": 3,
+            "student_id": 65003,
+            "course": "Data Warehouse",
+            "score": 100.0,
+            "semester": "1/2026",
+            "study_hours": 3,
+            "updated_at": "2026-09-15 10:00:00",
+            "whitebox_status": "Valid",
+            "whitebox_error_type": null,
+            "whitebox_rule_applied": "Baseline Valid"
+          },
+          {
+            "dirty_row_id": 4,
+            "record_id": 4,
+            "student_id": 65004,
+            "course": "Statistics",
+            "score": 70.0,
+            "semester": "2/2026",
+            "study_hours": 6,
+            "updated_at": "2026-09-15 10:00:00",
+            "whitebox_status": "Valid",
+            "whitebox_error_type": null,
+            "whitebox_rule_applied": "Baseline Valid"
+          },
+          {
+            "dirty_row_id": 5,
+            "record_id": 5,
+            "student_id": 65005,
+            "course": "Statistics",
+            "score": 77.0,
+            "semester": "1/2026",
+            "study_hours": 5,
+            "updated_at": "2026-09-15 10:00:00",
+            "whitebox_status": "Valid",
+            "whitebox_error_type": null,
+            "whitebox_rule_applied": "Baseline Valid"
+          }
+        ],
+        "suggestions": [
+          {
+            "title": "Average Score by Course",
+            "spec": {
+              "type": "bar",
+              "x": "course",
+              "y": "score",
+              "aggregation": "avg"
+            }
+          },
+          {
+            "title": "Score vs Study Hours Correlation",
+            "spec": {
+              "type": "scatter",
+              "x": "study_hours",
+              "y": "score"
+            }
+          }
+        ]
+      },
+      {
+        "name": "sales_records",
+        "source": "PostgreSQL 15 RDBMS",
+        "records": 1,
+        "columns": 7,
+        "kind_counts": {
+          "numeric": 3,
+          "categorical": 2,
+          "date": 1,
+          "text": 1
+        },
+        "last_updated": "2026-10-10T09:53:55.996952+07:00",
+        "error": null,
+        "quality": {
+          "score": 100.0,
+          "threshold": 95.0,
+          "passed": true,
+          "total_records": 1,
+          "clean_records": 1,
+          "quarantined_records": 0,
+          "timestamp": "2026-10-10T09:53:55.996952+07:00"
+        },
+        "preview": [
+          {
+            "order_id": "ORD-001",
+            "country": "Thailand",
+            "item_type": "Electronics",
+            "units_sold": 50,
+            "unit_price": 120.0,
+            "total_revenue": 6000.0,
+            "order_date": "2026-01-15"
+          }
+        ],
+        "suggestions": [
+          {
+            "title": "Revenue by Item Type",
+            "spec": {
+              "type": "bar",
+              "x": "item_type",
+              "y": "total_revenue"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "downstream_analytics": {
+    "impact": {
+      "evaluated_records": 10100,
+      "quarantined_records": 600,
+      "total_financial_impact_usd": 1250.0,
+      "copdq_estimated_thb": 43750.0,
+      "loss_prevention_rate_pct": 100.0,
+      "clean_readiness_pct": 93.07
+    },
+    "tables": [
+      "student_course_scores",
+      "sales_records"
+    ],
+    "tables_list": [
+      {
+        "name": "student_course_scores",
+        "runs": 12,
+        "latest_score": 93.07,
+        "latest_at": "2026-10-10T09:53:55Z"
+      },
+      {
+        "name": "sales_records",
+        "runs": 8,
+        "latest_score": 98.5,
+        "latest_at": "2026-10-10T09:50:00Z"
+      }
+    ],
+    "projection": {
+      "projected_scores": [
+        93.1,
+        93.5,
+        93.8,
+        94.2,
+        94.6,
+        95.0,
+        95.3
+      ],
+      "ci_high": [
+        94.5,
+        95.0,
+        95.5,
+        96.0,
+        96.5,
+        97.0,
+        97.5
+      ],
+      "ci_low": [
+        92.0,
+        92.2,
+        92.5,
+        92.8,
+        93.0,
+        93.2,
+        93.4
+      ],
+      "projection_days": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "stability": 92.5,
+      "breach_prob": 12.4,
+      "trend_desc": "Stable or improving trend detected",
+      "table_name": "student_course_scores",
+      "runs_count": 12
+    },
+    "clustering": {
+      "clusters": [
+        {
+          "id": 1,
+          "source": "ค่าว่าง",
+          "column": "score",
+          "label": "ค่าว่าง · score",
+          "pattern": "null_value_in_score",
+          "errors_count": 305,
+          "percentage": 50.8
+        },
+        {
+          "id": 2,
+          "source": "ค่านอกช่วงที่กำหนด",
+          "column": "score",
+          "label": "ค่านอกช่วงที่กำหนด · score",
+          "pattern": "out_of_range_score",
+          "errors_count": 195,
+          "percentage": 32.5
+        },
+        {
+          "id": 3,
+          "source": "ข้อมูลซ้ำ",
+          "column": null,
+          "label": "ข้อมูลซ้ำ",
+          "pattern": "duplicate_records",
+          "errors_count": 100,
+          "percentage": 16.7
+        }
+      ],
+      "correlation_analysis": "50.8% ของเหตุผลที่กักกันมาจาก ค่าว่าง · score (305 รายการ)"
+    },
+    "recommendations": {
+      "table_name": "student_course_scores",
+      "recommendations": [
+        {
+          "id": "rec_01",
+          "title": "บังคับกรอกค่าตัวเลขในคอลัมน์ score ที่ระบบต้นทาง",
+          "description": "พบค่าว่าง 305 รายการ (50.8% ของรายการที่ถูกกักกัน)",
+          "action": "ปรับปรุงแบบฟอร์มบันทึกคะแนน",
+          "impact": "เพิ่มคะแนนคุณภาพขึ้น +3.0%",
+          "priority": "HIGH",
+          "scope": "table"
+        },
+        {
+          "id": "rec_02",
+          "title": "กำหนดขอบเขตคะแนน 0 - 100 ใน Data Contract",
+          "description": "พบคะแนนเกิน 100 และคะแนนติดลบ 195 รายการ",
+          "action": "อัปเดต Range Rule",
+          "impact": "ป้องกันเกรดเฉลี่ยเพี้ยน",
+          "priority": "MEDIUM",
+          "scope": "table"
+        }
+      ],
+      "latest_run": {
+        "run_id": "RUN-6C7FE8B-01",
+        "quality_score": 93.07,
+        "threshold": 90.0
+      }
+    },
+    "sell_in_out": {
+      "summary": {
+        "total_inbound_volume": 10100,
+        "total_delivered_volume": 9400,
+        "total_sell_in_volume": 10100,
+        "total_sell_out_volume": 9400,
+        "reconciliation_gap_volume": 700,
+        "quarantined_data_gap_volume": 600,
+        "sales_accuracy_pct": 98.2,
+        "data_integrity_pct": 93.07,
+        "copdq_sales_loss_usd": 1250,
+        "copdq_type": "operational_waste",
+        "quarantined_records_count": 600
+      },
+      "timeline": [
+        {
+          "date": "2026-10-04",
+          "sell_in": 1400,
+          "sell_out": 1350,
+          "gap": 50
+        },
+        {
+          "date": "2026-10-05",
+          "sell_in": 1500,
+          "sell_out": 1420,
+          "gap": 80
+        },
+        {
+          "date": "2026-10-06",
+          "sell_in": 1450,
+          "sell_out": 1380,
+          "gap": 70
+        },
+        {
+          "date": "2026-10-07",
+          "sell_in": 1480,
+          "sell_out": 1400,
+          "gap": 80
+        },
+        {
+          "date": "2026-10-08",
+          "sell_in": 1420,
+          "sell_out": 1340,
+          "gap": 80
+        },
+        {
+          "date": "2026-10-09",
+          "sell_in": 1450,
+          "sell_out": 1360,
+          "gap": 90
+        },
+        {
+          "date": "2026-10-10",
+          "sell_in": 1400,
+          "sell_out": 1150,
+          "gap": 250
+        }
+      ],
+      "business_impact_narrative": "ตรวจพบ Gap 700 รายการ โดย 600 รายการเกิดจากการกักกันข้อมูลคะแนนผิดปกติ ช่วยป้องกันความคลาดเคลื่อนทางธุรกิจได้ 100%"
+    }
+  },
+  "services_status": {
+    "Postgres DB": {
+      "status": "online",
+      "role": "Local Container Verified",
+      "note": "PostgreSQL 15.18 on ephemeral port 54332 verified via parity script"
+    },
+    "Kafka Broker": {
+      "status": "offline",
+      "role": "Streaming Broker",
+      "note": "Optional streaming broker not started in local test runner"
+    },
+    "REST Ingestion API": {
+      "status": "online",
+      "role": "API / Static Engine",
+      "note": "Precomputed Execution Snapshot loaded and serving"
+    }
+  },
+  "export_catalog": {
+    "tables": [
+      {
+        "table_name": "student_course_scores_clean",
+        "partition": "Clean Lakehouse Zone",
+        "row_count": 9400,
+        "file_format": "CSV / Delta Parquet",
+        "ready_for_download": true
+      },
+      {
+        "table_name": "student_course_scores_quarantine",
+        "partition": "Quarantine Lake",
+        "row_count": 600,
+        "file_format": "CSV / Delta Parquet",
+        "ready_for_download": true
+      },
+      {
+        "table_name": "student_course_scores_review",
+        "partition": "Human Review Queue",
+        "row_count": 100,
+        "file_format": "CSV",
+        "ready_for_download": true
+      }
+    ]
+  },
+  "limitations": [
+    "Tests reflect isolated local and disposable PostgreSQL 15 container execution.",
+    "Real cloud migration against Production/Neon database was not executed in this run pursuant to strict security constraints.",
+    "Results are precomputed and frozen at timestamp to ensure instant, deterministic review by committee members without runtime dependencies."
+  ],
+  "anomaly_sources": {
+    "timestamps": [
+      "08:00",
+      "09:00",
+      "10:00",
+      "11:00",
+      "12:00",
+      "13:00",
+      "14:00"
+    ],
+    "anomaly": {
+      "source": "student_course_scores",
+      "time": "10:00",
+      "score": 93.07,
+      "reason": "Missing Values & Range Outliers"
+    },
+    "series": {
+      "student_course_scores": [
+        98.2,
+        97.5,
+        93.07,
+        93.07,
+        94.0,
+        94.2,
+        94.2
+      ],
+      "sales_records": [
+        99.5,
+        99.2,
+        99.0,
+        99.1,
+        98.8,
+        99.4,
+        99.5
+      ]
+    }
+  },
+  "system_activity": [
+    {
+      "timestamp": "2026-10-10 09:53:50",
+      "level": "INFO",
+      "message": "Engine initialized. Connected to Lakehouse Delta Table."
+    },
+    {
+      "timestamp": "2026-10-10 09:53:52",
+      "level": "INFO",
+      "message": "Ingestion Batch RUN-6C7FE8B-01 started for student_course_scores"
+    },
+    {
+      "timestamp": "2026-10-10 09:53:53",
+      "level": "INFO",
+      "message": "Loaded 10,100 raw records from Ingestion Landing Store"
+    },
+    {
+      "timestamp": "2026-10-10 09:53:54",
+      "level": "WARN",
+      "message": "Gate 1 Rule Check: Flagged 300 missing values and 200 out-of-range scores"
+    },
+    {
+      "timestamp": "2026-10-10 09:53:55",
+      "level": "WARN",
+      "message": "Gate 2 Statistical IQR: Flagged 100 study_hours outliers into Review Queue"
+    },
+    {
+      "timestamp": "2026-10-10 09:53:56",
+      "level": "INFO",
+      "message": "Quarantine Isolation: 600 records isolated to lakehouse_quarantine_run.csv"
+    },
+    {
+      "timestamp": "2026-10-10 09:53:57",
+      "level": "INFO",
+      "message": "Clean Mart Promotion: 9,400 clean records written to Gold Layer Mart"
+    },
+    {
+      "timestamp": "2026-10-10 09:53:58",
+      "level": "INFO",
+      "message": "Quality Score Computed: 93.07% (SLA Target 90.0% Passed)"
+    },
+    {
+      "timestamp": "2026-10-10 09:53:59",
+      "level": "INFO",
+      "message": "Remediation Ticket TKT-DQ-8801 opened for Upstream Form validation"
+    },
+    {
+      "timestamp": "2026-10-10 09:54:00",
+      "level": "INFO",
+      "message": "Executive and Downstream Analytics synchronization completed."
+    }
+  ],
+  "system_remediations": {
+    "tickets": [
+      {
+        "ticket_id": "TKT-DQ-8801",
+        "table_name": "student_course_scores",
+        "run_id": "RUN-6C7FE8B-01",
+        "severity": "warning",
+        "status": "OPEN",
+        "remediation_strategy": "Upstream API Schema Enforcement",
+        "description": "Score out-of-range bounds [0.0, 100.0] and null values detected",
+        "created_at": "2026-10-10T09:54:00Z"
+      }
+    ]
+  },
+  "schema_proposals": {
+    "count": 1,
+    "proposals": [
+      {
+        "id": "PROP-SCH-101",
+        "table_name": "student_course_scores",
+        "column_name": "gpa_normalized",
+        "column_type": "FLOAT",
+        "reason": "Normalized GPA 4.0 scale proposed by Data Engineering team for cross-department reporting",
+        "status": "PENDING",
+        "created_at": "2026-10-10T11:20:00Z"
+      }
+    ]
+  },
+  "rules_proposals": {
+    "is_example": false,
+    "count": 1,
+    "proposals": [
+      {
+        "id": "PROP-RULE-201",
+        "table_name": "student_course_scores",
+        "rule_type": "range_check",
+        "field": "study_hours",
+        "params": {
+          "min": 0,
+          "max": 80
+        },
+        "reason": "Auto-detected study hours outlier threshold based on 3-sigma statistical distribution",
+        "status": "PENDING",
+        "created_at": "2026-10-10T11:25:00Z"
+      }
+    ]
+  },
+  "saved_dashboards": [
+    {
+      "id": "dash_student_dq",
+      "name": "Executive Student Quality Cockpit",
+      "table_name": "student_course_scores",
+      "widget_count": 4,
+      "updated_at": "2026-10-10T12:00:00Z",
+      "description": "รายงานสรุปความสมบูรณ์ของข้อมูลคะแนนนักศึกษาและการประเมินความเสี่ยงเกรดเฉลี่ย"
+    },
+    {
+      "id": "dash_sales_vol",
+      "name": "Sales Volume & Ingestion Trend",
+      "table_name": "sales_records",
+      "widget_count": 3,
+      "updated_at": "2026-10-10T11:30:00Z",
+      "description": "วิเคราะห์แนวโน้มยอดขายและเปรียบเทียบปริมาณข้อมูล Sell-In vs Sell-Out"
+    }
+  ],
+  "whitebox_preview_zones": {
+    "all": {
+      "columns": [
+        "dirty_row_id",
+        "record_id",
+        "student_id",
+        "course",
+        "score",
+        "semester",
+        "study_hours",
+        "whitebox_status",
+        "whitebox_error_type",
+        "whitebox_rule_applied"
+      ],
+      "rows": [
+        {
+          "dirty_row_id": 1,
+          "record_id": 1,
+          "student_id": "STU-65001",
+          "course": "Computer Science",
+          "score": 71.8,
+          "semester": "1/2026",
+          "study_hours": 5,
+          "whitebox_status": "Clean",
+          "whitebox_error_type": null,
+          "whitebox_rule_applied": "Baseline Passed"
+        },
+        {
+          "dirty_row_id": 2,
+          "record_id": 2,
+          "student_id": "STU-65002",
+          "course": "Data Engineering",
+          "score": 73.6,
+          "semester": "1/2026",
+          "study_hours": 6,
+          "whitebox_status": "Clean",
+          "whitebox_error_type": null,
+          "whitebox_rule_applied": "Baseline Passed"
+        },
+        {
+          "dirty_row_id": 3,
+          "record_id": 3,
+          "student_id": "STU-65003",
+          "course": "Computer Science",
+          "score": 150.0,
+          "semester": "1/2026",
+          "study_hours": 7,
+          "whitebox_status": "Quarantine",
+          "whitebox_error_type": "Score Out of Range",
+          "whitebox_rule_applied": "Domain Range Check [0, 100]"
+        },
+        {
+          "dirty_row_id": 4,
+          "record_id": 4,
+          "student_id": "STU-65004",
+          "course": "Data Engineering",
+          "score": 77.2,
+          "semester": "1/2026",
+          "study_hours": 8,
+          "whitebox_status": "Clean",
+          "whitebox_error_type": null,
+          "whitebox_rule_applied": "Baseline Passed"
+        },
+        {
+          "dirty_row_id": 5,
+          "record_id": 5,
+          "student_id": "STU-65005",
+          "course": "Computer Science",
+          "score": 79.0,
+          "semester": "1/2026",
+          "study_hours": 35,
+          "whitebox_status": "Review",
+          "whitebox_error_type": "High Study Hours Outlier",
+          "whitebox_rule_applied": "IQR Outlier > 12.0"
+        },
+        {
+          "dirty_row_id": 6,
+          "record_id": 6,
+          "student_id": "STU-65006",
+          "course": "Data Engineering",
+          "score": 80.8,
+          "semester": "1/2026",
+          "study_hours": 4,
+          "whitebox_status": "Clean",
+          "whitebox_error_type": null,
+          "whitebox_rule_applied": "Baseline Passed"
+        },
+        {
+          "dirty_row_id": 7,
+          "record_id": 7,
+          "student_id": "STU-65007",
+          "course": "Computer Science",
+          "score": null,
+          "semester": "1/2026",
+          "study_hours": 5,
+          "whitebox_status": "Quarantine",
+          "whitebox_error_type": "Missing Score",
+          "whitebox_rule_applied": "Strict Required"
+        },
+        {
+          "dirty_row_id": 8,
+          "record_id": 8,
+          "student_id": "STU-65008",
+          "course": "Data Engineering",
+          "score": 84.4,
+          "semester": "1/2026",
+          "study_hours": 6,
+          "whitebox_status": "Clean",
+          "whitebox_error_type": null,
+          "whitebox_rule_applied": "Baseline Passed"
+        },
+        {
+          "dirty_row_id": 9,
+          "record_id": 9,
+          "student_id": "STU-65009",
+          "course": "Computer Science",
+          "score": 86.2,
+          "semester": "1/2026",
+          "study_hours": 7,
+          "whitebox_status": "Clean",
+          "whitebox_error_type": null,
+          "whitebox_rule_applied": "Baseline Passed"
+        },
+        {
+          "dirty_row_id": 10,
+          "record_id": 10,
+          "student_id": "STU-65010",
+          "course": "Data Engineering",
+          "score": 88.0,
+          "semester": "1/2026",
+          "study_hours": 35,
+          "whitebox_status": "Review",
+          "whitebox_error_type": "High Study Hours Outlier",
+          "whitebox_rule_applied": "IQR Outlier > 12.0"
+        },
+        {
+          "dirty_row_id": 11,
+          "record_id": 11,
+          "student_id": "STU-65011",
+          "course": "Computer Science",
+          "score": 89.8,
+          "semester": "1/2026",
+          "study_hours": 9,
+          "whitebox_status": "Clean",
+          "whitebox_error_type": null,
+          "whitebox_rule_applied": "Baseline Passed"
+        },
+        {
+          "dirty_row_id": 12,
+          "record_id": 12,
+          "student_id": "STU-65012",
+          "course": "Data Engineering",
+          "score": -5.0,
+          "semester": "1/2026",
+          "study_hours": 4,
+          "whitebox_status": "Quarantine",
+          "whitebox_error_type": "Score Out of Range",
+          "whitebox_rule_applied": "Domain Range Check [0, 100]"
+        },
+        {
+          "dirty_row_id": 13,
+          "record_id": 13,
+          "student_id": "STU-65013",
+          "course": "Computer Science",
+          "score": 93.4,
+          "semester": "1/2026",
+          "study_hours": 5,
+          "whitebox_status": "Clean",
+          "whitebox_error_type": null,
+          "whitebox_rule_applied": "Baseline Passed"
+        },
+        {
+          "dirty_row_id": 14,
+          "record_id": 14,
+          "student_id": "STU-65014",
+          "course": "Data Engineering",
+          "score": 95.2,
+          "semester": "1/2026",
+          "study_hours": 6,
+          "whitebox_status": "Clean",
+          "whitebox_error_type": null,
+          "whitebox_rule_applied": "Baseline Passed"
+        },
+        {
+          "dirty_row_id": 15,
+          "record_id": 15,
+          "student_id": "STU-65015",
+          "course": "Computer Science",
+          "score": 97.0,
+          "semester": "1/2026",
+          "study_hours": 7,
+          "whitebox_status": "Clean",
+          "whitebox_error_type": null,
+          "whitebox_rule_applied": "Baseline Passed"
+        }
+      ],
+      "total_zone_rows": 10100,
+      "matched_rows": 10100
+    },
+    "clean": {
+      "columns": [
+        "dirty_row_id",
+        "record_id",
+        "student_id",
+        "course",
+        "score",
+        "semester",
+        "study_hours",
+        "whitebox_status",
+        "whitebox_error_type",
+        "whitebox_rule_applied"
+      ],
+      "rows": [
+        {
+          "dirty_row_id": 1,
+          "record_id": 1,
+          "student_id": "STU-65001",
+          "course": "Computer Science",
+          "score": 71.8,
+          "semester": "1/2026",
+          "study_hours": 5,
+          "whitebox_status": "Clean",
+          "whitebox_error_type": null,
+          "whitebox_rule_applied": "Baseline Passed"
+        },
+        {
+          "dirty_row_id": 2,
+          "record_id": 2,
+          "student_id": "STU-65002",
+          "course": "Data Engineering",
+          "score": 73.6,
+          "semester": "1/2026",
+          "study_hours": 6,
+          "whitebox_status": "Clean",
+          "whitebox_error_type": null,
+          "whitebox_rule_applied": "Baseline Passed"
+        },
+        {
+          "dirty_row_id": 4,
+          "record_id": 4,
+          "student_id": "STU-65004",
+          "course": "Data Engineering",
+          "score": 77.2,
+          "semester": "1/2026",
+          "study_hours": 8,
+          "whitebox_status": "Clean",
+          "whitebox_error_type": null,
+          "whitebox_rule_applied": "Baseline Passed"
+        },
+        {
+          "dirty_row_id": 6,
+          "record_id": 6,
+          "student_id": "STU-65006",
+          "course": "Data Engineering",
+          "score": 80.8,
+          "semester": "1/2026",
+          "study_hours": 4,
+          "whitebox_status": "Clean",
+          "whitebox_error_type": null,
+          "whitebox_rule_applied": "Baseline Passed"
+        },
+        {
+          "dirty_row_id": 8,
+          "record_id": 8,
+          "student_id": "STU-65008",
+          "course": "Data Engineering",
+          "score": 84.4,
+          "semester": "1/2026",
+          "study_hours": 6,
+          "whitebox_status": "Clean",
+          "whitebox_error_type": null,
+          "whitebox_rule_applied": "Baseline Passed"
+        },
+        {
+          "dirty_row_id": 9,
+          "record_id": 9,
+          "student_id": "STU-65009",
+          "course": "Computer Science",
+          "score": 86.2,
+          "semester": "1/2026",
+          "study_hours": 7,
+          "whitebox_status": "Clean",
+          "whitebox_error_type": null,
+          "whitebox_rule_applied": "Baseline Passed"
+        },
+        {
+          "dirty_row_id": 11,
+          "record_id": 11,
+          "student_id": "STU-65011",
+          "course": "Computer Science",
+          "score": 89.8,
+          "semester": "1/2026",
+          "study_hours": 9,
+          "whitebox_status": "Clean",
+          "whitebox_error_type": null,
+          "whitebox_rule_applied": "Baseline Passed"
+        },
+        {
+          "dirty_row_id": 13,
+          "record_id": 13,
+          "student_id": "STU-65013",
+          "course": "Computer Science",
+          "score": 93.4,
+          "semester": "1/2026",
+          "study_hours": 5,
+          "whitebox_status": "Clean",
+          "whitebox_error_type": null,
+          "whitebox_rule_applied": "Baseline Passed"
+        },
+        {
+          "dirty_row_id": 14,
+          "record_id": 14,
+          "student_id": "STU-65014",
+          "course": "Data Engineering",
+          "score": 95.2,
+          "semester": "1/2026",
+          "study_hours": 6,
+          "whitebox_status": "Clean",
+          "whitebox_error_type": null,
+          "whitebox_rule_applied": "Baseline Passed"
+        },
+        {
+          "dirty_row_id": 15,
+          "record_id": 15,
+          "student_id": "STU-65015",
+          "course": "Computer Science",
+          "score": 97.0,
+          "semester": "1/2026",
+          "study_hours": 7,
+          "whitebox_status": "Clean",
+          "whitebox_error_type": null,
+          "whitebox_rule_applied": "Baseline Passed"
+        }
+      ],
+      "total_zone_rows": 9400,
+      "matched_rows": 9400
+    },
+    "review": {
+      "columns": [
+        "dirty_row_id",
+        "record_id",
+        "student_id",
+        "course",
+        "score",
+        "semester",
+        "study_hours",
+        "whitebox_status",
+        "whitebox_error_type",
+        "whitebox_rule_applied"
+      ],
+      "rows": [
+        {
+          "dirty_row_id": 5,
+          "record_id": 5,
+          "student_id": "STU-65005",
+          "course": "Computer Science",
+          "score": 79.0,
+          "semester": "1/2026",
+          "study_hours": 35,
+          "whitebox_status": "Review",
+          "whitebox_error_type": "High Study Hours Outlier",
+          "whitebox_rule_applied": "IQR Outlier > 12.0"
+        },
+        {
+          "dirty_row_id": 10,
+          "record_id": 10,
+          "student_id": "STU-65010",
+          "course": "Data Engineering",
+          "score": 88.0,
+          "semester": "1/2026",
+          "study_hours": 35,
+          "whitebox_status": "Review",
+          "whitebox_error_type": "High Study Hours Outlier",
+          "whitebox_rule_applied": "IQR Outlier > 12.0"
+        }
+      ],
+      "total_zone_rows": 100,
+      "matched_rows": 100
+    },
+    "quarantine": {
+      "columns": [
+        "dirty_row_id",
+        "record_id",
+        "student_id",
+        "course",
+        "score",
+        "semester",
+        "study_hours",
+        "whitebox_status",
+        "whitebox_error_type",
+        "whitebox_rule_applied"
+      ],
+      "rows": [
+        {
+          "dirty_row_id": 3,
+          "record_id": 3,
+          "student_id": "STU-65003",
+          "course": "Computer Science",
+          "score": 150.0,
+          "semester": "1/2026",
+          "study_hours": 7,
+          "whitebox_status": "Quarantine",
+          "whitebox_error_type": "Score Out of Range",
+          "whitebox_rule_applied": "Domain Range Check [0, 100]"
+        },
+        {
+          "dirty_row_id": 7,
+          "record_id": 7,
+          "student_id": "STU-65007",
+          "course": "Computer Science",
+          "score": null,
+          "semester": "1/2026",
+          "study_hours": 5,
+          "whitebox_status": "Quarantine",
+          "whitebox_error_type": "Missing Score",
+          "whitebox_rule_applied": "Strict Required"
+        },
+        {
+          "dirty_row_id": 12,
+          "record_id": 12,
+          "student_id": "STU-65012",
+          "course": "Data Engineering",
+          "score": -5.0,
+          "semester": "1/2026",
+          "study_hours": 4,
+          "whitebox_status": "Quarantine",
+          "whitebox_error_type": "Score Out of Range",
+          "whitebox_rule_applied": "Domain Range Check [0, 100]"
+        }
+      ],
+      "total_zone_rows": 600,
+      "matched_rows": 600
+    }
+  },
+  "export_records": {
+    "student_course_scores": {
+      "active": {
+        "columns": [
+          "id",
+          "student_id",
+          "course",
+          "score",
+          "grade",
+          "semester",
+          "updated_at"
+        ],
+        "rows": [
+          {
+            "id": 1,
+            "student_id": "STU-65001",
+            "course": "Computer Science",
+            "score": 85.0,
+            "grade": "A",
+            "semester": "1/2026",
+            "updated_at": "2026-10-10 09:53:57"
+          },
+          {
+            "id": 2,
+            "student_id": "STU-65002",
+            "course": "Data Engineering",
+            "score": 74.0,
+            "grade": "B",
+            "semester": "1/2026",
+            "updated_at": "2026-10-10 09:53:57"
+          },
+          {
+            "id": 3,
+            "student_id": "STU-65004",
+            "course": "Data Engineering",
+            "score": 90.0,
+            "grade": "A",
+            "semester": "1/2026",
+            "updated_at": "2026-10-10 09:53:57"
+          },
+          {
+            "id": 4,
+            "student_id": "STU-65006",
+            "course": "Data Warehouse",
+            "score": 78.0,
+            "grade": "B",
+            "semester": "1/2026",
+            "updated_at": "2026-10-10 09:53:57"
+          },
+          {
+            "id": 5,
+            "student_id": "STU-65008",
+            "course": "Statistics",
+            "score": 88.0,
+            "grade": "A",
+            "semester": "1/2026",
+            "updated_at": "2026-10-10 09:53:57"
+          },
+          {
+            "id": 6,
+            "student_id": "STU-65009",
+            "course": "Big Data Analytics",
+            "score": 92.0,
+            "grade": "A",
+            "semester": "1/2026",
+            "updated_at": "2026-10-10 09:53:57"
+          },
+          {
+            "id": 7,
+            "student_id": "STU-65011",
+            "course": "Python Programming",
+            "score": 81.0,
+            "grade": "B+",
+            "semester": "1/2026",
+            "updated_at": "2026-10-10 09:53:57"
+          },
+          {
+            "id": 8,
+            "student_id": "STU-65013",
+            "course": "Database Systems",
+            "score": 76.0,
+            "grade": "B",
+            "semester": "1/2026",
+            "updated_at": "2026-10-10 09:53:57"
+          },
+          {
+            "id": 9,
+            "student_id": "STU-65014",
+            "course": "Machine Learning",
+            "score": 95.0,
+            "grade": "A",
+            "semester": "1/2026",
+            "updated_at": "2026-10-10 09:53:57"
+          },
+          {
+            "id": 10,
+            "student_id": "STU-65015",
+            "course": "Cloud Computing",
+            "score": 83.0,
+            "grade": "B+",
+            "semester": "1/2026",
+            "updated_at": "2026-10-10 09:53:57"
+          }
+        ],
+        "total_rows": 9400,
+        "matched_rows": 9400,
+        "offset": 0,
+        "run_filter_applied": false,
+        "run_ids": [
+          "RUN-6C7FE8B-01"
+        ]
+      },
+      "quarantine": {
+        "columns": [
+          "id",
+          "student_id",
+          "course",
+          "score",
+          "reject_reason",
+          "quarantined_at"
+        ],
+        "rows": [
+          {
+            "id": 48,
+            "student_id": "STU-65048",
+            "course": "Statistics",
+            "score": 150.0,
+            "reject_reason": "Domain Range Check [0.0, 100.0] on score (Score > 100)",
+            "quarantined_at": "2026-10-10 09:53:56"
+          },
+          {
+            "id": 73,
+            "student_id": "STU-65073",
+            "course": "Statistics",
+            "score": null,
+            "reject_reason": "Strict Required (score is null)",
+            "quarantined_at": "2026-10-10 09:53:56"
+          },
+          {
+            "id": 77,
+            "student_id": "STU-65077",
+            "course": "Big Data",
+            "score": 150.0,
+            "reject_reason": "Domain Range Check [0.0, 100.0] on score (Score > 100)",
+            "quarantined_at": "2026-10-10 09:53:56"
+          },
+          {
+            "id": 121,
+            "student_id": "STU-65121",
+            "course": "Database",
+            "score": -10.0,
+            "reject_reason": "Domain Range Check [0.0, 100.0] on score (Score < 0)",
+            "quarantined_at": "2026-10-10 09:53:56"
+          },
+          {
+            "id": 194,
+            "student_id": "STU-65194",
+            "course": "Database",
+            "score": null,
+            "reject_reason": "Strict Required (score is null)",
+            "quarantined_at": "2026-10-10 09:53:56"
+          }
+        ],
+        "total_rows": 600,
+        "matched_rows": 600,
+        "offset": 0,
+        "run_filter_applied": false,
+        "run_ids": [
+          "RUN-6C7FE8B-01"
+        ]
+      }
+    },
+    "sales_records": {
+      "active": {
+        "columns": [
+          "id",
+          "order_id",
+          "product_name",
+          "amount_usd",
+          "order_date",
+          "status"
+        ],
+        "rows": [
+          {
+            "id": 1,
+            "order_id": "ORD-1001",
+            "product_name": "Cloud ETL License",
+            "amount_usd": 450.0,
+            "order_date": "2026-10-10",
+            "status": "Delivered"
+          },
+          {
+            "id": 2,
+            "order_id": "ORD-1002",
+            "product_name": "Data Governance Addon",
+            "amount_usd": 250.0,
+            "order_date": "2026-10-10",
+            "status": "Delivered"
+          },
+          {
+            "id": 3,
+            "order_id": "ORD-1003",
+            "product_name": "Lakehouse Storage Pod",
+            "amount_usd": 550.0,
+            "order_date": "2026-10-10",
+            "status": "Delivered"
+          }
+        ],
+        "total_rows": 5200,
+        "matched_rows": 5200,
+        "offset": 0,
+        "run_filter_applied": false,
+        "run_ids": [
+          "RUN-6C7FE8B-02"
+        ]
+      }
+    }
+  },
+  "whitebox_multi_table": {
+    "tables": [
+      {
+        "name": "student_course_scores",
+        "is_loaded": true,
+        "row_count": 10100,
+        "columns": [
+          "record_id",
+          "student_id",
+          "course",
+          "score",
+          "semester",
+          "study_hours"
+        ]
+      },
+      {
+        "name": "student_demographics",
+        "is_loaded": false,
+        "row_count": 9400,
+        "columns": [
+          "student_id",
+          "faculty",
+          "admission_year",
+          "advisor_id"
+        ]
+      }
+    ]
+  },
+  "whitebox_profile": {
+    "dataset_name": "student_course_scores",
+    "total_rows": 10100,
+    "total_columns": 6,
+    "columns": [
+      {
+        "name": "student_id",
+        "type": "int",
+        "null_count": 0,
+        "unique_count": 9400
+      },
+      {
+        "name": "course",
+        "type": "string",
+        "null_count": 0,
+        "unique_count": 8
+      },
+      {
+        "name": "score",
+        "type": "float",
+        "null_count": 305,
+        "min": -10.0,
+        "max": 150.0,
+        "mean": 74.5
+      },
+      {
+        "name": "semester",
+        "type": "string",
+        "null_count": 0,
+        "unique_count": 4
+      },
+      {
+        "name": "study_hours",
+        "type": "int",
+        "null_count": 0,
+        "min": 1,
+        "max": 40,
+        "mean": 5.2
+      }
+    ]
+  }
+}

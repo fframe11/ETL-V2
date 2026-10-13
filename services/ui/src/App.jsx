@@ -13,8 +13,10 @@ import DataExport from "./pages/DataExport";
 import RulesConfig from "./pages/RulesConfig";
 import ConfigGuide from "./pages/ConfigGuide";
 import WhiteBoxPipeline from "./pages/WhiteBoxPipeline";
+import ExecutionResults from "./pages/ExecutionResults";
 import Login from "./pages/Login";
 import { useAuth } from "./hooks/useAuth";
+import { resolveApiUrl } from "./utils/apiConfig";
 import "./App.css";
 
 function RequireAuth({ children }) {
@@ -47,7 +49,7 @@ function AppContent({ isSidebarOpen, toggleSidebar }) {
       if (!isAuthenticated) return;
 
       try {
-        const schemaRes = await fetch("/api/v1/schema/proposals");
+        const schemaRes = await fetch(resolveApiUrl("/api/v1/schema/proposals"), { credentials: "include" });
         if (schemaRes.ok) {
           const schemaData = await schemaRes.json();
           const pendingSchema = schemaData.proposals ? schemaData.proposals.filter(p => p.status === "PENDING") : [];
@@ -58,7 +60,7 @@ function AppContent({ isSidebarOpen, toggleSidebar }) {
       }
 
       try {
-        const aiRes = await fetch("/api/v1/rules/ai-proposals");
+        const aiRes = await fetch(resolveApiUrl("/api/v1/rules/ai-proposals"), { credentials: "include" });
         if (aiRes.ok) {
           const aiData = await aiRes.json();
           setAiRulesCount(aiData.count || 0);
@@ -98,6 +100,7 @@ function AppContent({ isSidebarOpen, toggleSidebar }) {
           <ErrorBoundary>
             <Routes>
               <Route path="/" element={<Home />} />
+              <Route path="/execution-results" element={<ExecutionResults />} />
               <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
               <Route path="/dashboard-builder" element={<RequireAuth><DashboardBuilder /></RequireAuth>} />
               <Route path="/analytics" element={<RequireAuth><Analytics /></RequireAuth>} />
