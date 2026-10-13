@@ -176,8 +176,34 @@ export function useAuth() {
     let token = typeof window !== "undefined" ? (sessionStorage.getItem("sdoqap_token") || localStorage.getItem("sdoqap_token")) : null;
     const stored = getStoredUserProfile();
 
-    // If user has no active token and no profile, they are unauthenticated
+    // If user has no active token and no profile, check backend cookie/session or mark unauthenticated
     if (!token && !stored) {
+      try {
+        const res = await fetch(resolveApiUrl("/api/v1/auth/me"), { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.username) {
+            const profile = {
+              username: data.username,
+              email: data.email || `${data.username}@dataserve.io`,
+              fullName: data.full_name || data.fullName || data.username,
+              organization: data.organization || "DataServe Infrastructure",
+              role: data.role || "Platform Administrator",
+              tier: data.tier || "Enterprise Lakehouse",
+            };
+            setUsername(data.username);
+            setUserProfile(profile);
+            storeUserProfile(profile);
+            setIsAuthenticated(true);
+            setIsDemoMode(false);
+            setAuthStatusMessage("");
+            return;
+          }
+        }
+      } catch (e) {
+        // network error or offline
+      }
+
       setUsername(null);
       setUserProfile(null);
       setIsAuthenticated(false);

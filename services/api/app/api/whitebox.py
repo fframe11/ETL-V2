@@ -979,6 +979,47 @@ def execute_pipeline(payload: ExecuteRulesPayload):
     }
     cleaned_result = _clean_for_json(result)
     _LATEST_EXECUTION_RESULTS[dataset_name] = cleaned_result
+
+    # ── PERSIST TO SDOQAP RUN REGISTRY (PostgreSQL / ES bridge) ──
+    try:
+        from .config import get_es_client
+        es = get_es_client()
+        run_ts = datetime.now(timezone.utc).isoformat()
+        safe_ds_name = re.sub(r"[^A-Za-z0-9_-]", "_", str(dataset_name))[:64] or "dataset"
+        run_id = f"wb_{safe_ds_name}_{int(time.time()*1000)}"
+        run_doc = {
+            "run_id": run_id,
+            "table_name": dataset_name,
+            "total_records": total_raw_rows,
+            "clean_records": int(len(df_clean)),
+            "quarantined_records": int(len(df_quarantine)),
+            "quality_score": quality_score_raw,
+            "timestamp": run_ts,
+            "source": _WORKFLOW_STATE.get("source_type", "FILE_UPLOAD"),
+            "quarantine_breakdown": {
+                str(k): int(v) for k, v in error_summary.items() if str(k).lower() != "none"
+            }
+        }
+        es.index(index="sdoqap_quality_runs", id=run_id, document=run_doc)
+
+        # Also register pipeline run for SLA & Availability tracking
+        pipe_doc = {
+            "run_id": run_id,
+            "table_name": dataset_name,
+            "state": "succeeded",
+            "duration_seconds": round(exec_time_ms / 1000.0, 2),
+            "timestamp": run_ts,
+            "total_rows": total_raw_rows,
+            "quarantined_rows": int(len(df_quarantine))
+        }
+        es.index(index="sdoqap_pipeline_runs", id=run_id, document=pipe_doc)
+    except Exception as exc:
+        logger.warning("Could not persist whitebox execution to run store: %s", exc)
+
+    _WORKFLOW_STATE["latest_run"] = cleaned_result
+    _WORKFLOW_STATE["dataset_name"] = dataset_name
+    _save_workflow_state()
+
     return cleaned_result
 
 
@@ -2014,18 +2055,28 @@ def _get_groq_api_key() -> str:
     saved = _saved_groq_setting()
     if saved:
         key, enabled = saved
-        return key if enabled else ""
-    k = os.getenv("GROQ_API_KEY", "").strip()
+        return key.strip().strip('"\'') if enabled else ""
+    k = os.getenv("GROQ_API_KEY", "").strip().strip('"\'')
     if k:
         return k
-    for candidate in ["/app/.env", os.path.join(os.getcwd(), ".env")]:
+    candidates = [
+        "/app/.env",
+        os.path.join(os.getcwd(), ".env"),
+        "c:/DataEngProj/.env",
+        "C:/DataEngProj-clean/.env",
+        os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", ".env")),
+        os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".env")),
+    ]
+    for candidate in candidates:
         if os.path.isfile(candidate):
             try:
                 with open(candidate, "r", encoding="utf-8") as fh:
                     for line in fh:
                         line = line.strip()
                         if line.startswith("GROQ_API_KEY="):
-                            return line.split("=", 1)[1].strip()
+                            val = line.split("=", 1)[1].strip().strip('"\'')
+                            if val:
+                                return val
             except Exception:
                 pass
     return ""
