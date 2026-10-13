@@ -36,6 +36,15 @@ export default function DashboardCanvas({ spec, data, selections = {}, onSelecti
         <h2>{spec?.title || "แดชบอร์ด"}</h2>
         {spec?.description && <p>{spec.description}</p>}
       </header>
+      {spec?.insights && (
+        <div className="dbb-insights-box" role="region" aria-label="ข้อสังเกตเชิงลึกจาก AI">
+          <div className="dbb-insights-header">
+            <span className="dbb-insights-badge">AI Insights</span>
+            <span className="dbb-insights-title">ข้อสังเกตและบทวิเคราะห์เชิงลึก</span>
+          </div>
+          <p className="dbb-insights-text">{spec.insights}</p>
+        </div>
+      )}
       {filtersList.length > 0 && (
         <FilterBar filters={filtersList} options={data?.filter_options || {}} selections={selections} onChange={onSelectionsChange} />
       )}
