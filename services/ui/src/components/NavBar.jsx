@@ -76,7 +76,7 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
   const location = useLocation();
   const navigate = useNavigate();
   
-  const { isAuthenticated, logout } = useAuth();
+  const { isAuthenticated, username, userProfile, logout } = useAuth();
   const isLoggedIn = !!isAuthenticated;
 
   // Notification badge states for pending governance items
@@ -407,10 +407,25 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
         <div className="gs-nav-bottom">
           {isLoggedIn ? (
             navOpen ? (
-              <button className="gs-nav-logout-btn" onClick={handleLogout}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                <span>Logout</span>
-              </button>
+              <>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 8px", marginBottom: "6px", background: "rgba(255,255,255,0.03)", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div style={{ width: "22px", height: "22px", borderRadius: "50%", background: "#ff3621", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: "700", flexShrink: 0 }}>
+                    {(userProfile?.fullName || username || "U").charAt(0).toUpperCase()}
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden" }}>
+                    <span style={{ fontSize: "11.5px", fontWeight: "600", color: "#f8fafc", whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>
+                      {userProfile?.fullName || username || "User"}
+                    </span>
+                    <span style={{ fontSize: "9.5px", color: "#94a3b8", whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>
+                      {userProfile?.role || "Data Engineer"}
+                    </span>
+                  </div>
+                </div>
+                <button className="gs-nav-logout-btn" onClick={handleLogout}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                  <span>Logout</span>
+                </button>
+              </>
             ) : (
               <button className="gs-nav-logout-btn collapsed" onClick={handleLogout} title="Logout">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>

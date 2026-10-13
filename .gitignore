@@ -88,3 +88,4 @@ infra/cloudflare/bin/
 *.exe
 .vercel
 .env*
+services/data/
