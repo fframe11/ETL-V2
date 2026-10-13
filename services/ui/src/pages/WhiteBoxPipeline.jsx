@@ -139,7 +139,9 @@ export default function WhiteBoxPipeline() {
           column_impact: []
         });
       }
-      setError(err.message || "รันทุกขั้นไม่สำเร็จ");
+      if (!snap || (!snap.whitebox_profile && !snap.pipeline_execution)) {
+        setError(err.message || "รันทุกขั้นไม่สำเร็จ");
+      }
     } finally {
       setAutoRunning(false);
     }
