@@ -73,7 +73,7 @@ INGEST_SERVICE_KEY=$(openssl rand -hex 32)
 TRIGGER_SHARED_SECRET=$(openssl rand -hex 32)
 
 # 8. AI Engine Model (Groq)
-GROQ_API_KEY=gsk_your_actual_groq_api_key_here
+GROQ_API_KEY=
 GROQ_MODEL=openai/gpt-oss-120b
 ```
 
