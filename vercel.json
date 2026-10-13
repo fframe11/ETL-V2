@@ -4,8 +4,6 @@
   "buildCommand": "npm --prefix services/ui run build",
   "outputDirectory": "services/ui/dist",
   "installCommand": "npm --prefix services/ui install",
-  "cleanUrls": true,
-  "trailingSlash": false,
   "rewrites": [
     {
       "source": "/api/:path*",
