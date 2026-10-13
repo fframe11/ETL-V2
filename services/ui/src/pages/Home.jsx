@@ -70,6 +70,32 @@ export default function Home() {
     statusClass = "offline";
   }
 
+  const getSvcBadge = (key, onlineLabel = "● ONLINE", offlineLabel = "○ OFFLINE", readyLabel = "○ READY - LOCAL") => {
+    const svc = services?.[key];
+    if (!svc) {
+      return {
+        text: isWorkerOnline ? "● ONLINE" : readyLabel,
+        color: isWorkerOnline ? "#16A34A" : "#64748B"
+      };
+    }
+    if (svc.status === 'online') {
+      return {
+        text: onlineLabel,
+        color: "#16A34A"
+      };
+    }
+    if (svc.status === 'not_configured' || svc.status === 'not_deployed') {
+      return {
+        text: "○ NOT CONFIGURED",
+        color: "#94A3B8"
+      };
+    }
+    return {
+      text: offlineLabel,
+      color: "#DC2626"
+    };
+  };
+
   return (
     <div className="gs-home">
       {kpis.isPrecomputed && (
@@ -270,15 +296,16 @@ export default function Home() {
                   {/* 1. Spark Master */}
                   <tr style={{ borderBottom: "1px solid #F1F5F9" }}>
                     <td style={{ padding: "12px", fontWeight: 600 }}>Apache Spark Master</td>
-                    <td style={{ padding: "12px" }}>Worker PC - Port 7077 / 8080</td>
+                    <td style={{ padding: "12px" }}>Worker PC - Port 7077 / 8081</td>
                     <td style={{ padding: "12px" }}>
-                      <span style={{ color: isWorkerOnline ? "#16A34A" : "#64748B", fontWeight: 600 }}>
-                        {isWorkerOnline ? "● ONLINE" : "○ READY - LOCAL"}
-                      </span>
+                      {(() => {
+                        const b = getSvcBadge('Spark Master', '● ONLINE', '○ OFFLINE', '○ READY - LOCAL');
+                        return <span style={{ color: b.color, fontWeight: 600 }}>{b.text}</span>;
+                      })()}
                     </td>
                     <td style={{ padding: "12px" }}>Distributed Ingestion & Quarantine Core</td>
                     <td style={{ padding: "12px" }}>
-                      <a href="http://localhost:8080" target="_blank" rel="noreferrer" style={{ color: "#2563EB", fontWeight: 600, textDecoration: "underline" }}>
+                      <a href="http://localhost:8081" target="_blank" rel="noreferrer" style={{ color: "#2563EB", fontWeight: 600, textDecoration: "underline" }}>
                         Spark UI &rarr;
                       </a>
                     </td>
@@ -290,9 +317,10 @@ export default function Home() {
                     <td style={{ padding: "12px", fontWeight: 600 }}>Apache Spark Worker</td>
                     <td style={{ padding: "12px" }}>Worker PC - Local Core</td>
                     <td style={{ padding: "12px" }}>
-                      <span style={{ color: isWorkerOnline ? "#16A34A" : "#64748B", fontWeight: 600 }}>
-                        {isWorkerOnline ? "● ONLINE" : "○ READY - LOCAL"}
-                      </span>
+                      {(() => {
+                        const b = getSvcBadge('Spark Worker', '● ONLINE', '○ OFFLINE', '○ READY - LOCAL');
+                        return <span style={{ color: b.color, fontWeight: 600 }}>{b.text}</span>;
+                      })()}
                     </td>
                     <td style={{ padding: "12px" }}>Distributed Worker Compute Node</td>
                     <td style={{ padding: "12px", color: "#64748B" }}>Internal Executor</td>
@@ -304,9 +332,10 @@ export default function Home() {
                     <td style={{ padding: "12px", fontWeight: 600 }}>Elasticsearch Engine</td>
                     <td style={{ padding: "12px" }}>Worker PC - Port 9200</td>
                     <td style={{ padding: "12px" }}>
-                      <span style={{ color: isWorkerOnline ? "#16A34A" : "#64748B", fontWeight: 600 }}>
-                        {isWorkerOnline ? "● ONLINE" : "○ READY - LOCAL"}
-                      </span>
+                      {(() => {
+                        const b = getSvcBadge('Elasticsearch', '● ONLINE', '○ OFFLINE', '○ READY - LOCAL');
+                        return <span style={{ color: b.color, fontWeight: 600 }}>{b.text}</span>;
+                      })()}
                     </td>
                     <td style={{ padding: "12px" }}>Full-text Search, Drift & Quality Runs</td>
                     <td style={{ padding: "12px" }}>
@@ -322,9 +351,10 @@ export default function Home() {
                     <td style={{ padding: "12px", fontWeight: 600 }}>Kibana Analytics</td>
                     <td style={{ padding: "12px" }}>Worker PC - Port 5601</td>
                     <td style={{ padding: "12px" }}>
-                      <span style={{ color: isWorkerOnline ? "#16A34A" : "#64748B", fontWeight: 600 }}>
-                        {isWorkerOnline ? "● ONLINE" : "○ READY - LOCAL"}
-                      </span>
+                      {(() => {
+                        const b = getSvcBadge('Kibana', '● ONLINE', '○ OFFLINE', '○ READY - LOCAL');
+                        return <span style={{ color: b.color, fontWeight: 600 }}>{b.text}</span>;
+                      })()}
                     </td>
                     <td style={{ padding: "12px" }}>Visual Search, Index & Log Explorer</td>
                     <td style={{ padding: "12px" }}>
@@ -338,15 +368,16 @@ export default function Home() {
                   {/* 5. Grafana */}
                   <tr style={{ borderBottom: "1px solid #F1F5F9" }}>
                     <td style={{ padding: "12px", fontWeight: 600 }}>Grafana Observability</td>
-                    <td style={{ padding: "12px" }}>Worker PC - Port 3000</td>
+                    <td style={{ padding: "12px" }}>Worker PC - Port 3000 / 3002</td>
                     <td style={{ padding: "12px" }}>
-                      <span style={{ color: isWorkerOnline ? "#16A34A" : "#64748B", fontWeight: 600 }}>
-                        {isWorkerOnline ? "● ONLINE" : "○ READY - LOCAL"}
-                      </span>
+                      {(() => {
+                        const b = getSvcBadge('Grafana', '● ONLINE', '○ OFFLINE', '○ READY - LOCAL');
+                        return <span style={{ color: b.color, fontWeight: 600 }}>{b.text}</span>;
+                      })()}
                     </td>
                     <td style={{ padding: "12px" }}>Real-time Observability & Metrics Dashboard</td>
                     <td style={{ padding: "12px" }}>
-                      <a href="http://localhost:3000" target="_blank" rel="noreferrer" style={{ color: "#2563EB", fontWeight: 600, textDecoration: "underline" }}>
+                      <a href="http://localhost:3002" target="_blank" rel="noreferrer" style={{ color: "#2563EB", fontWeight: 600, textDecoration: "underline" }}>
                         Grafana UI &rarr;
                       </a>
                     </td>
@@ -358,9 +389,10 @@ export default function Home() {
                     <td style={{ padding: "12px", fontWeight: 600 }}>n8n Workflow Automation</td>
                     <td style={{ padding: "12px" }}>Worker PC - Port 5678</td>
                     <td style={{ padding: "12px" }}>
-                      <span style={{ color: isWorkerOnline ? "#16A34A" : "#64748B", fontWeight: 600 }}>
-                        {isWorkerOnline ? "● ONLINE" : "○ READY - LOCAL"}
-                      </span>
+                      {(() => {
+                        const b = getSvcBadge('n8n Orchestrator', '● ONLINE', '○ OFFLINE', '○ READY - LOCAL');
+                        return <span style={{ color: b.color, fontWeight: 600 }}>{b.text}</span>;
+                      })()}
                     </td>
                     <td style={{ padding: "12px" }}>Workflow Automation & Alert Webhooks</td>
                     <td style={{ padding: "12px" }}>
@@ -376,9 +408,10 @@ export default function Home() {
                     <td style={{ padding: "12px", fontWeight: 600 }}>Apache Kafka & Zookeeper</td>
                     <td style={{ padding: "12px" }}>Worker PC - Port 9092 / 2181</td>
                     <td style={{ padding: "12px" }}>
-                      <span style={{ color: isWorkerOnline ? "#16A34A" : "#64748B", fontWeight: 600 }}>
-                        {isWorkerOnline ? "● ONLINE" : "○ READY - LOCAL"}
-                      </span>
+                      {(() => {
+                        const b = getSvcBadge('Kafka Broker', '● ONLINE', '○ OFFLINE', '○ READY - LOCAL');
+                        return <span style={{ color: b.color, fontWeight: 600 }}>{b.text}</span>;
+                      })()}
                     </td>
                     <td style={{ padding: "12px" }}>Real-time Streaming Event Ingestion</td>
                     <td style={{ padding: "12px", color: "#64748B" }}>127.0.0.1:9092</td>
@@ -390,9 +423,10 @@ export default function Home() {
                     <td style={{ padding: "12px", fontWeight: 600 }}>Hadoop HDFS Lakehouse</td>
                     <td style={{ padding: "12px" }}>Worker PC - Port 9870 / 9864</td>
                     <td style={{ padding: "12px" }}>
-                      <span style={{ color: isWorkerOnline ? "#16A34A" : "#64748B", fontWeight: 600 }}>
-                        {isWorkerOnline ? "● ONLINE" : "○ READY - LOCAL"}
-                      </span>
+                      {(() => {
+                        const b = getSvcBadge('HDFS Namenode', '● ONLINE', '○ OFFLINE', '○ READY - LOCAL');
+                        return <span style={{ color: b.color, fontWeight: 600 }}>{b.text}</span>;
+                      })()}
                     </td>
                     <td style={{ padding: "12px" }}>Distributed Lakehouse Block Storage</td>
                     <td style={{ padding: "12px" }}>
@@ -408,9 +442,10 @@ export default function Home() {
                     <td style={{ padding: "12px", fontWeight: 600 }}>Hybrid Remote Worker</td>
                     <td style={{ padding: "12px" }}>Worker PC - scripts/remote_worker.py</td>
                     <td style={{ padding: "12px" }}>
-                      <span style={{ color: isWorkerOnline ? "#16A34A" : "#D97706", fontWeight: 600 }}>
-                        {isWorkerOnline ? "● ONLINE - LEASE ACTIVE" : "○ QUEUE MODE"}
-                      </span>
+                      {(() => {
+                        const b = getSvcBadge('Hybrid Remote Worker', '● ONLINE - LEASE ACTIVE', '○ QUEUE MODE', '○ QUEUE MODE');
+                        return <span style={{ color: b.color, fontWeight: 600 }}>{b.text}</span>;
+                      })()}
                     </td>
                     <td style={{ padding: "12px" }}>Outbound HTTPS Lease & Task Executor</td>
                     <td style={{ padding: "12px" }}>
@@ -426,7 +461,10 @@ export default function Home() {
                     <td style={{ padding: "12px", fontWeight: 600 }}>Neon PostgreSQL</td>
                     <td style={{ padding: "12px" }}>Neon Cloud Serverless</td>
                     <td style={{ padding: "12px" }}>
-                      <span style={{ color: "#16A34A", fontWeight: 600 }}>● ONLINE - CLOUD</span>
+                      {(() => {
+                        const b = getSvcBadge('Postgres DB', '● ONLINE - CLOUD', '○ OFFLINE (DB DOWN)', '● ONLINE - CLOUD');
+                        return <span style={{ color: b.color, fontWeight: 600 }}>{b.text}</span>;
+                      })()}
                     </td>
                     <td style={{ padding: "12px" }}>Durable Jobs, Checkpoints & Quarantine</td>
                     <td style={{ padding: "12px" }}>
@@ -442,7 +480,10 @@ export default function Home() {
                     <td style={{ padding: "12px", fontWeight: 600 }}>FastAPI Backend Gateway</td>
                     <td style={{ padding: "12px" }}>Render.com Free Web Service</td>
                     <td style={{ padding: "12px" }}>
-                      <span style={{ color: "#16A34A", fontWeight: 600 }}>● ONLINE - CLOUD</span>
+                      {(() => {
+                        const b = getSvcBadge('REST Ingestion API', '● ONLINE - CLOUD', '○ OFFLINE (API DOWN)', '● ONLINE - CLOUD');
+                        return <span style={{ color: b.color, fontWeight: 600 }}>{b.text}</span>;
+                      })()}
                     </td>
                     <td style={{ padding: "12px" }}>API Gateway, Coordinator & Auth</td>
                     <td style={{ padding: "12px" }}>
