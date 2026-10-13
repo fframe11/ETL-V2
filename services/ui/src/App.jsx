@@ -48,8 +48,13 @@ function AppContent({ isSidebarOpen, toggleSidebar }) {
     const fetchCounts = async () => {
       if (!isAuthenticated) return;
 
+      const token = typeof window !== "undefined"
+        ? (sessionStorage.getItem("sdoqap_token") || localStorage.getItem("sdoqap_token"))
+        : null;
+      const headers = token ? { Authorization: `Bearer ${token}`, "X-Session-Token": token } : {};
+
       try {
-        const schemaRes = await fetch(resolveApiUrl("/api/v1/schema/proposals"), { credentials: "include" });
+        const schemaRes = await fetch(resolveApiUrl("/api/v1/schema/proposals"), { credentials: "include", headers });
         if (schemaRes.ok) {
           const schemaData = await schemaRes.json();
           const pendingSchema = schemaData.proposals ? schemaData.proposals.filter(p => p.status === "PENDING") : [];
@@ -60,7 +65,7 @@ function AppContent({ isSidebarOpen, toggleSidebar }) {
       }
 
       try {
-        const aiRes = await fetch(resolveApiUrl("/api/v1/rules/ai-proposals"), { credentials: "include" });
+        const aiRes = await fetch(resolveApiUrl("/api/v1/rules/ai-proposals"), { credentials: "include", headers });
         if (aiRes.ok) {
           const aiData = await aiRes.json();
           setAiRulesCount(aiData.count || 0);
