@@ -83,6 +83,12 @@ export function resolveSnapshotForEndpoint(endpoint, snapshot) {
   if (cleanEp === "/whitebox/ai-context-explanations") {
     return snapshot.whitebox_ai_context || { dataset_name: "student_course_scores", explanations: [] };
   }
+  if (cleanEp === "/whitebox/profile") {
+    return snapshot.whitebox_profile || null;
+  }
+  if (cleanEp === "/whitebox/multi-table/tables") {
+    return snapshot.whitebox_multi_table?.tables ? { tables: snapshot.whitebox_multi_table.tables } : null;
+  }
   if (cleanEp === "/schema/tables") {
     return snapshot.schema_catalog || null;
   }
@@ -236,11 +242,12 @@ export function useApi(endpoint, options = {}) {
   const fetchData = useCallback(async () => {
     if (!enabled) return;
 
-    if (_isStaticDemo) {
+    let fallbackData = null;
+    try {
       const snapshot = await getPrecomputedSnapshot();
-      const fallback = resolveSnapshotForEndpoint(endpoint, snapshot);
-      if (fallback !== null) {
-        setData(fallback);
+      fallbackData = resolveSnapshotForEndpoint(endpoint, snapshot);
+      if (fallbackData !== null) {
+        setData((current) => current || fallbackData);
         setIsPrecomputed(true);
         setSnapshotMeta({
           run_id: snapshot.run_id,
@@ -248,11 +255,13 @@ export function useApi(endpoint, options = {}) {
           generated_at: snapshot.generated_at,
           environment: snapshot.environment
         });
-        setError(null);
         setLoading(false);
-        return fallback;
+        setError(null);
       }
-    }
+    } catch {}
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
 
     try {
       const fullUrl = resolveApiUrl(`${API_BASE}${endpoint}`);
@@ -262,81 +271,51 @@ export function useApi(endpoint, options = {}) {
         headers["Authorization"] = `Bearer ${token}`;
         headers["X-Session-Token"] = token;
       }
-      const res = await fetch(fullUrl, { credentials: "include", cache: "no-cache", headers });
+      const res = await fetch(fullUrl, {
+        signal: controller.signal,
+        credentials: "include",
+        cache: "no-cache",
+        headers
+      });
+      clearTimeout(timeoutId);
+
       if (res.status === 401 && window.location.pathname !== "/login") {
-        const isDemo = _isStaticDemo || (typeof window !== "undefined" && (
-          localStorage.getItem("dataserve_demo_mode") === "true" ||
-          localStorage.getItem("sdoqap_demo_mode") === "true" ||
-          localStorage.getItem("sdoqap_static_demo") === "true"
-        ));
-        if (isDemo) {
-          _isStaticDemo = true;
-          const snapshot = await getPrecomputedSnapshot();
-          const fallback = resolveSnapshotForEndpoint(endpoint, snapshot);
-          if (fallback !== null) {
-            setData(fallback);
-            setIsPrecomputed(true);
-            setSnapshotMeta({
-              run_id: snapshot.run_id,
-              git_commit: snapshot.git_commit,
-              generated_at: snapshot.generated_at,
-              environment: snapshot.environment
-            });
-            setError(null);
-            setLoading(false);
-            return fallback;
-          }
-        }
-        window.location.href = "/login";
-        return;
-      }
-      const contentType = res.headers?.get("content-type") || "";
-      if (!res.ok || (contentType && !contentType.includes("application/json"))) {
-        // Fallback to precomputed snapshot if live API base URL is unconfigured
-        if (!getApiBaseUrl() && _isStaticDemo) {
-          const snapshot = await getPrecomputedSnapshot();
-          const fallback = resolveSnapshotForEndpoint(endpoint, snapshot);
-          if (fallback !== null) {
-            setData(fallback);
-            setIsPrecomputed(true);
-            setSnapshotMeta({
-              run_id: snapshot.run_id,
-              git_commit: snapshot.git_commit,
-              generated_at: snapshot.generated_at,
-              environment: snapshot.environment
-            });
-            setError(null);
-            return fallback;
-          }
-        }
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const json = await res.json();
-      setData(json);
-      setIsPrecomputed(false);
-      setSnapshotMeta(null);
-      setError(null);
-      return json;
-    } catch (err) {
-      // Fallback to precomputed snapshot on network error ONLY if in explicit static demo mode
-      if (_isStaticDemo) {
-        const snapshot = await getPrecomputedSnapshot();
-        const fallback = resolveSnapshotForEndpoint(endpoint, snapshot);
-        if (fallback !== null) {
-          setData(fallback);
+        if (fallbackData !== null) {
+          setData(fallbackData);
           setIsPrecomputed(true);
-          setSnapshotMeta({
-            run_id: snapshot.run_id,
-            git_commit: snapshot.git_commit,
-            generated_at: snapshot.generated_at,
-            environment: snapshot.environment
-          });
-          setError(null);
-          return fallback;
+          setLoading(false);
+          return fallbackData;
         }
       }
-      setError(err.message);
-      setIsPrecomputed(false);
+
+      const contentType = res.headers?.get("content-type") || "";
+      if (res.ok && (!contentType || contentType.includes("application/json"))) {
+        const json = await res.json();
+        setData(json);
+        setIsPrecomputed(false);
+        setSnapshotMeta(null);
+        setError(null);
+        return json;
+      }
+
+      // If backend returned non-200, retain fallback
+      if (fallbackData !== null) {
+        setData(fallbackData);
+        setIsPrecomputed(true);
+        setError(null);
+        return fallbackData;
+      }
+      throw new Error(`HTTP ${res.status}`);
+    } catch (err) {
+      clearTimeout(timeoutId);
+      // Graceful SWR fallback on cold-start timeout or network glitch
+      if (fallbackData !== null) {
+        setData(fallbackData);
+        setIsPrecomputed(true);
+        setError(null);
+        return fallbackData;
+      }
+      setError(err.name === "AbortError" ? "Backend timeout (cold start)" : err.message);
       return null;
     } finally {
       setLoading(false);

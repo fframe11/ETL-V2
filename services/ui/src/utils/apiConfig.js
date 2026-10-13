@@ -80,3 +80,38 @@ export function checkInitialDemoMode() {
   // Live API is the default (works with direct URL or Vercel /api proxy rewrite)
   return false;
 }
+
+/**
+ * Returns Authorization and X-Session-Token headers from browser storage.
+ */
+export function getAuthHeaders(extra = {}) {
+  const token = typeof window !== "undefined"
+    ? (sessionStorage.getItem("sdoqap_token") || localStorage.getItem("sdoqap_token"))
+    : null;
+  return {
+    ...(token ? { Authorization: `Bearer ${token}`, "X-Session-Token": token } : {}),
+    ...extra,
+  };
+}
+
+/**
+ * Executes a fetch request with an automatic AbortController timeout and credentials/auth headers.
+ * Protects against long cold-start hangs (default 3500ms timeout).
+ */
+export async function fetchWithTimeout(url, options = {}, timeoutMs = 3500) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const authHeaders = getAuthHeaders(options.headers || {});
+  try {
+    const fullUrl = resolveApiUrl(url);
+    const res = await fetch(fullUrl, {
+      signal: controller.signal,
+      credentials: "include",
+      ...options,
+      headers: authHeaders,
+    });
+    return res;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}

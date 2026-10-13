@@ -1,6 +1,7 @@
 import { Icon } from '../components/UiIcons';
 import React, { useState, useEffect } from 'react';
-import { useApi, postApi } from '../hooks/useApi';
+import { useApi, postApi, getPrecomputedSnapshot } from '../hooks/useApi';
+import { fetchWithTimeout } from '../utils/apiConfig';
 import TileCard from "../components/ui/TileCard";
 import { PageHeader, InfoHint, NextStepLink } from "../components/ui";
 import ConfirmationModal from '../components/ConfirmationModal';
@@ -65,7 +66,7 @@ export default function Pipeline() {
   const [goldRebuilding, setGoldRebuilding] = useState(false);
   const [goldResult, setGoldResult] = useState(null);
 
-  // Transform Traceability & 3-Way Segregation Interactive State (Backed by /api/v1/whitebox/state)
+  // Data Traceability & 3-Way Segregation Interactive State (Backed by /api/v1/whitebox/state)
   const [benchmarkData, setBenchmarkData] = useState(null);
   const [wbState, setWbState] = useState(null);
   const [showTraceability, setShowTraceability] = useState(true);
@@ -159,20 +160,40 @@ export default function Pipeline() {
   const gate2Quarantined = m?.gate2_quarantined ?? null;
   const missingScoreCount = m?.missing_score_count ?? null;
   const invalidRangeCount = m?.invalid_range_count ?? null;
-  const fmt = (n) => (typeof n === "number" ? n.toLocaleString() : "—");
+  const fmt = (n) => (typeof n === "number" ? n.toLocaleString() : "-");
   const pct = (n) => (typeof n === "number" && totalRows ? Math.round((n / totalRows) * 100) : 0);
 
   const activeRangeCol = wbState?.active_rules?.find(r => r.rule_type === "range_check")?.field || "";
   const activeOutlierCol = wbState?.active_rules?.find(r => r.rule_type === "auto_iqr")?.field || "";
 
   useEffect(() => {
-    fetch('/api/v1/whitebox/benchmark')
+    // Instant hydration from precomputed snapshot (0s delay)
+    getPrecomputedSnapshot().then((snap) => {
+      if (snap?.ground_truth_benchmark) {
+        setBenchmarkData((prev) => prev || snap.ground_truth_benchmark);
+      }
+      if (snap?.whitebox_state) {
+        setWbState((prev) => {
+          if (prev) return prev;
+          if (snap.whitebox_state.review_action) setReviewAction(snap.whitebox_state.review_action);
+          if (snap.whitebox_state.upstream_ticket_sent !== undefined) setUpstreamTicketSent(snap.whitebox_state.upstream_ticket_sent);
+          if (snap.whitebox_state.row_decisions) setRowDecisions(snap.whitebox_state.row_decisions);
+          return snap.whitebox_state;
+        });
+      }
+    }).catch(() => {});
+
+    // Asynchronous background live sync (3.5s timeout)
+    fetchWithTimeout('/api/v1/whitebox/benchmark')
       .then(r => (r.ok ? r.json() : null))
-      .then(d => { if (d) setBenchmarkData(d); })
+      .then((d) => {
+        if (d) setBenchmarkData(d);
+      })
       .catch(() => {});
-    fetch('/api/v1/whitebox/state')
+
+    fetchWithTimeout('/api/v1/whitebox/state')
       .then(r => (r.ok ? r.json() : null))
-      .then(d => {
+      .then((d) => {
         if (d) {
           setWbState(d);
           if (d.review_action) setReviewAction(d.review_action);
@@ -187,12 +208,21 @@ export default function Pipeline() {
   useEffect(() => {
     const zoneParam = selectedZone.toLowerCase();
     setZoneLoading(true);
+
+    // Instant snapshot hydration for zone table
+    getPrecomputedSnapshot().then((snap) => {
+      const zd = snap?.whitebox_preview_zones?.[zoneParam] || snap?.whitebox_preview_zones?.all;
+      if (zd) setZoneData((prev) => prev || zd);
+    }).catch(() => {});
+
     const handle = setTimeout(() => {
       const params = new URLSearchParams({ limit: "15" });
       if (recordSearch.trim()) params.set("search", recordSearch.trim());
-      fetch(`/api/v1/whitebox/preview-zone/${zoneParam}?${params.toString()}`)
+      fetchWithTimeout(`/api/v1/whitebox/preview-zone/${zoneParam}?${params.toString()}`)
         .then(r => (r.ok ? r.json() : null))
-        .then(d => { if (d) setZoneData(d); })
+        .then((d) => {
+          if (d) setZoneData(d);
+        })
         .catch(() => {})
         .finally(() => setZoneLoading(false));
     }, 300);
@@ -269,7 +299,7 @@ export default function Pipeline() {
       {/* Interactive Pipeline Rule Execution & 3-Way Routing Workspace */}
       <div style={{ background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', marginBottom: '16px' }}>
           <div className="pl-dataset-line">
-            ชุดข้อมูล <code>{wbState?.dataset_name || "—"}</code> · {fmt(totalRows)} แถว
+            ชุดข้อมูล <code>{wbState?.dataset_name || "-"}</code> · {fmt(totalRows)} แถว
             <InfoHint text="ตัวเลขในส่วนนี้มาจากเอนจินตรวจคุณภาพแบบโต้ตอบ (ทดลองทีละไฟล์ อยู่ในหน่วยความจำ ไม่ถาวร) คนละชุดกับ 'ประวัติการรัน' ด้านล่างซึ่งเป็นผลจากรอบตรวจ Spark จริงที่เก็บถาวรใน Elasticsearch" />
           </div>
           {!m && <div className="pl-notice">ยังไม่มีผลการรันสำหรับชุดข้อมูลนี้</div>}
@@ -295,7 +325,7 @@ export default function Pipeline() {
             ))}
           </div>
 
-          {/* 3 Databricks Tile Cards — Exact 3-Element Card Anatomy from Databricks Learn UI */}
+          {/* 3 Databricks Tile Cards: Exact 3-Element Card Anatomy from Databricks Learn UI */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', gap: '14px', marginBottom: '18px' }}>
             {/* Card 1: Validated Silver Dataset */}
             <TileCard
@@ -363,7 +393,7 @@ export default function Pipeline() {
                       คืนค่า
                     </button>
                   )}
-                  <InfoHint text={`แถวที่เกินขอบเขตปกติ (Tukey IQR) ถูกส่งให้คนตรวจแทนการลบทิ้ง`} />
+                  <InfoHint text={`แถวที่เกินขอบเขตปกติ Tukey IQR ถูกส่งให้ตรวจสอบแทนการลบทิ้ง`} />
                 </div>
               }
             />
@@ -492,7 +522,7 @@ export default function Pipeline() {
                             <tr key={rowId} style={{ borderBottom: '1px solid #F1F5F9' }}>
                               {cols.map(c => (
                                 <td key={c.key} style={{ padding: '8px 12px', color: '#334155' }}>
-                                  {row[c.key] === null || row[c.key] === undefined || row[c.key] === "" ? "—" : String(row[c.key])}
+                                  {row[c.key] === null || row[c.key] === undefined || row[c.key] === "" ? "-" : String(row[c.key])}
                                 </td>
                               ))}
                               {cols.some(c => c.key === "whitebox_status") && (

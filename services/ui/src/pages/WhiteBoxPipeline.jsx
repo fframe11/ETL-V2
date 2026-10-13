@@ -1,6 +1,8 @@
 import { Icon } from '../components/UiIcons';
 import React, { useState, useEffect } from "react";
 import { PageHeader, InfoHint, LearnMore } from "../components/ui";
+import { getPrecomputedSnapshot } from "../hooks/useApi";
+import { fetchWithTimeout } from "../utils/apiConfig";
 import "./WhiteBoxPipeline.css";
 
 export default function WhiteBoxPipeline() {
@@ -59,8 +61,21 @@ export default function WhiteBoxPipeline() {
   }, []);
 
   const loadOverview = async () => {
+    // Instant snapshot hydration
+    getPrecomputedSnapshot().then((snap) => {
+      if (snap?.whitebox_state) {
+        setDatasetName((prev) => prev || snap.whitebox_state.dataset_name || "student_course_scores");
+      }
+      if (snap?.whitebox_profile) {
+        setProfileData((prev) => prev || snap.whitebox_profile);
+      }
+      if (snap?.whitebox_multi_table?.tables) {
+        setJoinTables((prev) => (prev.length ? prev : snap.whitebox_multi_table.tables));
+      }
+    }).catch(() => {});
+
     try {
-      const st = await fetch("/api/v1/whitebox/state");
+      const st = await fetchWithTimeout("/api/v1/whitebox/state");
       if (st.ok) {
         const d = await st.json();
         setDatasetName(d.dataset_name || "");
@@ -70,7 +85,7 @@ export default function WhiteBoxPipeline() {
     }
     fetchProfile();
     try {
-      const res = await fetch("/api/v1/whitebox/multi-table/tables");
+      const res = await fetchWithTimeout("/api/v1/whitebox/multi-table/tables");
       if (res.ok) {
         const d = await res.json();
         const tables = d.tables || [];
@@ -173,12 +188,21 @@ export default function WhiteBoxPipeline() {
     setProfileLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/v1/whitebox/profile");
-      if (!res.ok) throw new Error("โหลดสถิติข้อมูลไม่สำเร็จ");
-      const data = await res.json();
-      setProfileData(data);
+      const res = await fetchWithTimeout("/api/v1/whitebox/profile");
+      if (res.ok) {
+        const data = await res.json();
+        setProfileData(data);
+      } else {
+        const snap = await getPrecomputedSnapshot();
+        if (snap?.whitebox_profile) setProfileData((prev) => prev || snap.whitebox_profile);
+      }
     } catch (err) {
-      setError(err.message);
+      const snap = await getPrecomputedSnapshot();
+      if (snap?.whitebox_profile) {
+        setProfileData((prev) => prev || snap.whitebox_profile);
+      } else {
+        setError(err.message);
+      }
     } finally {
       setProfileLoading(false);
     }
@@ -414,34 +438,34 @@ export default function WhiteBoxPipeline() {
             {/* USER COLUMN */}
             <div style={{ background: "#FFFFFF", padding: "14px", borderRadius: "8px", border: "1px solid #E2E8F0" }}>
               <div style={{ fontWeight: 700, color: "#2563EB", marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
-                <span><Icon name="user" /> สิ่งที่ผู้ใช้ทำ (User Role)</span>
+                <span><Icon name="user" /> หน้าที่ของผู้ใช้</span>
               </div>
               <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px", color: "#334155", lineHeight: "1.7" }}>
-                <li><strong>1. Ingest Sources:</strong> อัปโหลดหรือระบุแหล่งข้อมูล (Stage 0)</li>
-                <li><strong>2. Define Context:</strong> กำหนดวัตถุประสงค์ และระบุว่าคอลัมน์ใดมี Known Domain (Stage 2)</li>
-                <li><strong>3. Review Explanations:</strong> ตรวจสอบเหตุผล (Why?) และหลักฐานทางสถิติที่ระบบเสนอ (Stage 3)</li>
-                <li><strong>4. Tune Multipliers:</strong> ปรับความไวของรั้วสถิติ (1.5× vs 3.0×) หรือเลือกเปิด/ปิดกฎ (Stage 3)</li>
-                <li><strong>5. Confirm Execution:</strong> กดยืนยันให้ระบบประมวลผลแยกข้อมูล 3 ทาง (Stage 4)</li>
+                <li><strong>1. Ingest Sources:</strong> อัปโหลดหรือเลือกแหล่งข้อมูล</li>
+                <li><strong>2. Define Context:</strong> กำหนดวัตถุประสงค์และระบุคอลัมน์ที่มี Known Domain</li>
+                <li><strong>3. Review Explanations:</strong> ตรวจสอบเหตุผลและค่าสถิติที่ระบบเสนอ</li>
+                <li><strong>4. Tune Multipliers:</strong> ปรับความไวของรั้วสถิติ 1.5x หรือ 3.0x หรือเลือกเปิดและปิดกฎ</li>
+                <li><strong>5. Confirm Execution:</strong> กดยืนยันให้ระบบประมวลผลแยกข้อมูล 3 ปลายทาง</li>
               </ul>
             </div>
 
             {/* SYSTEM COLUMN */}
             <div style={{ background: "#FFFFFF", padding: "14px", borderRadius: "8px", border: "1px solid #E2E8F0" }}>
               <div style={{ fontWeight: 700, color: "#059669", marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
-                <span><Icon name="settings" /> สิ่งที่ระบบทำ (System Automation)</span>
+                <span><Icon name="settings" /> ระบบประมวลผลอัตโนมัติ</span>
               </div>
               <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px", color: "#334155", lineHeight: "1.7" }}>
-                <li><strong>1. Empirical Profiling:</strong> คำนวณ Null Rate, Min/Max, Duplicates, Q1, Q3, IQR (Stage 1)</li>
-                <li><strong>2. Schema & Relationship:</strong> ตรวจวัด Candidate Key Overlap และรูปแบบวันที่ (Stage 0)</li>
-                <li><strong>3. Decision Tree Logic:</strong> เลือก Range Check (เมื่อรู้ขอบเขต) หรือ Auto IQR (เมื่อไม่รู้ขอบเขต)</li>
-                <li><strong>4. 3-Way Segregation:</strong> แยก Clean / Review / Quarantine ไม่ลบข้อมูลสุ่มสี่สุ่มห้า</li>
-                <li><strong>5. Benchmark & Validation:</strong> คำนวณ Recall, Precision และตรวจสอบ Ground Truth (Stage 5)</li>
+                <li><strong>1. Data Profiling:</strong> คำนวณ Null Rate, Min, Max, Duplicates, Q1, Q3, IQR</li>
+                <li><strong>2. Schema & Relationship:</strong> ตรวจวัด Candidate Key Overlap และรูปแบบวันที่</li>
+                <li><strong>3. Decision Tree Logic:</strong> เลือก Range Check เมื่อรู้ขอบเขต หรือ Auto IQR เมื่อไม่รู้ขอบเขต</li>
+                <li><strong>4. 3-Way Segregation:</strong> แยก Clean, Review, Quarantine โดยไม่ลบข้อมูลทิ้ง</li>
+                <li><strong>5. Benchmark & Validation:</strong> คำนวณ Recall, Precision และตรวจสอบความถูกต้องเทียบ Ground Truth</li>
               </ul>
             </div>
           </div>
 
           <div style={{ marginTop: "12px", padding: "10px", background: "#EFF6FF", borderRadius: "6px", fontSize: "11px", color: "#1E40AF" }}>
-            <strong><Icon name="target" /> นิยามสำคัญ:</strong> ระบบไม่ได้แก้ข้อมูลตามอำเภอใจ แต่ทำหน้าที่ <em>"วิเคราะห์เชิงสถิติและเสนอแนะ (Suggest)"</em> โดยมีผู้ใช้เป็น <em>"ผู้ตัดสินใจและยืนยัน (Confirm)"</em> ก่อนที่ระบบจะนำกฎไปปฏิบัติ (Apply)
+            <strong><Icon name="target" /> หลักการทำงาน:</strong> ระบบทำหน้าที่วิเคราะห์เชิงสถิติและแนะนำกฎ โดยให้ผู้ใช้เป็นผู้ตัดสินใจและกดยืนยัน ก่อนที่ระบบจะนำกฎไปประมวลผลจริง
           </div>
         </div>
       )}
@@ -806,7 +830,7 @@ export default function WhiteBoxPipeline() {
                               {p.min !== undefined ? `${p.min} → ${p.max}` : `${p.distinct_count} distinct`}
                             </td>
                             <td>
-                              {p.iqr !== undefined ? `IQR: ${p.iqr} (Q1: ${p.q1}, Q3: ${p.q3})` : "—"}
+                              {p.iqr !== undefined ? `IQR: ${p.iqr} (Q1: ${p.q1}, Q3: ${p.q3})` : "-"}
                             </td>
                             <td>
                               {p.null_count > 0 && <span className="wb-pill warning">ค่าว่าง {p.null_count}</span>}
@@ -846,7 +870,7 @@ export default function WhiteBoxPipeline() {
           <div className="wb-stage-purpose-box">
             <div className="wb-stage-purpose-icon"><Icon name="target" /></div>
             <div className="wb-stage-purpose-text">
-              <strong>การกำหนดบริบทและขอบเขตข้อมูลตามเงื่อนไขธุรกิจ (Business Domain Constraint):</strong> แยกแยะคอลัมน์ที่มีขอบเขตค่าตายตัวตามระเบียบธุรกิจ (Deterministic Range) ออกจากคอลัมน์ที่ต้องใช้การตรวจจับความผิดปกติทางสถิติ (Adaptive Statistical Distribution)
+              <strong>การกำหนดบริบทและขอบเขตข้อมูลตามเงื่อนไขธุรกิจ:</strong> แยกแยะคอลัมน์ที่มีขอบเขตค่าตายตัวตามระเบียบธุรกิจ ออกจากคอลัมน์ที่ต้องใช้การตรวจจับความผิดปกติทางสถิติ
             </div>
           </div>
 
@@ -896,7 +920,7 @@ export default function WhiteBoxPipeline() {
             <h3>ความหมายของแต่ละคอลัมน์</h3>
             <p className="wb-desc">
               ติ๊ก "ห้ามว่าง" กับคอลัมน์ที่ต้องมีค่าเสมอ และ "ทราบช่วงค่า" กับคอลัมน์ที่รู้ขอบเขตที่ถูกต้อง (กรอกต่ำสุดและสูงสุด)
-              คอลัมน์ตัวเลขที่ไม่ทราบช่วงค่าจะถูกตรวจด้วยสถิติ (IQR) แทน
+              คอลัมน์ตัวเลขที่ไม่ทราบช่วงค่าจะถูกตรวจด้วยสถิติ IQR แทน
             </p>
 
             {contextColumns.length === 0 ? (
@@ -981,13 +1005,13 @@ export default function WhiteBoxPipeline() {
           <div className="wb-stage-purpose-box">
             <div className="wb-stage-purpose-icon"><Icon name="bolt" /></div>
             <div className="wb-stage-purpose-text">
-              <strong>การกำหนดและอนุมัติเกณฑ์คุณภาพข้อมูล (Transparent Rule Governance):</strong> แสดงสมการและค่าเกณฑ์ทางสถิติของทุกกฎอย่างโปร่งใส พร้อมให้ผู้ดูแลข้อมูลปรับค่าตัวคูณ (Tukey 1.5× / 3.0× IQR) หรือเปิด-ปิดกฎแต่ละข้อก่อนสั่งรันคัดแยก
+              <strong>การกำหนดและอนุมัติเกณฑ์คุณภาพข้อมูล:</strong> แสดงสมการและค่าเกณฑ์ทางสถิติของทุกกฎอย่างโปร่งใส พร้อมให้ผู้ดูแลข้อมูลปรับค่าตัวคูณ Tukey 1.5x หรือ 3.0x IQR หรือเปิดและปิดกฎแต่ละข้อก่อนสั่งรันคัดแยก
             </div>
           </div>
 
           <div className="wb-panel-header">
             <div>
-              <h2>3 · กฎที่ระบบเสนอ<InfoHint text="ทุกกฎแสดงเหตุผลและหลักฐานทางสถิติ" /></h2>
+              <h2>3 · กฎที่ระบบเสนอ<InfoHint text="ทุกกฎแสดงเหตุผลและค่าสถิติที่ตรวจพบ" /></h2>
             </div>
           </div>
 
@@ -1161,7 +1185,7 @@ export default function WhiteBoxPipeline() {
                 <div className="wb-card bucket review" data-testid="zone-review">
                   <div className="wb-bucket-header">
                     <span className="wb-bucket-icon"><Icon name="dot-yellow" /></span>
-                    <h3 title="Statistical outliers that aren't clearly wrong — a person should check them before deciding to keep or drop.">Human Review Queue</h3>
+                    <h3 title="Statistical outliers that aren't clearly wrong: a person should check them before deciding to keep or drop.">Human Review Queue</h3>
                   </div>
                   <div className="wb-bucket-count">{(executionResult.review_rows ?? 0).toLocaleString()} rows</div>
                   <p>
@@ -1175,7 +1199,7 @@ export default function WhiteBoxPipeline() {
                 <div className="wb-card bucket quarantine" data-testid="zone-quarantine">
                   <div className="wb-bucket-header">
                     <span className="wb-bucket-icon"><Icon name="dot-red" /></span>
-                    <h3 title="Records that clearly violate a quality rule (missing/out-of-range/duplicate) — held here instead of deleted, and routed back to the source system to fix.">Quarantine Lake</h3>
+                    <h3 title="Records that clearly violate a quality rule (missing/out-of-range/duplicate): held here instead of deleted, and routed back to the source system to fix.">Quarantine Lake</h3>
                   </div>
                   <div className="wb-bucket-count">{(executionResult.quarantine_rows ?? 0).toLocaleString()} rows</div>
                   <p>
