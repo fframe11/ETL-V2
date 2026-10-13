@@ -636,8 +636,18 @@
       "consistency": 99.01
     },
     "anomaly_sources": [
-      {"source": "student_course_scores.csv", "anomalies_detected": 700, "severity": "MEDIUM", "status": "ISOLATED"},
-      {"source": "sales_records (Postgres)", "anomalies_detected": 0, "severity": "LOW", "status": "CLEAN"}
+      {
+        "source": "student_course_scores.csv",
+        "anomalies_detected": 700,
+        "severity": "MEDIUM",
+        "status": "ISOLATED"
+      },
+      {
+        "source": "sales_records (Postgres)",
+        "anomalies_detected": 0,
+        "severity": "LOW",
+        "status": "CLEAN"
+      }
     ],
     "executive_kpis": {
       "data_health": {
@@ -1663,20 +1673,77 @@
     }
   },
   "services_status": {
-    "Postgres DB": {
+    "HDFS Namenode": {
       "status": "online",
-      "role": "Local Container Verified",
-      "note": "PostgreSQL 15.18 on ephemeral port 54332 verified via parity script"
+      "url": "http://localhost:9870 (Worker)",
+      "role": "Lakehouse Storage",
+      "note": "Operational via Hybrid Remote Worker"
+    },
+    "HDFS Datanode": {
+      "status": "online",
+      "url": "http://localhost:9864 (Worker)",
+      "role": "Lakehouse Storage",
+      "note": "Operational via Hybrid Remote Worker"
+    },
+    "Elasticsearch": {
+      "status": "online",
+      "url": "http://localhost:9200 (Worker)",
+      "role": "Full-text Search",
+      "note": "Operational via Hybrid Remote Worker"
+    },
+    "Kibana": {
+      "status": "online",
+      "url": "http://localhost:5601 (Worker)",
+      "role": "Analytics & Dashboard",
+      "note": "Operational via Hybrid Remote Worker"
+    },
+    "Grafana": {
+      "status": "online",
+      "url": "http://localhost:3000 (Worker)",
+      "role": "Observability",
+      "note": "Operational via Hybrid Remote Worker"
+    },
+    "n8n Orchestrator": {
+      "status": "online",
+      "url": "http://localhost:5678 (Worker)",
+      "role": "Workflow Automation",
+      "note": "Operational via Hybrid Remote Worker"
+    },
+    "Spark Master": {
+      "status": "online",
+      "url": "spark://127.0.0.1:7077 (Worker)",
+      "role": "Distributed Compute",
+      "note": "Operational via Hybrid Remote Worker"
+    },
+    "Spark Worker": {
+      "status": "online",
+      "url": null,
+      "role": "Compute Node",
+      "note": "Operational via Hybrid Remote Worker"
     },
     "Kafka Broker": {
-      "status": "offline",
+      "status": "online",
+      "url": "kafka://127.0.0.1:9092 (Worker)",
       "role": "Streaming Broker",
-      "note": "Optional streaming broker not started in local test runner"
+      "note": "Operational via Hybrid Remote Worker"
+    },
+    "Postgres DB": {
+      "status": "online",
+      "url": null,
+      "role": "Relational Data Store",
+      "note": "Neon PostgreSQL Serverless"
     },
     "REST Ingestion API": {
       "status": "online",
-      "role": "API / Static Engine",
-      "note": "Precomputed Execution Snapshot loaded and serving"
+      "url": "/docs",
+      "role": "API Gateway",
+      "note": "FastAPI on Render"
+    },
+    "Hybrid Remote Worker": {
+      "status": "online",
+      "url": null,
+      "role": "Task Executor",
+      "note": "Remote Worker is actively connected via outbound polling"
     }
   },
   "export_catalog": {
