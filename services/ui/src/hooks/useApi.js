@@ -260,6 +260,7 @@ export function useApi(endpoint, options = {}) {
       const headers = { "Cache-Control": "no-cache" };
       if (token) {
         headers["Authorization"] = `Bearer ${token}`;
+        headers["X-Session-Token"] = token;
       }
       const res = await fetch(fullUrl, { credentials: "include", cache: "no-cache", headers });
       if (res.status === 401 && window.location.pathname !== "/login") {
@@ -366,6 +367,7 @@ export async function postApi(endpoint, body = null, method = "POST") {
   };
   if (token) {
     options.headers["Authorization"] = `Bearer ${token}`;
+    options.headers["X-Session-Token"] = token;
   }
   if (body) {
     options.headers["Content-Type"] = "application/json";
