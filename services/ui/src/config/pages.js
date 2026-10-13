@@ -1,7 +1,7 @@
 export const NAV_GROUPS = [
   { key: "start", title: "" },
-  { key: "workflow", title: "ETL Workflow" },
-  { key: "monitor", title: "Monitoring & Governance" }
+  { key: "workflow", title: "Data Pipelines" },
+  { key: "monitor", title: "Data Quality & Governance" }
 ];
 
 export const PAGES = [
