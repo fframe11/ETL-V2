@@ -584,37 +584,11 @@ export function useAuth() {
   }, []);
 
   const loginAsDemo = useCallback(async () => {
-    let backendToken = null;
-    try {
-      const res = await fetch(resolveApiUrl("/api/v1/auth/sso"), {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          provider: "demo",
-          email: "reviewer@academic-eval.edu",
-          full_name: "Academic Project Reviewer",
-          organization: "Faculty Examination Board",
-          role: "Lead Reviewer",
-          tier: "Academic Evaluation Tier",
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.token) backendToken = data.token;
-      }
-    } catch (err) {
-      console.warn("Demo backend token acquisition fallback:", err);
-    }
-
-    if (!backendToken) {
-      backendToken = await requestBackendSessionToken();
-    }
-
+    // 1. Synchronously set authentication and storage flags for instant zero-latency transition
     if (typeof window !== "undefined") {
-      const activeToken = backendToken || "demo_session_token";
-      sessionStorage.setItem("sdoqap_token", activeToken);
-      localStorage.setItem("sdoqap_token", activeToken);
+      const defaultToken = "demo_session_token";
+      sessionStorage.setItem("sdoqap_token", defaultToken);
+      localStorage.setItem("sdoqap_token", defaultToken);
       localStorage.setItem("sdoqap_demo_mode", "true");
       localStorage.setItem("dataserve_demo_mode", "true");
       localStorage.setItem("sdoqap_static_demo", "true");
@@ -635,6 +609,33 @@ export function useAuth() {
     setIsDemoMode(true);
     setAuthStatusMessage("โหมดสาธิตการใช้งาน");
     notifyAuthChanged();
+
+    // 2. Asynchronously acquire authentic backend HMAC token in background
+    try {
+      const res = await fetch(resolveApiUrl("/api/v1/auth/sso"), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "demo",
+          email: "reviewer@academic-eval.edu",
+          full_name: "Academic Project Reviewer",
+          organization: "Faculty Examination Board",
+          role: "Lead Reviewer",
+          tier: "Academic Evaluation Tier",
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.token && typeof window !== "undefined") {
+          sessionStorage.setItem("sdoqap_token", data.token);
+          localStorage.setItem("sdoqap_token", data.token);
+          notifyAuthChanged();
+        }
+      }
+    } catch (err) {
+      console.warn("Demo backend token acquisition fallback:", err);
+    }
   }, []);
 
   const logout = useCallback(async () => {

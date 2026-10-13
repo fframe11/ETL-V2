@@ -484,8 +484,8 @@ export default function Login() {
             </div>
             <button
               type="button"
-              onClick={() => {
-                loginAsDemo();
+              onClick={async () => {
+                await loginAsDemo();
                 navigate(from, { replace: true });
               }}
               className="dbx-demo-btn"
