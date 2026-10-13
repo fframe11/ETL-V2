@@ -126,6 +126,43 @@ def require_session_or_service_key(request: Request) -> str:
     raise HTTPException(status_code=401, detail="Not authenticated. Provide a session cookie, Bearer token, or a valid service key.")
 
 
+def is_production_environment() -> bool:
+    """Returns True if running in a production deployment (e.g. Render, or explicit ENV)."""
+    if os.getenv("RENDER", "").strip().lower() == "true":
+        return True
+    if os.getenv("RENDER_SERVICE_ID"):
+        return True
+    env = os.getenv("ENVIRONMENT") or os.getenv("ENV") or os.getenv("APP_ENV") or ""
+    return env.strip().lower() in ("production", "prod")
+
+
+BANNED_INSECURE_CREDENTIALS = {
+    "admin",
+    "password",
+    "123456",
+    "admin123",
+    "admin1234",
+    "root",
+    "changeme",
+    "guest",
+    "default",
+}
+
+
+def is_insecure_credential(val: Optional[str]) -> bool:
+    if not val:
+        return True
+    return str(val).strip().lower() in BANNED_INSECURE_CREDENTIALS
+
+
+def is_admin_user(user: Optional[str]) -> bool:
+    """Returns True if the authenticated user matches the configured admin session, not a worker or service key."""
+    if not user:
+        return False
+    admin_user = os.getenv("ADMIN_USERNAME", "admin").strip()
+    return hmac.compare_digest(str(user), admin_user)
+
+
 # ═════════════════════════════════════════════════════════════════════
 # PERSISTENT USER REPOSITORY (PostgreSQL + Local JSON Dual-Store)
 # ═════════════════════════════════════════════════════════════════════
@@ -286,6 +323,18 @@ class SSOPayload(BaseModel):
 def login(payload: LoginPayload, response: Response):
     admin_username = os.getenv("ADMIN_USERNAME", "admin").strip()
     admin_password = os.getenv("ADMIN_PASSWORD", "admin").strip()
+
+    if is_production_environment():
+        if (
+            is_insecure_credential(admin_username)
+            or is_insecure_credential(admin_password)
+            or is_insecure_credential(payload.username)
+            or is_insecure_credential(payload.password)
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Default or insecure credentials (admin/password) are strictly forbidden in production. Please configure secure ADMIN_USERNAME and ADMIN_PASSWORD in environment settings."
+            )
 
     # 1. Master admin check
     username_ok = hmac.compare_digest(payload.username, admin_username)
