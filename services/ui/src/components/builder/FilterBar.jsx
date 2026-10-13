@@ -34,8 +34,7 @@ export default function FilterBar({ filters, options, selections, onChange }) {
           );
         }
         const id = `dbb-filter-${f.id}`;
-        // An active value can fall outside the (capped) option list, e.g. after a drill-down.
-        const choices = opt.values || [];
+        const choices = Array.isArray(opt) ? opt : (Array.isArray(opt?.values) ? opt.values : []);
         const active = current.values?.[0];
         const extra = active != null && Array.isArray(choices) && !choices.includes(active) ? [active] : [];
         const allChoices = [...(Array.isArray(choices) ? choices : []), ...(Array.isArray(extra) ? extra : [])];
