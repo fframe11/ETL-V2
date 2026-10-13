@@ -496,8 +496,8 @@ export default function Login() {
                 </svg>
               </div>
               <div className="dbx-demo-labels">
-                <span className="dbx-demo-title">เข้าชมโหมด Demo (1-Click Instant Access)</span>
-                <span className="dbx-demo-sub">ประเมินผลระบบได้ทันทีโดยไม่ต้องกรอกข้อมูล มีข้อมูลตัวอย่างและ Dashboard พร้อมใช้งาน</span>
+                <span className="dbx-demo-title">เข้าชมโหมด Demo</span>
+                <span className="dbx-demo-sub">ทดลองใช้งานทันที พร้อมชุดข้อมูลตัวอย่าง</span>
               </div>
             </button>
           </div>
