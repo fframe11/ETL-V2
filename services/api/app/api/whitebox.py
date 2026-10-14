@@ -371,12 +371,13 @@ def get_dataset_profile(dataset_name: str = ""):
     """
     Get Data Profiling metrics for a dataset. Uses dirty_dataset.csv as default evaluation benchmark.
     """
-    if dataset_name in _LATEST_PROFILING:
-        return _LATEST_PROFILING[dataset_name]
+    active_dataset = dataset_name.strip() if dataset_name else str(_WORKFLOW_STATE.get("dataset_name") or "").strip()
+    if active_dataset and active_dataset in _LATEST_PROFILING:
+        return _LATEST_PROFILING[active_dataset]
 
-    if dataset_name in _UPLOADED_DATASETS and _WORKFLOW_STATE.get("dataset_source") != "evaluation":
-        profile = _compute_profile(_UPLOADED_DATASETS[dataset_name], dataset_name)
-        _LATEST_PROFILING[dataset_name] = profile
+    if active_dataset and active_dataset in _UPLOADED_DATASETS and _WORKFLOW_STATE.get("dataset_source") != "evaluation":
+        profile = _compute_profile(_UPLOADED_DATASETS[active_dataset], active_dataset)
+        _LATEST_PROFILING[active_dataset] = profile
         return profile
 
     dataset_path = _dataset_path()
@@ -384,8 +385,9 @@ def get_dataset_profile(dataset_name: str = ""):
         raise HTTPException(status_code=404, detail=f"Dirty dataset not found at {dataset_path}")
 
     df = pd.read_csv(dataset_path)
-    profile = _compute_profile(df, dataset_name)
-    _LATEST_PROFILING[dataset_name] = profile
+    profile = _compute_profile(df, active_dataset or dataset_name)
+    if active_dataset:
+        _LATEST_PROFILING[active_dataset] = profile
     return profile
 
 

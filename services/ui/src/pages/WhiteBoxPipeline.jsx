@@ -60,16 +60,20 @@ export default function WhiteBoxPipeline() {
   }, []);
 
   const loadOverview = async () => {
+    let activeDs = "";
     try {
       const st = await fetchWithTimeout("/api/v1/whitebox/state");
       if (st.ok) {
         const d = await st.json();
-        setDatasetName(d.dataset_name || "");
+        if (d.dataset_name) {
+          activeDs = d.dataset_name;
+          setDatasetName(d.dataset_name);
+        }
       }
     } catch (err) {
       console.warn("state not loaded", err);
     }
-    fetchProfile();
+    fetchProfile(activeDs);
     try {
       const res = await fetchWithTimeout("/api/v1/whitebox/multi-table/tables");
       if (res.ok) {
@@ -171,14 +175,19 @@ export default function WhiteBoxPipeline() {
     }
   };
 
-  const fetchProfile = async () => {
+  const fetchProfile = async (ds) => {
     setProfileLoading(true);
     setError(null);
     try {
-      const res = await fetchWithTimeout("/api/v1/whitebox/profile", {}, 10000);
+      const targetDs = ds || datasetName;
+      const url = targetDs ? `/api/v1/whitebox/profile?dataset_name=${encodeURIComponent(targetDs)}` : "/api/v1/whitebox/profile";
+      const res = await fetchWithTimeout(url, {}, 10000);
       if (res.ok) {
         const data = await res.json();
         setProfileData(data);
+        if (data.dataset_name) {
+          setDatasetName(data.dataset_name);
+        }
       } else {
         const errJson = await res.json().catch(() => ({}));
         setError(errJson.detail || "สร้าง Data Profile ไม่สำเร็จ");
