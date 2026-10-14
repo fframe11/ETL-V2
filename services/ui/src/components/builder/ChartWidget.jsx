@@ -17,10 +17,14 @@ export function drillValue(entry) {
 }
 
 export default function ChartWidget({ widget, data, onDrill }) {
-  const rows = data?.rows || [];
+  const rows = Array.isArray(data?.rows) && data.rows.length > 0
+    ? data.rows
+    : (Array.isArray(data?.series) && typeof data.series[0] === "object" ? data.series : []);
   if (rows.length === 0) return <p className="dbb-muted">ไม่มีข้อมูลตามตัวกรอง</p>;
   const fmt = (v) => formatValue(v, widget.format, widget.currency);
-  const series = data.series || ["value"];
+  const series = Array.isArray(data?.series) && typeof data.series[0] === "string"
+    ? data.series
+    : ["value"];
   const seriesName = (s) => (s === "value" ? widget.title : s);
   const legend = series.length > 1;
   const drill = DRILLABLE.has(widget.type) && onDrill

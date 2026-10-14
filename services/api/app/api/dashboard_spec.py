@@ -260,10 +260,13 @@ def validate_spec(raw, profile, metrics=None):
     _pack(widgets)
     filters = _filters(raw.get("filters"), kinds, warnings, columns)
     _assign_ids(filters, "f")
-    return {"version": SPEC_VERSION, "title": _text(raw.get("title"), 120) or "แดชบอร์ด",
-            "description": _text(raw.get("description"), 300),
-            "audience": raw.get("audience") if raw.get("audience") in AUDIENCES else "business",
-            "filters": filters, "widgets": widgets}, warnings
+    res = {"version": SPEC_VERSION, "title": _text(raw.get("title"), 120) or "แดชบอร์ด",
+           "description": _text(raw.get("description"), 300),
+           "audience": raw.get("audience") if raw.get("audience") in AUDIENCES else "business",
+           "filters": filters, "widgets": widgets}
+    if raw.get("insights"):
+        res["insights"] = _text(raw.get("insights"), 1000)
+    return res, warnings
 
 
 def diff_specs(old, new):

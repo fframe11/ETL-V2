@@ -8,6 +8,8 @@
 CLAUDE.md export-ignore
 GEMINI.md export-ignore
 .gemini/ export-ignore
+.agents/ export-ignore
+scratch/ export-ignore
 
 # 2. Local Safety & Backup Scripts (Strip from client)
 backup-project.ps1 export-ignore

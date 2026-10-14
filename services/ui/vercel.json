@@ -1,12 +1,22 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "cleanUrls": true,
-  "trailingSlash": false,
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://indices-cornell-burlington-physician.trycloudflare.com/api/:path*"
+      "destination": "https://dataserve-api.onrender.com/api/:path*"
+    },
+    {
+      "source": "/healthz",
+      "destination": "https://dataserve-api.onrender.com/healthz"
+    },
+    {
+      "source": "/live",
+      "destination": "https://dataserve-api.onrender.com/live"
+    },
+    {
+      "source": "/ready",
+      "destination": "https://dataserve-api.onrender.com/ready"
     },
     {
       "source": "/(.*)",

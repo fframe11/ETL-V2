@@ -38,6 +38,7 @@ Reply with ONE JSON object and nothing else, following this schema:
   "title": string,
   "description": string (one sentence),
   "audience": one of {json.dumps(list(AUDIENCES))},
+  "insights": string (2-3 sentences of executive analytics, key drivers, trends or risk alerts in the language of the user's request),
   "filters": [{{"id": string, "column": string, "label": string}}],
   "widgets": [{{
     "id": string,
@@ -292,7 +293,9 @@ def fallback_spec(profile, context="", audience="business", metrics=None):
         widgets.append({"type": "table", "title": "ตัวอย่างข้อมูล", "columns": [c["name"] for c in columns[:12 if audience == "analyst" else 8]]})
     filters = [{"column": c["name"]} for c in categories[:2]] + [{"column": d["name"]} for d in dates[:1]]
     title = "แดชบอร์ดผู้บริหาร" if audience == "management" else "แดชบอร์ดภาพรวม"
-    return {"title": title, "description": context[:300], "widgets": widgets, "filters": filters}
+    target_dim = _label(categories[-1]) if categories else "ระเบียนข้อมูล"
+    insights = f"ภาพรวมข้อมูล {profile.get('rows', 0):,} แถว: วิเคราะห์มิติหลักตาม {target_dim} พร้อมตัวชี้วัดประสิทธิภาพเพื่อสนับสนุนการตัดสินใจเชิงกลยุทธ์"
+    return {"title": title, "description": context[:300], "insights": insights, "widgets": widgets, "filters": filters}
 
 
 def generate_spec(table_name, profile, context, audience, metrics=None):

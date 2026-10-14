@@ -15,26 +15,38 @@ function WidgetBody({ widget, data, onDrill, labels }) {
 export default function DashboardCanvas({ spec, data, selections = {}, onSelectionsChange, busy = false, tools = null }) {
   // Only a select control shows a `values` selection; a date range control cannot, so a
   // drill value on a date column needs its own chip.
-  const filterColumns = new Set(spec.filters.filter((f) => f.type === "select").map((f) => f.column));
+  const filtersList = Array.isArray(spec?.filters) ? spec.filters : [];
+  const filterColumns = new Set(filtersList.filter((f) => f && f.type === "select").map((f) => f.column));
   const labels = data?.column_labels || {}; // display names from the semantic layer
-  const drills = Object.entries(selections).filter(([column, sel]) => !filterColumns.has(column) && sel?.values?.length);
+  const drills = Object.entries(selections || {}).filter(([column, sel]) => !filterColumns.has(column) && sel?.values?.length);
   // A bar or slice of a date column is a time bucket ("2025-03-01" = March), so the server needs the grain.
   const drill = (column, value, grain) =>
-    onSelectionsChange({ ...selections, [column]: grain ? { values: [value], grain } : { values: [value] } });
+    onSelectionsChange?.({ ...(selections || {}), [column]: grain ? { values: [value], grain } : { values: [value] } });
   const clear = (column) => {
-    const next = { ...selections };
+    const next = { ...(selections || {}) };
     delete next[column];
-    onSelectionsChange(next);
+    onSelectionsChange?.(next);
   };
+
+  const widgetsList = Array.isArray(spec?.widgets) ? spec.widgets : [];
 
   return (
     <div className={`dbb-canvas${busy ? " is-busy" : ""}`} aria-busy={busy}>
       <header className="dbb-canvas-head">
-        <h2>{spec.title}</h2>
-        {spec.description && <p>{spec.description}</p>}
+        <h2>{spec?.title || "แดชบอร์ด"}</h2>
+        {spec?.description && <p>{spec.description}</p>}
       </header>
-      {spec.filters.length > 0 && (
-        <FilterBar filters={spec.filters} options={data?.filter_options || {}} selections={selections} onChange={onSelectionsChange} />
+      {spec?.insights && (
+        <div className="dbb-insights-box" role="region" aria-label="ข้อสังเกตเชิงลึกจาก AI">
+          <div className="dbb-insights-header">
+            <span className="dbb-insights-badge">AI Insights</span>
+            <span className="dbb-insights-title">ข้อสังเกตและบทวิเคราะห์เชิงลึก</span>
+          </div>
+          <p className="dbb-insights-text">{spec.insights}</p>
+        </div>
+      )}
+      {filtersList.length > 0 && (
+        <FilterBar filters={filtersList} options={data?.filter_options || {}} selections={selections} onChange={onSelectionsChange} />
       )}
       {drills.length > 0 && (
         <div className="dbb-drills" aria-label="ตัวกรองจากการคลิกกราฟ">
@@ -47,26 +59,34 @@ export default function DashboardCanvas({ spec, data, selections = {}, onSelecti
       )}
       {(data || tools) && (
         <div className="dbb-canvas-bar">
-          {data && (
+          {data?.rows_after_filter != null && (
             <p className="dbb-muted">
-              {data.rows_after_filter.toLocaleString("en-US")} จาก {data.rows_total.toLocaleString("en-US")} แถว
+              {Number(data.rows_after_filter).toLocaleString("en-US")} จาก {Number(data.rows_total ?? data.rows_after_filter).toLocaleString("en-US")} แถว
             </p>
           )}
           {tools}
         </div>
       )}
       <div className="dbb-grid">
-        {spec.widgets.map((w) => (
-          <article
-            key={w.id}
-            className={`dbb-cell dbb-cell-${w.type}`}
-            aria-label={w.title}
-            style={{ "--x": w.layout.x + 1, "--y": w.layout.y + 1, "--w": w.layout.w, "--h": w.layout.h }}
-          >
-            <h3 className="dbb-cell-title">{w.title}</h3>
-            <WidgetBody widget={w} data={data?.widgets?.[w.id]} onDrill={drill} labels={labels} />
-          </article>
-        ))}
+        {widgetsList.map((w, idx) => {
+          const layout = w?.layout || { x: (idx % 2) * 6, y: Math.floor(idx / 2) * 4, w: 6, h: 4 };
+          return (
+            <article
+              key={w?.id || `w-${idx}`}
+              className={`dbb-cell dbb-cell-${w?.type || "kpi"}`}
+              aria-label={w?.title || "Widget"}
+              style={{
+                "--x": (layout.x ?? 0) + 1,
+                "--y": (layout.y ?? 0) + 1,
+                "--w": layout.w ?? 6,
+                "--h": layout.h ?? 4
+              }}
+            >
+              <h3 className="dbb-cell-title">{w?.title || ""}</h3>
+              <WidgetBody widget={w} data={data?.widgets?.[w?.id]} onDrill={drill} labels={labels} />
+            </article>
+          );
+        })}
       </div>
     </div>
   );

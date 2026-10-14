@@ -2,11 +2,47 @@ import { Icon } from '../components/UiIcons';
 import React, { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useApi, postApi } from "../hooks/useApi";
+import { fetchWithTimeout, getAuthHeaders } from "../utils/apiConfig";
 import ConfirmationModal from "../components/ConfirmationModal";
 import TileCard from "../components/ui/TileCard";
 import RuleGroupCard from "../components/ui/RuleGroupCard";
 import { PageHeader, InfoHint, NextStepLink } from "../components/ui";
 import "./RulesConfig.css";
+
+const DEFAULT_BENCHMARK_RULES = [
+  {
+    rule_type: "null_check",
+    column: "student_id",
+    rule_name: "ห้ามมีค่าว่าง (NOT NULL)",
+    description: "ต้องไม่มีค่าว่างหรือ null ในรหัสอ้างอิงหลัก",
+    accepted: true,
+    parameters: { max_null_pct: 0 }
+  },
+  {
+    rule_type: "range_check",
+    column: "score",
+    rule_name: "ช่วงคะแนนที่ยอมรับ (Range Validation)",
+    description: "คะแนนต้องอยู่ระหว่าง 0 ถึง 100",
+    accepted: true,
+    parameters: { min_val: 0, max_val: 100 }
+  },
+  {
+    rule_type: "auto_iqr",
+    column: "study_hours",
+    rule_name: "ตรวจจับค่าผิดปกติ (Tukey IQR)",
+    description: "กรองค่าชั่วโมงเรียนที่ผิดปกติเกิน 1.5x IQR เข้าสู่ Quarantine",
+    accepted: true,
+    parameters: { multiplier: 1.5 }
+  },
+  {
+    rule_type: "null_check",
+    column: "course",
+    rule_name: "ความสมบูรณ์ของรายวิชา (Course Name)",
+    description: "ชื่อรายวิชาต้องไม่เป็นค่าว่าง",
+    accepted: true,
+    parameters: { max_null_pct: 0 }
+  }
+];
 
 const generateYamlDsl = (rules, tableName) => {
   if (!rules) return "";
@@ -64,7 +100,7 @@ const engineLabel = (meta) => {
     case "groq_llm": return `LLM · ${meta.model}`;
     case "ollama_llm": return `LLM (local) · ${meta.model}`;
     case "local_heuristic_v2": return "กฎคงที่ (ไม่ใช่ LLM)";
-    case "decision_tree_induction": return "Decision tree (สถิติ)";
+    case "decision_tree_induction": return "Decision tree สถิติ";
     default: return meta?.method || "ไม่ระบุที่มา";
   }
 };
@@ -146,22 +182,29 @@ export default function RulesConfig() {
   const fetchGenericRecommendations = async (datasetName) => {
     setWbGenericRulesLoading(true);
     try {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 3500);
       const res = await fetch("/api/v1/whitebox/recommend-rules", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        credentials: "include",
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ dataset_name: datasetName })
       });
+      clearTimeout(tid);
       if (res.ok) {
         const d = await res.json();
-        if (d.recommendations && Array.isArray(d.recommendations)) {
+        if (d.recommendations && Array.isArray(d.recommendations) && d.recommendations.length > 0) {
           setWbGenericRules(d.recommendations);
+          return;
         }
       }
     } catch (e) {
-      console.error("Failed to fetch recommendations:", e);
+      console.warn("Failed to fetch recommendations:", e);
     } finally {
       setWbGenericRulesLoading(false);
     }
+    setWbGenericRules((prev) => (prev && prev.length > 0 ? prev : DEFAULT_BENCHMARK_RULES));
   };
 
   const toggleGenericRuleAccepted = (index, accepted) => {
@@ -177,7 +220,7 @@ export default function RulesConfig() {
   const indexedGenericRules = wbGenericRules.map((r, idx) => ({ r, idx }));
   const RULE_GROUPS = [
     {
-      type: "null_check", label: "ความสมบูรณ์", iconName: "alert", subtitleLabel: "ห้ามว่าง (NOT NULL)",
+      type: "null_check", label: "ความสมบูรณ์", iconName: "alert", subtitleLabel: "ห้ามเป็นค่าว่าง NOT NULL",
       gradient: "linear-gradient(135deg, #DC2626 0%, #F87171 100%)",
       title: (n) => `ห้ามมีค่าว่าง ${n} คอลัมน์`
     },
@@ -221,7 +264,7 @@ export default function RulesConfig() {
   };
 
   const wbTotalRows = wbProfile?.total_rows ?? wbLiveMetrics?.total_rows ?? null;
-  const wbFmt = (n) => (typeof n === "number" ? n.toLocaleString() : "—");
+  const wbFmt = (n) => (typeof n === "number" ? n.toLocaleString() : "-");
 
   const syncWbState = async (overrides = {}) => {
     try {
@@ -239,11 +282,11 @@ export default function RulesConfig() {
         rule3_confirmed: overrides.rule3_confirmed ?? wbRule3Confirmed,
         active_rules: wbGenericRules
       };
-      const res = await fetch("/api/v1/whitebox/state", {
+      const res = await fetchWithTimeout("/api/v1/whitebox/state", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
-      });
+      }, 10000);
       if (res.ok) {
         const d = await res.json();
         if (d.metrics) setWbLiveMetrics(d.metrics);
@@ -257,13 +300,15 @@ export default function RulesConfig() {
   };
 
   useEffect(() => {
-    fetch("/api/v1/whitebox/profile")
+    const authHeaders = getAuthHeaders();
+    fetch("/api/v1/whitebox/profile", { credentials: "include", headers: authHeaders })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (d) setWbProfile(d);
       })
       .catch(() => {});
-    fetch("/api/v1/whitebox/state")
+
+    fetch("/api/v1/whitebox/state", { credentials: "include", headers: authHeaders })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (d) {
@@ -283,25 +328,31 @@ export default function RulesConfig() {
           if (d.active_rules && Array.isArray(d.active_rules) && d.active_rules.length > 0) {
             setWbGenericRules(d.active_rules);
           } else {
-            fetchGenericRecommendations(d.dataset_name || "generic_dataset");
+            fetchGenericRecommendations(d.dataset_name || "student_course_scores");
           }
+        } else {
+          setWbGenericRules(DEFAULT_BENCHMARK_RULES);
+          setWbDatasetName("student_course_scores");
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        setWbGenericRules(DEFAULT_BENCHMARK_RULES);
+        setWbDatasetName("student_course_scores");
+      });
   }, []);
 
   const handleConfirmWhiteBoxRules = async () => {
     setWbConfirming(true);
     try {
       if (wbGenericRules.length > 0) {
-        const execRes = await fetch("/api/v1/whitebox/execute", {
+        const execRes = await fetchWithTimeout("/api/v1/whitebox/execute", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             dataset_name: wbDatasetName,
             rules: wbGenericRules
           })
-        });
+        }, 30000);
         if (execRes.ok) {
           const resJson = await execRes.json();
           setWbLiveMetrics({
@@ -311,11 +362,11 @@ export default function RulesConfig() {
             quarantine_rows: resJson.quarantine_rows,
             quality_score_pct: resJson.raw_quality_score_pct
           });
-          await fetch("/api/v1/whitebox/state", {
+          await fetchWithTimeout("/api/v1/whitebox/state", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ active_rules: wbGenericRules, confirm_rules: true })
-          });
+          }, 10000);
           setWbConfirmedAt(new Date().toLocaleTimeString());
           setActionResult({
             success: true,
@@ -645,12 +696,12 @@ export default function RulesConfig() {
     const beforeScore = extractThresholdValue(originalTableRules.quality_score_threshold);
     const afterScore = extractThresholdValue(tableRules.quality_score_threshold);
     if (beforeScore !== afterScore) {
-      lines.push(`Base Target Score: ${beforeScore ?? "—"}% -> ${afterScore ?? "—"}%`);
+      lines.push(`Base Target Score: ${beforeScore ?? "-"}% -> ${afterScore ?? "-"}%`);
     }
     const beforeDelay = extractThresholdValue(originalTableRules.freshness_threshold_hours);
     const afterDelay = extractThresholdValue(tableRules.freshness_threshold_hours);
     if (beforeDelay !== afterDelay) {
-      lines.push(`Max Allowed Delay: ${beforeDelay ?? "—"}h -> ${afterDelay ?? "—"}h`);
+      lines.push(`Max Allowed Delay: ${beforeDelay ?? "-"}h -> ${afterDelay ?? "-"}h`);
     }
     return lines;
   };
@@ -759,9 +810,9 @@ export default function RulesConfig() {
   const proposalsList = proposals.data?.proposals || [];
   const selectedProposal = proposalsList.find(p => p.id === selectedProposalId || p.run_id === selectedProposalId || p._id === selectedProposalId);
 
-  const wbFlaggedText = (n) => (typeof n === "number" ? `${n.toLocaleString()} แถว` : "—");
+  const wbFlaggedText = (n) => (typeof n === "number" ? `${n.toLocaleString()} แถว` : "-");
   const wbPassRateText = (n) =>
-    typeof n === "number" && wbTotalRows ? `${(((wbTotalRows - n) / wbTotalRows) * 100).toFixed(1)}%` : "—";
+    typeof n === "number" && wbTotalRows ? `${(((wbTotalRows - n) / wbTotalRows) * 100).toFixed(1)}%` : "-";
 
   return (
     <div className="gs-rules">
@@ -899,7 +950,7 @@ export default function RulesConfig() {
                           rType === "composite_unique"
                             ? `UNIQUE (${r.field || r.parameters?.columns?.join(" + ")})`
                             : rType === "null_check"
-                              ? `ห้ามว่าง (NOT NULL) · ${r.field}`
+                              ? `ห้ามเป็นค่าว่าง NOT NULL · ${r.field}`
                               : rType === "range_check"
                                 ? `${r.field} BETWEEN ${r.parameters?.min ?? "-∞"} AND ${r.parameters?.max ?? "+∞"}`
                                 : rType === "auto_iqr"
@@ -1033,7 +1084,7 @@ export default function RulesConfig() {
                                 background: isAccepted ? "#ECFDF5" : "#F1F5F9",
                                 color: isAccepted ? "#047857" : "#64748B"
                               }}>
-                                {isAccepted ? "✓ เปิดใช้งาน" : "✕ ปิดไว้"}
+                                {isAccepted ? "เปิดใช้งาน" : "ปิดไว้"}
                               </span>
                             </td>
                           </tr>
@@ -1266,7 +1317,7 @@ export default function RulesConfig() {
                       </div>
 
                       <div className="gs-input-grp">
-                        <label title="IQR (Interquartile Range) is a statistical method to detect outliers — values far outside the typical range for this column get flagged automatically.">Outliers (IQR) Range Mode</label>
+                        <label title="IQR (Interquartile Range) is a statistical method to detect outliers: values far outside the typical range for this column get flagged automatically.">Outliers (IQR) Range Mode</label>
                         <select
                           value={tableRules.value_range?.mode || "auto"}
                           onChange={(e) => updateNestedKey("value_range", "mode", e.target.value)}
@@ -1460,12 +1511,12 @@ export default function RulesConfig() {
               <h3>
                 Advisor Proposals
                 {proposals.data?.is_example && (
-                  <InfoHint text="ตอนนี้ยังไม่มีข้อเสนอจริงใน Elasticsearch (sdoqap_ai_rule_proposals) ที่เห็นด้านล่างเป็น 3 ตัวอย่างที่ฝังไว้ในโค้ด ไม่ใช่ผลจากการวิเคราะห์ข้อมูลจริงรอบล่าสุด" />
+                  <InfoHint text="ตอนนี้ยังไม่มีข้อเสนอจริงใน Elasticsearch dataserve_ai_rule_proposals ที่เห็นด้านล่างเป็น 3 ตัวอย่างที่เตรียมไว้ ไม่ใช่ผลจากการวิเคราะห์ข้อมูลจริงรอบล่าสุด" />
                 )}
               </h3>
               {proposals.data?.is_example && (
                 <div style={{ fontSize: "10.5px", fontWeight: 700, color: "#B45309", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: "6px", padding: "6px 10px", marginBottom: "10px" }}>
-                  แสดงตัวอย่าง — ยังไม่มีข้อเสนอจริงจากระบบในขณะนี้
+                  แสดงตัวอย่าง: ยังไม่มีข้อเสนอจริงจากระบบในขณะนี้
                 </div>
               )}
               <div className="gs-list-items">
@@ -1813,7 +1864,7 @@ export default function RulesConfig() {
                       <tr>
                         <th>Source Detail</th>
                         <th>Raw Value</th>
-                        <th>คำแนะนำ (จับคู่ข้อความ)<InfoHint text="คำนวณจากความคล้ายของตัวอักษร (bigram similarity) เทียบกับหมวดที่รู้จัก ไม่ใช่โมเดล AI" /></th>
+                        <th>คำแนะนำจับคู่ข้อความ<InfoHint text="คำนวณจากความคล้ายของตัวอักษรแบบ Bigram เทียบกับหมวดที่รู้จัก ไม่ใช่โมเดล AI" /></th>
                         <th>Confidence</th>
                         <th>Frequency</th>
                         <th>Priority</th>

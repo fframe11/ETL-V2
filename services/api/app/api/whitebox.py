@@ -371,12 +371,13 @@ def get_dataset_profile(dataset_name: str = ""):
     """
     Get Data Profiling metrics for a dataset. Uses dirty_dataset.csv as default evaluation benchmark.
     """
-    if dataset_name in _LATEST_PROFILING:
-        return _LATEST_PROFILING[dataset_name]
+    active_dataset = dataset_name.strip() if dataset_name else str(_WORKFLOW_STATE.get("dataset_name") or "").strip()
+    if active_dataset and active_dataset in _LATEST_PROFILING:
+        return _LATEST_PROFILING[active_dataset]
 
-    if dataset_name in _UPLOADED_DATASETS and _WORKFLOW_STATE.get("dataset_source") != "evaluation":
-        profile = _compute_profile(_UPLOADED_DATASETS[dataset_name], dataset_name)
-        _LATEST_PROFILING[dataset_name] = profile
+    if active_dataset and active_dataset in _UPLOADED_DATASETS and _WORKFLOW_STATE.get("dataset_source") != "evaluation":
+        profile = _compute_profile(_UPLOADED_DATASETS[active_dataset], active_dataset)
+        _LATEST_PROFILING[active_dataset] = profile
         return profile
 
     dataset_path = _dataset_path()
@@ -384,8 +385,9 @@ def get_dataset_profile(dataset_name: str = ""):
         raise HTTPException(status_code=404, detail=f"Dirty dataset not found at {dataset_path}")
 
     df = pd.read_csv(dataset_path)
-    profile = _compute_profile(df, dataset_name)
-    _LATEST_PROFILING[dataset_name] = profile
+    profile = _compute_profile(df, active_dataset or dataset_name)
+    if active_dataset:
+        _LATEST_PROFILING[active_dataset] = profile
     return profile
 
 
@@ -979,6 +981,47 @@ def execute_pipeline(payload: ExecuteRulesPayload):
     }
     cleaned_result = _clean_for_json(result)
     _LATEST_EXECUTION_RESULTS[dataset_name] = cleaned_result
+
+    # ── PERSIST TO SDOQAP RUN REGISTRY (PostgreSQL / ES bridge) ──
+    try:
+        from .config import get_es_client
+        es = get_es_client()
+        run_ts = datetime.now(timezone.utc).isoformat()
+        safe_ds_name = re.sub(r"[^A-Za-z0-9_-]", "_", str(dataset_name))[:64] or "dataset"
+        run_id = f"wb_{safe_ds_name}_{int(time.time()*1000)}"
+        run_doc = {
+            "run_id": run_id,
+            "table_name": dataset_name,
+            "total_records": total_raw_rows,
+            "clean_records": int(len(df_clean)),
+            "quarantined_records": int(len(df_quarantine)),
+            "quality_score": quality_score_raw,
+            "timestamp": run_ts,
+            "source": _WORKFLOW_STATE.get("source_type", "FILE_UPLOAD"),
+            "quarantine_breakdown": {
+                str(k): int(v) for k, v in error_summary.items() if str(k).lower() != "none"
+            }
+        }
+        es.index(index="sdoqap_quality_runs", id=run_id, document=run_doc)
+
+        # Also register pipeline run for SLA & Availability tracking
+        pipe_doc = {
+            "run_id": run_id,
+            "table_name": dataset_name,
+            "state": "succeeded",
+            "duration_seconds": round(exec_time_ms / 1000.0, 2),
+            "timestamp": run_ts,
+            "total_rows": total_raw_rows,
+            "quarantined_rows": int(len(df_quarantine))
+        }
+        es.index(index="sdoqap_pipeline_runs", id=run_id, document=pipe_doc)
+    except Exception as exc:
+        logger.warning("Could not persist whitebox execution to run store: %s", exc)
+
+    _WORKFLOW_STATE["latest_run"] = cleaned_result
+    _WORKFLOW_STATE["dataset_name"] = dataset_name
+    _save_workflow_state()
+
     return cleaned_result
 
 
@@ -1686,6 +1729,7 @@ def _save_workflow_state() -> None:
 def _reset_dataset_scoped_state() -> None:
     """Put reviewer work back to defaults so a new dataset never inherits the old one's decisions."""
     _WORKFLOW_STATE.update(_dataset_scoped_defaults())
+    _WORKFLOW_STATE.pop("metrics", None)
 
 
 def _load_workflow_state() -> None:
@@ -1800,11 +1844,15 @@ def _recompute_interactive_state() -> Dict[str, Any]:
         "sample_review": exec_res.get("sample_review", []),
         "sample_quarantine": exec_res.get("sample_quarantined", [])
     }
+    _WORKFLOW_STATE["metrics"] = metrics
+    _save_workflow_state()
     return _clean_for_json({**_WORKFLOW_STATE, "metrics": metrics})
 
 
 @router.get("/state")
-def get_workflow_state():
+def get_workflow_state(force_recompute: bool = False):
+    if not force_recompute and _WORKFLOW_STATE.get("metrics") and _WORKFLOW_STATE.get("dataset_name"):
+        return _clean_for_json(_WORKFLOW_STATE)
     return _recompute_interactive_state()
 
 
@@ -2014,18 +2062,28 @@ def _get_groq_api_key() -> str:
     saved = _saved_groq_setting()
     if saved:
         key, enabled = saved
-        return key if enabled else ""
-    k = os.getenv("GROQ_API_KEY", "").strip()
+        return key.strip().strip('"\'') if enabled else ""
+    k = os.getenv("GROQ_API_KEY", "").strip().strip('"\'')
     if k:
         return k
-    for candidate in ["/app/.env", os.path.join(os.getcwd(), ".env"), "c:/DataEngProj/.env"]:
+    candidates = [
+        "/app/.env",
+        os.path.join(os.getcwd(), ".env"),
+        "c:/DataEngProj/.env",
+        "C:/DataEngProj-clean/.env",
+        os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", ".env")),
+        os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".env")),
+    ]
+    for candidate in candidates:
         if os.path.isfile(candidate):
             try:
                 with open(candidate, "r", encoding="utf-8") as fh:
                     for line in fh:
                         line = line.strip()
                         if line.startswith("GROQ_API_KEY="):
-                            return line.split("=", 1)[1].strip()
+                            val = line.split("=", 1)[1].strip().strip('"\'')
+                            if val:
+                                return val
             except Exception:
                 pass
     return ""

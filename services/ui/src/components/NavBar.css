@@ -41,7 +41,7 @@
   color: #FFFFFF;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
-  border-radius: 6px;
+  border-radius: 50%;
   box-shadow: 0 2px 6px rgba(255, 54, 33, 0.35);
 }
 .gs-nav-logo-icon svg { width: 18px; height: 18px; }

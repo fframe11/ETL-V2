@@ -1,0 +1,292 @@
+/* ═══════════════════════════════════════════════════════════════
+   SDOQAP PRECOMPUTED EXECUTION RESULTS DASHBOARD
+   High-density, Databricks-aligned telemetry for Committee Review
+   ═══════════════════════════════════════════════════════════════ */
+
+.er-container {
+  padding: 32px 40px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* Header & Metadata */
+.er-header {
+  margin-bottom: 24px;
+}
+
+.er-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--db-blue);
+  background: var(--db-blue-light);
+  padding: 4px 10px;
+  border-radius: 4px;
+  margin-bottom: 12px;
+}
+
+.er-title {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--text-main);
+  letter-spacing: -0.02em;
+  margin-bottom: 6px;
+}
+
+.er-desc {
+  font-size: 14px;
+  color: var(--text-muted);
+  max-width: 800px;
+  line-height: 1.5;
+}
+
+.er-meta-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+
+.er-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+}
+
+.er-meta-label {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.er-meta-val {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.er-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+}
+
+.er-badge-pass {
+  background: var(--db-emerald-light);
+  color: var(--db-emerald);
+  border: 1px solid rgba(0, 169, 114, 0.25);
+}
+
+.er-badge-fail {
+  background: var(--db-red-light);
+  color: var(--db-red);
+  border: 1px solid rgba(220, 38, 38, 0.25);
+}
+
+.er-badge-review {
+  background: var(--db-amber-light);
+  color: var(--db-amber);
+  border: 1px solid rgba(217, 119, 6, 0.25);
+}
+
+.er-badge-env {
+  background: #F1F5F9;
+  color: #334155;
+  border: 1px solid #CBD5E1;
+}
+
+/* Disclaimer / Limitations Alert */
+.er-disclaimer {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 18px;
+  background: #EFF6FF;
+  border: 1px solid #BFDBFE;
+  border-radius: 8px;
+  color: #1E40AF;
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 24px;
+}
+
+.er-disclaimer-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* KPI Summary Cards Grid */
+.er-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.er-kpi-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 18px 20px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.er-kpi-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.er-kpi-val {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--text-main);
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.er-kpi-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Tabs Navigation */
+.er-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 20px;
+}
+
+.er-tab-btn {
+  padding: 10px 18px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.er-tab-btn:hover {
+  color: var(--text-main);
+}
+
+.er-tab-btn.active {
+  color: var(--db-blue);
+  border-bottom-color: var(--db-blue);
+}
+
+/* Tables and Panels */
+.er-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 24px;
+}
+
+.er-panel-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 4px;
+}
+
+.er-panel-desc {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+
+.er-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.er-table th {
+  text-align: left;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.er-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-main);
+  vertical-align: top;
+}
+
+.er-table tr:last-child td {
+  border-bottom: none;
+}
+
+.er-table tr:hover td {
+  background: #F8FAFC;
+}
+
+.er-code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: #F1F5F9;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #0F172A;
+}
+
+/* Loading & Empty State */
+.er-loading {
+  text-align: center;
+  padding: 80px 20px;
+  color: var(--text-muted);
+}
+
+.er-error-box {
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  border-radius: 8px;
+  padding: 24px;
+  color: #991B1B;
+  text-align: center;
+  margin: 40px auto;
+  max-width: 600px;
+}

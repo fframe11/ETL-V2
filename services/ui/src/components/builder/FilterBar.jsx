@@ -10,9 +10,10 @@ export default function FilterBar({ filters, options, selections, onChange }) {
 
   return (
     <div className="dbb-filters" role="group" aria-label="ตัวกรอง">
-      {filters.map((f) => {
+      {(filters || []).map((f) => {
         const current = selections[f.column] || {};
         const opt = options[f.column] || {};
+        const labelText = f.label || f.title || f.column;
         if (f.type === "date_range") {
           const update = (key, value) => {
             const selection = { ...current };
@@ -22,28 +23,28 @@ export default function FilterBar({ filters, options, selections, onChange }) {
           };
           return (
             <fieldset key={f.id} className="dbb-filter">
-              <legend>{f.label}</legend>
+              <legend>{labelText}</legend>
               <div>
-                <input type="date" aria-label={`${f.label} ตั้งแต่`} min={opt.min || undefined} max={opt.max || undefined}
+                <input type="date" aria-label={`${labelText} ตั้งแต่`} min={opt.min || undefined} max={opt.max || undefined}
                   value={current.from || ""} onChange={(e) => update("from", e.target.value)} />
-                <input type="date" aria-label={`${f.label} ถึง`} min={opt.min || undefined} max={opt.max || undefined}
+                <input type="date" aria-label={`${labelText} ถึง`} min={opt.min || undefined} max={opt.max || undefined}
                   value={current.to || ""} onChange={(e) => update("to", e.target.value)} />
               </div>
             </fieldset>
           );
         }
         const id = `dbb-filter-${f.id}`;
-        // An active value can fall outside the (capped) option list, e.g. after a drill-down.
-        const choices = opt.values || [];
+        const choices = Array.isArray(opt) ? opt : (Array.isArray(opt?.values) ? opt.values : []);
         const active = current.values?.[0];
-        const extra = active != null && !choices.includes(active) ? [active] : [];
+        const extra = active != null && Array.isArray(choices) && !choices.includes(active) ? [active] : [];
+        const allChoices = [...(Array.isArray(choices) ? choices : []), ...(Array.isArray(extra) ? extra : [])];
         return (
           <div key={f.id} className="dbb-filter">
-            <label htmlFor={id}>{f.label}</label>
+            <label htmlFor={id}>{labelText}</label>
             <select id={id} value={current.values?.[0] ?? ""}
               onChange={(e) => set(f.column, e.target.value ? { values: [e.target.value] } : null)}>
               <option value="">ทั้งหมด</option>
-              {[...choices, ...extra].map((v) => <option key={v} value={v}>{v}</option>)}
+              {allChoices.map((v) => <option key={v} value={v}>{v}</option>)}
             </select>
           </div>
         );

@@ -4,12 +4,22 @@
   "buildCommand": "npm --prefix services/ui run build",
   "outputDirectory": "services/ui/dist",
   "installCommand": "npm --prefix services/ui install",
-  "cleanUrls": true,
-  "trailingSlash": false,
   "rewrites": [
     {
-      "source": "/api/:path*",
-      "destination": "https://indices-cornell-burlington-physician.trycloudflare.com/api/:path*"
+      "source": "/api/:match*",
+      "destination": "https://dataserve-api-sg.fly.dev/api/:match*"
+    },
+    {
+      "source": "/healthz",
+      "destination": "https://dataserve-api-sg.fly.dev/healthz"
+    },
+    {
+      "source": "/docs",
+      "destination": "https://dataserve-api-sg.fly.dev/docs"
+    },
+    {
+      "source": "/openapi.json",
+      "destination": "https://dataserve-api-sg.fly.dev/openapi.json"
     },
     {
       "source": "/(.*)",
@@ -17,6 +27,15 @@
     }
   ],
   "headers": [
+    {
+      "source": "/data/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
     {
       "source": "/assets/(.*)",
       "headers": [

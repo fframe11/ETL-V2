@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../hooks/useAuth";
+import { resolveApiUrl } from "../utils/apiConfig";
 import { summarizeServiceHealth } from "../utils/serviceHealth";
 import { PAGES, NAV_GROUPS } from "../config/pages";
 import "./NavBar.css";
@@ -75,7 +76,7 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
   const location = useLocation();
   const navigate = useNavigate();
   
-  const { isAuthenticated, logout } = useAuth();
+  const { isAuthenticated, username, userProfile, logout } = useAuth();
   const isLoggedIn = !!isAuthenticated;
 
   // Notification badge states for pending governance items
@@ -92,7 +93,7 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
       if (!isAuthenticated) return;
 
       try {
-        const schemaRes = await fetch("/api/v1/schema/proposals");
+        const schemaRes = await fetch(resolveApiUrl("/api/v1/schema/proposals"), { credentials: "include" });
         if (schemaRes.ok) {
           const schemaData = await schemaRes.json();
           const pendingSchema = schemaData.proposals ? schemaData.proposals.filter(p => p.status === "PENDING") : [];
@@ -103,7 +104,7 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
       }
 
       try {
-        const aiRes = await fetch("/api/v1/rules/ai-proposals");
+        const aiRes = await fetch(resolveApiUrl("/api/v1/rules/ai-proposals"), { credentials: "include" });
         if (aiRes.ok) {
           const aiData = await aiRes.json();
           setAiRulesCount(aiData.count || 0);
@@ -132,7 +133,8 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
   const NAV_ICONS = {
     home: <HomeIcon />, guide: <GuideIcon />, schema: <SchemaIcon />, pipeline: <PipelineIcon />,
     dashboard: <DashboardIcon />, builder: <DashboardIcon />, rules: <RulesIcon />, export: <ExportIcon />,
-    analytics: <AnalyticsIcon />, whitebox: <RunsIcon />, ingestion: <IngestionIcon />
+    analytics: <AnalyticsIcon />, whitebox: <RunsIcon />, ingestion: <IngestionIcon />,
+    execution: <RunsIcon />
   };
   const NAV_BADGES = {
     schema: schemaCount > 0 ? schemaCount : null,
@@ -216,7 +218,7 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
   return (
     <>
       <aside className={`gs-nav ${navOpen ? "open" : "closed"}`}>
-        {/* Interactive Right-Edge Rail — Click anywhere on the white sidebar border/rail to open/close */}
+        {/* Interactive Right-Edge Rail: Click anywhere on the white sidebar border/rail to open/close */}
         <div
           className="gs-nav-edge-rail"
           onClick={(e) => {
@@ -231,14 +233,14 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
         {/* Sidebar Header with Pro 3-Line Hamburger Icon */}
         <div className="gs-nav-logo" style={{ flexDirection: "row", justifyContent: navOpen ? "space-between" : "center", padding: navOpen ? "14px 16px" : "14px 8px" }}>
           {navOpen && (
-            <Link to="/" className="gs-nav-brand" title="หน้าแรก (Home)" onClick={(e) => e.stopPropagation()}>
+            <Link to="/" className="gs-nav-brand" title="หน้าแรก" onClick={(e) => e.stopPropagation()}>
               <div className="gs-nav-logo-icon">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
                 </svg>
               </div>
               <div className="gs-nav-logo-text">
-                <span className="gs-nav-logo-name">DataServe</span>
+                <span className="gs-nav-logo-name">Data Serve</span>
                 <span className="gs-nav-logo-sub">Lakehouse Engine</span>
               </div>
             </Link>
@@ -250,7 +252,7 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
               e.stopPropagation();
               toggleSidebar();
             }}
-            title={navOpen ? "พับแถบเมนู (Collapse Sidebar)" : "เปิดแถบเมนู (Expand Sidebar)"}
+            title={navOpen ? "พับแถบเมนู" : "เปิดแถบเมนู"}
             aria-label={navOpen ? "Collapse Sidebar" : "Expand Sidebar"}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -405,10 +407,25 @@ export default function NavBar({ isOpen, toggleSidebar, isSidebarOpen }) {
         <div className="gs-nav-bottom">
           {isLoggedIn ? (
             navOpen ? (
-              <button className="gs-nav-logout-btn" onClick={handleLogout}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                <span>Logout</span>
-              </button>
+              <>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 8px", marginBottom: "6px", background: "rgba(255,255,255,0.03)", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div style={{ width: "22px", height: "22px", borderRadius: "50%", background: "#ff3621", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: "700", flexShrink: 0 }}>
+                    {(userProfile?.fullName || username || "U").charAt(0).toUpperCase()}
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden" }}>
+                    <span style={{ fontSize: "11.5px", fontWeight: "600", color: "#f8fafc", whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>
+                      {userProfile?.fullName || username || "User"}
+                    </span>
+                    <span style={{ fontSize: "9.5px", color: "#94a3b8", whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>
+                      {userProfile?.role || "Data Engineer"}
+                    </span>
+                  </div>
+                </div>
+                <button className="gs-nav-logout-btn" onClick={handleLogout}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                  <span>Logout</span>
+                </button>
+              </>
             ) : (
               <button className="gs-nav-logout-btn collapsed" onClick={handleLogout} title="Logout">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
