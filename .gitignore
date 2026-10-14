@@ -50,17 +50,12 @@ services/spark/backups/
 Thumbs.db
 
 # Agent Temporary / Cache Files
-graphify-out/
-graphify_repo/
-gridgeist_repo/
-ponytail_repo/
 services/ui/src/backup_original/
 services/ui/src/_backup_original/
 services/ui/debug_status.py
 chunk2.txt
 chunk2_utf8.txt
 dump.txt
-.graphifyignore
 temp_input.txt
 # Large data files
 services/spark/*.csv
