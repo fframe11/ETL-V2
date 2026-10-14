@@ -7,19 +7,19 @@
   "rewrites": [
     {
       "source": "/api/:match*",
-      "destination": "https://dataserve-api-sg.fly.dev/api/:match*"
+      "destination": "https://dataserve-api.onrender.com/api/:match*"
     },
     {
       "source": "/healthz",
-      "destination": "https://dataserve-api-sg.fly.dev/healthz"
+      "destination": "https://dataserve-api.onrender.com/healthz"
     },
     {
       "source": "/docs",
-      "destination": "https://dataserve-api-sg.fly.dev/docs"
+      "destination": "https://dataserve-api.onrender.com/docs"
     },
     {
       "source": "/openapi.json",
-      "destination": "https://dataserve-api-sg.fly.dev/openapi.json"
+      "destination": "https://dataserve-api.onrender.com/openapi.json"
     },
     {
       "source": "/(.*)",
