@@ -1729,6 +1729,7 @@ def _save_workflow_state() -> None:
 def _reset_dataset_scoped_state() -> None:
     """Put reviewer work back to defaults so a new dataset never inherits the old one's decisions."""
     _WORKFLOW_STATE.update(_dataset_scoped_defaults())
+    _WORKFLOW_STATE.pop("metrics", None)
 
 
 def _load_workflow_state() -> None:
@@ -1843,11 +1844,15 @@ def _recompute_interactive_state() -> Dict[str, Any]:
         "sample_review": exec_res.get("sample_review", []),
         "sample_quarantine": exec_res.get("sample_quarantined", [])
     }
+    _WORKFLOW_STATE["metrics"] = metrics
+    _save_workflow_state()
     return _clean_for_json({**_WORKFLOW_STATE, "metrics": metrics})
 
 
 @router.get("/state")
-def get_workflow_state():
+def get_workflow_state(force_recompute: bool = False):
+    if not force_recompute and _WORKFLOW_STATE.get("metrics") and _WORKFLOW_STATE.get("dataset_name"):
+        return _clean_for_json(_WORKFLOW_STATE)
     return _recompute_interactive_state()
 
 
