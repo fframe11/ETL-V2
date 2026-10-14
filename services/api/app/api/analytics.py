@@ -98,7 +98,11 @@ AREA_TABLE_MAPPING = {
 }
 
 @router.get("/api/v1/executive/overview")
-def get_executive_overview(time_range: Optional[str] = None, business_area: Optional[str] = None):
+def get_executive_overview(
+    time_range: Optional[str] = None,
+    business_area: Optional[str] = None,
+    dataset: Optional[str] = None
+):
     es = get_es_client()
     try:
         total_records = 0
@@ -124,7 +128,9 @@ def get_executive_overview(time_range: Optional[str] = None, business_area: Opti
             query_must = []
             if time_range in ("24h", "7d", "30d"):
                 query_must.append({"range": {"timestamp": {"gte": f"now-{time_range}"}}})
-            if business_area and business_area.lower() != "all":
+            if dataset and dataset.lower() != "all":
+                query_must.append({"term": {"table_name.keyword": dataset}})
+            elif business_area and business_area.lower() != "all":
                 target_tables = AREA_TABLE_MAPPING.get(business_area.lower(), [business_area.lower()])
                 query_must.append({"terms": {"table_name.keyword": target_tables}})
             
@@ -218,7 +224,7 @@ def get_executive_overview(time_range: Optional[str] = None, business_area: Opti
         else:
             health_status = "Critical"
 
-        impact_data = get_business_impact(time_range=time_range, business_area=business_area)
+        impact_data = get_business_impact(time_range=time_range, business_area=business_area, dataset=dataset)
         total_monetary_loss = impact_data.get("total_financial_impact_usd", 0)
 
         # Dynamic mapping of quarantined tables
@@ -409,17 +415,19 @@ def get_executive_overview(time_range: Optional[str] = None, business_area: Opti
             diff = round(latest_score - prev_score, 2)
             trend_label = f"{'+' if diff >= 0 else ''}{diff}% vs last cycle"
 
-        # Root Cause Fix: Compute report availability from actual pipeline data
         report_ok_pct = round(availability_score, 1) if total_pipelines > 0 else 0.0
-
+        clean_records_val = max(0, total_records - total_quarantined)
         return {
+            "total_records": total_records,
+            "clean_records": clean_records_val,
+            "quarantined_records": total_quarantined,
             "executive_kpis": {
                 "data_health": {
                     "score": avg_quality_score,
                     "status": health_status,
                     "trend_label": trend_label,
                     "total_records": total_records,
-                    "clean_records": total_records - total_quarantined,
+                    "clean_records": clean_records_val,
                     "quarantined_records": total_quarantined
                 },
                 "data_availability": {
@@ -829,7 +837,11 @@ def get_diagnostic_clustering(table_name: str = None):
 
 
 @router.get("/api/v1/analytics/impact")
-def get_business_impact(time_range: Optional[str] = None, business_area: Optional[str] = None):
+def get_business_impact(
+    time_range: Optional[str] = None,
+    business_area: Optional[str] = None,
+    dataset: Optional[str] = None
+):
     es = get_es_client()
     try:
         total_quarantined = 0
@@ -841,7 +853,9 @@ def get_business_impact(time_range: Optional[str] = None, business_area: Optiona
             must_clauses = []
             if time_range in ("24h", "7d", "30d"):
                 must_clauses.append({"range": {"timestamp": {"gte": f"now-{time_range}"}}})
-            if business_area and business_area.lower() != "all":
+            if dataset and dataset.lower() != "all":
+                must_clauses.append({"term": {"table_name.keyword": dataset}})
+            elif business_area and business_area.lower() != "all":
                 target_tables = AREA_TABLE_MAPPING.get(business_area.lower(), [business_area.lower()])
                 must_clauses.append({"terms": {"table_name.keyword": target_tables}})
             search_body = {
