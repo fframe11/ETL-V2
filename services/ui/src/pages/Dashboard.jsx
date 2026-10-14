@@ -156,6 +156,7 @@ export default function Dashboard() {
   const isHealthy = services.data && !services.error;
   const activity = useApi('/system/activity?limit=15', { refreshInterval: 15000 });
   const qualityHistory = useApi('/quality?limit=50', { refreshInterval: 15000 });
+  const schemaTables = useApi('/schema/tables', { refreshInterval: 30000 });
   const impact = useApi(`/analytics/impact?time_range=${timeRange}${areaQueryParam}`, { refreshInterval: 30000 });
   const remediations = useApi('/system/remediations', { refreshInterval: 20000 });
   const clustering = useApi('/analytics/clustering', { refreshInterval: 30000 });
@@ -228,6 +229,7 @@ export default function Dashboard() {
         sellInOutApi.refetch(),
         impact.refetch(),
         qualityHistory.refetch(),
+        schemaTables.refetch(),
         wbStateApi.refetch(),
         activity.refetch(),
         remediations.refetch()
@@ -244,6 +246,14 @@ export default function Dashboard() {
   // Sync selected run for technical cockpit
   useEffect(() => {
     if (qualityHistory.data && qualityHistory.data.length > 0) {
+      if (selectedSourceFilter !== 'All') {
+        const tableRuns = qualityHistory.data.filter(r => (r.table_name || '').toLowerCase() === selectedSourceFilter.toLowerCase());
+        if (tableRuns.length > 0) {
+          const match = userSelectedRunId ? tableRuns.find(r => r.run_id === userSelectedRunId) : null;
+          setSelectedRun(match || tableRuns[0]);
+          return;
+        }
+      }
       if (!userSelectedRunId) {
         setSelectedRun(qualityHistory.data[0]);
       } else {
@@ -251,7 +261,7 @@ export default function Dashboard() {
         setSelectedRun(match || qualityHistory.data[0]);
       }
     }
-  }, [qualityHistory.data, userSelectedRunId]);
+  }, [qualityHistory.data, userSelectedRunId, selectedSourceFilter]);
 
   const terminalEndRef = useRef(null);
 
@@ -279,6 +289,13 @@ export default function Dashboard() {
     if (selectedSeverityFilter !== 'All') {
       list = list.filter(item => item.severity && item.severity.toLowerCase() === selectedSeverityFilter.toLowerCase());
     }
+    if (selectedSourceFilter !== 'All') {
+      list = list.filter(item => {
+        const sourceStr = (item.affected_source || item.dataset || '').toLowerCase();
+        return sourceStr.includes(selectedSourceFilter.toLowerCase()) ||
+          selectedSourceFilter.toLowerCase().includes(sourceStr);
+      });
+    }
     if (selectedAreaFilter !== 'All') {
       const targetDatasets = AREA_DATASET_MAP[selectedAreaFilter.toLowerCase()] || [];
       list = list.filter(item => {
@@ -290,7 +307,7 @@ export default function Dashboard() {
       });
     }
     return list.sort((a, b) => (sevOrder[a.severity] ?? 9) - (sevOrder[b.severity] ?? 9));
-  }, [bizKpiImpactList, selectedSeverityFilter, selectedAreaFilter]);
+  }, [bizKpiImpactList, selectedSeverityFilter, selectedAreaFilter, selectedSourceFilter]);
   const criticalIssuesList = execData.critical_business_issues || [];
   const qualityBreakdown = execData.data_quality_breakdown || {
     missing_values_pct: 0,
@@ -308,18 +325,24 @@ export default function Dashboard() {
     action: exec.loading ? "กำลังดึงข้อมูลการดำเนินการ..." : "ระบบติดตามทำงานตามรอบปกติ"
   };
 
-  // Filtered Critical Issues by severity & area
+  // Filtered Critical Issues by severity & area & dataset
   const filteredCriticalIssues = useMemo(() => {
     return criticalIssuesList.filter(item => {
       const matchSev = selectedSeverityFilter === 'All' || (item.severity && item.severity.toLowerCase() === selectedSeverityFilter.toLowerCase());
       if (!matchSev) return false;
+      if (selectedSourceFilter !== 'All') {
+        const itemDataset = (item.dataset || item.affected_source || '').toLowerCase();
+        const matchSource = itemDataset.includes(selectedSourceFilter.toLowerCase()) ||
+          selectedSourceFilter.toLowerCase().includes(itemDataset);
+        if (!matchSource) return false;
+      }
       if (selectedAreaFilter === 'All') return true;
       if (item.business_area && item.business_area.toLowerCase() === selectedAreaFilter.toLowerCase()) return true;
       const targetDatasets = AREA_DATASET_MAP[selectedAreaFilter.toLowerCase()] || [];
       const itemDataset = (item.dataset || '').toLowerCase();
       return targetDatasets.some(d => itemDataset.includes(d)) || itemDataset.includes(selectedAreaFilter.toLowerCase());
     });
-  }, [criticalIssuesList, selectedSeverityFilter, selectedAreaFilter]);
+  }, [criticalIssuesList, selectedSeverityFilter, selectedAreaFilter, selectedSourceFilter]);
 
   // Dynamic Cascade for Business Impact Mapping Flow (Section 10)
   const activeImpactFlow = useMemo(() => {
@@ -421,8 +444,32 @@ export default function Dashboard() {
     });
   }, [anomaly.data]);
 
+  // Available Datasets (combining Quality Runs & Catalog Tables)
+  const availableDatasets = useMemo(() => {
+    const fromRuns = (qualityHistory.data || []).map(r => r.table_name).filter(Boolean);
+    const fromSchema = (schemaTables.data?.tables || []).map(t => t.name).filter(Boolean);
+    return Array.from(new Set([...fromRuns, ...fromSchema])).sort();
+  }, [qualityHistory.data, schemaTables.data]);
+
+  // Selected dataset specific run (if filtered)
+  const selectedDatasetRun = useMemo(() => {
+    if (selectedSourceFilter === 'All' || !qualityHistory.data) return null;
+    return qualityHistory.data.find(r => (r.table_name || '').toLowerCase() === selectedSourceFilter.toLowerCase()) || null;
+  }, [selectedSourceFilter, qualityHistory.data]);
+
   // Reverse-Engineered Executive Visualizations Data (Enterprise Governance Spec)
   const complianceDonutData = useMemo(() => {
+    if (selectedDatasetRun) {
+      const total = selectedDatasetRun.total_records || (selectedDatasetRun.clean_records + selectedDatasetRun.quarantined_records) || 1;
+      const quarantined = selectedDatasetRun.quarantined_records || 0;
+      const review = 0;
+      const compliant = selectedDatasetRun.clean_records || Math.max(0, total - quarantined);
+      return [
+        { name: 'Compliant', fullName: `Compliant (${selectedDatasetRun.table_name})`, value: compliant, color: '#10B981', pct: ((compliant / total) * 100).toFixed(1) },
+        { name: 'At Risk', fullName: 'At Risk (Review Queue)', value: review, color: '#F59E0B', pct: ((review / total) * 100).toFixed(1) },
+        { name: 'Non-Compliant', fullName: 'Non-Compliant (Quarantine Lake)', value: quarantined, color: '#EF4444', pct: ((quarantined / total) * 100).toFixed(1) }
+      ];
+    }
     const total = execData.total_records || wbTotal || 10100;
     const quarantined = sellInOut.summary?.quarantined_data_gap_volume || qualityBreakdown.total_quarantined || wbQuarantine || 630;
     const review = wbReview || (selectedAreaFilter !== 'All' ? 24 : 100);
@@ -432,20 +479,23 @@ export default function Dashboard() {
       { name: 'At Risk', fullName: 'At Risk (Review Queue)', value: review, color: '#F59E0B', pct: ((review / total) * 100).toFixed(1) },
       { name: 'Non-Compliant', fullName: 'Non-Compliant (Quarantine Lake)', value: quarantined, color: '#EF4444', pct: ((quarantined / total) * 100).toFixed(1) }
     ];
-  }, [execData.total_records, wbTotal, sellInOut.summary, qualityBreakdown, wbQuarantine, wbReview, selectedAreaFilter]);
+  }, [selectedDatasetRun, execData.total_records, wbTotal, sellInOut.summary, qualityBreakdown, wbQuarantine, wbReview, selectedAreaFilter]);
 
   const financialExposureData = useMemo(() => {
-    const totalLoss = bizImpact.monetary_loss_usd || sellInOut.summary?.copdq_sales_loss_usd || 14277;
-    const reworkWaste = Math.round(totalLoss * 0.11) || 1575;
-    const salesLoss = Math.round(totalLoss * 0.59) || 8420;
-    const driftRisk = Math.max(0, totalLoss - reworkWaste - salesLoss) || 4282;
+    let totalLoss = bizImpact.monetary_loss_usd || sellInOut.summary?.copdq_sales_loss_usd || 14277;
+    if (selectedDatasetRun) {
+      totalLoss = Math.round(selectedDatasetRun.quarantined_financial_value || (selectedDatasetRun.quarantined_records || 0) * 22.66);
+    }
+    const reworkWaste = Math.round(totalLoss * 0.11);
+    const salesLoss = Math.round(totalLoss * 0.59);
+    const driftRisk = Math.max(0, totalLoss - reworkWaste - salesLoss);
     return [
       { name: 'Potential Fines', amount: salesLoss, formatted: formatUsdWithThb(salesLoss) },
       { name: 'Remediation Costs', amount: reworkWaste, formatted: formatUsdWithThb(reworkWaste) },
       { name: 'Drift & Integrity Risk', amount: driftRisk, formatted: formatUsdWithThb(driftRisk) },
       { name: 'Total Exposure', amount: totalLoss, formatted: formatUsdWithThb(totalLoss), isTotal: true }
     ];
-  }, [bizImpact.monetary_loss_usd, sellInOut.summary]);
+  }, [selectedDatasetRun, bizImpact.monetary_loss_usd, sellInOut.summary]);
 
   const domainPerformanceTable = useMemo(() => {
     const defaultDomains = [
@@ -860,6 +910,29 @@ export default function Dashboard() {
           <span className="exec-filter-label">Filter By:</span>
           
           <select
+            className={`exec-filter-select exec-dataset-select ${selectedSourceFilter !== 'All' ? 'is-active' : ''}`}
+            value={selectedSourceFilter}
+            onChange={(e) => {
+              const val = e.target.value;
+              setSelectedSourceFilter(val);
+              setSearchTerm(val === 'All' ? '' : val);
+              if (val !== 'All' && qualityHistory.data?.length) {
+                const match = qualityHistory.data.find(r => (r.table_name || '').toLowerCase() === val.toLowerCase());
+                if (match) {
+                  setSelectedRun(match);
+                  setUserSelectedRunId(match.run_id);
+                }
+              }
+            }}
+            title="เลือกชุดข้อมูล / Dataset Filter"
+          >
+            <option value="All">Dataset: All Datasets</option>
+            {availableDatasets.map((tbl) => (
+              <option key={tbl} value={tbl}>Dataset: {tbl}</option>
+            ))}
+          </select>
+
+          <select
             className="exec-filter-select"
             value={timeRange}
             onChange={(e) => setTimeRange(e.target.value)}
@@ -924,24 +997,55 @@ export default function Dashboard() {
       {viewMode === 'executive' && (
         <>
           {/* Active Scope Banner when filtered */}
-          {selectedAreaFilter !== 'All' && (
+          {(selectedAreaFilter !== 'All' || selectedSourceFilter !== 'All') && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: '8px', marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', flexWrap: 'wrap' }}>
                 <span style={{ fontWeight: 700, color: 'var(--accent-blue, #3B82F6)' }}>Scope Filter Active:</span>
-                <span className="exec-chip exec-chip-warn" style={{ fontSize: '11px', textTransform: 'capitalize' }}>
-                  {selectedAreaFilter} Area
-                </span>
-                <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
-                  (Target Datasets: {AREA_DATASET_MAP[selectedAreaFilter.toLowerCase()]?.slice(0, 4).join(', ')})
-                </span>
+                {selectedSourceFilter !== 'All' && (
+                  <span className="exec-chip" style={{ background: 'rgba(124, 58, 237, 0.15)', color: 'var(--accent-purple, #7C3AED)', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <Icon name="grid" /> Dataset: <strong>{selectedSourceFilter}</strong>
+                  </span>
+                )}
+                {selectedAreaFilter !== 'All' && (
+                  <span className="exec-chip exec-chip-warn" style={{ fontSize: '11px', textTransform: 'capitalize' }}>
+                    {selectedAreaFilter} Area
+                  </span>
+                )}
+                {selectedSourceFilter === 'All' && selectedAreaFilter !== 'All' && (
+                  <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
+                    (Target Datasets: {AREA_DATASET_MAP[selectedAreaFilter.toLowerCase()]?.slice(0, 4).join(', ')})
+                  </span>
+                )}
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedAreaFilter('All')}
-                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '11px', textDecoration: 'underline' }}
-              >
-                Reset to All Areas
-              </button>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                {selectedSourceFilter !== 'All' && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSourceFilter('All')}
+                    style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '11px', textDecoration: 'underline' }}
+                  >
+                    Clear Dataset
+                  </button>
+                )}
+                {selectedAreaFilter !== 'All' && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedAreaFilter('All')}
+                    style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '11px', textDecoration: 'underline' }}
+                  >
+                    Clear Area
+                  </button>
+                )}
+                {(selectedSourceFilter !== 'All' && selectedAreaFilter !== 'All') && (
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedSourceFilter('All'); setSelectedAreaFilter('All'); }}
+                    style={{ background: 'transparent', border: 'none', color: 'var(--accent-blue)', cursor: 'pointer', fontSize: '11px', fontWeight: 700 }}
+                  >
+                    Reset All
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -952,32 +1056,36 @@ export default function Dashboard() {
             {/* Card 1: Total Records */}
             <div className="exec-kpi-card kpi-blue">
               <div className="exec-kpi-top">
-                <span className="exec-kpi-title">TOTAL RECORDS</span>
+                <span className="exec-kpi-title">{selectedDatasetRun ? 'DATASET RECORDS' : 'TOTAL RECORDS'}</span>
                 <span className="exec-chip" style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#3B82F6' }}>
-                  TRACKED
+                  {selectedDatasetRun ? 'FILTERED' : 'TRACKED'}
                 </span>
               </div>
               <div className="exec-kpi-val">
-                {(execData.total_records || wbTotal || 10100).toLocaleString()}
+                {selectedDatasetRun
+                  ? (selectedDatasetRun.total_records || (selectedDatasetRun.clean_records + selectedDatasetRun.quarantined_records) || 0).toLocaleString()
+                  : (execData.total_records || wbTotal || 10100).toLocaleString()}
               </div>
               <div className="exec-kpi-sub">
-                Data assets tracked across Lakehouse
+                {selectedDatasetRun
+                  ? `Records in ${selectedDatasetRun.table_name}`
+                  : 'Data assets tracked across Lakehouse'}
               </div>
             </div>
 
-            {/* Card 2: Total Domains */}
+            {/* Card 2: Total Domains / Dataset Status */}
             <div className="exec-kpi-card kpi-good">
               <div className="exec-kpi-top">
-                <span className="exec-kpi-title">TOTAL DOMAINS</span>
-                <span className="exec-chip exec-chip-good">
-                  ACTIVE
+                <span className="exec-kpi-title">{selectedDatasetRun ? 'DATASET STATUS' : 'TOTAL DOMAINS'}</span>
+                <span className={`exec-chip ${selectedDatasetRun ? (selectedDatasetRun.quality_score >= 90 ? 'exec-chip-good' : 'exec-chip-crit') : 'exec-chip-good'}`}>
+                  {selectedDatasetRun ? (selectedDatasetRun.quality_score >= 90 ? 'VERIFIED' : 'FLAGGED') : 'ACTIVE'}
                 </span>
               </div>
               <div className="exec-kpi-val">
-                {bizAreas.length || 5}
+                {selectedDatasetRun ? (selectedDatasetRun.quality_score >= 90 ? 'Clean Gate' : 'Needs Review') : (bizAreas.length || 5)}
               </div>
               <div className="exec-kpi-sub">
-                Business areas under governance
+                {selectedDatasetRun ? `Latest run: ${selectedDatasetRun.run_id}` : 'Business areas under governance'}
               </div>
             </div>
 
@@ -986,14 +1094,18 @@ export default function Dashboard() {
               <div className="exec-kpi-top">
                 <span className="exec-kpi-title">QUALITY SCORE</span>
                 <span className="exec-chip exec-chip-good">
-                  +0.1% vs last run
+                  {selectedDatasetRun ? `Score: ${Number(selectedDatasetRun.quality_score || 0).toFixed(1)}%` : '+0.1% vs last run'}
                 </span>
               </div>
               <div className="exec-kpi-val">
-                {dataHealth.score != null ? `${dataHealth.score}/100` : '93.7/100'}
+                {selectedDatasetRun
+                  ? `${Number(selectedDatasetRun.quality_score || 0).toFixed(1)}/100`
+                  : (dataHealth.score != null ? `${dataHealth.score}/100` : '93.7/100')}
               </div>
               <div className="exec-kpi-sub">
-                {dataHealth.total_records ? `${dataHealth.clean_records?.toLocaleString()} clean · ${dataHealth.quarantined_records?.toLocaleString()} quarantined` : 'Based on 5 ISO/IEC 25012 dimensions'}
+                {selectedDatasetRun
+                  ? `${selectedDatasetRun.clean_records?.toLocaleString()} clean · ${selectedDatasetRun.quarantined_records?.toLocaleString()} quarantined`
+                  : (dataHealth.total_records ? `${dataHealth.clean_records?.toLocaleString()} clean · ${dataHealth.quarantined_records?.toLocaleString()} quarantined` : 'Based on 5 ISO/IEC 25012 dimensions')}
               </div>
             </div>
 
@@ -1001,15 +1113,25 @@ export default function Dashboard() {
             <div className="exec-kpi-card kpi-purple">
               <div className="exec-kpi-top">
                 <span className="exec-kpi-title">COMPLIANCE</span>
-                <span className={`exec-chip ${dataAvailability.score >= 90 ? 'exec-chip-good' : 'exec-chip-crit'}`}>
-                  {dataAvailability.score >= 90 ? 'HEALTHY' : 'CRITICAL'}
+                <span className={`exec-chip ${
+                  selectedDatasetRun
+                    ? (selectedDatasetRun.quality_score >= 90 ? 'exec-chip-good' : 'exec-chip-crit')
+                    : (dataAvailability.score >= 90 ? 'exec-chip-good' : 'exec-chip-crit')
+                }`}>
+                  {selectedDatasetRun
+                    ? (selectedDatasetRun.quality_score >= 90 ? 'HEALTHY' : 'CRITICAL')
+                    : (dataAvailability.score >= 90 ? 'HEALTHY' : 'CRITICAL')}
                 </span>
               </div>
               <div className="exec-kpi-val">
-                {dataAvailability.score != null ? `${dataAvailability.score}%` : '92.8%'}
+                {selectedDatasetRun && (selectedDatasetRun.total_records || (selectedDatasetRun.clean_records + selectedDatasetRun.quarantined_records)) > 0
+                  ? `${((selectedDatasetRun.clean_records / (selectedDatasetRun.total_records || (selectedDatasetRun.clean_records + selectedDatasetRun.quarantined_records))) * 100).toFixed(1)}%`
+                  : (dataAvailability.score != null ? `${dataAvailability.score}%` : '92.8%')}
               </div>
               <div className="exec-kpi-sub">
-                {dataAvailability.total_pipelines - dataAvailability.failed_pipelines}/{dataAvailability.total_pipelines || 5} Active pipelines · SLA &ge;95%
+                {selectedDatasetRun
+                  ? `Clean record ratio in ${selectedDatasetRun.table_name}`
+                  : `${dataAvailability.total_pipelines - dataAvailability.failed_pipelines}/${dataAvailability.total_pipelines || 5} Active pipelines · SLA ≥95%`}
               </div>
             </div>
 
@@ -1018,14 +1140,22 @@ export default function Dashboard() {
               <div className="exec-kpi-top">
                 <span className="exec-kpi-title">EST. FINES (COPDQ)</span>
                 <span className="exec-chip exec-chip-crit">
-                  CRITICAL RISK
+                  {selectedDatasetRun && (selectedDatasetRun.quarantined_records || 0) === 0 ? 'NO RISK' : 'CRITICAL RISK'}
                 </span>
               </div>
               <div className="exec-kpi-val" style={{ color: 'var(--accent-red)' }}>
-                {formatUsd(bizImpact.monetary_loss_usd || sellInOut.summary?.copdq_sales_loss_usd || 14277)}
+                {formatUsd(
+                  selectedDatasetRun
+                    ? Math.round(selectedDatasetRun.quarantined_financial_value || (selectedDatasetRun.quarantined_records || 0) * 22.66)
+                    : (bizImpact.monetary_loss_usd || sellInOut.summary?.copdq_sales_loss_usd || 14277)
+                )}
               </div>
               <div className="exec-kpi-sub">
-                {formatThbApprox(bizImpact.monetary_loss_usd || sellInOut.summary?.copdq_sales_loss_usd || 14277)} · Potential financial impact
+                {formatThbApprox(
+                  selectedDatasetRun
+                    ? Math.round(selectedDatasetRun.quarantined_financial_value || (selectedDatasetRun.quarantined_records || 0) * 22.66)
+                    : (bizImpact.monetary_loss_usd || sellInOut.summary?.copdq_sales_loss_usd || 14277)
+                )} · Potential financial impact
               </div>
             </div>
 
@@ -1034,14 +1164,18 @@ export default function Dashboard() {
               <div className="exec-kpi-top">
                 <span className="exec-kpi-title">OPEN ISSUES</span>
                 <span className="exec-chip exec-chip-warn">
-                  +12 vs last run
+                  {selectedDatasetRun ? `${selectedDatasetRun.table_name}` : '+12 vs last run'}
                 </span>
               </div>
               <div className="exec-kpi-val" style={{ color: 'var(--accent-yellow)' }}>
-                {(sellInOut.summary?.quarantined_data_gap_volume || qualityBreakdown.total_quarantined || 630).toLocaleString()}
+                {selectedDatasetRun
+                  ? (selectedDatasetRun.quarantined_records || 0).toLocaleString()
+                  : (sellInOut.summary?.quarantined_data_gap_volume || qualityBreakdown.total_quarantined || 630).toLocaleString()}
               </div>
               <div className="exec-kpi-sub">
-                Quarantined records pending remediation
+                {selectedDatasetRun
+                  ? `Quarantined records in ${selectedDatasetRun.table_name}`
+                  : 'Quarantined records pending remediation'}
               </div>
             </div>
           </div>
@@ -1056,7 +1190,8 @@ export default function Dashboard() {
                 <div>
                   <h3 style={{ margin: 0, fontSize: '13px' }}>Compliance Status</h3>
                   <p style={{ marginTop: '2px', fontSize: '11px', color: 'var(--text-muted)' }}>
-                    Distribution across {(execData.total_records || wbTotal || 10100).toLocaleString()} records
+                    Distribution across {selectedDatasetRun ? (selectedDatasetRun.total_records || (selectedDatasetRun.clean_records + selectedDatasetRun.quarantined_records)).toLocaleString() : (execData.total_records || wbTotal || 10100).toLocaleString()} records
+                    {selectedDatasetRun ? ` (${selectedDatasetRun.table_name})` : ''}
                   </p>
                 </div>
                 <InfoHint text="การกระจายตัวของข้อมูลตามสถาปัตยกรรม 3-Way Segregation: ข้อมูลสะอาด (Compliant), ข้อมูลรอการตัดสินใจ (At Risk), และข้อมูลชำรุดกักกัน (Non-Compliant)" />
@@ -1098,10 +1233,12 @@ export default function Dashboard() {
                   {/* Donut Center Display */}
                   <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center', pointerEvents: 'none' }}>
                     <div style={{ fontSize: '20px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text-main)', lineHeight: 1 }}>
-                      {(execData.total_records || wbTotal || 10100).toLocaleString()}
+                      {selectedDatasetRun
+                        ? (selectedDatasetRun.total_records || (selectedDatasetRun.clean_records + selectedDatasetRun.quarantined_records)).toLocaleString()
+                        : (execData.total_records || wbTotal || 10100).toLocaleString()}
                     </div>
-                    <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', marginTop: '2px' }}>
-                      RECORDS
+                    <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', marginTop: '2px', maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={selectedDatasetRun ? selectedDatasetRun.table_name : 'RECORDS'}>
+                      {selectedDatasetRun ? selectedDatasetRun.table_name : 'RECORDS'}
                     </div>
                   </div>
                 </div>
@@ -1135,7 +1272,11 @@ export default function Dashboard() {
                   </p>
                 </div>
                 <span className="exec-chip exec-chip-crit" style={{ fontSize: '11px' }}>
-                  {formatUsdWithThb(bizImpact.monetary_loss_usd || sellInOut.summary?.copdq_sales_loss_usd || 14277)}
+                  {formatUsdWithThb(
+                    selectedDatasetRun
+                      ? Math.round(selectedDatasetRun.quarantined_financial_value || (selectedDatasetRun.quarantined_records || 0) * 22.66)
+                      : (bizImpact.monetary_loss_usd || sellInOut.summary?.copdq_sales_loss_usd || 14277)
+                  )}
                 </span>
               </div>
 
@@ -1178,7 +1319,11 @@ export default function Dashboard() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: '8px', borderTop: '1px solid var(--border-color)', fontSize: '11px', color: 'var(--text-muted)' }}>
                 <span>Model: Gartner TCO + COPDQ Breakdown</span>
                 <span style={{ fontWeight: 700, color: 'var(--accent-green)' }}>
-                  Total: {formatUsdWithThb(bizImpact.monetary_loss_usd || sellInOut.summary?.copdq_sales_loss_usd || 14277)}
+                  Total: {formatUsdWithThb(
+                    selectedDatasetRun
+                      ? Math.round(selectedDatasetRun.quarantined_financial_value || (selectedDatasetRun.quarantined_records || 0) * 22.66)
+                      : (bizImpact.monetary_loss_usd || sellInOut.summary?.copdq_sales_loss_usd || 14277)
+                  )}
                 </span>
               </div>
             </div>
@@ -2113,14 +2258,29 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {availableTables.map((tbl, i) => {
-                  const runsForTable = qualityHistory.data?.filter(r => r.table_name === tbl) || [];
+                {availableDatasets.map((tbl, i) => {
+                  const runsForTable = qualityHistory.data?.filter(r => (r.table_name || '').toLowerCase() === tbl.toLowerCase()) || [];
                   const latest = runsForTable[0] || {};
                   const score = latest.quality_score != null ? latest.quality_score : null;
                   const grade = getQualityGrade(score);
+                  const isSelected = selectedSourceFilter.toLowerCase() === tbl.toLowerCase();
                   return (
-                    <tr key={i}>
-                      <td style={{ fontWeight: 700, color: 'var(--text-main)' }}>{tbl}</td>
+                    <tr
+                      key={i}
+                      className={`is-clickable ${isSelected ? 'is-selected' : ''}`}
+                      onClick={() => setSelectedSourceFilter(isSelected ? 'All' : tbl)}
+                      title={`คลิกเพื่อเลือกชุดข้อมูล ${tbl} หรือคลิกซ้ำเพื่อรีเซ็ต`}
+                    >
+                      <td style={{ fontWeight: 700, color: isSelected ? 'var(--accent-purple)' : 'var(--text-main)' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                          <span>{tbl}</span>
+                          {isSelected && (
+                            <span className="exec-chip exec-chip-purple" style={{ fontSize: '9px', padding: '1px 6px' }}>
+                              SELECTED
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td>
                         <span style={{ color: grade.color, fontWeight: 800, fontFamily: 'var(--font-mono)' }}>
                           {score != null ? `${score.toFixed(1)}%` : 'N/A'}

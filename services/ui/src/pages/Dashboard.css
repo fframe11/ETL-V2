@@ -586,6 +586,25 @@
   font-weight: 600;
   cursor: pointer;
 }
+.exec-dataset-select {
+  min-width: 175px;
+  max-width: 260px;
+}
+.exec-dataset-select.is-active,
+.exec-dataset-select:focus {
+  border-color: var(--accent-purple, #7C3AED) !important;
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.15) !important;
+}
+.exec-table tr.is-clickable {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.exec-table tr.is-clickable:hover {
+  background-color: var(--bg-secondary) !important;
+}
+.exec-table tr.is-selected {
+  background-color: rgba(124, 58, 237, 0.08) !important;
+}
 .exec-actions-right {
   display: flex;
   align-items: center;
