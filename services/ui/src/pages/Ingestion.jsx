@@ -10,7 +10,7 @@ import "./Ingestion.css";
 
 function getAuthHeaders(extra = {}) {
   const token = typeof window !== "undefined"
-    ? (sessionStorage.getItem("sdoqap_token") || localStorage.getItem("sdoqap_token"))
+    ? (sessionStorage.getItem("dataserve_token") || localStorage.getItem("dataserve_token"))
     : null;
   return {
     ...(token ? { Authorization: `Bearer ${token}`, "X-Session-Token": token } : {}),
@@ -66,7 +66,7 @@ export default function Ingestion() {
   // Kafka / Event Stream Ingest State
   const [streamBrokers, setStreamBrokers] = useState("kafka:9092");
   const [streamTopic, setStreamTopic] = useState("");
-  const [streamGroup, setStreamGroup] = useState("sdoqap-profiler-group");
+  const [streamGroup, setStreamGroup] = useState("dataserve-profiler-group");
   const [redditTopic, setRedditTopic] = useState("#Technology, #AI");
   const [redditDuration, setRedditDuration] = useState(40);
   const [redditSubreddits, setRedditSubreddits] = useState("python,bigdata");
@@ -434,7 +434,7 @@ export default function Ingestion() {
       fd.append("table_name", cleanName);
 
       let token = typeof window !== "undefined"
-        ? (sessionStorage.getItem("sdoqap_token") || localStorage.getItem("sdoqap_token"))
+        ? (sessionStorage.getItem("dataserve_token") || localStorage.getItem("dataserve_token"))
         : null;
       if (!token || !token.includes(".") || token.startsWith("local_") || token.startsWith("sso_")) {
         const freshToken = await requestBackendSessionToken();
@@ -1069,7 +1069,7 @@ export default function Ingestion() {
               </div>
               <div>
                 <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>Consumer Group ID</label>
-                <input type="text" value={streamGroup} onChange={(e) => setStreamGroup(e.target.value)} placeholder="sdoqap-profiler-group" style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12px", background: "#FFFFFF" }} />
+                <input type="text" value={streamGroup} onChange={(e) => setStreamGroup(e.target.value)} placeholder="dataserve-profiler-group" style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #CBD5E1", fontSize: "12px", background: "#FFFFFF" }} />
               </div>
               <div>
                 <button type="submit" disabled={profilingLoading} style={{ width: "100%", padding: "9px 14px", background: "#1B3139", color: "#FFFFFF", border: "none", borderRadius: "6px", fontSize: "12px", fontWeight: 700, cursor: profilingLoading ? "wait" : "pointer", opacity: profilingLoading ? 0.6 : 1 }}>

@@ -49,7 +49,7 @@ function AppContent({ isSidebarOpen, toggleSidebar }) {
       if (!isAuthenticated) return;
 
       const token = typeof window !== "undefined"
-        ? (sessionStorage.getItem("sdoqap_token") || localStorage.getItem("sdoqap_token"))
+        ? (sessionStorage.getItem("dataserve_token") || localStorage.getItem("dataserve_token"))
         : null;
       const headers = token ? { Authorization: `Bearer ${token}`, "X-Session-Token": token } : {};
 

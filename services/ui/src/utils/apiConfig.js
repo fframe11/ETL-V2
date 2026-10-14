@@ -58,21 +58,21 @@ export function resolveApiUrl(path) {
 
 /**
  * Determines whether the UI should run in Precomputed Static Demo Mode.
- * - Explicit Demo Mode: Activated via window.__SDOQAP_STATIC_DEMO__,
- *   localStorage "sdoqap_static_demo", or VITE_DEMO_MODE=true.
+ * - Explicit Demo Mode: Activated via window.__DATASERVE_STATIC_DEMO__,
+ *   localStorage "dataserve_static_demo", or VITE_DEMO_MODE=true.
  * - Live API Mode: If VITE_API_URL is configured and no explicit demo flag is set,
  *   Live mode is active.
  * - Standalone Static Fallback: Only activates on vercel.app if NO live VITE_API_URL is configured.
  */
 export function checkInitialDemoMode() {
   if (typeof window === "undefined") return false;
-  if (window.__SDOQAP_STATIC_DEMO__ === true) return true;
+  if (window.__DATASERVE_STATIC_DEMO__ === true) return true;
 
-  if (localStorage.getItem("dataserve_demo_mode") === "true" || localStorage.getItem("sdoqap_demo_mode") === "true") {
+  if (localStorage.getItem("dataserve_demo_mode") === "true" || localStorage.getItem("dataserve_demo_mode") === "true") {
     return true;
   }
 
-  const localVal = localStorage.getItem("sdoqap_static_demo");
+  const localVal = localStorage.getItem("dataserve_static_demo");
   if (localVal === "true") return true;
   if (localVal === "false") return false;
 
@@ -90,7 +90,7 @@ export function checkInitialDemoMode() {
  */
 export function getAuthHeaders(extra = {}) {
   const token = typeof window !== "undefined"
-    ? (sessionStorage.getItem("sdoqap_token") || localStorage.getItem("sdoqap_token"))
+    ? (sessionStorage.getItem("dataserve_token") || localStorage.getItem("dataserve_token"))
     : null;
   return {
     ...(token ? { Authorization: `Bearer ${token}`, "X-Session-Token": token } : {}),

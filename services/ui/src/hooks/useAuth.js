@@ -5,7 +5,7 @@ import { setStaticDemoMode } from "./useApi";
 export function isDemoModeStored() {
   if (typeof window === "undefined") return false;
   return localStorage.getItem("dataserve_demo_mode") === "true" ||
-         localStorage.getItem("sdoqap_demo_mode") === "true" ||
+         localStorage.getItem("dataserve_demo_mode") === "true" ||
          localStorage.getItem("sdoqap_static_demo") === "true";
 }
 
@@ -109,8 +109,8 @@ export async function requestBackendSessionToken() {
       const data = await res.json();
       if (data.token) {
         if (typeof window !== "undefined") {
-          sessionStorage.setItem("sdoqap_token", data.token);
-          localStorage.setItem("sdoqap_token", data.token);
+          sessionStorage.setItem("dataserve_token", data.token);
+          localStorage.setItem("dataserve_token", data.token);
           sessionStorage.setItem("sdoqap_backend_token", data.token);
           localStorage.setItem("sdoqap_backend_token", data.token);
         }
@@ -131,7 +131,7 @@ export function useAuth() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     if (isDemoModeStored()) return true;
     if (typeof window !== "undefined") {
-      const token = sessionStorage.getItem("sdoqap_token") || localStorage.getItem("sdoqap_token");
+      const token = sessionStorage.getItem("dataserve_token") || localStorage.getItem("dataserve_token");
       if (token) return true;
       return false;
     }
@@ -177,7 +177,7 @@ export function useAuth() {
       return;
     }
 
-    let token = typeof window !== "undefined" ? (sessionStorage.getItem("sdoqap_token") || localStorage.getItem("sdoqap_token")) : null;
+    let token = typeof window !== "undefined" ? (sessionStorage.getItem("dataserve_token") || localStorage.getItem("dataserve_token")) : null;
     const stored = getStoredUserProfile();
 
     // If user has no active token and no profile, check backend cookie/session or mark unauthenticated
@@ -271,12 +271,12 @@ export function useAuth() {
     if (ident.toLowerCase() === "admin") {
       const backendToken = await requestBackendSessionToken();
       if (typeof window !== "undefined") {
-        localStorage.removeItem("sdoqap_demo_mode");
+        localStorage.removeItem("dataserve_demo_mode");
         localStorage.removeItem("dataserve_demo_mode");
         localStorage.removeItem("sdoqap_static_demo");
         if (!backendToken) {
-          sessionStorage.setItem("sdoqap_token", "local_token_admin");
-          localStorage.setItem("sdoqap_token", "local_token_admin");
+          sessionStorage.setItem("dataserve_token", "local_token_admin");
+          localStorage.setItem("dataserve_token", "local_token_admin");
         }
       }
       const adminProfile = {
@@ -309,11 +309,11 @@ export function useAuth() {
       if (res.ok && (!contentType || contentType.includes("application/json"))) {
         const data = await res.json();
         if (data.token && typeof window !== "undefined") {
-          sessionStorage.setItem("sdoqap_token", data.token);
-          localStorage.setItem("sdoqap_token", data.token);
+          sessionStorage.setItem("dataserve_token", data.token);
+          localStorage.setItem("dataserve_token", data.token);
         }
         if (typeof window !== "undefined") {
-          localStorage.removeItem("sdoqap_demo_mode");
+          localStorage.removeItem("dataserve_demo_mode");
           localStorage.removeItem("dataserve_demo_mode");
           localStorage.removeItem("sdoqap_static_demo");
         }
@@ -356,10 +356,10 @@ export function useAuth() {
         };
         if (typeof window !== "undefined") {
           if (!backendToken) {
-            sessionStorage.setItem("sdoqap_token", `local_token_${localMatch.username}`);
-            localStorage.setItem("sdoqap_token", `local_token_${localMatch.username}`);
+            sessionStorage.setItem("dataserve_token", `local_token_${localMatch.username}`);
+            localStorage.setItem("dataserve_token", `local_token_${localMatch.username}`);
           }
-          localStorage.removeItem("sdoqap_demo_mode");
+          localStorage.removeItem("dataserve_demo_mode");
           localStorage.removeItem("dataserve_demo_mode");
           localStorage.removeItem("sdoqap_static_demo");
         }
@@ -430,10 +430,10 @@ export function useAuth() {
         };
         if (typeof window !== "undefined") {
           if (!backendToken) {
-            sessionStorage.setItem("sdoqap_token", `local_token_${localMatch.username}`);
-            localStorage.setItem("sdoqap_token", `local_token_${localMatch.username}`);
+            sessionStorage.setItem("dataserve_token", `local_token_${localMatch.username}`);
+            localStorage.setItem("dataserve_token", `local_token_${localMatch.username}`);
           }
-          localStorage.removeItem("sdoqap_demo_mode");
+          localStorage.removeItem("dataserve_demo_mode");
           localStorage.removeItem("dataserve_demo_mode");
           localStorage.removeItem("sdoqap_static_demo");
         }
@@ -487,18 +487,18 @@ export function useAuth() {
       if (res.ok) {
         const data = await res.json();
         if (data.token && typeof window !== "undefined") {
-          sessionStorage.setItem("sdoqap_token", data.token);
-          localStorage.setItem("sdoqap_token", data.token);
+          sessionStorage.setItem("dataserve_token", data.token);
+          localStorage.setItem("dataserve_token", data.token);
         }
       }
     } catch {}
 
     if (typeof window !== "undefined") {
       if (!backendToken) {
-        sessionStorage.setItem("sdoqap_token", `local_token_${uname}`);
-        localStorage.setItem("sdoqap_token", `local_token_${uname}`);
+        sessionStorage.setItem("dataserve_token", `local_token_${uname}`);
+        localStorage.setItem("dataserve_token", `local_token_${uname}`);
       }
-      localStorage.removeItem("sdoqap_demo_mode");
+      localStorage.removeItem("dataserve_demo_mode");
       localStorage.removeItem("dataserve_demo_mode");
       localStorage.removeItem("sdoqap_static_demo");
     }
@@ -566,9 +566,9 @@ export function useAuth() {
 
     if (typeof window !== "undefined") {
       const activeToken = backendToken || `sso_token_${provider}`;
-      sessionStorage.setItem("sdoqap_token", activeToken);
-      localStorage.setItem("sdoqap_token", activeToken);
-      localStorage.removeItem("sdoqap_demo_mode");
+      sessionStorage.setItem("dataserve_token", activeToken);
+      localStorage.setItem("dataserve_token", activeToken);
+      localStorage.removeItem("dataserve_demo_mode");
       localStorage.removeItem("dataserve_demo_mode");
       localStorage.removeItem("sdoqap_static_demo");
     }
@@ -587,9 +587,9 @@ export function useAuth() {
     // 1. Synchronously set authentication and storage flags for instant zero-latency transition
     if (typeof window !== "undefined") {
       const defaultToken = "demo_session_token";
-      sessionStorage.setItem("sdoqap_token", defaultToken);
-      localStorage.setItem("sdoqap_token", defaultToken);
-      localStorage.setItem("sdoqap_demo_mode", "true");
+      sessionStorage.setItem("dataserve_token", defaultToken);
+      localStorage.setItem("dataserve_token", defaultToken);
+      localStorage.setItem("dataserve_demo_mode", "true");
       localStorage.setItem("dataserve_demo_mode", "true");
       localStorage.setItem("sdoqap_static_demo", "true");
     }
@@ -628,8 +628,8 @@ export function useAuth() {
       if (res.ok) {
         const data = await res.json();
         if (data.token && typeof window !== "undefined") {
-          sessionStorage.setItem("sdoqap_token", data.token);
-          localStorage.setItem("sdoqap_token", data.token);
+          sessionStorage.setItem("dataserve_token", data.token);
+          localStorage.setItem("dataserve_token", data.token);
           notifyAuthChanged();
         }
       }
@@ -640,14 +640,14 @@ export function useAuth() {
 
   const logout = useCallback(async () => {
     try {
-      const token = typeof window !== "undefined" ? (sessionStorage.getItem("sdoqap_token") || localStorage.getItem("sdoqap_token")) : null;
+      const token = typeof window !== "undefined" ? (sessionStorage.getItem("dataserve_token") || localStorage.getItem("dataserve_token")) : null;
       const headers = token ? { "Authorization": `Bearer ${token}` } : {};
       await fetch(resolveApiUrl("/api/v1/auth/logout"), { method: "POST", credentials: "include", headers }).catch(() => {});
     } finally {
       if (typeof window !== "undefined") {
-        sessionStorage.removeItem("sdoqap_token");
-        localStorage.removeItem("sdoqap_token");
-        localStorage.removeItem("sdoqap_demo_mode");
+        sessionStorage.removeItem("dataserve_token");
+        localStorage.removeItem("dataserve_token");
+        localStorage.removeItem("dataserve_demo_mode");
         localStorage.removeItem("dataserve_demo_mode");
         localStorage.removeItem("sdoqap_static_demo");
       }

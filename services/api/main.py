@@ -34,8 +34,8 @@ from app.api.semantic import router as semantic_router
 from app.api.jobs import router as jobs_router
 
 app = FastAPI(
-    title="SDOQAP Serving API",
-    description="Serving Layer API for Scalable Data Observability and Quality Assurance Platform",
+    title="DataServe Serving API",
+    description="Serving Layer API for DataServe Observability and Quality Assurance Platform",
     version="1.0.0"
 )
 
@@ -79,7 +79,7 @@ app.add_middleware(SlowAPIMiddleware)
 # Liveness probe (process is up and responding)
 @app.get("/live", tags=["Health"])
 def liveness() -> dict:
-    return {"status": "alive", "service": "SDOQAP API Serving Layer"}
+    return {"status": "alive", "service": "DataServe API Serving Layer"}
 
 # Readiness probe (mandatory dependencies operational)
 @app.get("/ready", tags=["Health"])
@@ -184,7 +184,7 @@ def configure_elasticsearch_startup():
     from app.api.auth import is_production_environment
     from app.api.config import get_database_url
 
-    logger = logging.getLogger("sdoqap.startup")
+    logger = logging.getLogger("dataserve.startup")
     is_prod = is_production_environment()
     has_postgres = bool(get_database_url())
 
@@ -261,7 +261,7 @@ configure_elasticsearch_startup()
 def read_portal():
     return {
         "status": "healthy",
-        "service": "SDOQAP API Serving Layer",
+        "service": "DataServe API Serving Layer",
         "documentation": "/docs"
     }
 

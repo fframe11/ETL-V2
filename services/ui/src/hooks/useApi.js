@@ -16,13 +16,13 @@ export function setStaticDemoMode(val) {
   _isStaticDemo = Boolean(val);
   if (typeof window !== "undefined") {
     if (_isStaticDemo) {
-      localStorage.setItem("sdoqap_static_demo", "true");
+      localStorage.setItem("dataserve_static_demo", "true");
       localStorage.setItem("dataserve_demo_mode", "true");
-      localStorage.setItem("sdoqap_demo_mode", "true");
+      localStorage.setItem("dataserve_demo_mode", "true");
     } else {
-      localStorage.removeItem("sdoqap_static_demo");
+      localStorage.removeItem("dataserve_static_demo");
       localStorage.removeItem("dataserve_demo_mode");
-      localStorage.removeItem("sdoqap_demo_mode");
+      localStorage.removeItem("dataserve_demo_mode");
     }
   }
 }

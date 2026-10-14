@@ -5,7 +5,7 @@ import { resolveApiUrl } from "./apiConfig";
 // user can read when the call fails. The HTTP status stays on error.status (0 when the server was
 // not reached).
 async function send(url, { method = "GET", body, headers: customHeaders } = {}) {
-  const token = typeof window !== "undefined" ? (sessionStorage.getItem("sdoqap_token") || localStorage.getItem("sdoqap_token")) : null;
+  const token = typeof window !== "undefined" ? (sessionStorage.getItem("dataserve_token") || localStorage.getItem("dataserve_token")) : null;
   const headers = { ...(customHeaders || {}) };
   if (token && !headers["Authorization"]) {
     headers["Authorization"] = `Bearer ${token}`;
@@ -28,8 +28,8 @@ async function send(url, { method = "GET", body, headers: customHeaders } = {}) 
   }
   const isDemo = typeof window !== "undefined" && (
     localStorage.getItem("dataserve_demo_mode") === "true" ||
-    localStorage.getItem("sdoqap_demo_mode") === "true" ||
-    localStorage.getItem("sdoqap_static_demo") === "true"
+    localStorage.getItem("dataserve_demo_mode") === "true" ||
+    localStorage.getItem("dataserve_static_demo") === "true"
   );
   if (res.status === 401 && window.location.pathname !== "/login" && !isDemo) {
     window.location.href = "/login";
@@ -56,8 +56,8 @@ function failure(res, data) {
 export async function requestJson(url, options) {
   const isDemo = typeof window !== "undefined" && (
     localStorage.getItem("dataserve_demo_mode") === "true" ||
-    localStorage.getItem("sdoqap_demo_mode") === "true" ||
-    localStorage.getItem("sdoqap_static_demo") === "true"
+    localStorage.getItem("dataserve_demo_mode") === "true" ||
+    localStorage.getItem("dataserve_static_demo") === "true"
   );
   let res;
   let data = {};
@@ -304,9 +304,9 @@ export async function requestJson(url, options) {
             updated_at: new Date().toISOString()
           };
           try {
-            const stored = JSON.parse(localStorage.getItem("sdoqap_demo_saved_dashboards") || "[]");
+            const stored = JSON.parse(localStorage.getItem("dataserve_saved_dashboards") || "[]");
             stored.unshift(newDoc);
-            localStorage.setItem("sdoqap_demo_saved_dashboards", JSON.stringify(stored));
+            localStorage.setItem("dataserve_saved_dashboards", JSON.stringify(stored));
           } catch {}
           return newDoc;
         }
@@ -315,8 +315,8 @@ export async function requestJson(url, options) {
           const delId = savedMatch ? savedMatch[1] : null;
           if (delId) {
             try {
-              const stored = JSON.parse(localStorage.getItem("sdoqap_demo_saved_dashboards") || "[]");
-              localStorage.setItem("sdoqap_demo_saved_dashboards", JSON.stringify(stored.filter(d => d.id !== delId)));
+              const stored = JSON.parse(localStorage.getItem("dataserve_saved_dashboards") || "[]");
+              localStorage.setItem("dataserve_saved_dashboards", JSON.stringify(stored.filter(d => d.id !== delId)));
             } catch {}
           }
           return { status: "deleted", id: delId };
@@ -325,7 +325,7 @@ export async function requestJson(url, options) {
         if (savedMatch && savedMatch[1] !== "saved") {
           const sId = savedMatch[1];
           try {
-            const stored = JSON.parse(localStorage.getItem("sdoqap_demo_saved_dashboards") || "[]");
+            const stored = JSON.parse(localStorage.getItem("dataserve_saved_dashboards") || "[]");
             const found = stored.find(d => d.id === sId);
             if (found) return found;
           } catch {}
@@ -390,7 +390,7 @@ export async function requestJson(url, options) {
         }
         let customSaved = [];
         try {
-          customSaved = JSON.parse(localStorage.getItem("sdoqap_demo_saved_dashboards") || "[]");
+          customSaved = JSON.parse(localStorage.getItem("dataserve_saved_dashboards") || "[]");
         } catch {}
         const defaultList = [
           {

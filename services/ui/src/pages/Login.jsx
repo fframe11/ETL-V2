@@ -147,7 +147,7 @@ export default function Login() {
               </div>
               <div className="dbx-feature-text">
                 <strong>Autonomous Quality & Governance</strong>
-                <span>9-Dimension SDOQAP profiling, Great Expectations validations & drift alerts</span>
+                <span>9-Dimension DataServe profiling, Great Expectations validations & drift alerts</span>
               </div>
             </div>
 
