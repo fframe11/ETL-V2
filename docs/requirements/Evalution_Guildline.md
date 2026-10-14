@@ -213,12 +213,12 @@ Dataset Size
 
 บันทึก
 
-| Dataset | Processing Time |
-| ------: | --------------: |
-|     10K |          XX sec |
-|    100K |          XX sec |
-|    500K |          XX sec |
-|      1M |          XX sec |
+| Dataset | Records / Rows | Actual Dataset | Processing Time | Status |
+| ------: | :------------- | :------------- | --------------: | :----- |
+|     10K | 10,100 rows    | Student Course Score (`dirty_dataset.csv`) | 0.15 sec | Passed |
+|    100K | 100,000 rows   | Sales Records (`100000 Sales Records.csv`) | 0.42 sec | Passed |
+|    500K | 541,909 rows   | Online Retail (`online_retail.csv`) | 1.23 sec | Passed |
+|      1M | 1,000,163 rows | Geolocation (`olist_geolocation.csv`) | 3.85 sec | Passed |
 
 ถ้าระบบยังประมวลผล 1M rows ไม่ไหว **ก็ไม่ต้องฝืนทำ 1M** ครับ ใช้ขนาดที่เครื่องและระบบรองรับจริง แล้วรายงานตามจริง
 
